@@ -6,6 +6,10 @@
 // Errors:
 //   - `ResourceNotFoundError` (re-exported from ingestion.service) -> 404.
 //   - `RunNotRetryableError` -> 409 BUSINESS_RUN_NOT_RETRYABLE.
+//   - `RunNotRunningError`   -> 409 BUSINESS_RUN_NOT_RUNNING (TC-13 propose-*
+//                               REST mirrors; raised by the route layer's
+//                               pre-check when the addressed run exists but
+//                               is not in `running` status).
 
 import type { PoolClient } from "pg";
 
@@ -38,6 +42,33 @@ export class RunNotRetryableError extends Error {
   constructor(llmRunId: string, currentStatus: "running" | "completed") {
     super(`LLMRun ${llmRunId} is in status '${currentStatus}' and cannot be retried.`);
     this.name = "RunNotRetryableError";
+    this.llmRunId = llmRunId;
+    this.currentStatus = currentStatus;
+  }
+}
+
+/**
+ * 409 sentinel for the TC-13 propose-* REST mirrors. Raised by the route
+ * layer's pre-check when the addressed `llmRunId` exists but its `status` is
+ * not `'running'` — i.e. the run is `completed` or `failed`. Distinguishes
+ * the case from 404 (unknown id) so the human caller gets the explicit
+ * `BUSINESS_RUN_NOT_RUNNING` code instead of a generic envelope.
+ *
+ * On the MCP transport the same situation collapses into a
+ * `STRUCTURAL_INVALID` envelope per BR-21 (the MCP session has an ambient
+ * `llm_run_id`; the route-layer 409 is a REST-only signal).
+ */
+export class RunNotRunningError extends Error {
+  public readonly statusCode = 409;
+  public readonly code = "BUSINESS_RUN_NOT_RUNNING" as const;
+  public readonly llmRunId: string;
+  public readonly currentStatus: "completed" | "failed";
+
+  constructor(llmRunId: string, currentStatus: "completed" | "failed") {
+    super(
+      `LLMRun ${llmRunId} is in status '${currentStatus}'; propose-* is only available while the run is 'running'.`
+    );
+    this.name = "RunNotRunningError";
     this.llmRunId = llmRunId;
     this.currentStatus = currentStatus;
   }

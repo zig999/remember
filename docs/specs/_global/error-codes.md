@@ -47,6 +47,7 @@ user-invocable: false
 |------------|------|-------------|----------------|
 | `SYSTEM_INTERNAL_ERROR` | 500 | Unexpected internal error | Unhandled exception |
 | `SYSTEM_SERVICE_UNAVAILABLE` | 503 | External service unavailable | Integration timeout |
+| `SYSTEM_LLM_PROVIDER_UNAVAILABLE` | 502 | Anthropic provider unreachable / non-recoverable during an extraction run | The in-process extraction orchestrator (`ingestion.spec.md` UC-12, BR-26) catches a non-recoverable Anthropic SDK error (auth, quota, network) mid-chunk; partial extraction is preserved and the run is closed as `failed` (`ingestion.spec.md` UC-12 alt 4a). |
 
 ## Codes by Domain
 <!-- Each domain adds its BUSINESS_ codes here when specified -->
@@ -56,6 +57,8 @@ user-invocable: false
 | error.code | HTTP | Description | When it occurs |
 |------------|------|-------------|----------------|
 | `BUSINESS_RUN_NOT_RETRYABLE` | 409 | LLMRun cannot be retried in its current status | `retryLlmRun` called against a run whose `status` is `running` or `completed`; only `failed` is retryable (`ingestion.spec.md` UC-06, BR-11). |
+| `BUSINESS_RUN_NOT_RUNNABLE` | 409 | LLMRun cannot be extracted in its current status | `runLlmExtraction` called against a run whose `status` is `completed` or `failed`; only `running` is runnable (the caller must invoke `retryLlmRun` first to reopen a failed run) (`ingestion.spec.md` UC-12, BR-26). |
+| `BUSINESS_RUN_NOT_RUNNING` | 409 | LLMRun referenced by a REST propose-* mirror is not currently running | REST mirrors of the MCP `ingest` toolset (`proposeFragment`/`proposeNode`/`proposeLink`/`proposeAttribute`) are called against a run whose `status != 'running'`; the MCP transport collapses this into `STRUCTURAL_INVALID` since the LLM only sees its ambient run (`ingestion.spec.md` UC-08..UC-11 alt 1a REST branch, BR-21). |
 
 > **MCP envelope error codes for the `ingest` toolset** are documented in `ingestion.spec.md` §6.2 (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`). They are normative for the MCP transport only (defined in §14 of `remember-modelagem-v7.md`) and are intentionally not mirrored as `BUSINESS_*` codes here — REST does not expose those tools.
 
