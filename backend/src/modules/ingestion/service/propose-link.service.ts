@@ -1,7 +1,7 @@
 // Service: `ingest.propose_link` business logic (UC-10).
 //
 // Transport-agnostic. Receives an OPEN `PoolClient` — transaction wrapping is
-// the caller's responsibility (BR-19 + TC-09 constraint).
+// the caller's responsibility (BR-19).
 //
 // Layered validation (BR-13) in the documented order. Each layer is a
 // sequential `await`, so layer N+1 only runs when layer N has not thrown:
@@ -18,9 +18,14 @@
 // 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`. The caller maps this to
 // `validation_outcome = 'rejected'` on the `tool_call` row (BR-17).
 //
-// Full §6.5 consolidation / succession / conflict flow is TC-011; this TC-09
-// keeps the minimal "accepted on first proposition; provenance always
-// written" behaviour (BR-18 happy path).
+// After validation, the service delegates the actual graph write to
+// `consolidateLink` (TC-011 / BR-25 / BR-27): the consolidator locks the
+// vigent row(s) under FOR UPDATE and decides between consolidated /
+// superseded_previous / correction (outcome=accepted) / disputed / accepted
+// (new). The previous behaviour (plain INSERT into knowledge_link) was
+// only safe when there was no vigent row in scope — a second propose with
+// the same scope would have hit the partial dup-guard index. The
+// consolidator replaces that path entirely.
 
 import type { PoolClient } from "pg";
 
@@ -39,6 +44,7 @@ import { validateGraphRule } from "../validation/graph-rules.js";
 import { assertFound, assertKnownType } from "../validation/structural.js";
 import { validateTemporal } from "../validation/temporal.js";
 
+import { consolidateLink } from "./graph-consolidation.service.js";
 import type { McpEnvelope, RunContext } from "./propose.types.js";
 
 /**
@@ -177,47 +183,38 @@ export async function proposeLinkService(
     );
   }
 
-  // ---- Business write --------------------------------------------------
-  // Minimal accepted path: insert a new knowledge_link row + one provenance
-  // row per fragment. Full §6.5 consolidation/succession/conflict flow is
-  // TC-011 (graph-consolidation service).
-  const linkStatus = route.kind === "active" ? "active" : "uncertain";
-  const linkRes = await client.query<{ id: string }>(
-    `INSERT INTO knowledge_link
-       (source_node_id, target_node_id, link_type_id,
-        valid_from, valid_to, status, confidence,
-        valid_from_source, created_by_run_id)
-     VALUES ($1, $2, $3,
-             $4::date, $5::date,
-             $6::assertion_status, $7,
-             $8::valid_from_source, $9)
-     RETURNING id`,
-    [
-      args.source_node_id,
-      args.target_node_id,
-      resolvedLink.id,
-      args.valid_from ?? null,
-      args.valid_to ?? null,
-      linkStatus,
-      args.confidence,
-      args.valid_from_basis ?? null,
-      runCtx.llmRunId,
-    ]
-  );
-  const linkId = linkRes.rows[0]!.id;
-
-  // Provenance — ON CONFLICT DO NOTHING because UNIQUE(link_id, fragment_id)
-  // already guards duplicates if a future consolidation re-runs.
-  await client.query(
-    `INSERT INTO provenance (link_id, fragment_id)
-     SELECT $1, f FROM unnest($2::uuid[]) AS f
-     ON CONFLICT DO NOTHING`,
-    [linkId, args.fragment_ids]
+  // ---- Business write — delegated to the consolidator (BR-25/BR-27) ----
+  const statusForNewRow: "active" | "uncertain" =
+    route.kind === "active" ? "active" : "uncertain";
+  const consolidation = await consolidateLink(
+    client,
+    {
+      source_node_id: args.source_node_id,
+      target_node_id: args.target_node_id,
+      link_type_id: resolvedLink.id,
+      confidence: args.confidence,
+      valid_from: args.valid_from ?? null,
+      valid_to: args.valid_to ?? null,
+      valid_from_basis: args.valid_from_basis ?? null,
+      change_hint: args.change_hint,
+      fragment_ids: args.fragment_ids,
+      status_for_new_row: statusForNewRow,
+    },
+    resolvedLink,
+    fragmentTexts,
+    runCtx
   );
 
-  const result: ProposeLinkResult = {
-    link_id: linkId,
-    outcome: "accepted",
+  // Map consolidator outcome to the public DTO. `superseded_link_id` only
+  // surfaces for `superseded_previous` and `accepted` (correction branch);
+  // dispute returns just the new row id with the outcome flag.
+  const baseResult = {
+    link_id: consolidation.link_id,
+    outcome: consolidation.outcome,
   };
+  const result: ProposeLinkResult =
+    consolidation.superseded_link_id !== undefined
+      ? { ...baseResult, superseded_link_id: consolidation.superseded_link_id }
+      : baseResult;
   return { ok: true, result };
 }

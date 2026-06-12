@@ -1,7 +1,7 @@
 // Service: `ingest.propose_attribute` business logic (UC-11).
 //
 // Transport-agnostic. Receives an OPEN `PoolClient` — transaction wrapping is
-// the caller's responsibility (BR-19 + TC-09 constraint).
+// the caller's responsibility (BR-19).
 //
 // Mirror of `proposeLinkService`. Differences:
 //   - Structural layer additionally parses the literal `value` against
@@ -9,6 +9,9 @@
 //   - There is no link_type_rule lookup — the attribute_key catalog itself
 //     scopes the `node_type` (UNIQUE(node_type_id, key)). The "graph rules"
 //     layer for attributes is "key.node_type_id == node.node_type_id".
+//
+// After validation, the service delegates the actual graph write to
+// `consolidateAttribute` (TC-011 / BR-25 / BR-27).
 
 import type { PoolClient } from "pg";
 
@@ -31,6 +34,7 @@ import {
 } from "../validation/structural.js";
 import { validateTemporal } from "../validation/temporal.js";
 
+import { consolidateAttribute } from "./graph-consolidation.service.js";
 import type { McpEnvelope, RunContext } from "./propose.types.js";
 
 export interface ProposeAttributeDeps {
@@ -153,42 +157,39 @@ export async function proposeAttributeService(
     );
   }
 
-  // ---- Business write ----
-  const attrStatus = route.kind === "active" ? "active" : "uncertain";
-  const attrRes = await client.query<{ id: string }>(
-    `INSERT INTO node_attribute
-       (node_id, attribute_key_id, value_type, value,
-        valid_from, valid_to, status, confidence,
-        valid_from_source, created_by_run_id)
-     VALUES ($1, $2, $3::attribute_value_type, $4,
-             $5::date, $6::date,
-             $7::assertion_status, $8,
-             $9::valid_from_source, $10)
-     RETURNING id`,
-    [
-      args.node_id,
-      resolvedKey.id,
-      resolvedKey.value_type,
-      args.value,
-      args.valid_from ?? null,
-      args.valid_to ?? null,
-      attrStatus,
-      args.confidence,
-      args.valid_from_basis ?? null,
-      runCtx.llmRunId,
-    ]
-  );
-  const attrId = attrRes.rows[0]!.id;
-  await client.query(
-    `INSERT INTO provenance (attribute_id, fragment_id)
-     SELECT $1, f FROM unnest($2::uuid[]) AS f
-     ON CONFLICT DO NOTHING`,
-    [attrId, args.fragment_ids]
+  // ---- Business write — delegated to the consolidator (BR-25/BR-27) ----
+  const statusForNewRow: "active" | "uncertain" =
+    route.kind === "active" ? "active" : "uncertain";
+  const consolidation = await consolidateAttribute(
+    client,
+    {
+      node_id: args.node_id,
+      attribute_key_id: resolvedKey.id,
+      value_type: resolvedKey.value_type,
+      value: args.value,
+      confidence: args.confidence,
+      valid_from: args.valid_from ?? null,
+      valid_to: args.valid_to ?? null,
+      valid_from_basis: args.valid_from_basis ?? null,
+      change_hint: args.change_hint,
+      fragment_ids: args.fragment_ids,
+      status_for_new_row: statusForNewRow,
+    },
+    resolvedKey,
+    fragmentTexts,
+    runCtx
   );
 
-  const result: ProposeAttributeResult = {
-    attribute_id: attrId,
-    outcome: "accepted",
+  const baseResult = {
+    attribute_id: consolidation.attribute_id,
+    outcome: consolidation.outcome,
   };
+  const result: ProposeAttributeResult =
+    consolidation.superseded_attribute_id !== undefined
+      ? {
+          ...baseResult,
+          superseded_attribute_id: consolidation.superseded_attribute_id,
+        }
+      : baseResult;
   return { ok: true, result };
 }
