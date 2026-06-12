@@ -9,6 +9,23 @@ export type { IngestionRouteDeps } from "./routes/ingestion.routes.js";
 export { registerIngestToolset, getIngestToolJsonSchemas } from "./mcp/toolset.js";
 export type { IngestToolsetSessionDeps } from "./mcp/toolset.js";
 
+// Per-session McpServer factory (TC-014). Built once per MCP session; binds
+// the ambient `llm_run_id` against the four propose-* tools.
+export {
+  createIngestSession,
+  type IngestSession,
+  type IngestSessionFactoryDeps,
+} from "./mcp/session-factory.js";
+
+// MCP-over-HTTP transport (TC-014). Mounted as `POST /mcp` under the
+// auth-protected `/api/v1` scope by the bootstrap. JSON-RPC 2.0 wire format,
+// JWT-guarded by the parent scope's `requireNeonAuth` preHandler.
+export {
+  registerIngestMcpTransport,
+  LLM_RUN_HEADER,
+  type IngestMcpTransportDeps,
+} from "./mcp/transport.js";
+
 // Tool input schemas — single source per BR-24 (Zod + derived JSON Schema).
 // Future REST mirror (TC-12) and Anthropic tool-use loop (TC-12) consume the
 // derived JSON Schemas from here.

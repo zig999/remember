@@ -20,7 +20,10 @@ import type { Env } from "./config/env.js";
 import { buildErrorHandler } from "./middleware/error-handler.js";
 import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
-import { registerIngestionRoutes } from "./modules/ingestion/index.js";
+import {
+  registerIngestionRoutes,
+  registerIngestMcpTransport,
+} from "./modules/ingestion/index.js";
 import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import {
   registerCurationRoutes,
@@ -126,6 +129,22 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     // `/audit` are mounted at the root of the protected scope (paths are
     // siblings of `/api/v1/ingest`); catalog snapshot is NOT required.
     await registerComplianceAuditRoutes(scoped, { pool, logger });
+
+    // MCP-over-HTTP transport for the `ingest` toolset (TC-014). Mounted as
+    // POST /api/v1/mcp under the auth-protected scope, so requireNeonAuth
+    // is enforced for every JSON-RPC message. Per-request sessions bind the
+    // ambient llm_run_id from the X-LLM-Run-Id header; the toolset is
+    // invisible until that header is set (BR-21 first bullet). The catalog
+    // snapshot is required for the propose-node / propose-link /
+    // propose-attribute handlers — if it is absent the transport is skipped
+    // (same condition as the curation REST mirror).
+    if (ingestionCatalog !== undefined) {
+      await registerIngestMcpTransport(scoped, {
+        pool,
+        logger,
+        catalog: ingestionCatalog,
+      });
+    }
 
     // Knowledge-graph module (TC-04) — read-only catalog + graph endpoints.
     // Mounted at the root of `/api/v1` because the route paths the OpenAPI
