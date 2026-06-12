@@ -19,11 +19,19 @@ import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
   ListToolCallsQuerySchema,
   RetryLlmRunRequestSchema,
 } from "../dto/llm-run.dto.js";
 import { IngestRawInformationRequestSchema } from "../dto/ingest-raw-information.dto.js";
+import {
+  ExtractionFatalError,
+  LlmProviderFatalError,
+  RunNotRunnableError,
+  runLlmExtraction,
+  type AnthropicFactory,
+} from "../service/extraction.service.js";
 import {
   getRawInformationById,
   ingestRawInformation,
@@ -41,7 +49,26 @@ import {
 export interface IngestionRouteDeps {
   readonly pool: Pool;
   readonly logger: Logger;
+  /**
+   * Catalog snapshot required by the extraction orchestrator (TC-12). Optional
+   * so route registrations that do not exercise the `runLlmExtraction`
+   * endpoint stay buildable (e.g. legacy integration test apps).
+   */
+  readonly catalog?: CatalogSnapshot;
+  /**
+   * Environment fragment carrying the Anthropic API key (BR-29). Required to
+   * mount the `runLlmExtraction` route. Same optional reason as `catalog`.
+   */
+  readonly env?: { readonly ANTHROPIC_API_KEY: string };
+  /**
+   * Anthropic factory override — defaults to the real SDK. Tests inject a
+   * stub to drive the orchestrator without hitting the network.
+   */
+  readonly anthropicFactory?: AnthropicFactory;
 }
+
+/** Schema for the (currently empty) `runLlmExtraction` request body. */
+const RunLlmExtractionRequestSchema = z.object({}).strict().default({});
 
 /** Body limit override for the POST route — 11 MiB per `ingestion.back.md §1`. */
 const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
@@ -193,6 +220,90 @@ export async function registerIngestionRoutes(
       });
     }
   );
+
+  // --- TC-12: synchronous extraction trigger (UC-12 / BR-26) -------------
+  // Mount the run endpoint only when the orchestrator dependencies (catalog
+  // + ANTHROPIC_API_KEY) are present. Tests that exercise the read-only
+  // surface can omit them.
+  if (deps.catalog !== undefined && deps.env !== undefined) {
+    const orchestratorCatalog = deps.catalog;
+    const orchestratorEnv = deps.env;
+    const anthropicFactory = deps.anthropicFactory;
+    app.post(
+      "/llm-runs/:llmRunId/run",
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const params = LlmRunIdParamSchema.parse(request.params);
+        // Body is optional in v1 — parse with a strict default so unknown
+        // fields surface as 422.
+        RunLlmExtractionRequestSchema.parse(request.body ?? {});
+
+        try {
+          const body = await runLlmExtraction(
+            deps.pool,
+            params.llmRunId,
+            deps.logger,
+            orchestratorCatalog,
+            {
+              env: orchestratorEnv,
+              ...(anthropicFactory !== undefined ? { anthropicFactory } : {}),
+            }
+          );
+          return reply.status(200).send(body);
+        } catch (err) {
+          if (err instanceof ResourceNotFoundError) {
+            return reply.status(404).send({
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                details: { entity: err.entity, id: err.entityId },
+              },
+            });
+          }
+          if (err instanceof RunNotRunnableError) {
+            return reply.status(409).send({
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                details: {
+                  llm_run_id: err.llmRunId,
+                  current_status: err.currentStatus,
+                },
+              },
+            });
+          }
+          if (err instanceof LlmProviderFatalError) {
+            return reply.status(502).send({
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                details: {
+                  llm_run_id: err.llmRunId,
+                  partial_run: err.partialRun,
+                },
+              },
+            });
+          }
+          if (err instanceof ExtractionFatalError) {
+            return reply.status(500).send({
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                details: {
+                  llm_run_id: err.llmRunId,
+                  partial_run: err.partialRun,
+                },
+              },
+            });
+          }
+          throw err;
+        }
+      }
+    );
+  }
 
   app.post(
     "/llm-runs/:llmRunId/retry",

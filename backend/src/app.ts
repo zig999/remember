@@ -34,6 +34,7 @@ import {
   registerQueryToolset,
   type CatalogSnapshot,
 } from "./modules/knowledge-graph/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import { registerQueryRetrievalRoutes } from "./modules/query-retrieval/index.js";
 
 export interface AppDependencies {
@@ -49,6 +50,13 @@ export interface AppDependencies {
    * knowledge-graph routes need not load the catalog.
    */
   readonly catalog?: CatalogSnapshot;
+  /**
+   * Ingestion module's local catalog snapshot — same source data as
+   * `catalog` above but with the ingestion-specific row shape (used by
+   * propose-* services and the extraction orchestrator, TC-12 / BR-26).
+   * Optional for the same reason as `catalog`.
+   */
+  readonly ingestionCatalog?: IngestionCatalogSnapshot;
 }
 
 /**
@@ -62,7 +70,7 @@ export interface AppDependencies {
  *    request log is too verbose for production.
  */
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
-  const { env, logger, pool, auth, mcp, catalog } = deps;
+  const { env, logger, pool, auth, mcp, catalog, ingestionCatalog } = deps;
 
   const app = Fastify({
     // pino's `Logger` satisfies Fastify's `FastifyBaseLogger` structurally
@@ -97,10 +105,19 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       result: { user_id: request.user?.id ?? null },
     }));
 
-    // Ingestion module (TC-02) — POST /raw-information, GET .../{id}, GET .../{id}/chunks.
+    // Ingestion module (TC-02 + TC-12) — POST /raw-information, GET .../{id},
+    // GET .../{id}/chunks, and (when the orchestrator deps are wired)
+    // POST /llm-runs/:id/run. The ingestion catalog + env are passed only
+    // when present; the route module skips the orchestrator endpoint
+    // otherwise.
     await scoped.register(
       async (ingest) => {
-        await registerIngestionRoutes(ingest, { pool, logger });
+        await registerIngestionRoutes(ingest, {
+          pool,
+          logger,
+          ...(ingestionCatalog !== undefined ? { catalog: ingestionCatalog } : {}),
+          env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
+        });
       },
       { prefix: "/ingest" }
     );
