@@ -110,7 +110,7 @@ describe("Fastify app (integration)", () => {
       const body = res.json() as Record<string, unknown>;
       expect(body.ok).toBe(true);
       expect(body.database).toBe("ok");
-      expect(body.service).toBe("segundo-cerebro-bff");
+      expect(body.service).toBe("remember-bff");
       expect(typeof body.checked_at).toBe("string");
     } finally {
       await app.close();

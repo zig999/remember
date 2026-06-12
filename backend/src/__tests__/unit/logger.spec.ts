@@ -63,7 +63,7 @@ describe("buildLogger", () => {
     const { lines } = captureLoggerEcho();
     expect(lines).toHaveLength(1);
     const entry = JSON.parse(lines[0] ?? "{}") as Record<string, unknown>;
-    expect(entry.service).toBe("segundo-cerebro-bff");
+    expect(entry.service).toBe("remember-bff");
     expect(entry.env).toBe("test");
   });
 
@@ -115,7 +115,7 @@ function captureLoggerEcho(): { lines: string[] } {
   const logger = pino(
     {
       level: "info",
-      base: { env: "test", service: "segundo-cerebro-bff" },
+      base: { env: "test", service: "remember-bff" },
       timestamp: pino.stdTimeFunctions.isoTime,
       formatters: { level: (label) => ({ level: label }) },
     },

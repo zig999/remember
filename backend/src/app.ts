@@ -157,7 +157,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
 /** Health-check result shape returned by GET /health. */
 export interface HealthReport {
   ok: boolean;
-  service: "segundo-cerebro-bff";
+  service: "remember-bff";
   database: "ok" | "unreachable";
   checked_at: string;
 }
@@ -168,14 +168,14 @@ async function collectHealth(pool: Pool): Promise<HealthReport> {
     await pingDatabase(pool);
     return {
       ok: true,
-      service: "segundo-cerebro-bff",
+      service: "remember-bff",
       database: "ok",
       checked_at: checkedAt,
     };
   } catch {
     return {
       ok: false,
-      service: "segundo-cerebro-bff",
+      service: "remember-bff",
       database: "unreachable",
       checked_at: checkedAt,
     };

@@ -51,7 +51,7 @@ export function buildLogger(env: Pick<Env, "LOG_LEVEL" | "NODE_ENV">): Logger {
     level: env.LOG_LEVEL,
     base: {
       env: env.NODE_ENV,
-      service: "segundo-cerebro-bff",
+      service: "remember-bff",
     },
     timestamp: pino.stdTimeFunctions.isoTime,
     redact: {
