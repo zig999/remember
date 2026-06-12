@@ -3,7 +3,7 @@
 > Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw) | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `../ingestion.spec.md`
 > REST contract: `../openapi.yaml`
-> MCP contract: `segundo-cerebro-modelagem-v7.md` §14.1 (toolset `ingest`)
+> MCP contract: `remember-modelagem-v7.md` §14.1 (toolset `ingest`)
 > Schema: `migrations/0001_schema.sql` + `migrations/0002_seed.sql`
 
 ---
@@ -397,7 +397,7 @@ If the count is less than `length($1)`, the transaction is aborted with `STRUCTU
 
 ## 5. Domain Events (EV)
 
-> The Segundo Cérebro architecture does **not** include an event bus. Cross-domain coordination happens through synchronous service calls and through the database (the §16 observability surface is queried, not pushed). The single audit substrate is `tool_call` for MCP calls and (for future consolidation/curation domains) `curation_action`.
+> The Remember architecture does **not** include an event bus. Cross-domain coordination happens through synchronous service calls and through the database (the §16 observability surface is queried, not pushed). The single audit substrate is `tool_call` for MCP calls and (for future consolidation/curation domains) `curation_action`.
 
 **N/A — no domain events in this version.** The four observability outcomes the §16 dashboard cares about (acceptance rate, consolidations, `needs_review`, `disputed`, `uncertain` / `low_confidence`, per-layer rejections) are all derived from `tool_call.validation_outcome` at read time (BR-12).
 

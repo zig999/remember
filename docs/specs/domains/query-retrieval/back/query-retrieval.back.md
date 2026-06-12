@@ -3,7 +3,7 @@
 > Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw, connection via `DATABASE_URL`) | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `../query-retrieval.spec.md`
 > REST contract: `../openapi.yaml`
-> MCP contract: `segundo-cerebro-modelagem-v7.md` §14.3 (toolset `query`, operations `search`, `get_provenance`)
+> MCP contract: `remember-modelagem-v7.md` §14.3 (toolset `query`, operations `search`, `get_provenance`)
 > Schema: `migrations/0001_schema.sql` + `migrations/0002_seed.sql`
 
 ---
@@ -398,7 +398,7 @@ The `ProvenanceFragment` rows are grouped in the service layer; each fragment ha
 
 ## 5. Domain Events (EV)
 
-> The Segundo Cérebro architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `ingestion.back.md` §5 by precedent, `knowledge-graph.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
+> The Remember architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `ingestion.back.md` §5 by precedent, `knowledge-graph.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
 
 **N/A -- no domain events in this version.** This domain is READ-ONLY; it observes the writes performed by `ingestion`, `curation`, and `compliance` purely through the underlying tables and views. The §16 observability surface uses pino's structured logs (Stack / Logging section) emitted by this module's middleware, not events.
 

@@ -57,7 +57,7 @@ user-invocable: false
 |------------|------|-------------|----------------|
 | `BUSINESS_RUN_NOT_RETRYABLE` | 409 | LLMRun cannot be retried in its current status | `retryLlmRun` called against a run whose `status` is `running` or `completed`; only `failed` is retryable (`ingestion.spec.md` UC-06, BR-11). |
 
-> **MCP envelope error codes for the `ingest` toolset** are documented in `ingestion.spec.md` §6.2 (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`). They are normative for the MCP transport only (defined in §14 of `segundo-cerebro-modelagem-v7.md`) and are intentionally not mirrored as `BUSINESS_*` codes here — REST does not expose those tools.
+> **MCP envelope error codes for the `ingest` toolset** are documented in `ingestion.spec.md` §6.2 (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`). They are normative for the MCP transport only (defined in §14 of `remember-modelagem-v7.md`) and are intentionally not mirrored as `BUSINESS_*` codes here — REST does not expose those tools.
 
 ### Knowledge Graph
 | error.code | HTTP | Description | When it occurs |

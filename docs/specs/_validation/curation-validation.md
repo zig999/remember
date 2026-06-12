@@ -6,7 +6,7 @@ status: VALID
 
 ## Summary
 
-All six checks passed for the curation domain. The three spec artifacts (`openapi.yaml`, `curation.spec.md`, `curation.back.md`) are internally consistent and aligned with both the global error-code catalog and the normative source (`segundo-cerebro-modelagem-v7.md` §§3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and the `migrations/0001_schema.sql` schema. No blocking inconsistencies were found. Three informational observations are noted as warnings.
+All six checks passed for the curation domain. The three spec artifacts (`openapi.yaml`, `curation.spec.md`, `curation.back.md`) are internally consistent and aligned with both the global error-code catalog and the normative source (`remember-modelagem-v7.md` §§3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and the `migrations/0001_schema.sql` schema. No blocking inconsistencies were found. Three informational observations are noted as warnings.
 
 ---
 
@@ -100,7 +100,7 @@ All error codes used in `openapi.yaml` responses and `curation.spec.md` §6 were
 
 No code is used without registration. No deprecated codes are referenced.
 
-### Check 5 — Normative Alignment (segundo-cerebro-modelagem-v7.md)
+### Check 5 — Normative Alignment (remember-modelagem-v7.md)
 
 - **§10.1 / ADR A26 — Two dedicated queues:** `ReviewQueueKind` enum is exactly `[entity_match, disputed]`. `uncertain` and `low_confidence` are correctly excluded as display flags. Confirmed in BR-01 of spec.md and BR-04 of back.md.
 - **§4.3 / EntityMatchReview:** Queue listing joins `knowledge_node` (status=`needs_review`) with `entity_match_review` candidates. `EntityMatchQueueItem` schema includes `candidates[]` with `similarity` (pg_trgm score), `canonical_name`, `candidate_node_id`. Aligned with §4.3 EntityMatchReview row structure.

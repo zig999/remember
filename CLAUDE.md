@@ -1,4 +1,4 @@
-# CLAUDE.md — Segundo Cérebro
+# CLAUDE.md — Remember
 
  # Siegard SDD Framework
 
@@ -15,12 +15,12 @@
 
 ### Description
 
-**Segundo Cérebro** é um repositório de conhecimento pessoal que recebe informação não
+**Remember** é um repositório de conhecimento pessoal que recebe informação não
 estruturada (PDFs, e-mails, atas, artigos, transcrições, chats), preserva o conteúdo original,
 extrai conhecimento estruturado com uma LLM, organiza esse conhecimento como um grafo temporal
 rastreável e permite consultá-lo por busca textual (full-text) + travessia de grafo.
 
-- **Fonte normativa:** `segundo-cerebro-modelagem-v7.md` — especificação completa, autocontida e
+- **Fonte normativa:** `remember-modelagem-v7.md` — especificação completa, autocontida e
   **fechada para desenvolvimento** (v7). Onde este arquivo cita "§N" ou "AN", refere-se a seções
   e ADRs desse documento. (`segundo-cerebro-modelagem-v6.md` está **deprecated** — substituída
   pela v7.)
@@ -196,7 +196,7 @@ design_system:
 ## Directory Structure
 
 ```
-segundo-cerebro-modelagem-v7.md   # FONTE NORMATIVA — especificação fechada (v7; v6 deprecated)
+remember-modelagem-v7.md   # FONTE NORMATIVA — especificação fechada (v7; v6 deprecated)
 migrations/
   0001_init.sql                   # Migração ÚNICA de bootstrap: extensões, configs de full-text,
                                   #   funções, tipos enum, tabelas (incl. colunas de tombstone de

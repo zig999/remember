@@ -3,7 +3,7 @@
 > Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw, `DATABASE_URL`) | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `../curation.spec.md`
 > REST contract: `../openapi.yaml`
-> MCP contract: `segundo-cerebro-modelagem-v7.md` §14.4 (toolset `curation`, operations `list_review_queue`, `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item`)
+> MCP contract: `remember-modelagem-v7.md` §14.4 (toolset `curation`, operations `list_review_queue`, `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item`)
 > Schema: `migrations/0001_schema.sql` + `migrations/0002_seed.sql`
 
 ---
@@ -647,7 +647,7 @@ Path compression (BR-07) deliberately operates AFTER the lock; the UPDATE matche
 
 ## 5. Domain Events (EV)
 
-> The Segundo Cérebro architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `knowledge-graph.back.md` §5, `ingestion.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
+> The Remember architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `knowledge-graph.back.md` §5, `ingestion.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
 
 **N/A -- no domain events in this version.** Every write produces one `curation_action` row inside the same transaction; downstream surfaces that need to react (the SPA refresh, the LLM's follow-up action) pull the result via:
 

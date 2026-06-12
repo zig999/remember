@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0001_init.sql — Segundo Cérebro (spec v7 + docs/specs, 2026-06-12)
+-- 0001_init.sql — Remember (spec v7 + docs/specs, 2026-06-12)
 -- PostgreSQL 17 (Neon) — migração ÚNICA de bootstrap: extensões, configs de
 -- full-text, funções, tipos, tabelas, índices, views, triggers E o catálogo
 -- seed obrigatório (§15). Um banco vazio + este arquivo = projeto pronto.
@@ -10,7 +10,7 @@
 --   0003_compliance_status.sql (parcial — só cobria raw_information; as
 --     colunas de tombstone exigidas pelas specs atuais estão TODAS aqui).
 --
--- Fontes: segundo-cerebro-modelagem-v7.md (normativa) +
+-- Fontes: remember-modelagem-v7.md (normativa) +
 --         docs/specs/domains/*/ (specs atuais — em particular
 --         compliance-audit §2 "Tables mutated by status transition").
 --

@@ -2,7 +2,7 @@
 
 > Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
-> Source of truth: `/segundo-cerebro-modelagem-v7.md` (sections 3, 4, 5, 6, 15 + ADRs A1, A6, A7, A8, A9, A10, A11, A12, A14, A16, A19, A20, A25, A26, A28, A29)
+> Source of truth: `/remember-modelagem-v7.md` (sections 3, 4, 5, 6, 15 + ADRs A1, A6, A7, A8, A9, A10, A11, A12, A14, A16, A19, A20, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
 
 ---
@@ -11,7 +11,7 @@
 
 | Aspect | Value |
 |--------|-------|
-| Objective | Own the consolidated knowledge layer of the Segundo Cerebro: entities (`KnowledgeNode`), their aliases (`NodeAlias`), literal temporal values (`NodeAttribute`), and directed temporal relations (`KnowledgeLink`); plus the catalogs (`NodeType`, `LinkType`, `LinkTypeRule`, `AttributeKey`) that govern them. |
+| Objective | Own the consolidated knowledge layer of the Remember: entities (`KnowledgeNode`), their aliases (`NodeAlias`), literal temporal values (`NodeAttribute`), and directed temporal relations (`KnowledgeLink`); plus the catalogs (`NodeType`, `LinkType`, `LinkTypeRule`, `AttributeKey`) that govern them. |
 | Core entity | `KnowledgeNode` (with `NodeAlias`, `NodeAttribute`, `KnowledgeLink` as its companions) |
 | Bounded context | (a) entity resolution (matching/merging by `norm(x)` + trigram, single-owner advisory lock); (b) temporal model on validity axis `[valid_from, valid_to)`; (c) lifecycle and lineage (`status`, `supersedes_*`, `merged_into_node_id`); (d) read-side derivation of `is_current`, `is_in_effect`, `effective_status`; (e) read access to the seed catalog. |
 | Out of scope | Ingestion of raw documents and chunking (`ingestion` domain), LLM extraction loop, retrieval pipeline (`retrieval` domain), curation operations (`curation` domain), compliance deletion execution (`compliance` domain). See section 8. |
@@ -584,5 +584,5 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
-| 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the knowledge-graph domain. Forward-generated from segundo-cerebro-modelagem-v7.md (sections 3, 4, 5, 6, 15) and migrations/0001_schema.sql + 0002_seed.sql. Covers KnowledgeNode/NodeAlias/NodeAttribute/KnowledgeLink reads, entity-resolution invariants, semi-open temporal model, lifecycle/lineage, and seed catalog access. | -- |
-| 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in actor descriptions, every UC pre-condition, BR-20 (JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by "Postgres RLS not used on Neon"). No use cases, error codes, state transitions, or business invariants changed. Schema and segundo-cerebro-modelagem-v7.md are untouched. | migrate-neon |
+| 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the knowledge-graph domain. Forward-generated from remember-modelagem-v7.md (sections 3, 4, 5, 6, 15) and migrations/0001_schema.sql + 0002_seed.sql. Covers KnowledgeNode/NodeAlias/NodeAttribute/KnowledgeLink reads, entity-resolution invariants, semi-open temporal model, lifecycle/lineage, and seed catalog access. | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in actor descriptions, every UC pre-condition, BR-20 (JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by "Postgres RLS not used on Neon"). No use cases, error codes, state transitions, or business invariants changed. Schema and remember-modelagem-v7.md are untouched. | migrate-neon |

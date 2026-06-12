@@ -6,7 +6,7 @@
 
 ## Summary
 
-The compliance-audit domain spec artifacts (openapi.yaml, compliance-audit.spec.md, compliance-audit.back.md) are internally consistent and aligned with the normative source (`segundo-cerebro-modelagem-v7.md`) and the database schema (`migrations/0001_schema.sql`). All 5 use cases map to distinct OpenAPI operationIds. All 17 business rules reference valid UCs. All error codes used are registered in the global catalog at correct HTTP statuses. One known schema gap is explicitly documented in back.md §7 (missing `status`/`superseded_at` columns on `raw_information`) and does not constitute a spec inconsistency — it is a flagged implementation prerequisite. Two warnings from the prior run (WARN-001, WARN-002) are confirmed informational and do not block handoff.
+The compliance-audit domain spec artifacts (openapi.yaml, compliance-audit.spec.md, compliance-audit.back.md) are internally consistent and aligned with the normative source (`remember-modelagem-v7.md`) and the database schema (`migrations/0001_schema.sql`). All 5 use cases map to distinct OpenAPI operationIds. All 17 business rules reference valid UCs. All error codes used are registered in the global catalog at correct HTTP statuses. One known schema gap is explicitly documented in back.md §7 (missing `status`/`superseded_at` columns on `raw_information`) and does not constitute a spec inconsistency — it is a flagged implementation prerequisite. Two warnings from the prior run (WARN-001, WARN-002) are confirmed informational and do not block handoff.
 
 ## Checks Performed
 

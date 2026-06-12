@@ -2,7 +2,7 @@
 
 > Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
-> Source of truth: `/segundo-cerebro-modelagem-v7.md` (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4 + ADRs A20, A26, A28, A29 + acceptance scenarios C5, C9, C13, C14)
+> Source of truth: `/remember-modelagem-v7.md` (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4 + ADRs A20, A26, A28, A29 + acceptance scenarios C5, C9, C13, C14)
 > Schema reference: `/migrations/0001_schema.sql` (tables `curation_action`, `entity_match_review`, `knowledge_node`, `knowledge_link`, `node_attribute`)
 
 ---
@@ -588,5 +588,5 @@ When the path-parameter `node_id` references a `KnowledgeNode` whose `status = '
 
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
-| 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the curation domain. Forward-generated from segundo-cerebro-modelagem-v7.md (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and migrations/0001_schema.sql. Covers review-queue listing, entity-match resolution, direct node merge, dispute resolution (prefer_one / adjust_periods / keep_disputed), ad-hoc item actions (confirm / reject / correct). Cross-domain split with `compliance-audit`: `compliance_delete` execution and `CurationAction`/`ComplianceDeletion` reads are owned by `compliance-audit`; this domain writes `CurationAction` rows transactionally and exposes the id as `action_id`. | -- |
+| 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the curation domain. Forward-generated from remember-modelagem-v7.md (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and migrations/0001_schema.sql. Covers review-queue listing, entity-match resolution, direct node merge, dispute resolution (prefer_one / adjust_periods / keep_disputed), ad-hoc item actions (confirm / reject / correct). Cross-domain split with `compliance-audit`: `compliance_delete` execution and `CurationAction`/`ComplianceDeletion` reads are owned by `compliance-audit`; this domain writes `CurationAction` rows transactionally and exposes the id as `action_id`. | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | update | Infrastructure migration: Supabase Auth replaced by Neon Auth (Stack Auth) as the identity provider for both Owner (SPA) and LLM (MCP) actors. JWT is now validated against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default) in the BFF middleware. BR-21 rewritten accordingly; §2 actor row, §6 error-behavior table ("Database timeout against Neon"), and §7 cross-domain `auth` row updated to reflect Neon Auth. Underlying Postgres moves from Supabase Cloud to Neon (managed Postgres) -- schema unchanged; no migration required. Single-owner model (ADR A20) is preserved; no `User` entity introduced. No new error codes; no UC contracts changed. | infra-migrate-neon |

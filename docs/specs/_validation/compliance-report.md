@@ -8,7 +8,7 @@ handoff_allowed: true
 
 ## Summary
 
-All five domains of the Segundo Cérebro system have been scanned for LGPD structural compliance gaps. The system is a single-owner personal knowledge repository (§2.3, A20). No blocking gaps were found. Two advisory warnings are raised for real-looking personal names appearing in OpenAPI `example:` values; these are stylistic and do not affect handoff.
+All five domains of the Remember system have been scanned for LGPD structural compliance gaps. The system is a single-owner personal knowledge repository (§2.3, A20). No blocking gaps were found. Two advisory warnings are raised for real-looking personal names appearing in OpenAPI `example:` values; these are stylistic and do not affect handoff.
 
 ---
 
@@ -74,6 +74,6 @@ Required spec change: replace the example name with a clearly placeholder value 
 
 ## Conclusion
 
-The Segundo Cérebro system spec is **COMPLIANT** with LGPD for the declared single-owner personal knowledge repository model. The right-to-erasure mechanism (§11, `compliance_delete`) is fully specified and covers the cascade to all derived data. Authentication is enforced on every endpoint. The audit trail is append-only and immutable. All five domains were scanned; no blocking structural gaps were found. The two warnings are advisory style issues in spec example values and do not affect handoff.
+The Remember system spec is **COMPLIANT** with LGPD for the declared single-owner personal knowledge repository model. The right-to-erasure mechanism (§11, `compliance_delete`) is fully specified and covers the cascade to all derived data. Authentication is enforced on every endpoint. The audit trail is append-only and immutable. All five domains were scanned; no blocking structural gaps were found. The two warnings are advisory style issues in spec example values and do not affect handoff.
 
 **Handoff allowed: true.**

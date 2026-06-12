@@ -3,7 +3,7 @@
 > Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw, connection via `DATABASE_URL`) | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `../knowledge-graph.spec.md`
 > REST contract: `../openapi.yaml`
-> MCP contract: `segundo-cerebro-modelagem-v7.md` §14.3 (toolset `query`, operations `get_node`, `traverse`, `get_history`)
+> MCP contract: `remember-modelagem-v7.md` §14.3 (toolset `query`, operations `get_node`, `traverse`, `get_history`)
 > Schema: `migrations/0001_schema.sql` + `migrations/0002_seed.sql`
 
 ---
@@ -471,7 +471,7 @@ The helper is parameterised by `<view>` (`knowledge_link_resolved` or `node_attr
 
 ## 5. Domain Events (EV)
 
-> The Segundo Cérebro architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `ingestion.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
+> The Remember architecture does **not** include an event bus (CLAUDE.md "Architecture / Backend", `ingestion.back.md` §5). Cross-domain coordination happens through synchronous service calls and through the database itself.
 
 **N/A -- no domain events in this version.** This domain is READ-ONLY; it observes the writes performed by `ingestion`, `curation`, and `compliance` purely through the underlying tables and views. Any downstream surface that needs to react to graph changes (cache invalidation, dashboard refresh) polls or re-reads via the endpoints documented in `openapi.yaml`.
 

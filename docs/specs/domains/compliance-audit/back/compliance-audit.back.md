@@ -3,7 +3,7 @@
 > Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (managed Postgres, driver `pg` raw) | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `../compliance-audit.spec.md`
 > REST contract: `../openapi.yaml`
-> MCP contract: `segundo-cerebro-modelagem-v7.md` §14.4 (toolset `curation`, tool `compliance_delete` only — every other curation tool is out of scope for this domain)
+> MCP contract: `remember-modelagem-v7.md` §14.4 (toolset `curation`, tool `compliance_delete` only — every other curation tool is out of scope for this domain)
 > Schema: `migrations/0001_schema.sql` lines 185-194 (`raw_information`), 197-212 (`raw_chunk`), 248-262 (`information_fragment`), 264-270 (`fragment_source`), 323-373 (`node_attribute`), 376-411 (`knowledge_link`), 415-432 (`provenance`), 452-462 (`curation_action`), 465-473 (`compliance_deletion`).
 
 ---
@@ -343,7 +343,7 @@ The route handler maps the throw to HTTP 500 `SYSTEM_INTERNAL_ERROR`. The MCP ha
 
 ## 5. Domain Events (EV)
 
-> The Segundo Cérebro architecture does **not** include an event bus. Cross-domain coordination happens through synchronous service calls and through the database (§2.2 "store único"; §13 "audit-first"). The audit substrate is `compliance_deletion` + `curation_action` for this domain (read off the DB by any consumer).
+> The Remember architecture does **not** include an event bus. Cross-domain coordination happens through synchronous service calls and through the database (§2.2 "store único"; §13 "audit-first"). The audit substrate is `compliance_deletion` + `curation_action` for this domain (read off the DB by any consumer).
 
 **N/A — no domain events in this version.**
 
