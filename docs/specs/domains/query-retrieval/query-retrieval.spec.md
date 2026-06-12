@@ -1,6 +1,6 @@
 # Query / Retrieval -- Business Specification
 
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/segundo-cerebro-modelagem-v7.md` (sections 7, 13, 16, 17, 20 + ADRs A2, A3, A4, A15, A16, A21, A22, A23, A24, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
@@ -24,7 +24,7 @@
 
 | Actor | Description | Permissions |
 |-------|-------------|-------------|
-| Owner | The single data owner authenticated via Supabase Auth (JWT validated in BFF middleware), reaching the BFF from the SPA over the network. | Call `searchKnowledge` with any combination of supported parameters; call `getProvenanceByLink` / `getProvenanceByAttribute` / `getProvenanceByFragment` for any consolidated row. Write operations are NOT exposed by this domain. |
+| Owner | The single data owner authenticated via Neon Auth (Stack Auth) -- JWT validated in BFF middleware against the Neon Auth JWKS endpoint, reaching the BFF from the SPA over the network. | Call `searchKnowledge` with any combination of supported parameters; call `getProvenanceByLink` / `getProvenanceByAttribute` / `getProvenanceByFragment` for any consolidated row. Write operations are NOT exposed by this domain. |
 | LLM (orchestrator) | The LLM acting as orchestrator/redactor over the same service layer via the MCP `query` toolset (`search`, `get_provenance`). | Same retrieval permissions as Owner. The JWT is provisioned to the LLM by the Owner's runtime. The LLM does NOT perform retrieval "from memory" -- it MUST call the deterministic tools and cite the returned provenance (sections 2.1, 7, principle 15). |
 
 > Both actors hit the SAME service layer (REST + MCP are facades over a single core, ADR A28). This domain's REST contract is identical to the MCP-side `query` toolset for `search` and `get_provenance`.
@@ -35,7 +35,7 @@
 
 ### UC-01 -- Free-text search across all three layers (happy path)
 
-**Actor:** Owner | **Pre:** Owner is authenticated with a valid Supabase JWT; the catalog and at least one accepted `InformationFragment` exist. | **Post:** Owner receives a ranked, paginated, deduplicated list of items spanning the three layers, each with a non-empty `provenance[]`.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; the catalog and at least one accepted `InformationFragment` exist. | **Post:** Owner receives a ranked, paginated, deduplicated list of items spanning the three layers, each with a non-empty `provenance[]`.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/search?query=reuniao%20implantacao%20apollo`.
@@ -330,9 +330,9 @@ All checks happen BEFORE the DB call (Zod v4 in the BFF, ADR A28). The Postgres 
 
 **Tied to:** UC-01, UC-02, UC-03, UC-04, UC-05, UC-06.
 
-### BR-16 -- All endpoints require a valid Supabase JWT (ADR A29 / section 2.5 / cenario C16)
+### BR-16 -- All endpoints require a valid Neon Auth JWT (ADR A29 / section 2.5 / cenario C16)
 
-Every endpoint in this domain is closed behind `bearerAuth`. The middleware verifies the JWT BEFORE any database access. Missing / invalid / expired -> 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`. The Supabase service key NEVER appears outside the BFF; RLS is disabled (authorization centralized in the BFF service layer).
+Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack Auth). The middleware verifies the JWT against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default; cache TTL `NEON_AUTH_JWKS_TTL_S`) BEFORE any database access. Missing / invalid / expired -> 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`. Database credentials (`DATABASE_URL`) and Neon Auth configuration NEVER appear outside the BFF; Postgres RLS is not used on Neon for this BFF (authorization is centralized in the BFF service layer).
 
 **Tied to:** UC-01 through UC-09.
 
@@ -381,7 +381,7 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 | `as_of` not parseable as ISO `YYYY-MM-DD` | 422 | `VALIDATION_INVALID_FORMAT` | BR-15. |
 | `limit` outside `[1, 100]`; `offset` < 0 | 422 | `VALIDATION_OUT_OF_RANGE` | BR-15. |
 | Database connectivity / unexpected error | 500 | `SYSTEM_INTERNAL_ERROR` | Default fallback for unhandled exceptions. |
-| Database read timeout against Supabase | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration with Supabase Cloud unavailable. |
+| Database read timeout against Neon | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration with Neon (managed Postgres) unavailable. |
 
 ---
 
@@ -395,7 +395,7 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 | `knowledge-graph` | consumes | This domain reads `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink`, `Provenance` rows. Expansion (BR-06) calls the same service layer as `knowledge-graph` `traverseNode` (UC-06 of that domain). Derived fields (`is_current`, `is_in_effect`, `effective_status`) come from the shared views `knowledge_link_resolved` / `node_attribute_resolved`. |
 | `curation` | synchronizes | The lifecycle transitions `uncertain -> active`, `disputed -> active / deleted`, etc. are triggered by curation. This domain READS the post-curation state. The `entity_match` queue is the EXPLICIT escape valve for the lexical limitation surfaced by BR-11 / UC-05. |
 | `compliance` | synchronizes | `compliance_delete` sets `RawInformation.status = 'deleted'` and tombstones content; this domain checks for it on every provenance walk and returns 410. |
-| `auth` | synchronizes | Owner authentication via Supabase Auth. The middleware that validates the JWT is the same one used by all REST/MCP transports (sections 2.5, A29). This domain consumes the resulting `actor_context = owner` claim. |
+| `auth` | synchronizes | Owner authentication via Neon Auth (Stack Auth). The middleware that validates the JWT (JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`) is the same one used by all REST/MCP transports (sections 2.5, A29). This domain consumes the resulting `actor_context = owner` claim. |
 
 ---
 
@@ -441,3 +441,4 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the query-retrieval domain. Forward-generated from segundo-cerebro-modelagem-v7.md (sections 7, 13, 16, 17, 20) and migrations/0001_schema.sql + 0002_seed.sql. Covers `searchKnowledge` (section 7.2 pipeline: two FTS configs, three layers with weights 1.0/0.9/0.6, dedup, graph expansion with depth 1-3 and decay 0.5, temporal filters, flags) and the three `getProvenanceBy*` endpoints (cross-layer walk to RawInformation with tombstone short-circuit). Reaffirms the permanent ban on embeddings (ADR A24 / section 20.1) -- cenario C11 is the binding contract. | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in §2 Owner actor description, UC-01 pre-condition (the only UC that named the auth provider), BR-16 (heading + body -- JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`, `DATABASE_URL` for DB credentials), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by 'Postgres RLS not used on Neon for this BFF'). No use cases, error codes, state transitions, or business invariants changed. Schema and segundo-cerebro-modelagem-v7.md are untouched. | migrate-neon |

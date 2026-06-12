@@ -1,6 +1,6 @@
 # Ingestion -- Business Specification
 
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml` (REST) + MCP toolset `ingest` (§14.1 of `segundo-cerebro-modelagem-v7.md`)
 >
 > Normative source: `segundo-cerebro-modelagem-v7.md` (§3.1, §3.2, §3.5, §8, §9, §11, §13, §14.1).
@@ -25,11 +25,11 @@
 
 | Actor | Description | Permissions |
 |-------|-------------|-------------|
-| Owner (SPA user) | The data owner, authenticated by Supabase Auth. Reads raw documents, chunks, runs and the tool-call audit through the REST endpoints of this domain. | `ingestRawInformation`, `getRawInformationById`, `listRawChunksByRawInformation`, `getLlmRunById`, `listToolCallsByLlmRun`, `retryLlmRun`. |
+| Owner (SPA user) | The data owner, authenticated by Neon Auth (Stack Auth). Reads raw documents, chunks, runs and the tool-call audit through the REST endpoints of this domain. | `ingestRawInformation`, `getRawInformationById`, `listRawChunksByRawInformation`, `getLlmRunById`, `listToolCallsByLlmRun`, `retryLlmRun`. |
 | LLM (extractor) | The LLM driving extraction inside an active `LLMRun`, addressed via the MCP `ingest` toolset. Cannot touch the database directly (inviolable rule, §2). | MCP tools: `propose_fragment`, `propose_node`, `propose_link`, `propose_attribute` -- only inside the run identified by the ambient `llm_run_id`. |
 | BFF (service layer) | Internal — not an external actor. Performs layered validation (§13) and persists. Listed here for clarity: `ingestRawInformation` is typically called by an LLM orchestrator process that has a JWT, then the LLM drives the MCP tools against the opened run. |
 
-> Every REST and MCP call requires a valid Supabase Auth JWT verified in BFF middleware. The Supabase service key never leaves the BFF; PostgreSQL RLS is disabled (A29).
+> Every REST and MCP call requires a valid Neon Auth (Stack Auth) JWT verified in BFF middleware (`requireNeonAuth`, JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default). The `DATABASE_URL` and Neon Auth credentials never leave the BFF; PostgreSQL RLS is disabled (A29). Single-owner is unchanged — there is still no `User` entity.
 
 ---
 
@@ -433,7 +433,7 @@ The transitions inside `accepted` -> `superseded` and any path through `deleted`
 | Referenced `chunk_id` / `fragment_id` / `node_id` does not exist | `NOT_FOUND` | UC-08..UC-11. |
 | Unhandled internal exception in service layer | `INTERNAL` | UC-08..UC-11. |
 
-Auth errors are handled at the BFF middleware layer (same JWT validation as REST, §2.5/A29); they surface to the MCP client as the standard REST `401` response — the MCP envelope is only used for layered-validation outcomes.
+Auth errors are handled at the BFF middleware layer (Neon Auth JWT validation, same path as REST — §2.5 of v7 / A29); they surface to the MCP client as the standard REST `401` response — the MCP envelope is only used for layered-validation outcomes.
 
 > Business outcomes (`consolidated`, `superseded_previous`, `needs_review`, `uncertain`, `disputed`, `rejected`) are **not** errors. They are returned in `result.outcome` of the MCP envelope (`{ ok: true, ... }`) and recorded as `validation_outcome` in the corresponding `ToolCall` row (§14, §3.5).
 
@@ -494,3 +494,4 @@ This domain depends on no other domain to function in isolation; the rows it own
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial ingestion-domain specification: source layer (§3.1), extraction layer (§3.2), audit layer (§3.5), idempotency (§8), end-to-end flow (§9), layered validation (§13) and the MCP `ingest` toolset (§14.1). Aligned with v7 normative source and with `migrations/0001_schema.sql` + `migrations/0002_seed.sql`. | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | update | Auth provider swap (descriptive only — no UC / BR / ST changes): Supabase Auth → Neon Auth (Stack Auth). Updated §2 (Owner actor description references Neon Auth; the single-owner footnote now points to `requireNeonAuth` middleware, the JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json` with EdDSA, and `DATABASE_URL` as the Postgres credential — none of which leave the BFF) and §6.2 (auth-error footnote names Neon Auth). The §2.5 / A29 references to v7 are preserved because the architectural decision (auth-as-gate, RLS off, no `User` entity) is unchanged — only the provider differs. No new error codes; no changes to UC pre/post conditions or alternative flows (the wording "valid JWT" remains provider-neutral by intent). | migrate-neon |

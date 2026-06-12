@@ -1,6 +1,6 @@
 # Knowledge Graph -- Business Specification
 
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/segundo-cerebro-modelagem-v7.md` (sections 3, 4, 5, 6, 15 + ADRs A1, A6, A7, A8, A9, A10, A11, A12, A14, A16, A19, A20, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
@@ -24,7 +24,7 @@
 
 | Actor | Description | Permissions |
 |-------|-------------|-------------|
-| Owner | The single data owner authenticated via Supabase Auth (JWT validated in BFF middleware). | Read any catalog row; read any `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink` regardless of status; walk lineage via `getLinkHistory` / `getAttributeHistory` / `getAttributeKeyHistory`; traverse the graph up to depth 3. Write operations on graph entities are NOT exposed by this domain (they originate from `ingestion` and `curation`). |
+| Owner | The single data owner authenticated via Neon Auth (Stack Auth) -- JWT validated in BFF middleware against the Neon Auth JWKS endpoint. | Read any catalog row; read any `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink` regardless of status; walk lineage via `getLinkHistory` / `getAttributeHistory` / `getAttributeKeyHistory`; traverse the graph up to depth 3. Write operations on graph entities are NOT exposed by this domain (they originate from `ingestion` and `curation`). |
 | LLM (orchestrator) | The LLM acting as orchestrator/redactor over the same REST surface via the BFF. | Same read permissions as Owner. Uses the same JWT-bearer contract (the JWT is provisioned to the LLM by the Owner's runtime). NOT permitted to bypass the BFF or open a database connection. |
 
 > Both actors hit the SAME service layer (REST + MCP are facades over a single core, ADR A28). This domain's REST contract is identical to the MCP-side `query` toolset, restricted to graph-entity operations (`get_node`, `traverse`, `get_history`).
@@ -35,7 +35,7 @@
 
 ### UC-01 -- List NodeType catalog
 
-**Actor:** Owner | **Pre:** Owner is authenticated with a valid Supabase JWT. | **Post:** Owner has the full list of registered `NodeType` rows.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner has the full list of registered `NodeType` rows.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/node-types`.
@@ -53,7 +53,7 @@
 
 ### UC-02 -- List LinkType catalog (with optional rules)
 
-**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner has the full list of `LinkType` rows, optionally embedding the `LinkTypeRule` rows for each.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner has the full list of `LinkType` rows, optionally embedding the `LinkTypeRule` rows for each.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/link-types?include_rules=true`.
@@ -71,7 +71,7 @@
 
 ### UC-03 -- List AttributeKey catalog, filtered by NodeType
 
-**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner has the AttributeKeys scoped to a NodeType (or the full catalog).
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner has the AttributeKeys scoped to a NodeType (or the full catalog).
 
 **Main flow:**
 1. Owner calls `GET /api/v1/attribute-keys?node_type=Project`.
@@ -90,7 +90,7 @@
 
 ### UC-04 -- List nodes filtered by NodeType and/or name prefix
 
-**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner has a paginated list of `KnowledgeNode` rows matching the filters.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner has a paginated list of `KnowledgeNode` rows matching the filters.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/nodes?node_type=Project&name_prefix=Apollo&limit=20&offset=0`.
@@ -110,7 +110,7 @@
 
 ### UC-05 -- Get a node with aliases and current attributes
 
-**Actor:** Owner | **Pre:** Owner is authenticated; the `node_id` corresponds to an existing `KnowledgeNode`. | **Post:** Owner sees the node, all aliases (including canonical), and the attributes resolved by the temporal filter (default: query (a), section 5.3).
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; the `node_id` corresponds to an existing `KnowledgeNode`. | **Post:** Owner sees the node, all aliases (including canonical), and the attributes resolved by the temporal filter (default: query (a), section 5.3).
 
 **Main flow:**
 1. Owner calls `GET /api/v1/nodes/{node_id}` (optionally with `?as_of=YYYY-MM-DD`, `?in_effect_only=true`, `?include_uncertain=true`).
@@ -136,7 +136,7 @@
 
 ### UC-06 -- Traverse the graph from a starting node
 
-**Actor:** Owner | **Pre:** Owner is authenticated; `node_id` exists and `status != 'deleted'`. | **Post:** Owner has the set of nodes and links reached within `depth` hops, with derived temporal state per link.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; `node_id` exists and `status != 'deleted'`. | **Post:** Owner has the set of nodes and links reached within `depth` hops, with derived temporal state per link.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/nodes/{node_id}/traverse?direction=both&depth=2&link_types=participates_in&link_types=responsible_for&as_of=2026-07-01&in_effect_only=true`.
@@ -166,7 +166,7 @@
 
 ### UC-07 -- Get a single link by id
 
-**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner sees the link with its derived temporal fields and provenance.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner sees the link with its derived temporal fields and provenance.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/links/{link_id}`.
@@ -185,7 +185,7 @@
 
 ### UC-08 -- Get a single attribute by id
 
-**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner sees the attribute with its derived temporal fields and provenance.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner sees the attribute with its derived temporal fields and provenance.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/attributes/{attribute_id}`.
@@ -204,7 +204,7 @@
 
 ### UC-09 -- Walk the lineage chain of a link
 
-**Actor:** Owner | **Pre:** Owner is authenticated; `link_id` exists. | **Post:** Owner sees every version that is part of the same lineage chain anchored at `link_id`, ordered ASC by `recorded_at`.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; `link_id` exists. | **Post:** Owner sees every version that is part of the same lineage chain anchored at `link_id`, ordered ASC by `recorded_at`.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/links/{link_id}/history`.
@@ -225,7 +225,7 @@
 
 ### UC-10 -- Walk the lineage chain of an attribute
 
-**Actor:** Owner | **Pre:** Owner is authenticated; `attribute_id` exists. | **Post:** Owner sees every version that is part of the same lineage chain anchored at `attribute_id`, ordered ASC by `recorded_at`.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; `attribute_id` exists. | **Post:** Owner sees every version that is part of the same lineage chain anchored at `attribute_id`, ordered ASC by `recorded_at`.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/attributes/{attribute_id}/history`.
@@ -246,7 +246,7 @@
 
 ### UC-11 -- Walk the history of every version on a (node, key) pair
 
-**Actor:** Owner | **Pre:** Owner is authenticated; `node_id` exists; `key` is registered in the catalog for the node's NodeType. | **Post:** Owner sees every version on that `(node, key)` pair, ordered ASC by `recorded_at`.
+**Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; `node_id` exists; `key` is registered in the catalog for the node's NodeType. | **Post:** Owner sees every version on that `(node, key)` pair, ordered ASC by `recorded_at`.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/nodes/{node_id}/attributes/{key}/history`.
@@ -404,9 +404,9 @@ Every link/attribute included in the read response includes its `provenance[]`, 
 
 **Tied to:** UC-05, UC-07, UC-08, UC-09, UC-10, UC-11.
 
-### BR-20 -- All endpoints require a valid Supabase JWT (ADR A29 / section 2.5)
+### BR-20 -- All endpoints require a valid Neon Auth JWT (ADR A29 / section 2.5)
 
-Every endpoint in this domain is closed behind `bearerAuth` (Supabase Auth). The middleware verifies the JWT BEFORE any database access. Missing/invalid/expired tokens map to `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED` (401). The Supabase service key NEVER appears outside the BFF; RLS is disabled at the database level (authorization is centralized in the BFF service layer).
+Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack Auth). The middleware verifies the JWT against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default; cache TTL `NEON_AUTH_JWKS_TTL_S`) BEFORE any database access. Missing/invalid/expired tokens map to `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED` (401). Database credentials (`DATABASE_URL`) and Neon Auth configuration NEVER appear outside the BFF; Postgres RLS is not used on Neon for this BFF (authorization is centralized in the BFF service layer).
 
 **Tied to:** UC-01 through UC-11.
 
@@ -518,7 +518,7 @@ Every endpoint in this domain is closed behind `bearerAuth` (Supabase Auth). The
 | `direction` not in `{out, in, both}` | 422 | `VALIDATION_INVALID_FORMAT` | Enum mismatch. |
 | `limit` > 100 or < 1; `offset` < 0 | 422 | `VALIDATION_OUT_OF_RANGE` | Standard range guard. |
 | Database connectivity / unexpected error | 500 | `SYSTEM_INTERNAL_ERROR` | Default fallback for unhandled exceptions. |
-| Database read timeout against Supabase | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration with Supabase Cloud unavailable. |
+| Database read timeout against Neon | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration with Neon (managed Postgres) unavailable. |
 
 ---
 
@@ -532,7 +532,7 @@ Every endpoint in this domain is closed behind `bearerAuth` (Supabase Auth). The
 | `curation` | produces | Mutates the graph via `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item` (section 10, REST-mirrored MCP). Causes state transitions in §5. This domain reads the post-curation state. |
 | `retrieval` | consumes | Calls the full-text + graph pipeline (section 7.2). Composes results that join fragments / nodes / chunks with provenance. Uses `traverseNode` and `getNodeById` of this domain for the graph-expansion step (`section 7.2 step 3`). |
 | `compliance` | produces | Executes `compliance_delete` (section 11). Sets `status = 'deleted'` on `KnowledgeNode`, `KnowledgeLink`, `NodeAttribute` whose ONLY provenance traced back to the deleted `RawInformation`. This domain returns 410 when serving deleted nodes. |
-| `auth` | synchronizes | Owner authentication via Supabase Auth. The middleware that validates the JWT is the same one used by all REST/MCP transports (sections 2.5, A29). The `auth` domain owns the JWT validation contract; this domain consumes the resulting `actor_context = owner` claim. |
+| `auth` | synchronizes | Owner authentication via Neon Auth (Stack Auth). The middleware that validates the JWT (JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`) is the same one used by all REST/MCP transports (sections 2.5, A29). The `auth` domain owns the JWT validation contract; this domain consumes the resulting `actor_context = owner` claim. |
 
 ---
 
@@ -585,3 +585,4 @@ Every endpoint in this domain is closed behind `bearerAuth` (Supabase Auth). The
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the knowledge-graph domain. Forward-generated from segundo-cerebro-modelagem-v7.md (sections 3, 4, 5, 6, 15) and migrations/0001_schema.sql + 0002_seed.sql. Covers KnowledgeNode/NodeAlias/NodeAttribute/KnowledgeLink reads, entity-resolution invariants, semi-open temporal model, lifecycle/lineage, and seed catalog access. | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in actor descriptions, every UC pre-condition, BR-20 (JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by "Postgres RLS not used on Neon"). No use cases, error codes, state transitions, or business invariants changed. Schema and segundo-cerebro-modelagem-v7.md are untouched. | migrate-neon |

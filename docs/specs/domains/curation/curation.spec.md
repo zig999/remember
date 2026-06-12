@@ -1,6 +1,6 @@
 # Curation -- Business Specification
 
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/segundo-cerebro-modelagem-v7.md` (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4 + ADRs A20, A26, A28, A29 + acceptance scenarios C5, C9, C13, C14)
 > Schema reference: `/migrations/0001_schema.sql` (tables `curation_action`, `entity_match_review`, `knowledge_node`, `knowledge_link`, `node_attribute`)
@@ -24,7 +24,7 @@
 
 | Actor | Description | Permissions |
 |-------|-------------|-------------|
-| Owner | The single data owner authenticated via Supabase Auth (JWT validated in BFF middleware). Reaches REST from the SPA. | List both review queues; resolve entity-match reviews; merge nodes directly; resolve disputes; confirm / reject / correct individual items. ALL operations write to `CurationAction` (audit row id returned as `action_id`). |
+| Owner | The single data owner authenticated via Neon Auth (Stack Auth) -- JWT validated in BFF middleware against the Neon Auth JWKS endpoint. Reaches REST from the SPA. | List both review queues; resolve entity-match reviews; merge nodes directly; resolve disputes; confirm / reject / correct individual items. ALL operations write to `CurationAction` (audit row id returned as `action_id`). |
 | LLM (orchestrator) | The LLM acting as orchestrator over the MCP `curation` toolset, on the same BFF service layer (ADR A28). | Same operations as Owner (the MCP and REST surfaces are equivalent). The JWT is provisioned to the LLM by the Owner's runtime. NOT permitted to bypass the BFF or open a database connection. |
 
 > Both actors hit the SAME service layer and therefore the SAME validation, the SAME state machines (section 6.6 / `knowledge-graph.spec.md` §5), and the SAME `CurationAction` audit. This domain's REST contract is the SPA-side mirror of MCP toolset §14.4 minus the two operations owned end-to-end by `compliance-audit` (`compliance_delete`, audit reads).
@@ -423,9 +423,9 @@ Per ADR A11 / section 4.5 / section 6.5. The duplicate-guard partial unique inde
 
 **Tied to:** UC-02, UC-04, UC-05, UC-06, UC-10.
 
-### BR-21 -- All endpoints require a valid Supabase JWT (ADR A29 / section 2.5)
+### BR-21 -- All endpoints require a valid Neon Auth JWT (ADR A29 / section 2.5)
 
-Every endpoint in this domain is closed behind `bearerAuth` (Supabase Auth). The middleware verifies the JWT BEFORE any database access. Missing / invalid / expired tokens map to `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED` (401). The Supabase service key NEVER appears outside the BFF; RLS is disabled at the database level.
+Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth -- Stack Auth). The middleware verifies the JWT BEFORE any database access against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default). Missing / invalid / expired tokens map to `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED` (401). Neon Auth credentials live in environment variables on the BFF only; PostgreSQL RLS is disabled at the database level (the Neon connection uses a non-RLS application role).
 
 **Tied to:** UC-01 through UC-10.
 
@@ -527,7 +527,7 @@ When the path-parameter `node_id` references a `KnowledgeNode` whose `status = '
 | `kind`, `decision`, `item_kind` not parseable or outside enum | 422 | `VALIDATION_INVALID_FORMAT` | Standard format / enum validation. |
 | Required field missing in request body | 422 | `VALIDATION_REQUIRED_FIELD` | Standard required check. |
 | Database connectivity / unexpected error | 500 | `SYSTEM_INTERNAL_ERROR` | Default fallback for unhandled exceptions. |
-| Database timeout against Supabase Cloud | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration unavailable. |
+| Database timeout against Neon | 503 | `SYSTEM_SERVICE_UNAVAILABLE` | Integration unavailable. |
 
 ---
 
@@ -541,7 +541,7 @@ When the path-parameter `node_id` references a `KnowledgeNode` whose `status = '
 | `ingestion` | synchronizes | `correctItem` reads `information_fragment` to verify the date-justification fragment (BR-15). `ingestion` owns the lifecycle of fragments (its state machine of `proposed -> accepted -> rejected -> superseded -> deleted`). The `EntityMatchReview` table is WRITTEN by `ingestion` (entity-resolution proposal -- section 4.3) and READ + DELETED by `curation` (UC-01, UC-02, UC-03). |
 | `query-retrieval` | consumes | `query-retrieval` exposes the display flags `uncertain`, `low_confidence`, `disputed` on read results (section 7.3 / ADR A26). The curator clicks through into this domain's endpoints (`confirmItem`, `rejectItem`, `correctItem`, `resolveDispute`) to act. The dispute queue listing here (UC-01) is the catalog entry; `query-retrieval` is the find-by-context entry. |
 | `compliance-audit` | synchronizes | `compliance-audit` owns the `compliance_delete` operation AND the read-side of `CurationAction` AND `ComplianceDeletion`. Every write in this domain (UC-02..UC-10) produces ONE `CurationAction` row whose id is returned as `action_id`; the SPA / LLM fetches the full audit entry from `compliance-audit` (operationIds `listCurationActions`, `getCurationActionById`). Conversely, when `compliance-audit` cascades `status = 'deleted'` onto a `KnowledgeNode`, future calls into this domain return 410 `BUSINESS_NODE_DELETED` (BR-22). |
-| `auth` | synchronizes | Owner authentication via Supabase Auth. The middleware that validates the JWT is shared with all REST/MCP transports (section 2.5, ADR A29). |
+| `auth` | synchronizes | Owner authentication via Neon Auth (Stack Auth). The middleware that validates the JWT against the Neon Auth JWKS endpoint is shared with all REST/MCP transports (section 2.5, ADR A29). |
 
 ---
 
@@ -589,3 +589,4 @@ When the path-parameter `node_id` references a `KnowledgeNode` whose `status = '
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the curation domain. Forward-generated from segundo-cerebro-modelagem-v7.md (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and migrations/0001_schema.sql. Covers review-queue listing, entity-match resolution, direct node merge, dispute resolution (prefer_one / adjust_periods / keep_disputed), ad-hoc item actions (confirm / reject / correct). Cross-domain split with `compliance-audit`: `compliance_delete` execution and `CurationAction`/`ComplianceDeletion` reads are owned by `compliance-audit`; this domain writes `CurationAction` rows transactionally and exposes the id as `action_id`. | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | update | Infrastructure migration: Supabase Auth replaced by Neon Auth (Stack Auth) as the identity provider for both Owner (SPA) and LLM (MCP) actors. JWT is now validated against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default) in the BFF middleware. BR-21 rewritten accordingly; §2 actor row, §6 error-behavior table ("Database timeout against Neon"), and §7 cross-domain `auth` row updated to reflect Neon Auth. Underlying Postgres moves from Supabase Cloud to Neon (managed Postgres) -- schema unchanged; no migration required. Single-owner model (ADR A20) is preserved; no `User` entity introduced. No new error codes; no UC contracts changed. | infra-migrate-neon |

@@ -1,6 +1,6 @@
 # Compliance & Audit -- Business Specification
 
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml` (REST) + MCP toolset `curation` (`compliance_delete` only — §14.4 of `segundo-cerebro-modelagem-v7.md`)
 >
 > Normative source: `segundo-cerebro-modelagem-v7.md` (§2.3, §2.5, §3.5, §10.2, §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29).
@@ -25,11 +25,11 @@
 
 | Actor | Description | Permissions |
 |-------|-------------|-------------|
-| Owner (SPA user) | The single data owner, authenticated by Supabase Auth (JWT validated in BFF middleware). Operates from the SPA. | `complianceDeleteRawInformation`, `listComplianceDeletions`, `getComplianceDeletionById`, `listCurationActions`, `getCurationActionById`. |
+| Owner (SPA user) | The single data owner, authenticated by Neon Auth (Stack Auth) — JWT validated in BFF middleware (`requireNeonAuth`) against the JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`. Operates from the SPA. | `complianceDeleteRawInformation`, `listComplianceDeletions`, `getComplianceDeletionById`, `listCurationActions`, `getCurationActionById`. |
 | LLM (orchestrator) | The LLM acting as orchestrator over the MCP `curation` toolset (§14.4). Issues `compliance_delete` calls. Has read access to the audit log through the same JWT path used by the SPA (REST). | MCP tool: `compliance_delete`. REST (with the JWT provisioned by the Owner's runtime): the four read endpoints. |
 | BFF (service layer) | Internal — not an external actor. Performs Zod validation (§13.1), executes the cascade transaction (§11), writes the audit row. Listed here for clarity. |
 
-> Every REST and MCP call requires a valid Supabase Auth JWT verified in BFF middleware (§2.5, A29). The Supabase service key never leaves the BFF; PostgreSQL RLS is disabled. The actor of every `ComplianceDeletion` and `CurationAction` row is the implicit single-owner — no `actor_id` column exists in either table (§2.3, A20).
+> Every REST and MCP call requires a valid Neon Auth JWT verified in BFF middleware (§2.5, A29). Neon Auth is the OIDC/JWT verifier — no service key is held by the BFF; PostgreSQL RLS is disabled. The actor of every `ComplianceDeletion` and `CurationAction` row is the implicit single-owner — no `actor_id` column exists in either table (§2.3, A20).
 
 ---
 
@@ -40,12 +40,12 @@
 ### UC-01 -- Tombstone a RawInformation (compliance_delete)
 
 **Actor:** Owner (REST from the SPA) or LLM (MCP via `compliance_delete`)
-**Pre:** Caller holds a valid Supabase Auth JWT. The target `RawInformation` exists. `reason` is a non-empty string ≤ 1000 chars.
+**Pre:** Caller holds a valid Neon Auth JWT. The target `RawInformation` exists. `reason` is a non-empty string ≤ 1000 chars.
 **Post:** Either the raw is tombstoned and one `ComplianceDeletion` row is inserted (HTTP 201, `outcome = "deleted"`), or the raw was already tombstoned and the existing audit row is returned (HTTP 200, `outcome = "noop_already_deleted"`). On HTTP 201 the cascade is applied within the SAME transaction (§11, ADR A19).
 
 **Main flow:**
 1. Owner POSTs `/api/v1/compliance/deletions` with `{ raw_information_id, reason }`.
-2. BFF middleware validates the JWT (§2.5, A29).
+2. BFF middleware (`requireNeonAuth`) validates the JWT against the Neon Auth JWKS (§2.5, A29).
 3. BFF validates the request structurally (Zod, §13.1): both fields present, types and ranges (BR-01).
 4. BFF opens a single SQL transaction (ADR A19). Inside it:
    - `SELECT ... FOR UPDATE` of `raw_information` for `raw_information_id` (BR-02).
@@ -77,7 +77,7 @@
 ### UC-02 -- List ComplianceDeletion audit rows
 
 **Actor:** Owner
-**Pre:** Owner is authenticated.
+**Pre:** Owner is authenticated (Neon Auth JWT validated by `requireNeonAuth`).
 **Post:** No state change. Owner receives a paginated list ordered by `executed_at` DESC.
 
 **Main flow:**
@@ -102,7 +102,7 @@
 ### UC-03 -- Get a ComplianceDeletion by id
 
 **Actor:** Owner
-**Pre:** Owner is authenticated.
+**Pre:** Owner is authenticated (Neon Auth JWT validated by `requireNeonAuth`).
 **Post:** No state change.
 
 **Main flow:**
@@ -123,7 +123,7 @@
 ### UC-04 -- List CurationAction audit rows
 
 **Actor:** Owner
-**Pre:** Owner is authenticated.
+**Pre:** Owner is authenticated (Neon Auth JWT validated by `requireNeonAuth`).
 **Post:** No state change. Owner receives a paginated list ordered by `created_at` DESC.
 
 **Main flow:**
@@ -149,7 +149,7 @@
 ### UC-05 -- Get a CurationAction by id
 
 **Actor:** Owner
-**Pre:** Owner is authenticated.
+**Pre:** Owner is authenticated (Neon Auth JWT validated by `requireNeonAuth`).
 **Post:** No state change.
 
 **Main flow:**
@@ -243,7 +243,7 @@ This domain does NOT define state machines for `ComplianceDeletion` and `Curatio
 
 | Situation | HTTP | error.code | Description |
 |-----------|------|------------|-------------|
-| Request without JWT, or JWT invalid/expired/malformed | 401 | `AUTH_UNAUTHORIZED` | Middleware rejects before any DB access (cf. C16, §2.5, A29). |
+| Request without JWT, or JWT invalid/expired/malformed | 401 | `AUTH_UNAUTHORIZED` | The `requireNeonAuth` middleware rejects before any DB access (cf. C16, §2.5, A29). |
 | `raw_information_id` / `complianceDeletionId` / `curationActionId` not found | 404 | `RESOURCE_NOT_FOUND` | UC-01 alt `4a`, UC-03 alt `3a`, UC-05 alt `3a`. |
 | Required field missing in request body (`raw_information_id` or `reason` on `complianceDeleteRawInformation`) | 422 | `VALIDATION_REQUIRED_FIELD` | UC-01 alt `3a`, `3b`. |
 | Field with invalid format (malformed UUID, malformed RFC 3339 timestamp, non-enum `action`/`target_kind`) | 422 | `VALIDATION_INVALID_FORMAT` | UC-01 alt `3a`; UC-02 alt `3a`, `3b`; UC-04 alt `3a`, `3b`, `3c`. |
@@ -258,7 +258,7 @@ This domain does NOT define state machines for `ComplianceDeletion` and `Curatio
 | `raw_information_id` resolves to no row | `NOT_FOUND` | UC-01 alt `4a` mapped to MCP. |
 | Unhandled internal exception in service layer | `INTERNAL` | UC-01 alt `4c`, `9a` mapped to MCP. |
 
-Auth errors are handled by the BFF middleware (same JWT validation as REST, §2.5/A29); they surface to the MCP client as the standard REST 401 — the MCP envelope is only used for service-layer outcomes (cf. `ingestion.spec.md` §6.2, ADR A28).
+Auth errors are handled by the BFF middleware (same Neon Auth JWT validation as REST, §2.5/A29); they surface to the MCP client as the standard REST 401 — the MCP envelope is only used for service-layer outcomes (cf. `ingestion.spec.md` §6.2, ADR A28).
 
 > **Idempotent no-op is NOT an error.** The 200 `noop_already_deleted` result is a successful business outcome — the response envelope is `{ ok: true, result: { outcome: "noop_already_deleted", deletion: { ... } } }` on MCP and HTTP 200 on REST. Mirrors the design rule of §14: "business outcomes are not errors".
 
@@ -308,6 +308,7 @@ This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). 
 | Idempotent no-op (compliance) | The 200 response of UC-01 when the raw is already tombstoned (BR-03). Returns the existing audit row, writes nothing. |
 | Implicit owner | The actor of every audit row, by construction. Equal to the JWT subject of the request that produced the row. Not stored as a column (BR-11). |
 | MCP envelope (this domain) | `{ ok: true, result: { outcome, deletion } }` / `{ ok: false, error: { code, message, details } }` — the same shape used by all MCP tools (§14, ADR A28). |
+| Neon Auth (Stack Auth) | The OIDC JWT issuer that replaces Supabase Auth at the BFF middleware boundary. JWKS published at `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA by default); validated by the `requireNeonAuth` Fastify `preHandler` middleware. Single-owner contract of §2.5 / A29 is unchanged. |
 
 ---
 
@@ -316,3 +317,4 @@ This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). 
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial compliance-and-audit-domain specification: controlled tombstone of `RawInformation` with cascade (§11), audit log read endpoints for `ComplianceDeletion` and `CurationAction` (§3.5). Aligned with v7 normative source (§2.5, §3.5, §10.2, §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29) and with `migrations/0001_schema.sql` lines 217-243 and 439-473. Five new BUSINESS_ error codes registered in the global catalog (none — this domain reuses only existing global codes: `AUTH_UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `VALIDATION_REQUIRED_FIELD`, `VALIDATION_INVALID_FORMAT`, `VALIDATION_OUT_OF_RANGE`, `SYSTEM_INTERNAL_ERROR`). | -- |
+| 1.1.0 | 2026-06-12 | Spec Writer | update | Auth-provider migration: replaced "Supabase Auth" with "Neon Auth (Stack Auth)" in the Actors table, in every UC `Pre:` clause (UC-01..UC-05) and in the UC `Main flow` middleware step. The middleware name is now `requireNeonAuth`, verifying tokens against the JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`. The §2 trailing note on JWT validation, the §6.1 401-row description, and the §6.2 MCP-errors note all now reference Neon Auth instead of Supabase. A new glossary entry "Neon Auth (Stack Auth)" was added. No change to BRs, UCs, state machine, error codes, schema, or business semantics — the single-owner contract of §2.5 / A29 is preserved end-to-end. | migrate-neon |
