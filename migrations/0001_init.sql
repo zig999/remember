@@ -1,9 +1,18 @@
 -- ============================================================================
--- 0001_schema.sql — Segundo Cérebro (spec v6, 2026-06-11)
--- PostgreSQL 17 — migração inicial: extensões, configs de full-text, funções,
--- tipos, tabelas, índices, views e triggers.
+-- 0001_init.sql — Segundo Cérebro (spec v7 + docs/specs, 2026-06-12)
+-- PostgreSQL 17 (Neon) — migração ÚNICA de bootstrap: extensões, configs de
+-- full-text, funções, tipos, tabelas, índices, views, triggers E o catálogo
+-- seed obrigatório (§15). Um banco vazio + este arquivo = projeto pronto.
 --
--- Fonte normativa: segundo-cerebro-modelagem-v6.md
+-- Consolida e SUBSTITUI as migrações anteriores:
+--   0001_schema.sql (schema, escrita contra a v6 — a v7 preserva o schema),
+--   0002_seed.sql   (catálogo §15 — idêntico na v7; validado item a item),
+--   0003_compliance_status.sql (parcial — só cobria raw_information; as
+--     colunas de tombstone exigidas pelas specs atuais estão TODAS aqui).
+--
+-- Fontes: segundo-cerebro-modelagem-v7.md (normativa) +
+--         docs/specs/domains/*/ (specs atuais — em particular
+--         compliance-audit §2 "Tables mutated by status transition").
 --
 -- DECISÕES DE DDL (pontos que a spec deixa ao implementador):
 --  1. Enums nativos (não CHECK em text): vocabulários fechados pela spec;
@@ -27,6 +36,15 @@
 --  7. Guardas de sanidade além da spec (inofensivas): UNIQUE parcial em
 --     provenance (mesmo fragmento não justifica 2x o mesmo item), 1 alias
 --     canônico por nó, CHECKs de auto-referência.
+--  8. TOMBSTONE DE COMPLIANCE (§11; compliance-audit.back.md §2, UC-01 passo 6):
+--     `raw_information` e `raw_chunk` carregam `status node_status` (reuso do
+--     enum, conforme spec: "cast to node_status") + `superseded_at`;
+--     `information_fragment` carrega `superseded_at` (o `status` já existia
+--     como fragment_status). DEFAULT 'active' = toda linha nasce ativa. Sem
+--     CHECK adicional: a aplicação é o gatekeeper (BR-12). O índice FTS de
+--     raw_chunk é PARCIAL (WHERE superseded_at IS NULL) — espelha o padrão do
+--     índice parcial de information_fragment e exprime, no nível do índice,
+--     que conteúdo tombstonado está fora da recuperação (§11, §7.2).
 --
 -- INVARIANTES DE APLICAÇÃO (não exprimíveis em DDL — backend garante):
 --  - Sucessão funcional (1 vigente por (node,key)/(source,link_type)) via
@@ -101,6 +119,9 @@ CREATE TYPE source_type AS ENUM
 CREATE TYPE fragment_status AS ENUM
   ('proposed', 'accepted', 'rejected', 'superseded', 'deleted');       -- §3.2
 
+-- status de KnowledgeNode; também reusado como tombstone de compliance em
+-- raw_information/raw_chunk (decisão 8 — só 'active'/'deleted' lá; a
+-- aplicação é o gatekeeper, BR-12).
 CREATE TYPE node_status AS ENUM
   ('active', 'needs_review', 'merged', 'deleted');                     -- §3.3
 
@@ -181,16 +202,19 @@ CREATE INDEX attribute_key_node_type_idx ON attribute_key (node_type_id);
 -- 6. Camada de origem — a verdade bruta (§3.1)
 -- ----------------------------------------------------------------------------
 -- Nunca alterada nem apagada; exceção controlada = tombstone via
--- compliance_delete (§11), que redige `content` preservando `content_hash`.
+-- compliance_delete (§11), que redige `content` preservando `content_hash` e
+-- grava status = 'deleted' + superseded_at = now() (BR-04/BR-05; decisão 8).
 CREATE TABLE raw_information (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_type  source_type NOT NULL,
-  content      text NOT NULL,
-  storage_ref  text,                        -- reservado; não usado nesta versão
-  content_hash text NOT NULL UNIQUE
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type   source_type NOT NULL,
+  content       text NOT NULL,
+  storage_ref   text,                        -- reservado; não usado nesta versão
+  content_hash  text NOT NULL UNIQUE
     CHECK (content_hash ~ '^[0-9a-f]{64}$'), -- sha-256 hex; base da idempotência (§8)
-  received_at  timestamptz NOT NULL DEFAULT now(),
-  metadata     jsonb NOT NULL DEFAULT '{}'::jsonb  -- autor, origem, título, document_date (§6.5)
+  received_at   timestamptz NOT NULL DEFAULT now(),
+  metadata      jsonb NOT NULL DEFAULT '{}'::jsonb, -- autor, origem, título, document_date (§6.5)
+  status        node_status NOT NULL DEFAULT 'active', -- tombstone (decisão 8)
+  superseded_at timestamptz                            -- preenchido só no tombstone
 );
 
 -- Offsets: 0-based, semiaberto [start, end), em CODE POINTS Unicode (§9.2/A22).
@@ -203,13 +227,18 @@ CREATE TABLE raw_chunk (
   offset_end         int  NOT NULL,
   locator            jsonb,                 -- { page?, line?, speaker?, ts? } (A23)
   chunking_version   text NOT NULL DEFAULT 'v1',
+  status             node_status NOT NULL DEFAULT 'active', -- cascata UC-01 passo 6 (decisão 8)
+  superseded_at      timestamptz,                           -- idem
   text_search        tsvector GENERATED ALWAYS AS
                        (to_tsvector('pt_unaccent_v1', "text")) STORED,
   CONSTRAINT raw_chunk_offsets_ck CHECK (offset_end > offset_start),
   UNIQUE (raw_information_id, chunking_version, chunk_index)
 );
 
-CREATE INDEX raw_chunk_fts_idx ON raw_chunk USING gin (text_search);
+-- PARCIAL: conteúdo tombstonado fica fora da recuperação no nível do índice
+-- (§11, §7.2; decisão 8). A query de busca deve filtrar superseded_at IS NULL.
+CREATE INDEX raw_chunk_fts_idx ON raw_chunk USING gin (text_search)
+  WHERE superseded_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- 7. Camada de auditoria da extração (§3.5)
@@ -246,18 +275,20 @@ CREATE INDEX tool_call_run_idx ON tool_call (llm_run_id);
 -- 8. Camada de extração — o que a LLM propôs (§3.2)
 -- ----------------------------------------------------------------------------
 CREATE TABLE information_fragment (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  llm_run_id  uuid NOT NULL REFERENCES llm_run (id),
-  "text"      text NOT NULL CHECK (char_length("text") <= 1000),  -- contrato de propose_fragment (§14.1)
-  confidence  numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-  status      fragment_status NOT NULL DEFAULT 'proposed',
-  text_search tsvector GENERATED ALWAYS AS
-                (to_tsvector('pt_unaccent_v1', "text")) STORED,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  llm_run_id    uuid NOT NULL REFERENCES llm_run (id),
+  "text"        text NOT NULL CHECK (char_length("text") <= 1000),  -- contrato de propose_fragment (§14.1)
+  confidence    numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  status        fragment_status NOT NULL DEFAULT 'proposed',
+  superseded_at timestamptz,                -- cascata UC-01 passo 6 (decisão 8)
+  text_search   tsvector GENERATED ALWAYS AS
+                  (to_tsvector('pt_unaccent_v1', "text")) STORED,
+  created_at    timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX information_fragment_run_idx ON information_fragment (llm_run_id);
 -- Índice GIN PARCIAL: só fragmentos aceitos participam da busca (§3.2/§7.2).
+-- Tombstone de compliance move status para 'deleted' ⇒ sai do índice.
 CREATE INDEX information_fragment_fts_idx ON information_fragment
   USING gin (text_search) WHERE status = 'accepted';
 
@@ -525,5 +556,129 @@ CREATE TRIGGER trg_node_attribute_updated_at
 CREATE TRIGGER trg_knowledge_link_updated_at
   BEFORE UPDATE ON knowledge_link
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ============================================================================
+-- 13. CATÁLOGO SEED OBRIGATÓRIO (§15) — validado item a item contra a v7 §15:
+--     8 NodeTypes, 10 LinkTypes (+22 regras), 10 AttributeKeys.
+--     Novos tipos entram por migração versionada (§12).
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 13.1 NodeTypes (§15.1)
+-- ----------------------------------------------------------------------------
+INSERT INTO node_type (name, description) VALUES
+  ('Person',       'Pessoa física'),
+  ('Organization', 'Empresa, órgão, time formal'),
+  ('Project',      'Projeto/iniciativa com objetivo e ciclo de vida'),
+  ('Event',        'Acontecimento pontual (reunião, go-live, workshop)'),
+  ('Role',         'Cargo/função (vocabulário controlado)'),
+  ('Category',     'Rótulo taxonômico para classificação'),
+  ('Concept',      'Conceito/tema referenciável'),
+  ('Location',     'Lugar físico ou lógico');
+
+-- ----------------------------------------------------------------------------
+-- 13.2 LinkTypes (§15.2) — flags: temporal / multi / req.valid_from / valid_to_on_change
+-- ----------------------------------------------------------------------------
+INSERT INTO link_type
+  (name, label, inverse_name, description,
+   is_temporal, allows_multiple_current, requires_valid_from, requires_valid_to_on_change)
+VALUES
+  ('participates_in', 'participa de', 'has_participant',
+   'Pessoa participa de projeto ou evento',
+   true,  true,  true,  false),
+  ('member_of', 'é membro de', 'has_member',
+   'Pessoa é membro de organização',
+   true,  true,  true,  false),
+  ('holds_role', 'exerce o cargo de', 'role_held_by',
+   'Pessoa exerce cargo/função (vocabulário controlado)',
+   true,  true,  true,  false),
+  ('responsible_for', 'é responsável por', 'under_responsibility_of',
+   'Pessoa responde por projeto ou evento',
+   true,  true,  true,  false),
+  ('reports_to', 'reporta a', 'manages',
+   'Subordinação direta entre pessoas (funcional: 1 chefe vigente)',
+   true,  false, true,  true),
+  ('part_of', 'faz parte de', 'has_part',
+   'Composição: org⊂org, projeto⊂projeto, evento⊂projeto (funcional)',
+   true,  false, true,  true),
+  ('located_in', 'localizado em', 'location_of',
+   'Localização de organização ou evento (funcional)',
+   true,  false, true,  true),
+  ('organizes', 'organiza', 'organized_by',
+   'Organização ou pessoa organiza evento',
+   true,  true,  true,  false),
+  ('belongs_to_category', 'pertence à categoria', 'contains',
+   'Classificação taxonômica (estável — sem eixo de validade)',
+   false, true,  false, false),
+  ('related_to', 'relacionado a', 'related_to',
+   'Relação temática simétrica (estável — sem eixo de validade)',
+   false, true,  false, false);
+
+-- ----------------------------------------------------------------------------
+-- 13.3 LinkTypeRules (§15.2, coluna "pares permitidos") — 22 regras
+--      valid_from/valid_to nulos = vigentes desde sempre (§5.1)
+-- ----------------------------------------------------------------------------
+INSERT INTO link_type_rule (link_type_id, source_node_type_id, target_node_type_id)
+SELECT lt.id, s.id, t.id
+FROM (VALUES
+  ('participates_in',     'Person',       'Project'),
+  ('participates_in',     'Person',       'Event'),
+  ('member_of',           'Person',       'Organization'),
+  ('holds_role',          'Person',       'Role'),
+  ('responsible_for',     'Person',       'Project'),
+  ('responsible_for',     'Person',       'Event'),
+  ('reports_to',          'Person',       'Person'),
+  ('part_of',             'Organization', 'Organization'),
+  ('part_of',             'Project',      'Project'),
+  ('part_of',             'Event',        'Project'),
+  ('located_in',          'Organization', 'Location'),
+  ('located_in',          'Event',        'Location'),
+  ('organizes',           'Organization', 'Event'),
+  ('organizes',           'Person',       'Event'),
+  ('belongs_to_category', 'Person',       'Category'),
+  ('belongs_to_category', 'Organization', 'Category'),
+  ('belongs_to_category', 'Project',      'Category'),
+  ('belongs_to_category', 'Event',        'Category'),
+  ('belongs_to_category', 'Concept',      'Category'),
+  ('belongs_to_category', 'Location',     'Category'),
+  ('related_to',          'Concept',      'Concept'),
+  ('related_to',          'Project',      'Concept')
+) AS r(link_name, source_name, target_name)
+JOIN link_type lt ON lt.name = r.link_name
+JOIN node_type s  ON s.name  = r.source_name
+JOIN node_type t  ON t.name  = r.target_name;
+
+-- ----------------------------------------------------------------------------
+-- 13.4 AttributeKeys (§15.3) — cobre todas as combinações de flags:
+--      temporal-funcional, temporal-multi e estável (gabarito para novas chaves)
+-- ----------------------------------------------------------------------------
+INSERT INTO attribute_key
+  (node_type_id, key, value_type, is_temporal, allows_multiple_current,
+   requires_valid_from, description)
+SELECT nt.id, a.key, a.value_type::attribute_value_type,
+       a.is_temporal, a.multi, a.req_vf, a.description
+FROM (VALUES
+  ('Project',      'deadline',    'date',   true,  false, true,
+   'Data-limite/go-live vigente do projeto (funcional)'),
+  ('Project',      'start_date',  'date',   true,  false, true,
+   'Data de início do projeto (funcional)'),
+  ('Project',      'status_text', 'text',   true,  false, true,
+   'Situação textual corrente do projeto (funcional)'),
+  ('Project',      'budget',      'number', true,  false, true,
+   'Orçamento do projeto (funcional)'),
+  ('Event',        'event_date',  'date',   true,  false, true,
+   'Data do evento (funcional)'),
+  ('Person',       'email',       'text',   true,  true,  false,
+   'E-mail da pessoa (multi-valor)'),
+  ('Person',       'phone',       'text',   true,  true,  false,
+   'Telefone da pessoa (multi-valor)'),
+  ('Person',       'birth_date',  'date',   false, false, false,
+   'Data de nascimento (estável; correção via 6.5-B)'),
+  ('Organization', 'cnpj',        'text',   false, false, false,
+   'CNPJ (estável; typo corrige-se via 6.5-B, sem fingir mudança no mundo)'),
+  ('Organization', 'website',     'text',   true,  false, false,
+   'Site institucional vigente (funcional)')
+) AS a(node_type, key, value_type, is_temporal, multi, req_vf, description)
+JOIN node_type nt ON nt.name = a.node_type;
 
 COMMIT;

@@ -1,7 +1,7 @@
 // Shared enum DTOs for the knowledge-graph domain.
 //
 // Mirrors `openapi.yaml` components.schemas (sections "Enums") and the DB
-// enums of `migrations/0001_schema.sql` (section 3).
+// enums of `migrations/0001_init.sql` (section 3).
 //
 // Kept in a single file so every route/service that surfaces these enums
 // imports the same instance — no per-route divergence.

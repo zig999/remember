@@ -1,7 +1,7 @@
 // Full-text search configuration constants (BR-06 of `query-retrieval.back.md`).
 //
 // Two named, versioned PostgreSQL FTS configurations created by
-// `migrations/0001_schema.sql`:
+// `migrations/0001_init.sql`:
 //
 //   - `pt_unaccent_v1`     — prose: stemming pt + unaccent.
 //     Used by the fragment layer (`information_fragment.text_search`) and the
