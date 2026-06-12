@@ -22,12 +22,12 @@ function buildPoolConfig(env: Env): PoolConfig {
     connectionString: env.DATABASE_URL,
     min: env.PG_POOL_MIN,
     max: env.PG_POOL_MAX,
-    // Conservative connection-timeout: 5 s gives time for Supabase Cloud to
-    // accept the TCP handshake even on a cold connection without hanging the
-    // request indefinitely.
+    // Conservative connection-timeout: 5 s gives time for Neon to accept the
+    // TCP handshake even on a cold connection without hanging the request
+    // indefinitely.
     connectionTimeoutMillis: 5_000,
-    // Drop idle connections after 30 s — Supabase Cloud closes idle ones
-    // anyway; doing it client-side keeps the pool slim.
+    // Drop idle connections after 30 s — managed Postgres (Neon) closes idle
+    // ones anyway; doing it client-side keeps the pool slim.
     idleTimeoutMillis: 30_000,
     statement_timeout: env.PG_STATEMENT_TIMEOUT_MS,
   };

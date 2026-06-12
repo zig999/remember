@@ -1,7 +1,7 @@
 // TC-01 acceptance criteria covered:
 //  - "missing required env var crashes with a clear message"
 //  - "all env vars validated with Zod at startup"
-//  - "no hardcoded secrets" (env reads service key from process.env only)
+//  - "no hardcoded secrets" (env reads secrets from process.env only)
 
 import { describe, expect, it } from "vitest";
 
@@ -12,8 +12,7 @@ const baseEnv = {
   PORT: "3000",
   LOG_LEVEL: "info",
   DATABASE_URL: "postgresql://user:pw@localhost:5432/db",
-  SUPABASE_URL: "https://abc.supabase.co",
-  SUPABASE_SERVICE_KEY: "test-service-key",
+  NEON_AUTH_URL: "https://ep-test.neon.tech/neondb/auth",
 } satisfies NodeJS.ProcessEnv;
 
 describe("loadEnv", () => {
@@ -24,8 +23,8 @@ describe("loadEnv", () => {
     expect(env.NODE_ENV).toBe("test");
     expect(env.LOG_LEVEL).toBe("info");
     expect(env.DATABASE_URL).toBe(baseEnv.DATABASE_URL);
-    expect(env.SUPABASE_URL).toBe(baseEnv.SUPABASE_URL);
-    expect(env.SUPABASE_JWKS_TTL_S).toBe(600);
+    expect(env.NEON_AUTH_URL).toBe(baseEnv.NEON_AUTH_URL);
+    expect(env.NEON_AUTH_JWKS_TTL_S).toBe(600);
     expect(env.PG_POOL_MIN).toBe(2);
     expect(env.PG_POOL_MAX).toBe(10);
     expect(env.PG_STATEMENT_TIMEOUT_MS).toBe(10_000);
@@ -57,15 +56,8 @@ describe("loadEnv", () => {
     );
   });
 
-  it("throws when SUPABASE_URL is missing", () => {
-    const { SUPABASE_URL: _unused, ...rest } = baseEnv;
-    void _unused;
-    expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
-  });
-
-  it("throws when SUPABASE_SERVICE_KEY is missing", () => {
-    // SECURITY: service key is mandatory and never falls back.
-    const { SUPABASE_SERVICE_KEY: _unused, ...rest } = baseEnv;
+  it("throws when NEON_AUTH_URL is missing", () => {
+    const { NEON_AUTH_URL: _unused, ...rest } = baseEnv;
     void _unused;
     expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
   });
@@ -88,11 +80,7 @@ describe("loadEnv", () => {
     expect(err).toBeInstanceOf(EnvValidationError);
     const issues = (err as EnvValidationError).issues.map((i) => i.path);
     expect(issues).toEqual(
-      expect.arrayContaining([
-        "DATABASE_URL",
-        "SUPABASE_URL",
-        "SUPABASE_SERVICE_KEY",
-      ])
+      expect.arrayContaining(["DATABASE_URL", "NEON_AUTH_URL"])
     );
   });
 
@@ -101,8 +89,7 @@ describe("loadEnv", () => {
     const err = grabError(() => loadEnv({})) as EnvValidationError;
     expect(err.message).toMatch(/Invalid backend environment configuration/);
     expect(err.message).toMatch(/DATABASE_URL/);
-    expect(err.message).toMatch(/SUPABASE_URL/);
-    expect(err.message).toMatch(/SUPABASE_SERVICE_KEY/);
+    expect(err.message).toMatch(/NEON_AUTH_URL/);
   });
 });
 

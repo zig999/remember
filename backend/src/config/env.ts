@@ -6,7 +6,7 @@
 // singleton — never re-read at runtime, never mutated.
 //
 // References:
-//   CLAUDE.md "Security": service key never hardcoded, never logged.
+//   CLAUDE.md "Security": secrets never hardcoded, never logged.
 //   ingestion.back.md §1: pino, pg pool min=2/max=10, statement timeout 10 s.
 //   knowledge-graph.back.md §1: JWKS cached in-process for 10 min.
 
@@ -27,10 +27,10 @@ const envSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
 
-  // PostgreSQL
+  // PostgreSQL (Neon — managed Postgres)
   DATABASE_URL: z
     .string()
-    .min(1, "DATABASE_URL is required (Supabase Cloud connection string).")
+    .min(1, "DATABASE_URL is required (Neon connection string).")
     .refine(
       (v) => v.startsWith("postgres://") || v.startsWith("postgresql://"),
       "DATABASE_URL must start with `postgres://` or `postgresql://`."
@@ -39,15 +39,15 @@ const envSchema = z.object({
   PG_POOL_MAX: z.coerce.number().int().min(1).default(10),
   PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(10_000),
 
-  // Supabase Auth
-  SUPABASE_URL: z
+  // Neon Auth (Stack Auth) — JWT access tokens verified via JWKS.
+  NEON_AUTH_URL: z
     .string()
-    .min(1, "SUPABASE_URL is required (e.g. https://<ref>.supabase.co).")
-    .refine((v) => /^https?:\/\//.test(v), "SUPABASE_URL must be a URL."),
-  SUPABASE_SERVICE_KEY: z
-    .string()
-    .min(1, "SUPABASE_SERVICE_KEY is required (kept inside the BFF only)."),
-  SUPABASE_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
+    .min(
+      1,
+      "NEON_AUTH_URL is required (e.g. https://<endpoint>.neon.tech/<db>/auth)."
+    )
+    .refine((v) => /^https?:\/\//.test(v), "NEON_AUTH_URL must be a URL."),
+  NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
 });
 
 export type Env = z.infer<typeof envSchema>;

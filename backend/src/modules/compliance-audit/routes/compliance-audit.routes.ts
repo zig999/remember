@@ -1,7 +1,7 @@
 // Fastify routes for the compliance-audit domain — REST surface.
 //
 // Mounted by the bootstrap (`app.ts`). The parent scope already enforces
-// Supabase JWT auth (back spec §1 Auth row); handlers here do NOT re-check
+// Neon Auth JWT (back spec §1 Auth row); handlers here do NOT re-check
 // the token.
 //
 // Endpoints implemented (BR-13 — append-only; only POST is the destructive

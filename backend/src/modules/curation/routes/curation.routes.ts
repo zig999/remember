@@ -1,7 +1,7 @@
 // Fastify routes for the curation domain — REST surface.
 //
 // Mounted under `/api/v1/curation/*` by the bootstrap (`app.ts`). The parent
-// scope enforces Supabase JWT auth (BR-01); handlers do NOT re-check the token.
+// scope enforces Neon Auth JWT (BR-01); handlers do NOT re-check the token.
 //
 // Endpoints implemented:
 //   - GET  /api/v1/curation/queue                            (UC-01)

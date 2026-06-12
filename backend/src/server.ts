@@ -4,7 +4,7 @@
 //   1. Validate environment.
 //   2. Build pino logger.
 //   3. Build pg pool and ping the database.
-//   4. Build the Supabase auth middleware and the MCP server skeleton.
+//   4. Build the Neon Auth middleware and the MCP server skeleton.
 //   5. Build the Fastify app and start listening on PORT.
 //   6. Install graceful-shutdown handlers (SIGINT/SIGTERM).
 //
@@ -13,7 +13,7 @@
 import { buildPool, pingDatabase } from "./config/db.js";
 import { EnvValidationError, loadEnv } from "./config/env.js";
 import { buildLogger } from "./config/logger.js";
-import { buildSupabaseAuth } from "./middleware/auth.js";
+import { buildNeonAuth } from "./middleware/auth.js";
 import { buildMcpServer } from "./mcp/server.js";
 import { buildApp } from "./app.js";
 import { loadCatalog } from "./modules/knowledge-graph/index.js";
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   }
 
   // Step 4 — auth + MCP.
-  const auth = buildSupabaseAuth(env);
+  const auth = buildNeonAuth(env);
   const mcp = buildMcpServer(logger);
 
   // Step 4b — catalog snapshot (knowledge-graph BR-10). Loaded once; the

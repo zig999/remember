@@ -30,7 +30,7 @@ import {
 import { buildApp } from "../../../app.js";
 import type { Env } from "../../../config/env.js";
 import { buildMcpServer } from "../../../mcp/server.js";
-import { buildSupabaseAuth } from "../../../middleware/auth.js";
+import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/knowledge-graph/catalog/catalog.js";
 import { norm } from "../../../modules/knowledge-graph/service/norm.js";
 
@@ -630,9 +630,8 @@ const envFixture: Env = Object.freeze({
   PG_POOL_MIN: 2,
   PG_POOL_MAX: 10,
   PG_STATEMENT_TIMEOUT_MS: 10_000,
-  SUPABASE_URL: "https://abc.supabase.co",
-  SUPABASE_SERVICE_KEY: "test-service-key",
-  SUPABASE_JWKS_TTL_S: 600,
+  NEON_AUTH_URL: "https://ep-test.neon.tech/neondb/auth",
+  NEON_AUTH_JWKS_TTL_S: 600,
 }) as Env;
 
 const silentLogger = pino({ level: "silent" });
@@ -708,7 +707,7 @@ async function buildAppWith(store: Store, fixture: AuthFixture) {
     env: envFixture,
     logger: silentLogger,
     pool: buildFakePool(store),
-    auth: buildSupabaseAuth(envFixture, async () =>
+    auth: buildNeonAuth(envFixture, async () =>
       ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
     ),
     mcp: buildMcpServer(silentLogger),

@@ -1,10 +1,10 @@
 // Fastify application factory.
 //
 // Wires the singleton dependencies (pg pool, pino logger, MCP registry,
-// Supabase auth) into a Fastify instance and registers:
+// Neon Auth) into a Fastify instance and registers:
 //   - GET /health           (unauthenticated, returns 200 + DB ping result)
 //   - The global error handler (single point that emits the envelope).
-//   - The `requireSupabaseJwt` preHandler under the `/api/v1` scope — every
+//   - The Neon Auth JWT preHandler under the `/api/v1` scope — every
 //     route mounted under it inherits authentication for free.
 //
 // Domain routes are NOT registered here. Each domain module exposes a
@@ -18,7 +18,7 @@ import type { Pool } from "pg";
 import { pingDatabase } from "./config/db.js";
 import type { Env } from "./config/env.js";
 import { buildErrorHandler } from "./middleware/error-handler.js";
-import type { SupabaseAuth } from "./middleware/auth.js";
+import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
 import { registerIngestionRoutes } from "./modules/ingestion/index.js";
 import {
@@ -40,7 +40,7 @@ export interface AppDependencies {
   readonly env: Env;
   readonly logger: Logger;
   readonly pool: Pool;
-  readonly auth: SupabaseAuth;
+  readonly auth: NeonAuth;
   readonly mcp: McpServer;
   /**
    * Catalog snapshot loaded once at BFF startup. Used by knowledge-graph
@@ -85,7 +85,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   });
 
   // Protected `/api/v1/*` scope — anything registered under it inherits the
-  // Supabase JWT preHandler. Domain modules (`backend/src/modules/<x>/`)
+  // Neon Auth JWT preHandler. Domain modules (`backend/src/modules/<x>/`)
   // register their routes inside this scope.
   await app.register(async (scoped) => {
     scoped.addHook("preHandler", auth.preHandler);

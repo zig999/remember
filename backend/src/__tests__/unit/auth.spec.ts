@@ -15,7 +15,7 @@ import {
 import {
   AuthError,
   buildJwksUrl,
-  buildSupabaseAuth,
+  buildNeonAuth,
   extractBearer,
 } from "../../middleware/auth.js";
 
@@ -53,13 +53,13 @@ function fakeRequest(authorization?: string) {
     headers: authorization === undefined ? {} : { authorization },
     user: undefined as unknown,
   } as unknown as Parameters<
-    ReturnType<typeof buildSupabaseAuth>["preHandler"]
+    ReturnType<typeof buildNeonAuth>["preHandler"]
   >[0];
 }
 
 const envFixture = {
-  SUPABASE_URL: "https://abc.supabase.co",
-  SUPABASE_JWKS_TTL_S: 600,
+  NEON_AUTH_URL: "https://ep-test.neon.tech/neondb/auth",
+  NEON_AUTH_JWKS_TTL_S: 600,
 } as const;
 
 describe("extractBearer", () => {
@@ -89,23 +89,23 @@ describe("extractBearer", () => {
 });
 
 describe("buildJwksUrl", () => {
-  it("builds the canonical Supabase JWKS URL", () => {
-    expect(buildJwksUrl("https://abc.supabase.co").toString()).toBe(
-      "https://abc.supabase.co/auth/v1/.well-known/jwks.json"
-    );
+  it("builds the canonical Neon Auth JWKS URL", () => {
+    expect(
+      buildJwksUrl("https://ep-test.neon.tech/neondb/auth").toString()
+    ).toBe("https://ep-test.neon.tech/neondb/auth/.well-known/jwks.json");
   });
 
-  it("strips a trailing slash from SUPABASE_URL", () => {
-    expect(buildJwksUrl("https://abc.supabase.co/").toString()).toBe(
-      "https://abc.supabase.co/auth/v1/.well-known/jwks.json"
-    );
+  it("strips a trailing slash from NEON_AUTH_URL", () => {
+    expect(
+      buildJwksUrl("https://ep-test.neon.tech/neondb/auth/").toString()
+    ).toBe("https://ep-test.neon.tech/neondb/auth/.well-known/jwks.json");
   });
 });
 
-describe("buildSupabaseAuth.preHandler", () => {
+describe("buildNeonAuth.preHandler", () => {
   it("rejects with AUTH_UNAUTHORIZED when no header is present", async () => {
     // TC-01 acceptance criterion: 401 AUTH_UNAUTHORIZED.
-    const auth = buildSupabaseAuth(envFixture, async () => {
+    const auth = buildNeonAuth(envFixture, async () => {
       throw new Error("should not be called");
     });
     const req = fakeRequest();
@@ -117,7 +117,7 @@ describe("buildSupabaseAuth.preHandler", () => {
   });
 
   it("rejects with AUTH_UNAUTHORIZED when the header is malformed", async () => {
-    const auth = buildSupabaseAuth(envFixture, async () => {
+    const auth = buildNeonAuth(envFixture, async () => {
       throw new Error("should not be called");
     });
     const req = fakeRequest("Basic abc.def.ghi");
@@ -134,7 +134,7 @@ describe("buildSupabaseAuth.preHandler", () => {
       { sub: "user-123", role: "authenticated" },
       { kid: publicJwk.kid, expSecondsFromNow: 60 }
     );
-    const auth = buildSupabaseAuth(envFixture, async () =>
+    const auth = buildNeonAuth(envFixture, async () =>
       ({ type: "public", algorithm: "RS256", ...publicJwk }) as never
     );
     const req = fakeRequest(`Bearer ${token}`);
@@ -150,7 +150,7 @@ describe("buildSupabaseAuth.preHandler", () => {
       { sub: "user-123" },
       { kid: publicJwk.kid, expSecondsFromNow: -60 } // expired 1 minute ago
     );
-    const auth = buildSupabaseAuth(envFixture, async () =>
+    const auth = buildNeonAuth(envFixture, async () =>
       ({ type: "public", algorithm: "RS256", ...publicJwk }) as never
     );
     const req = fakeRequest(`Bearer ${token}`);
@@ -170,7 +170,7 @@ describe("buildSupabaseAuth.preHandler", () => {
       { kid: signing.publicJwk.kid, expSecondsFromNow: 60 }
     );
     // JWKS returns a key whose `kid` does not match -> NoMatchingKey.
-    const auth = buildSupabaseAuth(envFixture, async () =>
+    const auth = buildNeonAuth(envFixture, async () =>
       ({ type: "public", algorithm: "RS256", ...otherJwks.publicJwk }) as never
     );
     const req = fakeRequest(`Bearer ${token}`);
@@ -181,7 +181,7 @@ describe("buildSupabaseAuth.preHandler", () => {
   });
 
   it("rejects with AUTH_TOKEN_INVALID when the JWT is structurally broken", async () => {
-    const auth = buildSupabaseAuth(envFixture, async () => {
+    const auth = buildNeonAuth(envFixture, async () => {
       throw new Error("never called — structural failure short-circuits");
     });
     const req = fakeRequest("Bearer not-a-real-jwt");
@@ -198,7 +198,7 @@ describe("buildSupabaseAuth.preHandler", () => {
       { role: "authenticated" }, // no sub
       { kid: publicJwk.kid, expSecondsFromNow: 60 }
     );
-    const auth = buildSupabaseAuth(envFixture, async () =>
+    const auth = buildNeonAuth(envFixture, async () =>
       ({ type: "public", algorithm: "RS256", ...publicJwk }) as never
     );
     const req = fakeRequest(`Bearer ${token}`);

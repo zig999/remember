@@ -1,7 +1,7 @@
 // Fastify routes for the ingestion REST endpoints.
 //
 // Mounted under `/api/v1/ingest/*` from the BFF bootstrap. The parent scope
-// (set in `app.ts`) already enforces Supabase JWT auth, so individual handlers
+// (set in `app.ts`) already enforces Neon Auth JWT, so individual handlers
 // here do NOT re-check the token.
 //
 // Endpoints implemented in this TC:

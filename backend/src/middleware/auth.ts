@@ -1,23 +1,23 @@
-// Supabase Auth JWT verification — Fastify `preHandler`.
+// Neon Auth (Stack Auth) JWT verification — Fastify `preHandler`.
 //
 // Implements BR-01 of knowledge-graph.back.md and the corresponding ingestion
 // requirement: every request that reaches a protected route must carry
-// `Authorization: Bearer <jwt>`. We verify the signature against Supabase's
-// JWKS (RS256 keys), cache the JWKS in process for the configured TTL
-// (default 10 min, per knowledge-graph.back.md §1), and refuse to dispatch
-// the route on any failure.
+// `Authorization: Bearer <jwt>`. We verify the signature against Neon Auth's
+// JWKS, cache the JWKS in process for the configured TTL (default 10 min, per
+// knowledge-graph.back.md §1), and refuse to dispatch the route on any failure.
 //
 // Error mapping (registered in docs/specs/_global/error-codes.md):
 //   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
 //   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
 //   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
 //
-// Reverse note: Supabase historically issued HS256 tokens signed with the
-// project's JWT secret; modern projects can switch to asymmetric RS256 keys
-// served via JWKS. This middleware uses the JWKS endpoint exclusively because
-// the spec ties the auth source to "Supabase Auth via JWKS" (§1, BR-01 of
-// knowledge-graph.back.md). HS256 fallback is intentionally out of scope —
-// projects still on the legacy mode must rotate to JWKS before deploying.
+// Provider note: Neon Auth (powered by Stack Auth) issues asymmetric access
+// tokens — EdDSA (Ed25519) by default — served via a JWKS endpoint derived from
+// `NEON_AUTH_URL`. `jose` selects the verification algorithm from the JWKS key,
+// so EdDSA/RSA/EC keys all work without extra configuration. Issuer/audience
+// hardening is available (issuer = `new URL(NEON_AUTH_URL).origin`) but is left
+// off here to preserve the existing verification contract; enable it via the
+// `jwtVerify` options when the deployment's issuer/aud are pinned.
 
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -32,7 +32,7 @@ import type { Env } from "../config/env.js";
 
 /** Authenticated subject attached to `request.user` after JWT verification. */
 export interface AuthenticatedUser {
-  /** `sub` claim — Supabase user UUID. */
+  /** `sub` claim — Neon Auth subject (user) id. */
   readonly id: string;
   /** Full decoded JWT payload (frozen). */
   readonly claims: Readonly<JWTPayload>;
@@ -66,7 +66,7 @@ export class AuthError extends Error {
  * Public surface of the auth module — the bootstrap composes one of these and
  * registers `.preHandler` against the protected route scopes.
  */
-export interface SupabaseAuth {
+export interface NeonAuth {
   readonly preHandler: (
     request: FastifyRequest,
     _reply: FastifyReply
@@ -74,33 +74,33 @@ export interface SupabaseAuth {
 }
 
 /**
- * Build the JWKS URL from the Supabase project URL.
+ * Build the JWKS URL from the Neon Auth base URL.
  *
- * Supabase Auth exposes JWKS at `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`.
- * We do not allow callers to override this path — it is part of the spec's
- * trust boundary.
+ * Neon Auth exposes JWKS at `<NEON_AUTH_URL>/.well-known/jwks.json` (e.g.
+ * `https://<endpoint>.neon.tech/<db>/auth/.well-known/jwks.json`). We do not
+ * allow callers to override this path — it is part of the spec's trust boundary.
  */
-export function buildJwksUrl(supabaseUrl: string): URL {
-  const base = supabaseUrl.replace(/\/+$/, "");
-  return new URL(`${base}/auth/v1/.well-known/jwks.json`);
+export function buildJwksUrl(neonAuthUrl: string): URL {
+  const base = neonAuthUrl.replace(/\/+$/, "");
+  return new URL(`${base}/.well-known/jwks.json`);
 }
 
 /**
- * Build the Supabase auth middleware. The JWKS is created once and reused
- * across requests; `jose` handles the TTL/refresh internally (jose's default
- * is 10 min cache + 30 s cooldown, which matches the spec exactly).
+ * Build the Neon Auth middleware. The JWKS is created once and reused across
+ * requests; `jose` handles the TTL/refresh internally (jose's default is 10 min
+ * cache + 30 s cooldown, which matches the spec exactly).
  *
- * The `getKey` parameter is exposed for tests so they can inject a stub
- * JWKS resolver; production callers pass nothing and get the real one.
+ * The `getKey` parameter is exposed for tests so they can inject a stub JWKS
+ * resolver; production callers pass nothing and get the real one.
  */
-export function buildSupabaseAuth(
-  env: Pick<Env, "SUPABASE_URL" | "SUPABASE_JWKS_TTL_S">,
+export function buildNeonAuth(
+  env: Pick<Env, "NEON_AUTH_URL" | "NEON_AUTH_JWKS_TTL_S">,
   getKey?: JWTVerifyGetKey
-): SupabaseAuth {
+): NeonAuth {
   const jwks: JWTVerifyGetKey =
     getKey ??
-    createRemoteJWKSet(buildJwksUrl(env.SUPABASE_URL), {
-      cacheMaxAge: env.SUPABASE_JWKS_TTL_S * 1000,
+    createRemoteJWKSet(buildJwksUrl(env.NEON_AUTH_URL), {
+      cacheMaxAge: env.NEON_AUTH_JWKS_TTL_S * 1000,
       cooldownDuration: 30_000,
     });
 

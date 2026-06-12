@@ -1,7 +1,7 @@
 // Fastify routes for the knowledge-graph REST endpoints.
 //
 // Mounted under `/api/v1/*` by the bootstrap (`app.ts`). The parent scope
-// already enforces Supabase JWT auth (BR-01); individual handlers do NOT
+// already enforces Neon Auth JWT (BR-01); individual handlers do NOT
 // re-check the token.
 //
 // Endpoints implemented in TC-04 (read-only):
