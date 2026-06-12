@@ -46,6 +46,7 @@ interface RawInformationRow {
 interface RawChunkRow {
   id: string;
   raw_information_id: string;
+  status: "active" | "deleted";
   superseded_at: Date | null;
 }
 interface InformationFragmentRow {
@@ -192,15 +193,18 @@ function buildFakeClient(store: Store): any {
       }
 
       // ----------- tombstoneRawChunksOfRaw -----------
+      // UC-01 step 6: cascades BOTH status='deleted' AND superseded_at=now().
       if (
         text.includes("UPDATE raw_chunk") &&
-        text.includes("SET superseded_at = now()") &&
+        text.includes("status        = 'deleted'") &&
+        text.includes("superseded_at = now()") &&
         text.includes("WHERE raw_information_id = $1")
       ) {
         const rawId = String(params[0]);
         const rows: { id: string }[] = [];
         for (const ch of store.chunks) {
           if (ch.raw_information_id === rawId && ch.superseded_at === null) {
+            ch.status = "deleted";
             ch.superseded_at = new Date();
             rows.push({ id: ch.id });
           }
@@ -209,9 +213,11 @@ function buildFakeClient(store: Store): any {
       }
 
       // ----------- tombstoneCascadedFragments (BR-06) -----------
+      // UC-01 step 6: cascades BOTH status='deleted' AND superseded_at=now().
       if (
         text.includes("UPDATE information_fragment AS f") &&
-        text.includes("SET status = 'deleted'")
+        text.includes("status        = 'deleted'") &&
+        text.includes("superseded_at = now()")
       ) {
         const rawId = String(params[0]);
         // For each non-deleted fragment, check predicate.
@@ -238,6 +244,7 @@ function buildFakeClient(store: Store): any {
           });
           if (anchorsOther) continue;
           f.status = "deleted";
+          f.superseded_at = new Date();
           rows.push({ id: f.id });
         }
         return { rows, rowCount: rows.length };
@@ -660,9 +667,9 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       metadata: { author: "alice" },
     });
     store.chunks.push(
-      { id: CHUNK_1, raw_information_id: RAW_1, superseded_at: null },
-      { id: CHUNK_2, raw_information_id: RAW_1, superseded_at: null },
-      { id: CHUNK_3, raw_information_id: RAW_1, superseded_at: null }
+      { id: CHUNK_1, raw_information_id: RAW_1, status: "active", superseded_at: null },
+      { id: CHUNK_2, raw_information_id: RAW_1, status: "active", superseded_at: null },
+      { id: CHUNK_3, raw_information_id: RAW_1, status: "active", superseded_at: null }
     );
     store.fragments.push({ id: FRAG_1, status: "accepted", superseded_at: null });
     store.fragment_sources.push({ fragment_id: FRAG_1, raw_chunk_id: CHUNK_1 });
@@ -711,9 +718,16 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       // BR-05 — status + superseded_at.
       expect(raw.status).toBe("deleted");
       expect(raw.superseded_at).not.toBeNull();
-      // BR-06/07 — derived rows tombstoned.
-      expect(store.chunks.every((c) => c.superseded_at !== null)).toBe(true);
+      // BR-06/07 — derived rows tombstoned: UC-01 step 6 cascades BOTH
+      // status='deleted' AND superseded_at (a row missing either would stay
+      // visible in is_current filters or in retrieval — §5.4, §11).
+      expect(
+        store.chunks.every(
+          (c) => c.status === "deleted" && c.superseded_at !== null
+        )
+      ).toBe(true);
       expect(store.fragments[0]!.status).toBe("deleted");
+      expect(store.fragments[0]!.superseded_at).not.toBeNull();
       expect(store.links[0]!.status).toBe("deleted");
       expect(store.attributes[0]!.status).toBe("deleted");
       // BR-08 — exactly one row in each audit table.
@@ -850,8 +864,8 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       }
     );
     store.chunks.push(
-      { id: CHUNK_1, raw_information_id: RAW_1, superseded_at: null },
-      { id: CHUNK_2, raw_information_id: RAW_2, superseded_at: null }
+      { id: CHUNK_1, raw_information_id: RAW_1, status: "active", superseded_at: null },
+      { id: CHUNK_2, raw_information_id: RAW_2, status: "active", superseded_at: null }
     );
     // FRAG_1 has sources in BOTH raws (cross-source).
     store.fragments.push({
@@ -905,8 +919,8 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       }
     );
     store.chunks.push(
-      { id: CHUNK_1, raw_information_id: RAW_1, superseded_at: null },
-      { id: CHUNK_2, raw_information_id: RAW_2, superseded_at: null }
+      { id: CHUNK_1, raw_information_id: RAW_1, status: "active", superseded_at: null },
+      { id: CHUNK_2, raw_information_id: RAW_2, status: "active", superseded_at: null }
     );
     store.fragments.push(
       { id: FRAG_1, status: "accepted", superseded_at: null },

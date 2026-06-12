@@ -72,7 +72,8 @@ export async function tombstoneRawInformation(
 
 /**
  * Tombstone every raw_chunk anchored to the deleted raw. RETURNING.id count
- * feeds `affected.chunks` (BR-16).
+ * feeds `affected.chunks` (BR-16). Spec UC-01 step 6 cascades BOTH
+ * `status = 'deleted'` and `superseded_at = now()`.
  */
 export async function tombstoneRawChunksOfRaw(
   client: PoolClient,
@@ -80,7 +81,8 @@ export async function tombstoneRawChunksOfRaw(
 ): Promise<number> {
   const res = await client.query(
     `UPDATE raw_chunk
-        SET superseded_at = now()
+        SET status        = 'deleted',
+            superseded_at = now()
       WHERE raw_information_id = $1
         AND superseded_at IS NULL
       RETURNING id`,
@@ -93,7 +95,8 @@ export async function tombstoneRawChunksOfRaw(
  * BR-06 — tombstones every fragment whose `fragment_source` chain anchors
  * ONLY chunks of the deleted raw. Cross-source fragments survive.
  *
- * RETURNING.id count feeds `affected.fragments` (BR-16).
+ * RETURNING.id count feeds `affected.fragments` (BR-16). Spec UC-01 step 6
+ * cascades BOTH `status = 'deleted'` and `superseded_at = now()`.
  */
 export async function tombstoneCascadedFragments(
   client: PoolClient,
@@ -101,7 +104,8 @@ export async function tombstoneCascadedFragments(
 ): Promise<number> {
   const res = await client.query(
     `UPDATE information_fragment AS f
-        SET status = 'deleted'
+        SET status        = 'deleted',
+            superseded_at = now()
       WHERE EXISTS (
               SELECT 1 FROM fragment_source fs
                 JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id

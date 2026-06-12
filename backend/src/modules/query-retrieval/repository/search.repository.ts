@@ -158,6 +158,10 @@ export interface ChunkHitRow {
  * the dedup step in the service collapses chunks anchored by fragments
  * (BR-10). Excerpt is sliced in SQL with the +1 offset adjustment for
  * Postgres 1-based `substring` (BR-11 of back spec, A22).
+ *
+ * `superseded_at IS NULL` excludes compliance-tombstoned chunks (§11 — deleted
+ * content must never come back through retrieval) and matches the partial GIN
+ * index predicate of `raw_chunk_fts_idx`.
  */
 export async function searchChunkLayer(
   client: PoolClient,
@@ -175,6 +179,7 @@ export async function searchChunkLayer(
            (ts_rank_cd(rc.text_search, websearch_to_tsquery($1::regconfig, $2)) * $3::float)::float AS score
       FROM raw_chunk rc
      WHERE rc.text_search @@ websearch_to_tsquery($1::regconfig, $2)
+       AND rc.superseded_at IS NULL
      ORDER BY score DESC, rc.id ASC
      LIMIT $4
   `;

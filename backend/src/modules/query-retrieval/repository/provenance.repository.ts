@@ -191,11 +191,14 @@ export async function findTombstone(
   rawInformationIds: readonly string[]
 ): Promise<TombstoneRow | null> {
   if (rawInformationIds.length === 0) return null;
+  // The physical column is `executed_at` (compliance_deletion is owned by the
+  // compliance-audit domain — its schema is authoritative). The alias keeps
+  // the `performed_at` name this domain's spec uses for the 410 mapping.
   const res = await client.query<TombstoneRow>(
-    `SELECT raw_information_id, performed_at
+    `SELECT raw_information_id, executed_at AS performed_at
        FROM compliance_deletion
       WHERE raw_information_id = ANY($1::uuid[])
-      ORDER BY performed_at ASC
+      ORDER BY executed_at ASC
       LIMIT 1`,
     [rawInformationIds]
   );
