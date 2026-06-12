@@ -1,0 +1,40 @@
+validation:
+  domain: query-retrieval
+  artifact_version: "1.0.0"
+  mode: incremental_back
+  validated_by: u-spec-validator
+  timestamp: "2026-06-11T23:56:00Z"
+  layer: permanent
+
+status: VALID
+blocking_count: 0
+warning_count: 2
+handoff_allowed: true
+
+blocking_issues: []
+
+warnings:
+  - id: WARN-001
+    type: cross-ref
+    source: docs/specs/domains/query-retrieval/query-retrieval.spec.md §7
+    description: >
+      Bidirectional dependency naming inconsistency: query-retrieval.spec.md §7 lists peer
+      domains `ingestion`, `knowledge-graph`, `curation`, `compliance` and expects them to
+      list `query-retrieval` back. However, ingestion.spec.md §7 lists this domain as
+      `retrieval (future)` and knowledge-graph.spec.md §7 lists it as `retrieval` — neither
+      uses the canonical name `query-retrieval`. The semantic link is intact (same domain,
+      different label), but strict bidirectionality check fails on the name. Peer specs are
+      still in draft; alignment needed before final validation.
+
+  - id: WARN-002
+    type: cross-ref
+    source: docs/specs/domains/query-retrieval/back/query-retrieval.back.md §2 (raw_information table)
+    description: >
+      Schema-vs-spec gap documented but unresolved: query-retrieval.spec.md (UC-07, UC-08,
+      UC-09, BR-14) references `raw_information.status = 'deleted'` as the tombstone signal,
+      while migrations/0001_schema.sql (per back.md §2 note) does not include a `status`
+      column on `raw_information`. The back.md explicitly resolves this in favour of
+      `EXISTS compliance_deletion`, but the spec.md's BR-14 language remains misaligned with
+      the actual schema. This gap is self-documented and carries no runtime risk (back.md
+      codes against the migration), but it creates a discrepancy that should be addressed
+      before the next spec version to prevent misreading by future implementers.

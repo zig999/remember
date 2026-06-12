@@ -1,0 +1,1438 @@
+openapi: "3.0.3"
+info:
+  title: "Segundo Cerebro - Curation API"
+  version: "1.0.0"
+  description: |
+    HTTP contract for the curation domain. Surfaces the `curation` toolset
+    (`segundo-cerebro-modelagem-v7.md` section 14.4) as REST endpoints consumed
+    by the SPA, EXCEPT the two operations that the `compliance-audit` domain
+    owns end-to-end:
+      - `compliance_delete` (the operation itself) -> `compliance-audit`
+        operationId `complianceDeleteRawInformation`.
+      - Audit-trail reads over `CurationAction` -> `compliance-audit`
+        operationIds `listCurationActions`, `getCurationActionById`.
+
+    Same operations are mirrored on the MCP side over a single service layer
+    (ADR A28); the OpenAPI here documents the REST surface only.
+
+    Scope (forward-generated from `segundo-cerebro-modelagem-v7.md` sections
+    10, 14.4 and supporting sections 3.5, 4.3, 4.4, 6.5, 6.6):
+      - Two dedicated review queues: `entity_match`, `disputed` (ADR A26 / section 10.1)
+      - Operations: `resolve_entity_match`, `merge_nodes`, `resolve_dispute`,
+        `confirm_item`, `reject_item`, `correct_item` (section 10.2)
+      - `EntityMatchReview` context surfaced with the `entity_match` queue (section 3.5, 4.3)
+      - Single-owner authenticated access via Supabase Auth JWT (sections 2.3, 2.5, A20, A29)
+      - Every curator write produces ONE `CurationAction` row in the same transaction;
+        the row's id is returned in the response as `action_id`. Reading the audit
+        trail is the responsibility of `compliance-audit` (operationId
+        `listCurationActions`).
+
+    Out of scope for THIS domain (other domains):
+      - LLM-driven extraction and entity resolution proposals (section 9) -> `ingestion`
+      - Read-side projections of `KnowledgeNode`, `KnowledgeLink`, `NodeAttribute`,
+        `getHistory`, `traverse` (section 14.3 query toolset) -> `knowledge-graph`
+      - Full-text retrieval pipeline (`search`, `get_provenance`, section 7.2 + 14.3) ->
+        `query-retrieval`
+      - `compliance_delete` execution and audit reads (section 11, 3.5) ->
+        `compliance-audit`
+      - Embedding-based search, `pgvector`, semantic similarity -- PERMANENT non-goal
+        per section 20.1 / ADR A24
+
+    Transport rule: per ADR A28 the `curation` toolset is mirrored in REST (this file)
+    and MCP (section 14.4) over a single BFF service layer with identical validation
+    and identical `CurationAction` auditing.
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+
+tags:
+  - name: "Queue"
+    description: "Review-queue listing (the two dedicated queues, section 10.1)"
+  - name: "EntityMatch"
+    description: "Resolution of nodes pending entity-match review (sections 4.3, 4.4)"
+  - name: "Disputes"
+    description: "Resolution of links / attributes in `disputed` state (section 6.5-C)"
+  - name: "Items"
+    description: "Direct curator actions on a single link or attribute"
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Queue listing - section 10.1, tool list_review_queue (section 14.4)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/queue:
+    get:
+      tags: ["Queue"]
+      operationId: listReviewQueue
+      summary: List items pending human review
+      description: |
+        Lists items in the two dedicated review queues (section 10.1 / ADR A26):
+          - `entity_match` -- nodes with `status = needs_review` and their
+            `EntityMatchReview` candidates (section 4.3).
+          - `disputed` -- `KnowledgeLink` or `NodeAttribute` rows with
+            `status = disputed` (section 6.5-C), grouped by their conflict scope.
+
+        The flags `uncertain` and `low_confidence` are NOT exposed by this endpoint
+        -- they are display flags surfaced by the `query-retrieval` domain
+        (ADR A26 / section 7.3). When `kind` is omitted, items from BOTH queues
+        are returned, page-ordered ASC by `created_at` then by id.
+      parameters:
+        - in: query
+          name: kind
+          required: false
+          schema:
+            $ref: "#/components/schemas/ReviewQueueKind"
+          description: "Filter by queue kind. Omit to return items from both queues."
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 20
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+            example: 0
+      responses:
+        "200":
+          description: "Paginated queue items"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueueList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: "Invalid query parameter"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                outOfRange:
+                  value:
+                    error:
+                      code: "VALIDATION_OUT_OF_RANGE"
+                      message: "limit must be in [1, 100]"
+                      details: { limit: 250 }
+                invalidKind:
+                  value:
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "`kind` must be one of [entity_match, disputed]"
+                      details: { kind: "unknown_queue" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # Entity-match resolution - section 4.3, 4.4, tool resolve_entity_match
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/entity-matches/{node_id}/resolve:
+    post:
+      tags: ["EntityMatch"]
+      operationId: resolveEntityMatch
+      summary: Resolve a node pending entity-match review
+      description: |
+        Resolves a `KnowledgeNode` whose `status = needs_review` (section 4.3).
+        Two decisions are admitted:
+
+          - `keep_separate` -- node becomes `active`; `EntityMatchReview` rows for
+            this node are deleted; the decision is recorded in `CurationAction`.
+          - `merge_into` -- triggers the merge flow (section 4.4) into
+            `target_node_id` (which must point to an `active` node). All
+            `KnowledgeLink` / `NodeAttribute` rows are repointed, `NodeAlias`
+            rows are copied, the absorbed node is set to `status = merged` with
+            `merged_into_node_id = target_node_id`, and path compression is
+            applied in the SAME transaction (section 4.4 invariant: the pointer
+            ALWAYS points to an active node).
+
+        `reason` is mandatory when `decision = merge_into` (destructive: drops the
+        identity of the absorbed node). For `keep_separate`, `reason` is optional.
+
+        Writes one row in `CurationAction` with `action = 'resolve_entity_match'`,
+        `target_kind = 'node'`, `target_id = node_id`, `payload = { decision,
+        target_node_id? }`, `reason`. The row id is returned as `action_id`;
+        the audit trail is read via the `compliance-audit` domain
+        (operationId `listCurationActions`).
+      parameters:
+        - $ref: "#/components/parameters/NodeIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveEntityMatchRequest"
+      responses:
+        "200":
+          description: "Resolution applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveEntityMatchResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Node not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "KnowledgeNode not found"
+                      details: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+        "409":
+          description: "Conflicting state for the requested decision"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notPending:
+                  value:
+                    error:
+                      code: "BUSINESS_REVIEW_NOT_PENDING"
+                      message: "Node is not in `needs_review` state"
+                      details: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001", current_status: "active" }
+                selfMerge:
+                  value:
+                    error:
+                      code: "BUSINESS_SELF_MERGE_FORBIDDEN"
+                      message: "merge_into target equals the node being resolved"
+                      details: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+        "410":
+          description: "Node tombstoned by `compliance_delete` (section 11)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                deleted:
+                  value:
+                    error:
+                      code: "BUSINESS_NODE_DELETED"
+                      message: "KnowledgeNode tombstoned by compliance_delete"
+                      details: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+        "422":
+          description: "Validation error on payload"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                targetRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_TARGET_NODE_REQUIRED"
+                      message: "decision=merge_into requires target_node_id"
+                      details: {}
+                invalidTarget:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_TARGET_NODE"
+                      message: "target_node_id does not point to an active node"
+                      details: { target_node_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", target_status: "merged" }
+                reasonRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_REASON_REQUIRED"
+                      message: "reason is required for destructive decisions"
+                      details: { decision: "merge_into" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # Direct node merge - section 4.4, tool merge_nodes
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/nodes/merge:
+    post:
+      tags: ["EntityMatch"]
+      operationId: mergeNodes
+      summary: Merge two nodes directly
+      description: |
+        Direct merge between two arbitrary `KnowledgeNode` rows (section 4.4).
+        Use when the curator identifies a duplicate outside the `entity_match`
+        queue. The absorbed node receives `status = merged` and
+        `merged_into_node_id = survivor_id`; links/attributes are repointed and
+        aliases copied; path compression runs in the same transaction so any
+        node previously pointing at `absorbed_id` is repointed to `survivor_id`
+        (section 4.4 invariant).
+
+        Both `survivor_id` and `absorbed_id` MUST reference rows with
+        `status = 'active'` AT REQUEST TIME (a `needs_review` node is resolved
+        via `resolveEntityMatch` instead; a `merged` or `deleted` node cannot
+        absorb or be absorbed). Self-merge is forbidden.
+
+        Writes one row in `CurationAction` with `action = 'merge_nodes'`,
+        `target_kind = 'node'`, `target_id = absorbed_id`,
+        `payload = { survivor_id }`, `reason`. The row id is returned as
+        `action_id`.
+
+        `reason` is mandatory (destructive).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeNodesRequest"
+      responses:
+        "200":
+          description: "Merge applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeNodesResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "One of the nodes not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "KnowledgeNode not found"
+                      details: { missing_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
+        "409":
+          description: "Self-merge attempted"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                selfMerge:
+                  value:
+                    error:
+                      code: "BUSINESS_SELF_MERGE_FORBIDDEN"
+                      message: "survivor_id equals absorbed_id"
+                      details: {}
+        "410":
+          description: "One of the nodes tombstoned"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                deleted:
+                  value:
+                    error:
+                      code: "BUSINESS_NODE_DELETED"
+                      message: "Node tombstoned by compliance_delete"
+                      details: { deleted_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+        "422":
+          description: "Validation error on payload or invalid merge target"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                reasonRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_REASON_REQUIRED"
+                      message: "reason is required for merge_nodes (destructive)"
+                      details: {}
+                invalidTargetStatus:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_TARGET_NODE"
+                      message: "Both nodes must have status=active"
+                      details: { absorbed_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", absorbed_status: "merged" }
+                nodeTypeMismatch:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_TARGET_NODE"
+                      message: "survivor and absorbed nodes must share node_type_id"
+                      details: { reason: "node_type mismatch" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # Dispute resolution - section 6.5-C, tool resolve_dispute
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/disputes/resolve:
+    post:
+      tags: ["Disputes"]
+      operationId: resolveDispute
+      summary: Resolve a dispute over links or attributes
+      description: |
+        Resolves a set of items in `status = disputed` (section 6.5-C). All
+        `item_ids` MUST share the same `item_kind` (`link` or `attribute`).
+        Three decisions are admitted:
+
+          - `prefer_one` -- the winner row (referenced by `winner_id`, which MUST
+            be a member of `item_ids`) goes back to `status = active`; every
+            other row in `item_ids` goes to `status = deleted` with
+            `superseded_at = now()`. `reason` is mandatory (destructive on the
+            losers). The CHECK on the duplicate-guard partial unique index is
+            preserved because losers receive `superseded_at`.
+          - `adjust_periods` -- the curator supplies new `valid_from` / `valid_to`
+            for each row in `periods[]` (one entry per item_id). After the update
+            no two rows in the same `(source, target, link_type)` or
+            `(node, key)` scope overlap with `valid_to = NULL`; all items go
+            back to `status = active`. This is a TRANSITION TO SUCCESSION
+            (section 6.5-A) -- the rows continue to exist as a succession chain.
+          - `keep_disputed` -- items remain `status = disputed`. Records the
+            curator's awareness in `CurationAction`. No row mutation occurs
+            beyond the audit entry.
+
+        Writes one row in `CurationAction` with `action = 'resolve_dispute'`,
+        `target_kind = item_kind`, `target_id = first item_id`,
+        `payload = { decision, item_ids, winner_id?, periods? }`, `reason`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveDisputeRequest"
+      responses:
+        "200":
+          description: "Resolution applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveDisputeResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "One of the items not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "Item not found"
+                      details: { missing_id: "...", item_kind: "attribute" }
+        "409":
+          description: "Item not in expected state"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notDisputed:
+                  value:
+                    error:
+                      code: "BUSINESS_ITEM_NOT_DISPUTED"
+                      message: "All items must be in status=disputed"
+                      details: { offending_id: "...", current_status: "active" }
+        "422":
+          description: "Validation error on payload"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                winnerRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_DISPUTE_WINNER_REQUIRED"
+                      message: "decision=prefer_one requires winner_id (member of item_ids)"
+                      details: {}
+                periodsRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_DISPUTE_PERIODS_REQUIRED"
+                      message: "decision=adjust_periods requires periods[] (one entry per item_id)"
+                      details: {}
+                temporalIncoherent:
+                  value:
+                    error:
+                      code: "BUSINESS_TEMPORAL_INCOHERENT"
+                      message: "adjusted periods violate `valid_from < valid_to` or overlap on a functional scope"
+                      details: { item_id: "...", valid_from: "2026-07-01", valid_to: "2026-06-01" }
+                reasonRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_REASON_REQUIRED"
+                      message: "reason is required for prefer_one (destructive on losers)"
+                      details: { decision: "prefer_one" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # Item-level curator actions - tools confirm_item, reject_item, correct_item
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/items/confirm:
+    post:
+      tags: ["Items"]
+      operationId: confirmItem
+      summary: Promote an `uncertain` link or attribute to `active`
+      description: |
+        Promotes a single `KnowledgeLink` or `NodeAttribute` from
+        `status = uncertain` to `status = active` (section 6.6 transition table,
+        ad-hoc out of `uncertain`). Does NOT add provenance -- corroboration is
+        the automatic path that accumulates provenance (section 6.5); this
+        endpoint is the human ad-hoc escape (section 10.2).
+
+        `uncertain` has NO dedicated queue (ADR A26 / section 10.1). The curator
+        reaches this endpoint by finding the item via search or graph navigation
+        with the `uncertain` display flag set.
+
+        Writes one row in `CurationAction` with `action = 'confirm_item'`,
+        `target_kind = item_kind`, `target_id = item_id`,
+        `payload = {}`, `reason` (optional).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmItemRequest"
+      responses:
+        "200":
+          description: "Promotion applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemActionResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Item not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "Item not found"
+                      details: { item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }
+        "409":
+          description: "Item not in `uncertain` state"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notUncertain:
+                  value:
+                    error:
+                      code: "BUSINESS_ITEM_NOT_UNCERTAIN"
+                      message: "confirm_item requires status=uncertain"
+                      details: { item_id: "...", current_status: "active" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/curation/items/reject:
+    post:
+      tags: ["Items"]
+      operationId: rejectItem
+      summary: Reject a link or attribute (set to `deleted`)
+      description: |
+        Sets a `KnowledgeLink` or `NodeAttribute` to `status = deleted` with
+        `superseded_at = now()` (section 6.6). The duplicate-guard partial
+        unique index is released because the row is no longer "current"
+        (see CLAUDE.md "Known Gotchas": both `status = deleted` AND
+        `superseded_at = now()` MUST be set together).
+
+        `reason` is mandatory (destructive).
+
+        Writes one row in `CurationAction` with `action = 'reject_item'`,
+        `target_kind = item_kind`, `target_id = item_id`,
+        `payload = {}`, `reason`.
+
+        Cannot reject a row whose `status` is already `deleted` or `superseded`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectItemRequest"
+      responses:
+        "200":
+          description: "Rejection applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemActionResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Item not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "Item not found"
+                      details: { item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }
+        "409":
+          description: "Item already in a terminal state"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notDeletable:
+                  value:
+                    error:
+                      code: "BUSINESS_ITEM_NOT_DELETABLE"
+                      message: "Item is already deleted or superseded"
+                      details: { item_id: "...", current_status: "deleted" }
+        "422":
+          description: "Validation error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                reasonRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_REASON_REQUIRED"
+                      message: "reason is required for reject_item (destructive)"
+                      details: {}
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/curation/items/correct:
+    post:
+      tags: ["Items"]
+      operationId: correctItem
+      summary: Correct a link or attribute (errata flow, section 6.5-B)
+      description: |
+        Applies the **correction** flow (section 6.5-B) to an existing link or
+        attribute. Differs from succession (6.5-A) in that the world did NOT
+        change -- the system recorded incorrectly. Mechanically:
+
+          1. The current row is closed ONLY on the transaction axis:
+             `superseded_at = now()`, `status = superseded`,
+             **`valid_to` is left UNCHANGED**.
+          2. A new row is created with the corrected fields. `valid_from`
+             defaults to the predecessor's `valid_from` unless the correction
+             explicitly changes it.
+          3. Lineage: `new.supersedes_X = previous.id`.
+          4. Provenance rows from the predecessor are copied to the new row
+             (CLAUDE.md golden rule 18: nothing is silently discarded; the
+             evidence chain is preserved when the curator overrides the value).
+
+        At least one of `value`, `target_node_id`, `valid_from`, `valid_to`
+        MUST be provided in `corrected`. When `valid_from` is changed, the
+        curator MUST attach a justification (`valid_from_source` set to
+        `stated` with a fragment_id, or `document` / `received` from the source
+        chain, per section 6.5 + ADR A14). A bare new date with no justification
+        is rejected with `BUSINESS_DATE_UNJUSTIFIED`.
+
+        `reason` is mandatory.
+
+        Writes one row in `CurationAction` with `action = 'correct_item'`,
+        `target_kind = item_kind`, `target_id = item_id` (the predecessor),
+        `payload = { corrected, new_item_id }`, `reason`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CorrectItemRequest"
+      responses:
+        "200":
+          description: "Correction applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrectItemResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Item not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "Item not found"
+                      details: { item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }
+        "409":
+          description: "Item not in a correctable state"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notCorrectable:
+                  value:
+                    error:
+                      code: "BUSINESS_ITEM_NOT_DELETABLE"
+                      message: "Cannot correct a row that is already superseded or deleted"
+                      details: { item_id: "...", current_status: "superseded" }
+        "422":
+          description: "Validation error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                noChanges:
+                  value:
+                    error:
+                      code: "BUSINESS_CORRECTION_NO_CHANGES"
+                      message: "corrected{} must change at least one of value, target_node_id, valid_from, valid_to"
+                      details: {}
+                dateUnjustified:
+                  value:
+                    error:
+                      code: "BUSINESS_DATE_UNJUSTIFIED"
+                      message: "valid_from change requires a justification (stated|document|received) per section 6.5"
+                      details: { corrected: { valid_from: "2026-07-01" } }
+                temporalIncoherent:
+                  value:
+                    error:
+                      code: "BUSINESS_TEMPORAL_INCOHERENT"
+                      message: "corrected period violates `valid_from < valid_to`"
+                      details: { valid_from: "2026-07-01", valid_to: "2026-06-01" }
+                reasonRequired:
+                  value:
+                    error:
+                      code: "BUSINESS_REASON_REQUIRED"
+                      message: "reason is required for correct_item"
+                      details: {}
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+
+components:
+
+  parameters:
+    NodeIdPath:
+      in: path
+      name: node_id
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+      description: "UUID of the `KnowledgeNode`."
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase Auth JWT validated in the BFF middleware (sections 2.5, A29).
+        All endpoints in this domain require a valid JWT; absence or invalidity
+        returns 401.
+
+  responses:
+    Unauthorized:
+      description: "Missing or invalid JWT"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            missingToken:
+              value:
+                error:
+                  code: "AUTH_UNAUTHORIZED"
+                  message: "Authorization header missing"
+                  details: {}
+            invalidToken:
+              value:
+                error:
+                  code: "AUTH_TOKEN_INVALID"
+                  message: "JWT is malformed or signature verification failed"
+                  details: {}
+            expiredToken:
+              value:
+                error:
+                  code: "AUTH_TOKEN_EXPIRED"
+                  message: "JWT expired at 2026-06-11T19:00:00Z"
+                  details:
+                    expired_at: "2026-06-11T19:00:00Z"
+    InternalError:
+      description: "Unexpected internal error"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            internal:
+              value:
+                error:
+                  code: "SYSTEM_INTERNAL_ERROR"
+                  message: "Unexpected internal error"
+                  details: {}
+    ServiceUnavailable:
+      description: "Supabase Cloud database unavailable or timed out"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            unavailable:
+              value:
+                error:
+                  code: "SYSTEM_SERVICE_UNAVAILABLE"
+                  message: "Database connection timed out"
+                  details: {}
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Error envelope (CLAUDE.md / section 14 - kept identical across REST + MCP)
+    # -------------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "BUSINESS_REVIEW_NOT_PENDING"
+            message:
+              type: string
+              example: "Node is not in `needs_review` state"
+            details:
+              type: object
+              additionalProperties: true
+              example: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+
+    # -------------------------------------------------------------------------
+    # Enums
+    # -------------------------------------------------------------------------
+    ReviewQueueKind:
+      type: string
+      enum: [entity_match, disputed]
+      description: |
+        The two dedicated review queues per ADR A26 / section 10.1. Display flags
+        (`uncertain`, `low_confidence`) have NO queue and are surfaced by the
+        `query-retrieval` domain instead.
+      example: "entity_match"
+
+    ItemKind:
+      type: string
+      enum: [link, attribute]
+      description: |
+        The two assertion entities that can be in `disputed` / `uncertain` /
+        `active` states (sections 3.3, 6.6).
+      example: "attribute"
+
+    EntityMatchDecision:
+      type: string
+      enum: [merge_into, keep_separate]
+      description: "Possible decisions on a node pending entity-match review (section 4.3)."
+      example: "merge_into"
+
+    DisputeDecision:
+      type: string
+      enum: [prefer_one, adjust_periods, keep_disputed]
+      description: "Possible decisions on a disputed set of items (section 6.5-C)."
+      example: "prefer_one"
+
+    NodeStatus:
+      type: string
+      enum: [active, needs_review, merged, deleted]
+      description: "Mirrors `node_status` enum (section 3.3)."
+      example: "active"
+
+    AssertionStatus:
+      type: string
+      enum: [active, uncertain, disputed, superseded, deleted]
+      description: |
+        Mirrors `assertion_status` enum for `KnowledgeLink` and `NodeAttribute`
+        (section 6.4). `inactive` is NEVER stored.
+      example: "disputed"
+
+    ValidFromSource:
+      type: string
+      enum: [stated, document, received]
+      description: "Justification source for `valid_from` (section 6.5, ADR A14)."
+      example: "document"
+
+    # -------------------------------------------------------------------------
+    # Queue listing
+    # -------------------------------------------------------------------------
+    EntityMatchCandidate:
+      type: object
+      required: [candidate_node_id, similarity, canonical_name]
+      properties:
+        candidate_node_id:
+          type: string
+          format: uuid
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        canonical_name:
+          type: string
+          example: "Projeto Apollo"
+        similarity:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.78
+          description: |
+            Trigram similarity (`pg_trgm`) at the moment the review row was
+            written (section 4.2 / ADR A12). Stored in `EntityMatchReview.similarity`.
+
+    EntityMatchQueueItem:
+      type: object
+      required: [kind, node_id, node_type, canonical_name, candidates, created_at]
+      properties:
+        kind:
+          type: string
+          enum: [entity_match]
+          example: "entity_match"
+        node_id:
+          type: string
+          format: uuid
+          example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        node_type:
+          type: string
+          example: "Project"
+        canonical_name:
+          type: string
+          example: "Apollo"
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/EntityMatchCandidate" }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-10T14:02:13Z"
+
+    DisputedItemSide:
+      type: object
+      required: [item_id, value, valid_from, valid_to, valid_from_source, confidence, status]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        value:
+          type: string
+          nullable: true
+          example: "2026-07-15"
+          description: |
+            For attributes: the canonical text serialization (section 3.3).
+            For links: NULL (links have no value column; the conflict is on
+            `target_node_id`).
+        target_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: null
+          description: "Filled for links; NULL for attributes."
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-01-10"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: null
+        valid_from_source:
+          $ref: "#/components/schemas/ValidFromSource"
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.82
+        status:
+          $ref: "#/components/schemas/AssertionStatus"
+
+    DisputeQueueItem:
+      type: object
+      required: [kind, item_kind, scope, sides, created_at]
+      properties:
+        kind:
+          type: string
+          enum: [disputed]
+          example: "disputed"
+        item_kind:
+          $ref: "#/components/schemas/ItemKind"
+        scope:
+          type: object
+          description: |
+            The (source, target, link_type) tuple for links, OR the (node_id,
+            attribute_key) tuple for attributes -- identifies the conflict
+            scope per the duplicate-guard partial unique index (section 6.5).
+          properties:
+            source_node_id: { type: string, format: uuid, nullable: true }
+            target_node_id: { type: string, format: uuid, nullable: true }
+            link_type:      { type: string, nullable: true, example: null }
+            node_id:        { type: string, format: uuid, nullable: true }
+            attribute_key:  { type: string, nullable: true, example: "deadline" }
+          example:
+            node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            attribute_key: "deadline"
+            source_node_id: null
+            target_node_id: null
+            link_type: null
+        sides:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/DisputedItemSide" }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T09:30:00Z"
+          description: "Timestamp at which the dispute was first detected."
+
+    ReviewQueueItem:
+      oneOf:
+        - $ref: "#/components/schemas/EntityMatchQueueItem"
+        - $ref: "#/components/schemas/DisputeQueueItem"
+      discriminator:
+        propertyName: kind
+        mapping:
+          entity_match: "#/components/schemas/EntityMatchQueueItem"
+          disputed: "#/components/schemas/DisputeQueueItem"
+
+    ReviewQueueList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        total: { type: integer, example: 3 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewQueueItem" }
+      example:
+        total: 2
+        limit: 20
+        offset: 0
+        items:
+          - kind: "entity_match"
+            node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            node_type: "Project"
+            canonical_name: "Apollo"
+            candidates:
+              - candidate_node_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+                canonical_name: "Projeto Apollo"
+                similarity: 0.78
+              - candidate_node_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab"
+                canonical_name: "Apollo Phase 2"
+                similarity: 0.71
+            created_at: "2026-06-10T14:02:13Z"
+          - kind: "disputed"
+            item_kind: "attribute"
+            scope:
+              node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+              attribute_key: "deadline"
+              source_node_id: null
+              target_node_id: null
+              link_type: null
+            sides:
+              - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+                value: "2026-07-15"
+                target_node_id: null
+                valid_from: "2026-01-10"
+                valid_to: null
+                valid_from_source: "document"
+                confidence: 0.82
+                status: "disputed"
+              - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+                value: "2026-07-20"
+                target_node_id: null
+                valid_from: "2026-01-10"
+                valid_to: null
+                valid_from_source: "stated"
+                confidence: 0.88
+                status: "disputed"
+            created_at: "2026-06-11T09:30:00Z"
+
+    # -------------------------------------------------------------------------
+    # resolve_entity_match
+    # -------------------------------------------------------------------------
+    ResolveEntityMatchRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { $ref: "#/components/schemas/EntityMatchDecision" }
+        target_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          description: |
+            Required when `decision = merge_into`; MUST reference a node with
+            `status = active` (section 4.4 invariant). Ignored when
+            `decision = keep_separate`.
+        reason:
+          type: string
+          nullable: true
+          example: "Both refer to the same internal project, confirmed by the chief of staff."
+          description: |
+            Mandatory when `decision = merge_into` (destructive). Optional for
+            `keep_separate`.
+      example:
+        decision: "merge_into"
+        target_node_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        reason: "Both refer to the same internal project, confirmed by the chief of staff."
+
+    ResolveEntityMatchResponse:
+      type: object
+      required: [node_id, decision, resulting_status, action_id]
+      properties:
+        node_id:
+          type: string
+          format: uuid
+          example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        decision: { $ref: "#/components/schemas/EntityMatchDecision" }
+        resulting_status:
+          $ref: "#/components/schemas/NodeStatus"
+        target_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        affected:
+          type: object
+          description: "Counts of repointed rows when merging (section 4.4)."
+          properties:
+            links_repointed:      { type: integer, example: 3 }
+            attributes_repointed: { type: integer, example: 2 }
+            aliases_copied:       { type: integer, example: 2 }
+            path_compressed_nodes: { type: integer, example: 0 }
+          example:
+            links_repointed: 3
+            attributes_repointed: 2
+            aliases_copied: 2
+            path_compressed_nodes: 0
+        action_id:
+          type: string
+          format: uuid
+          example: "ccccccc1-cccc-cccc-cccc-cccccccccccc"
+          description: |
+            Id of the `CurationAction` row written. Use the `compliance-audit`
+            domain (operationId `getCurationActionById`) to fetch the full
+            audit entry.
+      example:
+        node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        decision: "merge_into"
+        resulting_status: "merged"
+        target_node_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        affected:
+          links_repointed: 3
+          attributes_repointed: 2
+          aliases_copied: 2
+          path_compressed_nodes: 0
+        action_id: "ccccccc1-cccc-cccc-cccc-cccccccccccc"
+
+    # -------------------------------------------------------------------------
+    # merge_nodes
+    # -------------------------------------------------------------------------
+    MergeNodesRequest:
+      type: object
+      required: [survivor_id, absorbed_id, reason]
+      properties:
+        survivor_id:
+          type: string
+          format: uuid
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        absorbed_id:
+          type: string
+          format: uuid
+          example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        reason:
+          type: string
+          example: "Operator-confirmed duplicate; same CNPJ on both."
+      example:
+        survivor_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        absorbed_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        reason: "Operator-confirmed duplicate; same CNPJ on both."
+
+    MergeNodesResponse:
+      type: object
+      required: [survivor_id, absorbed_id, action_id, affected]
+      properties:
+        survivor_id:
+          type: string
+          format: uuid
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          description: "The node that survives the merge (retains `status = active`)."
+        absorbed_id:
+          type: string
+          format: uuid
+          example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+          description: "The node that was absorbed (`status` set to `merged`, `merged_into_node_id = survivor_id`)."
+        affected:
+          type: object
+          description: "Counts of rows mutated by the merge (section 4.4)."
+          required: [links_repointed, attributes_repointed, aliases_copied, path_compressed_nodes]
+          properties:
+            links_repointed:       { type: integer, example: 5, description: "Number of `KnowledgeLink` rows repointed from `absorbed_id` to `survivor_id`." }
+            attributes_repointed:  { type: integer, example: 4, description: "Number of `NodeAttribute` rows repointed from `absorbed_id` to `survivor_id`." }
+            aliases_copied:        { type: integer, example: 3, description: "Number of `NodeAlias` rows copied from `absorbed_id` to `survivor_id`." }
+            path_compressed_nodes: { type: integer, example: 1, description: "Number of other merged nodes whose `merged_into_node_id` was updated from `absorbed_id` to `survivor_id` (path compression)." }
+          example:
+            links_repointed: 5
+            attributes_repointed: 4
+            aliases_copied: 3
+            path_compressed_nodes: 1
+        action_id:
+          type: string
+          format: uuid
+          example: "ccccccc2-cccc-cccc-cccc-cccccccccccc"
+          description: "Id of the `CurationAction` row written. Use `compliance-audit` (operationId `getCurationActionById`) to fetch the full audit entry."
+
+    # -------------------------------------------------------------------------
+    # resolve_dispute
+    # -------------------------------------------------------------------------
+    AdjustedPeriod:
+      type: object
+      required: [item_id, valid_from]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-01-10"
+          description: "New `valid_from` for the row. NULL means `-infinity` (section 5.1)."
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-06-10"
+          description: |
+            New `valid_to` for the row. NULL means `+infinity`. Semi-open
+            convention: `valid_to` is exclusive (ADR A7 / section 5.2). On any
+            functional scope, at most one row in the adjusted set may end with
+            `valid_to = NULL`.
+
+    ResolveDisputeRequest:
+      type: object
+      required: [item_kind, item_ids, decision]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        item_ids:
+          type: array
+          minItems: 2
+          items: { type: string, format: uuid }
+          example:
+            - "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+            - "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+          description: "All ids MUST currently have `status = disputed` and share the same conflict scope."
+        decision: { $ref: "#/components/schemas/DisputeDecision" }
+        winner_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+          description: "Required when `decision = prefer_one`; MUST be a member of `item_ids`."
+        periods:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/AdjustedPeriod" }
+          description: |
+            Required when `decision = adjust_periods`; MUST contain exactly one
+            entry per id in `item_ids`. Ignored otherwise.
+          example:
+            - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+              valid_from: "2026-01-10"
+              valid_to: "2026-06-10"
+            - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+              valid_from: "2026-06-10"
+              valid_to: null
+        reason:
+          type: string
+          nullable: true
+          example: "Source A explicitly states 20/07; correct date."
+          description: |
+            Mandatory when `decision = prefer_one` (destructive on losers).
+            Optional for `adjust_periods` and `keep_disputed`.
+      example:
+        item_kind: "attribute"
+        item_ids:
+          - "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+          - "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+        decision: "prefer_one"
+        winner_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+        reason: "Source A explicitly states 20/07; correct date."
+
+    ResolveDisputeResponse:
+      type: object
+      required: [item_kind, decision, items, action_id]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        decision: { $ref: "#/components/schemas/DisputeDecision" }
+        items:
+          type: array
+          items:
+            type: object
+            required: [item_id, resulting_status]
+            properties:
+              item_id: { type: string, format: uuid }
+              resulting_status: { $ref: "#/components/schemas/AssertionStatus" }
+              valid_from:
+                type: string
+                format: date
+                nullable: true
+                description: "Effective `valid_from` after the resolution. Present for all decisions; reflects the stored value."
+              valid_to:
+                type: string
+                format: date
+                nullable: true
+                description: "Effective `valid_to` after the resolution. NULL means `+infinity` (semi-open convention, section 5.2)."
+        action_id:
+          type: string
+          format: uuid
+          example: "ccccccc3-cccc-cccc-cccc-cccccccccccc"
+      example:
+        item_kind: "attribute"
+        decision: "prefer_one"
+        items:
+          - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+            resulting_status: "deleted"
+            valid_from: "2026-01-10"
+            valid_to: null
+          - item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"
+            resulting_status: "active"
+            valid_from: "2026-01-10"
+            valid_to: null
+        action_id: "ccccccc3-cccc-cccc-cccc-cccccccccccc"
+
+    # -------------------------------------------------------------------------
+    # confirm_item / reject_item
+    # -------------------------------------------------------------------------
+    ConfirmItemRequest:
+      type: object
+      required: [item_kind, item_id]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        reason:
+          type: string
+          nullable: true
+          example: "Personally confirmed during onboarding meeting."
+
+    RejectItemRequest:
+      type: object
+      required: [item_kind, item_id, reason]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        reason:
+          type: string
+          example: "Hallucinated from the introduction header; no factual basis."
+
+    ItemActionResponse:
+      type: object
+      required: [item_kind, item_id, resulting_status, action_id]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        resulting_status:
+          $ref: "#/components/schemas/AssertionStatus"
+        action_id:
+          type: string
+          format: uuid
+          example: "ccccccc4-cccc-cccc-cccc-cccccccccccc"
+      example:
+        item_kind: "attribute"
+        item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        resulting_status: "active"
+        action_id: "ccccccc4-cccc-cccc-cccc-cccccccccccc"
+
+    # -------------------------------------------------------------------------
+    # correct_item (section 6.5-B)
+    # -------------------------------------------------------------------------
+    CorrectedValues:
+      type: object
+      description: |
+        At least one of `value`, `target_node_id`, `valid_from`, `valid_to`
+        MUST be provided. `value` is admissible only for attributes;
+        `target_node_id` is admissible only for links. Changing `valid_from`
+        REQUIRES `valid_from_source` + the corresponding fragment_id when the
+        justification is `stated` (section 6.5 / ADR A14).
+      properties:
+        value:
+          type: string
+          nullable: true
+          example: "2026-07-16"
+          description: "Attributes only. Canonical text serialization of the corrected value (section 3.3)."
+        target_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: null
+          description: "Links only. The corrected target node id."
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: null
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: null
+        valid_from_source:
+          $ref: "#/components/schemas/ValidFromSource"
+        valid_from_fragment_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: null
+          description: |
+            Required when `valid_from_source = stated` (a fragment from the
+            errata must anchor the new date, section 6.5).
+
+    CorrectItemRequest:
+      type: object
+      required: [item_kind, item_id, corrected, reason]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+          description: "Predecessor item id (the row that was recorded incorrectly)."
+        corrected: { $ref: "#/components/schemas/CorrectedValues" }
+        reason:
+          type: string
+          example: "Errata received from the source: 15/07 should read 16/07."
+      example:
+        item_kind: "attribute"
+        item_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        corrected:
+          value: "2026-07-16"
+        reason: "Errata received from the source: 15/07 should read 16/07."
+
+    CorrectItemResponse:
+      type: object
+      required: [item_kind, predecessor_id, new_item_id, action_id]
+      properties:
+        item_kind: { $ref: "#/components/schemas/ItemKind" }
+        predecessor_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+          description: "The row that received `status = superseded`, `superseded_at = now()`."
+        new_item_id:
+          type: string
+          format: uuid
+          example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbd"
+          description: "The new `active` row with `supersedes_X = predecessor_id`."
+        action_id:
+          type: string
+          format: uuid
+          example: "ccccccc5-cccc-cccc-cccc-cccccccccccc"

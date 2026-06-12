@@ -1,0 +1,574 @@
+openapi: "3.0.3"
+info:
+  title: "Segundo Cérebro — Compliance & Audit Domain API"
+  version: "1.0.0"
+  description: |
+    REST contract for the compliance-and-audit domain of the Segundo Cérebro
+    system. This is the only domain in the system authorised to mutate a
+    `RawInformation` row after insertion (controlled tombstone, §11) and the
+    only domain that exposes the system-wide curation audit trail
+    (`CurationAction`, §3.5) as a read surface.
+
+    Scope:
+    - `compliance_delete` — tombstones a `RawInformation` (replaces `content`
+      with the literal string `"[REDACTED]"`), cascades `status = 'deleted'`
+      to its `RawChunk`/`InformationFragment` rows, and tombstones any
+      `KnowledgeLink`/`NodeAttribute` whose **only** provenance was the
+      deleted source. Writes one `ComplianceDeletion` audit row with the
+      affected-counts payload (§11).
+    - Read access to the `ComplianceDeletion` audit log (list + by-id).
+    - Read access to the `CurationAction` audit log, filtered by `action`,
+      `target_kind`, `target_id` and time range (§3.5).
+
+    The `compliance_delete` operation is exposed BOTH as a REST endpoint
+    (consumed by the SPA) AND as the MCP tool `compliance_delete` of the
+    `curation` toolset (§14.4 of the normative source). The two transports
+    share the SAME service layer and the SAME audit row (ADR A28).
+
+    Out of scope here (declared in `compliance-audit.spec.md` §8):
+    - Curation queue operations (`list_review_queue`,
+      `resolve_entity_match`, `merge_nodes`, `resolve_dispute`,
+      `confirm_item`, `reject_item`, `correct_item`) — future `curation`
+      domain.
+    - LLM-extraction audit (`LLMRun`, `ToolCall`) — owned by the `ingestion`
+      domain (operationIds `getLlmRunById`, `listToolCallsByLlmRun`,
+      `retryLlmRun`).
+    - System-time travel ("what the system knew at instant T", query (c) of
+      §5.3) — permanently deferred (ADR A25); only the `recorded_at` columns
+      are preserved.
+
+    Source of truth: `segundo-cerebro-modelagem-v7.md` (§2.5, §3.5, §10,
+    §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29).
+    Database schema: `migrations/0001_schema.sql` lines 217-243 (`llm_run`,
+    `tool_call` — read-only here), 439-473 (`curation_action`,
+    `compliance_deletion`).
+
+    Authentication (§2.5, A29): every endpoint requires a valid Supabase
+    Auth JWT, verified in the BFF middleware. The Supabase service key
+    never leaves the BFF; PostgreSQL RLS is disabled. Single-owner model
+    — no `User` entity, no role-based authorization.
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+  - url: "https://{host}"
+    description: "Production BFF"
+    variables:
+      host:
+        default: "api.segundo-cerebro.example"
+
+tags:
+  - name: "compliance"
+    description: "Controlled deletion of raw documents under LGPD or owner request (§11)."
+  - name: "audit"
+    description: "Read-only audit trails (`ComplianceDeletion`, `CurationAction`) — §3.5."
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /api/v1/compliance/deletions:
+    post:
+      tags: ["compliance"]
+      operationId: complianceDeleteRawInformation
+      summary: "Tombstone a RawInformation under LGPD or owner request."
+      description: |
+        Single transaction (ADR A19), idempotent on `raw_information_id`:
+
+        1. Loads the target `RawInformation`. If already
+           `status = 'deleted'`, returns `200 OK` with `outcome =
+           "noop_already_deleted"` and the existing `ComplianceDeletion`
+           row — no new audit row is created.
+        2. Otherwise, replaces `content` with the literal string
+           `"[REDACTED]"`, sets `metadata.compliance_deleted = true`,
+           preserves `content_hash` (idempotency anchor of §8).
+        3. Updates `raw_information.status = 'deleted'`,
+           `superseded_at = now()`.
+        4. Cascades `status = 'deleted'` + `superseded_at = now()` to every
+           `RawChunk` (FK `raw_information_id`) and every
+           `InformationFragment` whose `FragmentSource` chain anchors only
+           chunks of this raw.
+        5. For every `KnowledgeLink` / `NodeAttribute` whose `Provenance`
+           rows ALL pointed to fragments of this raw: tombstones the row
+           (`status = 'deleted'`, `superseded_at = now()`). Rows that still
+           have at least one surviving `Provenance` row remain untouched
+           (§11 — "items with remaining provenance from other sources
+           remain"). Cenario C15.
+        6. Inserts a single `ComplianceDeletion` row with `reason`,
+           `executed_at = now()` and `affected` (jsonb counters: chunks,
+           fragments, links, attributes).
+        7. Returns `201 Created` with `outcome = "deleted"` and the new
+           audit row.
+
+        The operation is mirrored as the MCP tool `compliance_delete`
+        (§14.4); both transports share this service layer and this audit
+        row (ADR A28).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComplianceDeleteRequest" }
+            example:
+              raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+              reason: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+      responses:
+        "201":
+          description: "RawInformation tombstoned; cascade applied; ComplianceDeletion audit row written."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComplianceDeleteResponse" }
+              example:
+                outcome: "deleted"
+                deletion:
+                  id: "deadbeef-1111-2222-3333-444455556666"
+                  raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+                  reason: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+                  executed_at: "2026-06-11T20:30:00Z"
+                  affected:
+                    chunks: 3
+                    fragments: 7
+                    links: 2
+                    attributes: 4
+        "200":
+          description: "Idempotent no-op — the RawInformation was already tombstoned. Returns the existing ComplianceDeletion row."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComplianceDeleteResponse" }
+              example:
+                outcome: "noop_already_deleted"
+                deletion:
+                  id: "deadbeef-1111-2222-3333-444455556666"
+                  raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+                  reason: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+                  executed_at: "2026-06-11T20:30:00Z"
+                  affected:
+                    chunks: 3
+                    fragments: 7
+                    links: 2
+                    attributes: 4
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    get:
+      tags: ["audit"]
+      operationId: listComplianceDeletions
+      summary: "List ComplianceDeletion audit rows, newest first."
+      description: |
+        Returns the `ComplianceDeletion` audit trail in reverse chronological
+        order of `executed_at`. Optional filters narrow the window or pin
+        a specific raw document.
+      parameters:
+        - name: raw_information_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+          description: "When set, returns only deletions targeting this RawInformation. At most one row will match per raw (idempotency)."
+        - name: executed_from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          example: "2026-06-01T00:00:00Z"
+          description: "Inclusive lower bound on `executed_at` (RFC 3339)."
+        - name: executed_to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          example: "2026-06-30T23:59:59Z"
+          description: "Exclusive upper bound on `executed_at` (RFC 3339)."
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: "List of ComplianceDeletion rows."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComplianceDeletionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/compliance/deletions/{complianceDeletionId}:
+    parameters:
+      - $ref: "#/components/parameters/ComplianceDeletionId"
+    get:
+      tags: ["audit"]
+      operationId: getComplianceDeletionById
+      summary: "Fetch a single ComplianceDeletion audit row by id."
+      description: |
+        Returns the audit row exactly as persisted: target raw id,
+        free-text `reason`, `executed_at` and the `affected` counters.
+      responses:
+        "200":
+          description: "ComplianceDeletion returned."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComplianceDeletion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/audit/curation-actions:
+    get:
+      tags: ["audit"]
+      operationId: listCurationActions
+      summary: "List CurationAction audit rows, newest first, optionally filtered."
+      description: |
+        Returns the `CurationAction` audit trail (§3.5) in reverse
+        chronological order of `created_at`. Each row captures one curation
+        decision (the `action` column holds the tool name from §14.4) with
+        its verbatim `payload`, the targeted entity (`target_kind` +
+        `target_id`) and the required `reason` for destructive ops.
+
+        The actor is the implicit single-owner (§2.3, A20); there is no
+        `actor_id` column.
+
+        This endpoint does NOT execute curation — it only reads the audit
+        log. Curation execution belongs to the future `curation` domain.
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/CurationActionName"
+          example: "compliance_delete"
+          description: "Filter by the curation tool name (free-text in DB; enum-validated at this endpoint to the 7 tool names of §14.4)."
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [node, link, attribute, fragment, raw_information]
+          example: "raw_information"
+          description: "Filter by `target_kind` column."
+        - name: target_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+          description: "Filter by `target_id` column. Use together with `target_kind` to scope a single entity."
+        - name: created_from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          example: "2026-06-01T00:00:00Z"
+          description: "Inclusive lower bound on `created_at` (RFC 3339)."
+        - name: created_to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          example: "2026-06-30T23:59:59Z"
+          description: "Exclusive upper bound on `created_at` (RFC 3339)."
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: "List of CurationAction rows."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurationActionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/audit/curation-actions/{curationActionId}:
+    parameters:
+      - $ref: "#/components/parameters/CurationActionId"
+    get:
+      tags: ["audit"]
+      operationId: getCurationActionById
+      summary: "Fetch a single CurationAction audit row by id."
+      description: |
+        Returns the audit row exactly as persisted (verbatim `payload`,
+        free-text `reason` and ISO timestamp).
+      responses:
+        "200":
+          description: "CurationAction returned."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurationAction" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "JWT"
+      description: "Supabase Auth JWT validated in BFF middleware (§2.5, A29)."
+
+  parameters:
+    ComplianceDeletionId:
+      name: complianceDeletionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: "deadbeef-1111-2222-3333-444455556666"
+      description: "UUID of the `ComplianceDeletion` row."
+    CurationActionId:
+      name: curationActionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: "cafe1111-2222-3333-4444-555566667777"
+      description: "UUID of the `CurationAction` row."
+
+  responses:
+    Unauthorized:
+      description: "Missing, expired or invalid JWT (§2.5, A29). Request rejected at middleware before any DB access (cf. acceptance C16)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "AUTH_UNAUTHORIZED"
+              message: "Authentication required."
+              details: {}
+    NotFound:
+      description: "The referenced entity does not exist."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "RESOURCE_NOT_FOUND"
+              message: "RawInformation 8f4a2c10-1d2e-4b3f-9a01-1234567890ab not found."
+              details:
+                entity: "raw_information"
+                id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+    UnprocessableEntity:
+      description: "Request failed Zod validation (§13 structural layer) or a business precondition."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "VALIDATION_REQUIRED_FIELD"
+              message: "Field 'reason' is required."
+              details:
+                field: "reason"
+    InternalError:
+      description: "Unexpected internal error."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "SYSTEM_INTERNAL_ERROR"
+              message: "Unexpected internal error."
+              details: {}
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "RESOURCE_NOT_FOUND"
+            message:
+              type: string
+              example: "RawInformation 8f4a2c10-1d2e-4b3f-9a01-1234567890ab not found."
+            details:
+              type: object
+              additionalProperties: true
+              example:
+                entity: "raw_information"
+
+    CurationActionName:
+      type: string
+      enum:
+        - resolve_entity_match
+        - merge_nodes
+        - resolve_dispute
+        - confirm_item
+        - reject_item
+        - correct_item
+        - compliance_delete
+      description: |
+        The 7 curation tool names of §14.4 that produce a `CurationAction`
+        row. (`list_review_queue` is read-only and does NOT audit.) The
+        underlying `curation_action.action` column is `text` (no DB check),
+        so this enum is enforced at the application layer of this endpoint.
+      example: "compliance_delete"
+
+    ComplianceDeleteRequest:
+      type: object
+      required: [raw_information_id, reason]
+      properties:
+        raw_information_id:
+          type: string
+          format: uuid
+          description: "The `RawInformation` to tombstone."
+          example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: |
+            Free-text justification persisted on `compliance_deletion.reason`.
+            Required (destructive operation, §10.2). Should reference the
+            legal basis or the data-subject request.
+          example: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+
+    ComplianceDeleteOutcome:
+      type: string
+      enum: [deleted, noop_already_deleted]
+      description: |
+        - `deleted`: the RawInformation was tombstoned; cascade applied; new audit row written (HTTP 201).
+        - `noop_already_deleted`: the RawInformation was already tombstoned; no new audit row written (HTTP 200, idempotent).
+      example: "deleted"
+
+    ComplianceDeleteResponse:
+      type: object
+      required: [outcome, deletion]
+      properties:
+        outcome: { $ref: "#/components/schemas/ComplianceDeleteOutcome" }
+        deletion: { $ref: "#/components/schemas/ComplianceDeletion" }
+
+    ComplianceDeletionAffected:
+      type: object
+      description: |
+        Counters of derived rows tombstoned by the cascade (§11). All
+        counters are 0 when the raw had no derived rows yet.
+      required: [chunks, fragments, links, attributes]
+      properties:
+        chunks:
+          type: integer
+          minimum: 0
+          description: "Number of `RawChunk` rows transitioned to `status = 'deleted'`."
+          example: 3
+        fragments:
+          type: integer
+          minimum: 0
+          description: "Number of `InformationFragment` rows transitioned to `status = 'deleted'`."
+          example: 7
+        links:
+          type: integer
+          minimum: 0
+          description: "Number of `KnowledgeLink` rows tombstoned because their only `Provenance` chain pointed to this raw."
+          example: 2
+        attributes:
+          type: integer
+          minimum: 0
+          description: "Number of `NodeAttribute` rows tombstoned because their only `Provenance` chain pointed to this raw."
+          example: 4
+
+    ComplianceDeletion:
+      type: object
+      required: [id, raw_information_id, reason, executed_at, affected]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "deadbeef-1111-2222-3333-444455556666"
+        raw_information_id:
+          type: string
+          format: uuid
+          description: "Target of the deletion. The corresponding `raw_information` row has `status = 'deleted'` and `content = '[REDACTED]'`."
+          example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          example: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+        executed_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T20:30:00Z"
+        affected:
+          $ref: "#/components/schemas/ComplianceDeletionAffected"
+
+    ComplianceDeletionList:
+      type: object
+      required: [total, limit, offset, items]
+      properties:
+        total:  { type: integer, minimum: 0, example: 1 }
+        limit:  { type: integer, minimum: 1, example: 50 }
+        offset: { type: integer, minimum: 0, example: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ComplianceDeletion" }
+
+    CurationAction:
+      type: object
+      required: [id, action, target_kind, payload, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUID primary key of the `CurationAction` row."
+          example: "cafe1111-2222-3333-4444-555566667777"
+        action:
+          type: string
+          description: |
+            Name of the curation tool that produced this row (free-text in
+            DB; equal to one of `CurationActionName` in practice — §14.4).
+          example: "compliance_delete"
+        target_kind:
+          type: string
+          description: "Kind of the targeted entity (`node`, `link`, `attribute`, `fragment`, `raw_information`)."
+          example: "raw_information"
+        target_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: "UUID of the target. Null when the action targets multiple entities (the `payload` then lists them)."
+          example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Verbatim arguments of the curation tool call (e.g., `reason`,
+            `winner_id`, `periods`, `corrected`). The compliance_delete
+            payload includes the affected counters as well.
+          example:
+            reason: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+            affected:
+              chunks: 3
+              fragments: 7
+              links: 2
+              attributes: 4
+        reason:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: "Free-text reason. Mandatory for destructive operations (`reject_item`, `prefer_one`, `compliance_delete` — §10.2); may be null for non-destructive ones."
+          example: "LGPD right-to-erasure request from data subject João Silva on 2026-06-11."
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T20:30:00Z"
+
+    CurationActionList:
+      type: object
+      required: [total, limit, offset, items]
+      properties:
+        total:  { type: integer, minimum: 0, example: 12 }
+        limit:  { type: integer, minimum: 1, example: 50 }
+        offset: { type: integer, minimum: 0, example: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CurationAction" }

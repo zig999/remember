@@ -1,0 +1,633 @@
+openapi: "3.0.3"
+info:
+  title: "Segundo Cérebro — Ingestion Domain API"
+  version: "1.0.0"
+  description: |
+    REST contract for the ingestion domain of the Segundo Cérebro system.
+
+    Scope: receive unstructured raw information, persist it immutably, perform
+    deterministic chunking (chunking_version `v1`), open and audit `LLMRun`s,
+    and expose the produced raw/chunk/run/tool-call artifacts for the SPA.
+
+    Out of scope here: the actual LLM-driven extraction is performed via the
+    `ingest` MCP toolset (§14.1 of the normative source v7) — `propose_fragment`,
+    `propose_node`, `propose_link`, `propose_attribute`. Those four tools are
+    MCP-only because they only operate inside an active `LLMRun`. Their contracts
+    are documented in `ingestion.spec.md` §3 (use cases UC-08..UC-11).
+
+    Source of truth: `segundo-cerebro-modelagem-v7.md` (§3.1, §3.2, §3.5, §8,
+    §9, §11, §13, §14.1). Database schema: `migrations/0001_schema.sql` +
+    `migrations/0002_seed.sql`.
+
+    Authentication (§2.5, A29): every endpoint requires a valid Supabase Auth
+    JWT, verified in the BFF middleware. The service key never leaves the BFF.
+    Single-owner model — no `User` entity, no role-based authorization.
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+  - url: "https://{host}"
+    description: "Production BFF"
+    variables:
+      host:
+        default: "api.segundo-cerebro.example"
+
+tags:
+  - name: "raw-information"
+    description: "Immutable original documents received by the system (§3.1)."
+  - name: "raw-chunks"
+    description: "Deterministic slices of raw documents, anchors of provenance (§3.1, §9.2)."
+  - name: "llm-runs"
+    description: "LLM extraction sessions and their audit trail (§3.5, §8, §9)."
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /api/v1/ingest/raw-information:
+    post:
+      tags: ["raw-information"]
+      operationId: ingestRawInformation
+      summary: "Receive a raw document, chunk it deterministically and open an LLMRun."
+      description: |
+        Idempotent ingestion entry point. Computes `sha256(content)` as
+        `content_hash`. If a `RawInformation` with that hash already exists,
+        the existing record is returned with `outcome: "noop_existing"` and no
+        new chunks or run are created (§8). Otherwise, persists `RawInformation`,
+        performs chunking `v1` (§9.2), and opens an `LLMRun` with
+        `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+
+        Returns the identifiers needed by the caller (typically an LLM
+        orchestrator) to drive the `ingest` MCP toolset against the new run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestRawInformationRequest" }
+            example:
+              source_type: "ata"
+              content: "Ata da reunião do Projeto Apollo realizada em 2026-06-11. Participantes: João Silva e Maria Oliveira. Go-live previsto: 15/07/2026."
+              metadata:
+                title: "Ata Apollo 2026-06-11"
+                author: "Maria Oliveira"
+                document_date: "2026-06-11"
+              model: "claude-opus-4-7"
+              prompt_version: "v1"
+      responses:
+        "201":
+          description: "RawInformation created; chunks persisted; LLMRun opened."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestRawInformationResponse" }
+              example:
+                outcome: "created"
+                raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+                content_hash: "9b2c1e0f3a4d5b6c7e8f9012345678abcdef1234567890abcdef1234567890ab"
+                chunk_count: 1
+                chunks:
+                  - id: "1a2b3c4d-1111-2222-3333-444455556666"
+                    chunk_index: 0
+                    offset_start: 0
+                    offset_end: 178
+                llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                idempotency_key: "f1e2d3c4b5a6978877665544332211008899aabbccddeeff0011223344556677"
+        "200":
+          description: "Idempotent no-op — same content_hash already ingested (§8). Returns the existing identifiers."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestRawInformationResponse" }
+              example:
+                outcome: "noop_existing"
+                raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+                content_hash: "9b2c1e0f3a4d5b6c7e8f9012345678abcdef1234567890abcdef1234567890ab"
+                chunk_count: 1
+                chunks: []
+                llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                idempotency_key: "f1e2d3c4b5a6978877665544332211008899aabbccddeeff0011223344556677"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/raw-information/{rawInformationId}:
+    parameters:
+      - $ref: "#/components/parameters/RawInformationId"
+    get:
+      tags: ["raw-information"]
+      operationId: getRawInformationById
+      summary: "Fetch a single RawInformation record by id."
+      description: |
+        Returns the immutable raw document. If the document has been
+        tombstoned by `compliance_delete` (§11), `content` is the literal
+        string `"[REDACTED]"` and `metadata.compliance_deleted` is `true`
+        — `content_hash` is preserved for idempotency.
+      responses:
+        "200":
+          description: "RawInformation returned."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RawInformation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/raw-information/{rawInformationId}/chunks:
+    parameters:
+      - $ref: "#/components/parameters/RawInformationId"
+    get:
+      tags: ["raw-chunks"]
+      operationId: listRawChunksByRawInformation
+      summary: "List the chunks of a RawInformation in chunk_index order."
+      description: |
+        Returns all `RawChunk` rows for the given `RawInformation`, ordered
+        by `chunk_index` ascending. Offsets are 0-based, semi-open
+        `[offset_start, offset_end)`, in Unicode code points (§9.2 / A22).
+      responses:
+        "200":
+          description: "List of chunks."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  total:
+                    type: integer
+                    minimum: 0
+                    example: 3
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RawChunk" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    get:
+      tags: ["llm-runs"]
+      operationId: getLlmRunById
+      summary: "Fetch an LLMRun, including its rolling extraction summary."
+      description: |
+        Returns the run header (`model`, `prompt_version`, `status`,
+        `attempts`, `started_at`, `finished_at`, `idempotency_key`) plus a
+        per-outcome counter summary aggregated from the run's `ToolCall`
+        rows (§9.1 step 6). The summary is computed at read time and never
+        stored as derived state.
+      responses:
+        "200":
+          description: "LLMRun returned."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LlmRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/tool-calls:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+      - name: limit
+        in: query
+        required: false
+        schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      - name: offset
+        in: query
+        required: false
+        schema: { type: integer, minimum: 0, default: 0 }
+    get:
+      tags: ["llm-runs"]
+      operationId: listToolCallsByLlmRun
+      summary: "List the ToolCall audit trail of a run, ordered by created_at."
+      description: |
+        Returns the `ToolCall` rows of the run in chronological order. Each
+        row records the tool name (`propose_fragment` / `propose_node` /
+        `propose_link` / `propose_attribute`), its arguments, its raw
+        result, and the `validation_outcome` produced by the layered
+        validation of §13.
+      responses:
+        "200":
+          description: "List of tool calls."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  total:    { type: integer, minimum: 0, example: 12 }
+                  limit:    { type: integer, minimum: 1, example: 50 }
+                  offset:   { type: integer, minimum: 0, example: 0 }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ToolCall" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["llm-runs"]
+      operationId: retryLlmRun
+      summary: "Retry a failed LLMRun, reopening the same row."
+      description: |
+        Reopens the run in place: transitions `failed → running`, increments
+        `attempts` by 1, and marks every `InformationFragment` in this run
+        with `status = 'proposed'` and not consolidated as `status =
+        'rejected'` (reason: retry) — §8 / §9.3. No new run row is ever
+        created with the same `idempotency_key`.
+
+        Only `failed` runs are retryable. Already-consolidated knowledge
+        from the previous attempt is preserved; re-proposals fall into the
+        idempotent consolidation path (§6.5).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RetryLlmRunRequest" }
+            example:
+              reason: "transient LLM provider timeout"
+      responses:
+        "200":
+          description: "Run reopened (status = running)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LlmRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Run is not in a retryable state (current status is not 'failed')."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                error:
+                  code: "BUSINESS_RUN_NOT_RETRYABLE"
+                  message: "LLMRun c0c0c0c0-1111-2222-3333-444455556666 is in status 'running' and cannot be retried."
+                  details:
+                    llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                    current_status: "running"
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "JWT"
+      description: "Supabase Auth JWT validated in BFF middleware (§2.5, A29)."
+
+  parameters:
+    RawInformationId:
+      name: rawInformationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+      description: "UUID of the `RawInformation` row."
+    LlmRunId:
+      name: llmRunId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: "c0c0c0c0-1111-2222-3333-444455556666"
+      description: "UUID of the `LLMRun` row."
+
+  responses:
+    Unauthorized:
+      description: "Missing, expired or invalid JWT (§2.5, A29). Request rejected at middleware before any DB access (cf. acceptance C16)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "AUTH_UNAUTHORIZED"
+              message: "Authentication required."
+              details: {}
+    NotFound:
+      description: "The referenced entity does not exist."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "RESOURCE_NOT_FOUND"
+              message: "RawInformation 8f4a2c10-1d2e-4b3f-9a01-1234567890ab not found."
+              details:
+                entity: "raw_information"
+                id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+    UnprocessableEntity:
+      description: "Request body failed Zod validation (§13 structural layer)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "VALIDATION_REQUIRED_FIELD"
+              message: "Field 'content' is required."
+              details:
+                field: "content"
+    InternalError:
+      description: "Unexpected internal error."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "SYSTEM_INTERNAL_ERROR"
+              message: "Unexpected internal error."
+              details: {}
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "RESOURCE_NOT_FOUND"
+            message:
+              type: string
+              example: "RawInformation 8f4a2c10-1d2e-4b3f-9a01-1234567890ab not found."
+            details:
+              type: object
+              additionalProperties: true
+              example:
+                entity: "raw_information"
+
+    SourceType:
+      type: string
+      enum: [pdf, email, ata, chat, artigo, transcricao, outro]
+      example: "ata"
+      description: "Enum mirrored from PostgreSQL type `source_type` (§3.1)."
+
+    LlmRunStatus:
+      type: string
+      enum: [running, completed, failed]
+      example: "completed"
+      description: "Enum mirrored from PostgreSQL type `llm_run_status` (§3.5)."
+
+    ValidationOutcome:
+      type: string
+      enum: [accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error]
+      example: "consolidated"
+      description: "Enum mirrored from PostgreSQL type `validation_outcome` (§3.5). Business rejection is `rejected` — not an HTTP error."
+
+    IngestRawInformationRequest:
+      type: object
+      required: [source_type, content, model, prompt_version]
+      properties:
+        source_type: { $ref: "#/components/schemas/SourceType" }
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10485760
+          description: "Original document content, inline. Max 10 MiB (A5)."
+          example: "Ata da reunião do Projeto Apollo realizada em 2026-06-11..."
+        storage_ref:
+          type: string
+          nullable: true
+          description: "Reserved for future externalization; must be null in this version (A5)."
+          example: null
+        metadata:
+          type: object
+          additionalProperties: true
+          description: "Free-form bag. The reserved key `document_date` (ISO date) participates in the date-justification chain (§6.5 / A14)."
+          example:
+            title: "Ata Apollo 2026-06-11"
+            author: "Maria Oliveira"
+            document_date: "2026-06-11"
+        model:
+          type: string
+          minLength: 1
+          description: "LLM model identifier that will run the extraction. Part of the run idempotency key (A18)."
+          example: "claude-opus-4-7"
+        prompt_version:
+          type: string
+          minLength: 1
+          description: "Versioned extraction prompt identifier. Part of the run idempotency key (A18). Bumping it forces a new LLMRun on the same content (§8)."
+          example: "v1"
+
+    IngestOutcome:
+      type: string
+      enum: [created, noop_existing]
+      description: |
+        - `created`: new `RawInformation`, new chunks, new `LLMRun` were persisted (HTTP 201).
+        - `noop_existing`: the `content_hash` already exists; the existing identifiers are returned (HTTP 200, idempotent — §8).
+      example: "created"
+
+    ChunkRef:
+      type: object
+      required: [id, chunk_index, offset_start, offset_end]
+      properties:
+        id: { type: string, format: uuid, example: "1a2b3c4d-1111-2222-3333-444455556666" }
+        chunk_index: { type: integer, minimum: 0, example: 0 }
+        offset_start: { type: integer, minimum: 0, example: 0 }
+        offset_end: { type: integer, minimum: 1, example: 178 }
+
+    IngestRawInformationResponse:
+      type: object
+      required: [outcome, raw_information_id, content_hash, chunk_count, chunks, llm_run_id, idempotency_key]
+      properties:
+        outcome: { $ref: "#/components/schemas/IngestOutcome" }
+        raw_information_id: { type: string, format: uuid, example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab" }
+        content_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: "sha-256 of `content`, hex-encoded. Base of ingestion idempotency (§8)."
+          example: "9b2c1e0f3a4d5b6c7e8f9012345678abcdef1234567890abcdef1234567890ab"
+        chunk_count:
+          type: integer
+          minimum: 1
+          description: "Total number of chunks persisted for this RawInformation."
+          example: 1
+        chunks:
+          type: array
+          description: |
+            On `outcome = "created"`: the list of newly persisted chunks. On
+            `outcome = "noop_existing"`: an empty array — to inspect the
+            existing chunks, call `listRawChunksByRawInformation`.
+          items: { $ref: "#/components/schemas/ChunkRef" }
+        llm_run_id:
+          type: string
+          format: uuid
+          description: "Identifier of the `LLMRun` opened (or returned) for this ingestion."
+          example: "c0c0c0c0-1111-2222-3333-444455556666"
+        idempotency_key:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: "sha-256 over content_hash ∥ prompt_version ∥ model ∥ chunking_version (A18)."
+          example: "f1e2d3c4b5a6978877665544332211008899aabbccddeeff0011223344556677"
+
+    RawInformation:
+      type: object
+      required: [id, source_type, content, content_hash, received_at, metadata]
+      properties:
+        id: { type: string, format: uuid, example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab" }
+        source_type: { $ref: "#/components/schemas/SourceType" }
+        content:
+          type: string
+          description: |
+            Original content, immutable. When the row has been tombstoned by
+            `compliance_delete` (§11), this field is the literal string
+            `"[REDACTED]"` and `metadata.compliance_deleted` is `true`.
+          example: "Ata da reunião do Projeto Apollo realizada em 2026-06-11..."
+        storage_ref:
+          type: string
+          nullable: true
+          example: null
+        content_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "9b2c1e0f3a4d5b6c7e8f9012345678abcdef1234567890abcdef1234567890ab"
+        received_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T20:24:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            title: "Ata Apollo 2026-06-11"
+            author: "Maria Oliveira"
+            document_date: "2026-06-11"
+
+    RawChunk:
+      type: object
+      required: [id, raw_information_id, chunk_index, text, offset_start, offset_end, chunking_version]
+      properties:
+        id: { type: string, format: uuid, example: "1a2b3c4d-1111-2222-3333-444455556666" }
+        raw_information_id: { type: string, format: uuid, example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab" }
+        chunk_index:
+          type: integer
+          minimum: 0
+          description: "0-based position of the chunk within its RawInformation."
+          example: 0
+        text:
+          type: string
+          description: "Verbatim slice of `content` between `offset_start` and `offset_end`."
+          example: "Ata da reunião do Projeto Apollo realizada em 2026-06-11..."
+        offset_start:
+          type: integer
+          minimum: 0
+          description: "Start offset in `content`, 0-based, in Unicode code points (§9.2, A22)."
+          example: 0
+        offset_end:
+          type: integer
+          minimum: 1
+          description: "End offset in `content`, exclusive, in Unicode code points (§9.2, A22)."
+          example: 178
+        locator:
+          type: object
+          nullable: true
+          description: "Readable anchor for citation; shape depends on `source_type` (A23)."
+          properties:
+            page:    { type: integer, nullable: true, example: 1 }
+            line:    { type: integer, nullable: true, example: null }
+            speaker: { type: string,  nullable: true, example: null }
+            ts:      { type: string,  nullable: true, example: null }
+        chunking_version:
+          type: string
+          description: "Identifier of the chunking strategy. Currently always `v1` (§9.2)."
+          example: "v1"
+
+    LlmRunSummary:
+      type: object
+      description: |
+        Per-outcome counters aggregated from this run's `ToolCall` rows
+        (§9.1 step 6). Computed at read time; never persisted.
+      required: [accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error]
+      properties:
+        accepted:             { type: integer, minimum: 0, example: 5 }
+        consolidated:         { type: integer, minimum: 0, example: 2 }
+        superseded_previous:  { type: integer, minimum: 0, example: 1 }
+        needs_review:         { type: integer, minimum: 0, example: 0 }
+        uncertain:            { type: integer, minimum: 0, example: 0 }
+        disputed:             { type: integer, minimum: 0, example: 0 }
+        rejected:             { type: integer, minimum: 0, example: 0 }
+        error:                { type: integer, minimum: 0, example: 0 }
+
+    LlmRun:
+      type: object
+      required: [id, model, prompt_version, started_at, status, attempts, input_raw_information_id, idempotency_key, summary]
+      properties:
+        id: { type: string, format: uuid, example: "c0c0c0c0-1111-2222-3333-444455556666" }
+        model:
+          type: string
+          description: "LLM model identifier."
+          example: "claude-opus-4-7"
+        prompt_version:
+          type: string
+          example: "v1"
+        started_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T20:24:00Z"
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Set when `status` leaves `running`. Always null while `status = 'running'` (DB CHECK)."
+          example: "2026-06-11T20:24:15Z"
+        status: { $ref: "#/components/schemas/LlmRunStatus" }
+        attempts:
+          type: integer
+          minimum: 1
+          description: "1 on first run; incremented by 1 on each retry (§8)."
+          example: 1
+        input_raw_information_id: { type: string, format: uuid, example: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab" }
+        idempotency_key:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "f1e2d3c4b5a6978877665544332211008899aabbccddeeff0011223344556677"
+        summary: { $ref: "#/components/schemas/LlmRunSummary" }
+
+    ToolCall:
+      type: object
+      required: [id, llm_run_id, tool_name, arguments, validation_outcome, created_at]
+      properties:
+        id: { type: string, format: uuid, example: "deadbeef-aaaa-bbbb-cccc-1234567890ab" }
+        llm_run_id: { type: string, format: uuid, example: "c0c0c0c0-1111-2222-3333-444455556666" }
+        tool_name:
+          type: string
+          enum: [propose_fragment, propose_node, propose_link, propose_attribute]
+          description: "Ingest toolset member that produced this call (§14.1)."
+          example: "propose_fragment"
+        arguments:
+          type: object
+          additionalProperties: true
+          description: "Verbatim JSON arguments passed to the MCP tool."
+          example:
+            text: "O go-live do Projeto Apollo ocorrerá em 15/07/2026."
+            confidence: 0.92
+            chunk_ids: ["1a2b3c4d-1111-2222-3333-444455556666"]
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: "Verbatim JSON result returned to the LLM (the MCP envelope's `result` or `error`)."
+          example:
+            fragment_id: "feedface-0000-0000-0000-000000000001"
+            status: "proposed"
+        validation_outcome: { $ref: "#/components/schemas/ValidationOutcome" }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T20:24:05Z"
+
+    RetryLlmRunRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: "Optional human-readable note describing why the retry was requested."
+          example: "transient LLM provider timeout"

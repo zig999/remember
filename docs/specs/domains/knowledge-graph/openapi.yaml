@@ -1,0 +1,1203 @@
+openapi: "3.0.3"
+info:
+  title: "Segundo Cerebro - Knowledge Graph API"
+  version: "1.0.1"
+  description: |
+    Read-side and direct-management HTTP contract for the knowledge-graph domain.
+
+    Scope (forward-generated from `segundo-cerebro-modelagem-v7.md` and `migrations/0001_schema.sql`):
+      - `KnowledgeNode` + `NodeAlias` (sections 3.3, 4)
+      - `NodeAttribute` (section 3.3) - literal temporal values
+      - `KnowledgeLink` (section 3.3) - directed temporal relations
+      - Catalog read endpoints: `NodeType`, `LinkType`, `LinkTypeRule`, `AttributeKey` (sections 3.4, 15)
+      - Temporal-axis derived state (`is_current`, `is_in_effect`, `effective_status`) computed on read (section 5.4)
+      - Lineage chain via `supersedes_*` (sections 6.3, 14.3 `get_history`)
+      - Graph traversal with semi-open temporal filters `[valid_from, valid_to)` (sections 5.2, 5.3, 7.2)
+      - Single-owner authenticated access via Supabase Auth JWT (sections 2.3, 2.5, A20, A29)
+
+    Out of scope for THIS domain (other domains):
+      - Ingestion of `RawInformation` / `RawChunk` / `InformationFragment` (section 3.1, 3.2, 9) -> `ingestion` domain
+      - Full-text retrieval pipeline (`search` tool, section 7.2, 14.3) -> `retrieval` domain
+      - Curation operations (`resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item`, `compliance_delete`, sections 10, 14.4) -> `curation` domain
+      - MCP `ingest` toolset (section 14.1) - MCP-only, exclusive to an open `LLMRun`
+      - `Provenance` rows are READ-NESTED here (returned in payloads) but their write/mutation belongs to ingestion / curation
+
+    Transport rule: per ADR A28 the toolsets `query` and `curation` are mirrored in REST; this OpenAPI file
+    documents the REST surface of the `query`-style operations bound to the knowledge-graph entities
+    (`get_node`, `traverse`, `get_history`). MCP exposure of the same operations is identical-by-contract
+    over the BFF service layer (section 2).
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+
+tags:
+  - name: "Nodes"
+    description: "KnowledgeNode read endpoints (graph entities)"
+  - name: "Attributes"
+    description: "NodeAttribute read endpoints (literal temporal values)"
+  - name: "Links"
+    description: "KnowledgeLink read endpoints (directed temporal relations)"
+  - name: "Catalog"
+    description: "Read-only catalog of NodeType, LinkType, LinkTypeRule, AttributeKey"
+  - name: "History"
+    description: "Lineage chain across `supersedes_*` pointers"
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Catalog (read-only) - NodeType / LinkType / AttributeKey
+  # Mirrors the seed catalog of section 15. New types enter via versioned migration (section 12),
+  # never via API.
+  # ---------------------------------------------------------------------------
+
+  /api/v1/node-types:
+    get:
+      tags: ["Catalog"]
+      operationId: listNodeTypes
+      summary: List all NodeTypes in the catalog
+      description: |
+        Returns the full catalog of NodeTypes (section 15.1). Read-only: catalog mutation
+        is migration-only (section 12).
+      responses:
+        "200":
+          description: "Catalog of NodeTypes"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeTypeList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/link-types:
+    get:
+      tags: ["Catalog"]
+      operationId: listLinkTypes
+      summary: List all LinkTypes in the catalog
+      description: |
+        Returns the full catalog of LinkTypes with flags `is_temporal`,
+        `allows_multiple_current`, `requires_valid_from`, `requires_valid_to_on_change`
+        (section 15.2). Read-only: catalog mutation is migration-only (section 12).
+      parameters:
+        - in: query
+          name: include_rules
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: "When true, embeds the `LinkTypeRule` rows currently valid for each LinkType (section 3.4)."
+      responses:
+        "200":
+          description: "Catalog of LinkTypes"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkTypeList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/attribute-keys:
+    get:
+      tags: ["Catalog"]
+      operationId: listAttributeKeys
+      summary: List all AttributeKeys in the catalog
+      description: |
+        Returns the full catalog of AttributeKeys (section 15.3). Each key is scoped
+        by `node_type_id` and declares `value_type`, `is_temporal`,
+        `allows_multiple_current`, `requires_valid_from`. Read-only: catalog mutation is
+        migration-only (section 12).
+      parameters:
+        - in: query
+          name: node_type
+          required: false
+          schema:
+            type: string
+            example: "Project"
+          description: |
+            Filter by NodeType name. When provided, returns only the AttributeKeys
+            scoped to this NodeType. Returns 422 `BUSINESS_UNKNOWN_NODE_TYPE` if the
+            name is not in the catalog.
+      responses:
+        "200":
+          description: "Catalog of AttributeKeys"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributeKeyList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: "Filter references an unknown node_type"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                unknownNodeType:
+                  value:
+                    error:
+                      code: "BUSINESS_UNKNOWN_NODE_TYPE"
+                      message: "node_type 'Foo' is not registered in the catalog"
+                      details:
+                        node_type: "Foo"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # KnowledgeNode read endpoints
+  # ---------------------------------------------------------------------------
+
+  /api/v1/nodes:
+    get:
+      tags: ["Nodes"]
+      operationId: listNodes
+      summary: List nodes filtered by NodeType and/or name fragment
+      description: |
+        Lists `KnowledgeNode` rows. Designed for owner-driven browsing in the SPA;
+        does NOT implement the full-text retrieval pipeline of section 7.2 (that lives in
+        the `retrieval` domain via `search`). Matching here is restricted to
+        exact and prefix `node_alias.alias_norm` lookups (section 4.1/4.2 step 1), within the
+        node_type scope (section 4.2 "always within the same node_type").
+
+        Pagination: cursor-less offset/limit. Default limit = 20, max limit = 100.
+      parameters:
+        - in: query
+          name: node_type
+          required: false
+          schema:
+            type: string
+            example: "Project"
+          description: "Filter by NodeType name. Returns 422 if unknown."
+        - in: query
+          name: name_prefix
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+            example: "Apollo"
+          description: |
+            Filter nodes whose `node_alias.alias_norm` starts with `norm(name_prefix)`
+            (section 4.1). Case- and accent-insensitive by construction.
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/NodeStatus"
+          description: "Filter by node status. Default behavior returns only `active` nodes."
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: offset
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: "Paginated list of nodes"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: "Unknown filter value"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/nodes/{node_id}:
+    parameters:
+      - in: path
+        name: node_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Nodes"]
+      operationId: getNodeById
+      summary: Get a node with its aliases and current attributes
+      description: |
+        Mirrors the `get_node` MCP tool (section 14.3). Returns the node, all of its
+        `NodeAlias` rows (including the canonical alias), and the list of `NodeAttribute`
+        rows from the `node_attribute_resolved` view (section 5.4), restricted by the
+        temporal-axis filters below.
+
+        - When the node has `status = 'merged'`, the response includes `merged_into_node_id`
+          pointing to the surviving node, and a 200 response is still returned (caller
+          can decide to follow). Section 4.4 invariant: `merged_into_node_id` always points
+          to an ACTIVE node (path compression on write).
+        - When the node has `status = 'deleted'`, the endpoint returns 410 with
+          `BUSINESS_NODE_DELETED` (compliance_delete, section 11).
+        - Derived fields `is_current`, `is_in_effect`, `effective_status` are computed
+          ON READ from the underlying view (section 5.4); they are NEVER stored.
+      parameters:
+        - in: query
+          name: as_of
+          required: false
+          schema: { type: string, format: date, example: "2026-06-15" }
+          description: |
+            Valid-time travel anchor (section 5.3 query (b)). When provided, attributes
+            are filtered by `(valid_from IS NULL OR valid_from <= as_of)` AND
+            `(valid_to IS NULL OR valid_to > as_of)`. Default: current view (query (a)).
+            NOTE: system-time travel (query (c), section 5.3) is deferred per ADR A25.
+        - in: query
+          name: in_effect_only
+          required: false
+          schema: { type: boolean, default: false }
+          description: |
+            When true, returns only attributes whose `is_in_effect` is true (section 5.4)
+            - asserted AND already in force at `current_date` (or `as_of` when provided).
+        - in: query
+          name: include_uncertain
+          required: false
+          schema: { type: boolean, default: true }
+          description: |
+            When true, attributes with `status = 'uncertain'` are returned with a flag
+            (section 7.3); when false, they are omitted. Default true per section 7.3.
+      responses:
+        "200":
+          description: "Node with aliases and attributes"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeDetail"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Node not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "KnowledgeNode with id 9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
+                      details:
+                        node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        "410":
+          description: "Node was deleted by compliance_delete (section 11)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                gone:
+                  value:
+                    error:
+                      code: "BUSINESS_NODE_DELETED"
+                      message: "KnowledgeNode is marked as deleted"
+                      details:
+                        node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                        deleted_at: "2026-05-14T12:01:00Z"
+        "422":
+          description: "Invalid temporal parameter"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/nodes/{node_id}/traverse:
+    parameters:
+      - in: path
+        name: node_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Nodes"]
+      operationId: traverseNode
+      summary: Traverse the graph from a starting node, with temporal filters
+      description: |
+        Mirrors the `traverse` MCP tool (section 14.3). Returns reachable nodes and the
+        `KnowledgeLink` rows used to reach them, applying the temporal filters
+        `as_of` / `in_effect_only` to the link endpoints (section 7.2 step 3).
+
+        - Depth must be in `[1, 3]` (ADR A16). Default depth = 1.
+        - Traversal direction follows `link_type.inverse_name` (bidirectional support per
+          section 14.3).
+        - Score decay per hop is `0.5` (ADR A16); the score field reflects this for ranking
+          downstream callers; this endpoint does NOT compute textual scores (that is
+          retrieval-domain concern), so `score` is purely `0.5^hop`.
+        - The traversal NEVER follows `merged_into_node_id`. A merged node is treated as
+          its surviving successor; the response substitutes the survivor transparently
+          (section 4.4).
+      parameters:
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum: [out, in, both]
+            default: both
+          description: "Edge direction relative to the starting node."
+        - in: query
+          name: link_types
+          required: false
+          schema:
+            type: array
+            items: { type: string }
+            example: ["participates_in", "responsible_for"]
+          description: |
+            Filter by LinkType names. Each name must exist in the catalog;
+            otherwise 422 `BUSINESS_UNKNOWN_LINK_TYPE`.
+          style: form
+          explode: true
+        - in: query
+          name: depth
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 3, default: 1 }
+          description: "Max traversal depth. Out of range -> 422 `BUSINESS_INVALID_TRAVERSE_DEPTH`."
+        - in: query
+          name: as_of
+          required: false
+          schema: { type: string, format: date }
+          description: "Valid-time travel (section 5.3 query (b))."
+        - in: query
+          name: in_effect_only
+          required: false
+          schema: { type: boolean, default: false }
+          description: "Restrict to links whose `is_in_effect` is true (section 5.4)."
+      responses:
+        "200":
+          description: "Nodes and links reached from the starting node"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraversalResult"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Starting node not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: "Invalid traversal parameter"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                invalidDepth:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_TRAVERSE_DEPTH"
+                      message: "depth must be between 1 and 3"
+                      details:
+                        depth: 5
+                        max: 3
+                unknownLinkType:
+                  value:
+                    error:
+                      code: "BUSINESS_UNKNOWN_LINK_TYPE"
+                      message: "link_type 'Foo' is not registered in the catalog"
+                      details:
+                        link_type: "Foo"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # KnowledgeLink read endpoints
+  # ---------------------------------------------------------------------------
+
+  /api/v1/links/{link_id}:
+    parameters:
+      - in: path
+        name: link_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Links"]
+      operationId: getLinkById
+      summary: Get a single link with derived temporal state and provenance
+      description: |
+        Returns a single row from `knowledge_link_resolved` (section 5.4 view), with the
+        derived flags `is_current`, `is_in_effect`, `effective_status` computed on read.
+        Includes the `Provenance` rows that justify the link (section 3.3 accumulating
+        invariant, section 13 anti-hallucination rule).
+      responses:
+        "200":
+          description: "Link payload"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkDetail"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Link not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # NodeAttribute read endpoints
+  # ---------------------------------------------------------------------------
+
+  /api/v1/attributes/{attribute_id}:
+    parameters:
+      - in: path
+        name: attribute_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Attributes"]
+      operationId: getAttributeById
+      summary: Get a single attribute with derived temporal state and provenance
+      description: |
+        Returns a single row from `node_attribute_resolved` (section 5.4 view), with the
+        derived flags `is_current`, `is_in_effect`, `effective_status` computed on read.
+        Includes the `Provenance` rows that justify the attribute.
+      responses:
+        "200":
+          description: "Attribute payload"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributeDetail"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Attribute not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # History - lineage chain via supersedes_*
+  # Mirrors `get_history` (section 14.3). Three input shapes: by link_id, by attribute_id,
+  # or by (node_id, attribute_key) for a key history. Exactly ONE shape per call.
+  # ---------------------------------------------------------------------------
+
+  /api/v1/links/{link_id}/history:
+    parameters:
+      - in: path
+        name: link_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["History"]
+      operationId: getLinkHistory
+      summary: Walk the lineage chain of a link via `supersedes_link_id`
+      description: |
+        Returns all versions of the lineage chain anchored at this link, ordered ASC by
+        `recorded_at`. The chain covers BOTH successions (6.5-A) and corrections
+        (6.5-B) - the caller distinguishes by inspecting `(valid_from, valid_to)` vs
+        `(recorded_at, superseded_at)`.
+        Visibility of the chain is independent of the deferred query (c) (section 5.3, A25):
+        `recorded_at` is recorded on every row.
+      responses:
+        "200":
+          description: "Ordered lineage chain"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkHistoryResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Link not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/attributes/{attribute_id}/history:
+    parameters:
+      - in: path
+        name: attribute_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["History"]
+      operationId: getAttributeHistory
+      summary: Walk the lineage chain of an attribute via `supersedes_attribute_id`
+      description: |
+        Returns all versions of the lineage chain anchored at this attribute, ordered
+        ASC by `recorded_at`. See `getLinkHistory` for the chain semantics.
+      responses:
+        "200":
+          description: "Ordered lineage chain"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributeHistoryResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Attribute not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/nodes/{node_id}/attributes/{key}/history:
+    parameters:
+      - in: path
+        name: node_id
+        required: true
+        schema: { type: string, format: uuid }
+      - in: path
+        name: key
+        required: true
+        schema:
+          type: string
+          example: "deadline"
+        description: "AttributeKey name. Must exist in the catalog for the node's NodeType."
+    get:
+      tags: ["History"]
+      operationId: getAttributeKeyHistory
+      summary: Walk the lineage chain of every attribute version on a (node, key) pair
+      description: |
+        Returns all versions for the `(node, key)` pair, ordered ASC by `recorded_at`.
+        Covers successions, corrections, disputes, and consolidations - the FULL
+        evolution of that key on that node. Equivalent to the
+        `{ node_id, key }` shape of `get_history` (section 14.3).
+      responses:
+        "200":
+          description: "Ordered lineage chain for the (node, key) pair"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributeHistoryResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Node or attribute key not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                unknownKey:
+                  value:
+                    error:
+                      code: "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"
+                      message: "AttributeKey 'foo' is not registered for NodeType 'Project'"
+                      details:
+                        node_type: "Project"
+                        key: "foo"
+        "410":
+          description: "Node was deleted by compliance_delete (section 11)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                gone:
+                  value:
+                    error:
+                      code: "BUSINESS_NODE_DELETED"
+                      message: "KnowledgeNode is marked as deleted"
+                      details:
+                        node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        "422":
+          description: "Invalid request"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase Auth JWT validated in the BFF middleware (sections 2.5, A29). All
+        endpoints in this domain require a valid JWT; absence or invalidity returns 401.
+
+  responses:
+    Unauthorized:
+      description: "Missing or invalid JWT"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            missingToken:
+              value:
+                error:
+                  code: "AUTH_UNAUTHORIZED"
+                  message: "Authorization header missing"
+                  details: {}
+            expiredToken:
+              value:
+                error:
+                  code: "AUTH_TOKEN_EXPIRED"
+                  message: "JWT expired at 2026-06-11T19:00:00Z"
+                  details:
+                    expired_at: "2026-06-11T19:00:00Z"
+    InternalError:
+      description: "Unexpected internal error"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            internal:
+              value:
+                error:
+                  code: "SYSTEM_INTERNAL_ERROR"
+                  message: "Unexpected internal error"
+                  details: {}
+    ServiceUnavailable:
+      description: "Supabase Cloud database unavailable or timed out"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            unavailable:
+              value:
+                error:
+                  code: "SYSTEM_SERVICE_UNAVAILABLE"
+                  message: "Database connection timed out"
+                  details: {}
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Error envelope (CLAUDE.md / section 14 - kept identical across REST + MCP)
+    # -------------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "RESOURCE_NOT_FOUND"
+            message:
+              type: string
+              example: "KnowledgeNode with id ... not found"
+            details:
+              type: object
+              additionalProperties: true
+              example: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+
+    # -------------------------------------------------------------------------
+    # Enums (mirror the DB enums of migration 0001)
+    # -------------------------------------------------------------------------
+    NodeStatus:
+      type: string
+      enum: [active, needs_review, merged, deleted]
+      description: "Mirrors `node_status` enum (section 3.3). `inactive` is NOT a node status."
+      example: "active"
+
+    AssertionStatus:
+      type: string
+      enum: [active, uncertain, disputed, superseded, deleted]
+      description: |
+        Mirrors `assertion_status` enum for `KnowledgeLink` and `NodeAttribute` (section 6.4).
+        `inactive` is NEVER stored - it is derived as `effective_status` in the views
+        (section 5.4).
+      example: "active"
+
+    EffectiveStatus:
+      type: string
+      enum: [active, uncertain, disputed, superseded, deleted, inactive]
+      description: |
+        Derived on read by the view (section 5.4): equals `status` except when
+        `status = 'active'` AND `valid_to <= current_date` -> `inactive`.
+      example: "inactive"
+
+    AssertionFlag:
+      type: string
+      enum: [uncertain, disputed, low_confidence]
+      description: "Display flags surfaced in retrieval / read responses (section 7.3, A26)."
+      example: "uncertain"
+
+    ValidFromSource:
+      type: string
+      enum: [stated, document, received]
+      description: "Justification source for `valid_from` (section 6.5, ADR A14)."
+      example: "document"
+
+    AttributeValueType:
+      type: string
+      enum: [date, number, text, bool]
+      description: "Mirrors `attribute_value_type` enum (section 3.4)."
+      example: "date"
+
+    # -------------------------------------------------------------------------
+    # Catalog: NodeType
+    # -------------------------------------------------------------------------
+    NodeType:
+      type: object
+      required: [id, name, description, version]
+      properties:
+        id: { type: string, format: uuid, example: "11111111-1111-1111-1111-111111111111" }
+        name: { type: string, example: "Project" }
+        description: { type: string, example: "Projeto/iniciativa com objetivo e ciclo de vida" }
+        version: { type: integer, minimum: 1, example: 1 }
+
+    NodeTypeList:
+      type: object
+      required: [items, total]
+      properties:
+        total: { type: integer, example: 8 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NodeType" }
+      example:
+        total: 8
+        items:
+          - id: "11111111-1111-1111-1111-111111111111"
+            name: "Project"
+            description: "Projeto/iniciativa com objetivo e ciclo de vida"
+            version: 1
+
+    # -------------------------------------------------------------------------
+    # Catalog: LinkType + LinkTypeRule
+    # -------------------------------------------------------------------------
+    LinkTypeRule:
+      type: object
+      required: [id, source_node_type, target_node_type]
+      properties:
+        id: { type: string, format: uuid }
+        source_node_type: { type: string, example: "Person" }
+        target_node_type: { type: string, example: "Project" }
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: null
+          description: "When NULL, rule is valid since `-infinity` (section 5.1 null convention)."
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: null
+          description: "When NULL, rule still applies (`+infinity`, section 5.1)."
+
+    LinkType:
+      type: object
+      required:
+        - id
+        - name
+        - label
+        - description
+        - inverse_name
+        - is_temporal
+        - allows_multiple_current
+        - requires_valid_from
+        - requires_valid_to_on_change
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "participates_in" }
+        label: { type: string, example: "participa de" }
+        description:
+          type: string
+          example: "Pessoa participa de projeto ou evento"
+        inverse_name: { type: string, example: "has_participant" }
+        is_temporal: { type: boolean, example: true }
+        allows_multiple_current:
+          type: boolean
+          description: "Single source of truth for multiplicity (ADR A10)."
+          example: true
+        requires_valid_from: { type: boolean, example: true }
+        requires_valid_to_on_change: { type: boolean, example: false }
+        version: { type: integer, minimum: 1, example: 1 }
+        rules:
+          type: array
+          description: "Present only when `?include_rules=true`."
+          items: { $ref: "#/components/schemas/LinkTypeRule" }
+
+    LinkTypeList:
+      type: object
+      required: [items, total]
+      properties:
+        total: { type: integer, example: 10 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/LinkType" }
+
+    # -------------------------------------------------------------------------
+    # Catalog: AttributeKey
+    # -------------------------------------------------------------------------
+    AttributeKey:
+      type: object
+      required:
+        - id
+        - node_type
+        - key
+        - value_type
+        - is_temporal
+        - allows_multiple_current
+        - requires_valid_from
+        - description
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        node_type:
+          type: string
+          example: "Project"
+          description: "Scope NodeType name (the key is scoped per node_type per UNIQUE constraint)."
+        key: { type: string, example: "deadline" }
+        value_type: { $ref: "#/components/schemas/AttributeValueType" }
+        is_temporal:
+          type: boolean
+          example: true
+          description: "Stable keys never carry a validity axis (section 6.2)."
+        allows_multiple_current: { type: boolean, example: false }
+        requires_valid_from: { type: boolean, example: true }
+        description: { type: string, example: "Data-limite/go-live vigente do projeto (funcional)" }
+        version: { type: integer, minimum: 1, example: 1 }
+
+    AttributeKeyList:
+      type: object
+      required: [items, total]
+      properties:
+        total: { type: integer, example: 10 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AttributeKey" }
+
+    # -------------------------------------------------------------------------
+    # KnowledgeNode + NodeAlias
+    # -------------------------------------------------------------------------
+    NodeAlias:
+      type: object
+      required: [id, alias, kind]
+      properties:
+        id: { type: string, format: uuid }
+        alias: { type: string, example: "Projeto Apollo" }
+        kind:
+          type: string
+          enum: [canonical, alias]
+          example: "canonical"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T18:42:00Z"
+
+    NodeSummary:
+      type: object
+      required: [id, node_type, canonical_name, status]
+      properties:
+        id: { type: string, format: uuid, example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+        node_type: { type: string, example: "Project" }
+        canonical_name: { type: string, example: "Projeto Apollo" }
+        status: { $ref: "#/components/schemas/NodeStatus" }
+        merged_into_node_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Present only when `status = 'merged'`. Always points to an ACTIVE node
+            (path compression on write, section 4.4).
+          example: null
+
+    NodeList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        total: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NodeSummary" }
+
+    NodeDetail:
+      type: object
+      required: [node, aliases, attributes]
+      properties:
+        node: { $ref: "#/components/schemas/NodeSummary" }
+        aliases:
+          type: array
+          items: { $ref: "#/components/schemas/NodeAlias" }
+        attributes:
+          type: array
+          items: { $ref: "#/components/schemas/AttributeDetail" }
+      example:
+        node:
+          id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+          node_type: "Project"
+          canonical_name: "Projeto Apollo"
+          status: "active"
+          merged_into_node_id: null
+        aliases:
+          - id: "8a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            alias: "Projeto Apollo"
+            kind: "canonical"
+            created_at: "2026-06-11T18:42:00Z"
+          - id: "8a1c1e2f-0e57-4d3f-99b1-1d22ce5e0002"
+            alias: "Apollo"
+            kind: "alias"
+            created_at: "2026-06-11T18:42:00Z"
+        attributes:
+          - id: "a11c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            attribute_key: "deadline"
+            value_type: "date"
+            value: "2026-07-15"
+            valid_from: "2026-01-10"
+            valid_to: null
+            recorded_at: "2026-06-11T18:42:00Z"
+            superseded_at: null
+            status: "active"
+            effective_status: "active"
+            is_current: true
+            is_in_effect: true
+            confidence: 0.92
+            valid_from_source: "document"
+            flags: []
+            supersedes_attribute_id: null
+            provenance: []
+
+    # -------------------------------------------------------------------------
+    # Provenance (read-nested - the writing surface lives in ingestion/curation)
+    # -------------------------------------------------------------------------
+    ProvenanceEntry:
+      type: object
+      required: [fragment_id, fragment_text]
+      properties:
+        fragment_id: { type: string, format: uuid }
+        fragment_text:
+          type: string
+          example: "O go-live do Projeto Apollo ocorrera em 15/07/2026."
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.92
+        raw_information_id: { type: string, format: uuid }
+        source_type:
+          type: string
+          enum: [pdf, email, ata, chat, artigo, transcricao, outro]
+          example: "ata"
+        received_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T18:30:00Z"
+        excerpt:
+          type: string
+          description: |
+            Excerpt of the raw_chunk text bounded by `[offset_start, offset_end)`,
+            indexed in Unicode code points (section 9.2 / ADR A22).
+          example: "...go-live do Projeto Apollo ocorrera em 15/07/2026..."
+
+    # -------------------------------------------------------------------------
+    # NodeAttribute
+    # -------------------------------------------------------------------------
+    AttributeDetail:
+      type: object
+      required:
+        - id
+        - node_id
+        - attribute_key
+        - value_type
+        - value
+        - status
+        - effective_status
+        - is_current
+        - is_in_effect
+        - confidence
+        - recorded_at
+        - provenance
+      properties:
+        id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        attribute_key: { type: string, example: "deadline" }
+        value_type: { $ref: "#/components/schemas/AttributeValueType" }
+        value:
+          type: string
+          description: |
+            Canonical serialization (ISO YYYY-MM-DD for date, dot-decimal for number,
+            UTF-8 text for text, `'true'`/`'false'` for bool). Same convention used by
+            the `canonical_date` / `canonical_number` IMMUTABLE wrappers in the DB.
+          example: "2026-07-15"
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-01-10"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: null
+          description: "Semi-open `[valid_from, valid_to)` convention (section 5.2)."
+        recorded_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T18:42:00Z"
+        superseded_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        status: { $ref: "#/components/schemas/AssertionStatus" }
+        effective_status: { $ref: "#/components/schemas/EffectiveStatus" }
+        is_current:
+          type: boolean
+          example: true
+          description: "Derived: `valid_to IS NULL AND superseded_at IS NULL` (section 5.4)."
+        is_in_effect:
+          type: boolean
+          example: true
+          description: "Derived: `is_current AND (valid_from IS NULL OR valid_from <= current_date)`."
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.92
+        valid_from_source:
+          allOf: [{ $ref: "#/components/schemas/ValidFromSource" }]
+          nullable: true
+          example: "document"
+        flags:
+          type: array
+          items: { $ref: "#/components/schemas/AssertionFlag" }
+          example: []
+        supersedes_attribute_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: null
+        provenance:
+          type: array
+          items: { $ref: "#/components/schemas/ProvenanceEntry" }
+
+    # -------------------------------------------------------------------------
+    # KnowledgeLink
+    # -------------------------------------------------------------------------
+    LinkDetail:
+      type: object
+      required:
+        - id
+        - source_node_id
+        - target_node_id
+        - link_type
+        - link_inverse_name
+        - status
+        - effective_status
+        - is_current
+        - is_in_effect
+        - confidence
+        - recorded_at
+        - provenance
+      properties:
+        id: { type: string, format: uuid }
+        source_node_id: { type: string, format: uuid }
+        target_node_id: { type: string, format: uuid }
+        link_type: { type: string, example: "participates_in" }
+        link_inverse_name: { type: string, example: "has_participant" }
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-01-10"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          example: null
+        recorded_at:
+          type: string
+          format: date-time
+          example: "2026-06-11T18:42:00Z"
+        superseded_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        status: { $ref: "#/components/schemas/AssertionStatus" }
+        effective_status: { $ref: "#/components/schemas/EffectiveStatus" }
+        is_current: { type: boolean, example: true }
+        is_in_effect: { type: boolean, example: true }
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.92
+        valid_from_source:
+          allOf: [{ $ref: "#/components/schemas/ValidFromSource" }]
+          nullable: true
+          example: "document"
+        flags:
+          type: array
+          items: { $ref: "#/components/schemas/AssertionFlag" }
+          example: []
+        supersedes_link_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: null
+        provenance:
+          type: array
+          items: { $ref: "#/components/schemas/ProvenanceEntry" }
+
+    # -------------------------------------------------------------------------
+    # Traversal
+    # -------------------------------------------------------------------------
+    TraversalLink:
+      allOf:
+        - $ref: "#/components/schemas/LinkDetail"
+        - type: object
+          required: [hop, score]
+          properties:
+            hop:
+              type: integer
+              minimum: 1
+              maximum: 3
+              example: 1
+              description: "Hop number from the starting node (1..depth)."
+            score:
+              type: number
+              minimum: 0
+              maximum: 1
+              example: 0.5
+              description: "Hop decay: `0.5^hop` (ADR A16)."
+
+    TraversalResult:
+      type: object
+      required: [starting_node_id, nodes, links]
+      properties:
+        starting_node_id: { type: string, format: uuid }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/NodeSummary" }
+          description: "All distinct nodes reached, including the starting node."
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/TraversalLink" }
+
+    # -------------------------------------------------------------------------
+    # History (lineage chain via supersedes_*)
+    # -------------------------------------------------------------------------
+    LinkHistoryEntry:
+      allOf:
+        - $ref: "#/components/schemas/LinkDetail"
+
+    AttributeHistoryEntry:
+      allOf:
+        - $ref: "#/components/schemas/AttributeDetail"
+
+    LinkHistoryResponse:
+      type: object
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          description: "Ordered ASC by `recorded_at` (oldest first)."
+          items: { $ref: "#/components/schemas/LinkHistoryEntry" }
+
+    AttributeHistoryResponse:
+      type: object
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          description: "Ordered ASC by `recorded_at` (oldest first)."
+          items: { $ref: "#/components/schemas/AttributeHistoryEntry" }

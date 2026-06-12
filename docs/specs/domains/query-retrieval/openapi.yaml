@@ -1,0 +1,940 @@
+openapi: "3.0.3"
+info:
+  title: "Segundo Cerebro - Query / Retrieval API"
+  version: "1.0.0"
+  description: |
+    Read-side retrieval contract: the deterministic full-text + graph pipeline of section 7
+    and the cross-layer provenance walk of section 14.3.
+
+    Scope (forward-generated from `segundo-cerebro-modelagem-v7.md` and
+    `migrations/0001_schema.sql`):
+      - Pipeline `search` (section 7.2): parallel full-text across the three layers
+        (fragment / node / chunk), dedup, graph expansion, provenance assembly, ranking.
+      - Two PostgreSQL text-search configurations (section 7.1):
+        - `pt_unaccent_v1` (COPY = portuguese) -> stemming pt + unaccent on `raw_chunk.text_search`
+          and `information_fragment.text_search` (`to_tsvector('pt_unaccent_v1', text)`).
+        - `simple_unaccent_v1` (COPY = simple) -> unaccent without stemming on
+          `node_alias` (`to_tsvector('simple_unaccent_v1', alias)`).
+      - Fuzzy lexical signal `pg_trgm` (GIN on `node_alias.alias_norm`, operator `%`) -- the
+        only fuzzy signal, scoped to entity-resolution callers; `search` itself uses
+        `websearch_to_tsquery` + `ts_rank_cd`.
+      - Layer weights (ADR A15): fragment 1.0, node 0.9, chunk 0.6.
+      - Graph expansion (ADR A16): default depth 1, max depth 3, per-hop decay 0.5; mirrors
+        the `traverse` step of the `knowledge-graph` domain.
+      - Temporal parameters (section 7.3): `as_of` (query (b)), `in_effect_only`,
+        `include_uncertain`.
+      - Cross-layer provenance: `get_provenance` (section 14.3) by `link_id`, `attribute_id`
+        or `fragment_id` -- one REST endpoint per anchor kind because exactly one input shape
+        is allowed per call.
+      - Performance budgets (section 16): `search` p95 < 500 ms; expansion-bound paths within
+        `traverse(depth <= 3)` p95 < 1 s; provenance point reads p95 < 200 ms. At the corpus
+        scale (10^2-10^3 documents, section 16) actual latency lives in the low-ms range.
+      - Single-owner authenticated access via Supabase Auth JWT (section 2.5, ADR A29).
+
+    Out of scope (PERMANENT non-goals -- ADR A24 / section 20.1):
+      - Embeddings, `pgvector`, vector store, semantic similarity. Lexical retrieval is the
+        final form, not a phase 1. Cenario C11 is the contract: searching "Iniciativa Lunar"
+        returns zero Apollo results; the only escape valve is curation (entity_match).
+      - Synonym dictionary plugged into the full-text configuration (ADR A4): documented as
+        the only door for "matching meaning" but not implemented here.
+
+    Out of scope for THIS domain (other domains):
+      - Writes against `RawInformation`, `RawChunk`, `InformationFragment` -> `ingestion` domain.
+      - Direct point reads of graph entities (`getNodeById`, `traverseNode`, `getLinkById`,
+        `getAttributeById`, history walks) -> `knowledge-graph` domain. This domain calls
+        the same service layer internally for the expansion step of the pipeline.
+      - Curation operations (`resolve_entity_match`, `merge_nodes`, `resolve_dispute`, ...)
+        -> `curation` domain.
+      - `compliance_delete` execution -> `compliance` domain.
+
+    Transport rule (ADR A28): `query` toolset is mirrored in REST and MCP over a single
+    service layer. This file is the REST surface; MCP carries identical contracts.
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+
+tags:
+  - name: "Search"
+    description: "Full-text + graph retrieval pipeline (section 7.2)"
+  - name: "Provenance"
+    description: "Cross-layer provenance walk down to `RawInformation` (section 14.3)"
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # SEARCH -- the section 7.2 pipeline mirrored as a single REST endpoint.
+  # ---------------------------------------------------------------------------
+
+  /api/v1/search:
+    get:
+      tags: ["Search"]
+      operationId: searchKnowledge
+      summary: Full-text + graph retrieval across fragment / node / chunk layers
+      description: |
+        Executes the deterministic pipeline of section 7.2:
+
+        1. Parse `query` with `websearch_to_tsquery('pt_unaccent_v1', query)` for the fragment
+           and chunk layers, and `websearch_to_tsquery('simple_unaccent_v1', query)` for the
+           node-alias layer (section 7.1).
+        2. Run three parallel full-text queries:
+           - `information_fragment` -- partial GIN index restricted to `status = 'accepted'`
+             (DB note: `information_fragment_fts_idx WHERE status = 'accepted'`).
+             `score = ts_rank_cd(text_search, tsquery) * 1.0` (ADR A15).
+           - `node_alias` -- GIN on `to_tsvector('simple_unaccent_v1', alias)`.
+             `score = ts_rank_cd(...) * 0.9` (ADR A15). The hit resolves to the parent
+             `KnowledgeNode` (excluding `status = 'merged'` -- path-compressed to the survivor
+             per section 4.4; excluding `status = 'deleted'`).
+           - `raw_chunk` -- GIN on `text_search`.
+             `score = ts_rank_cd(...) * 0.6` (ADR A15).
+        3. Dedup: when a `chunk` row supports a `fragment` row already in the result set,
+           the chunk collapses into the fragment (fragment in front, chunk becomes citation).
+           Collapse is decided via `fragment_source` (DB link `information_fragment` <->
+           `raw_chunk`).
+        4. Optional graph expansion (`expand=true`): from each `node` hit, traverse
+           `KnowledgeLink` via the service layer mirrored by `traverseNode` (knowledge-graph
+           domain). Depth defaults to 1, max 3 (ADR A16); per-hop score decay 0.5 (the
+           reached link/node receives `score = 0.5^hop * <node hit score>`); direction is
+           bidirectional via `link_type.inverse_name`. Merged endpoints are substituted by
+           their survivor (section 4.4 invariant); deleted endpoints are skipped.
+        5. Assemble provenance: every item carries the chain `Provenance ->
+           InformationFragment -> FragmentSource -> RawChunk -> RawInformation`. The chain
+           is returned in compact form (`provenance[]` with at least 1 entry; sources
+           accumulate per re-affirmation consolidation, BR-11 of `knowledge-graph.spec.md`).
+        6. Final list: ranked by `score` DESC, then `recorded_at` DESC as tie-breaker;
+           paginated by `limit` (default 20, max 100) / `offset` (default 0).
+
+        Temporal parameters (section 7.3 / BR-08 of `knowledge-graph.spec.md`):
+        - `as_of` -- query (b) (valid-time travel) applied to `node_attribute` and
+          `knowledge_link` filters and to the expansion step. Default = query (a).
+          NOTE: query (c) (system-time travel) is deferred (ADR A25); this endpoint does NOT
+          expose `system_time_at`.
+        - `in_effect_only` -- requires `is_in_effect = true` on returned `node`/`link`/
+          `attribute` rows (section 5.4 view).
+        - `include_uncertain` -- when true (default), `uncertain` rows are returned with the
+          flag set; when false, they are omitted. `low_confidence` items flow through as a
+          flag attached to the fragment kind (ADR A26; cenario C13).
+
+        Permanent lexical limitation (cenario C11 / section 20.1 / ADR A24): synonyms or
+        paraphrases that do not share characters with the query string return zero results.
+        This is a CONTRACT, not a bug. The escape valve is curation (`entity_match` queue) --
+        owned by the `curation` domain.
+      parameters:
+        - in: query
+          name: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1000
+            example: "reuniao implantacao apollo"
+          description: |
+            Free-text search query. Parsed with `websearch_to_tsquery` (supports `"phrase"`,
+            `-exclusion`, `OR`). After parse, MUST be non-empty otherwise
+            422 `BUSINESS_INVALID_SEARCH_QUERY`. Max length 1000 chars (mirrors
+            `information_fragment.text` ceiling); over -> 422 `BUSINESS_INVALID_SEARCH_QUERY`.
+        - in: query
+          name: layers
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [fragment, node, chunk]
+          style: form
+          explode: true
+          description: |
+            Restrict the pipeline to a subset of the three layers (section 7.2 step 1). When
+            omitted, all three layers are queried. Any other value -> 422
+            `BUSINESS_INVALID_SEARCH_LAYER`.
+        - in: query
+          name: as_of
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2026-06-15"
+          description: |
+            Valid-time travel anchor (section 5.3 query (b), section 7.3). When omitted,
+            query (a) is used. Mirrors the `as_of` of `getNodeById` / `traverseNode`
+            (`knowledge-graph` BR-07, BR-08). Not parseable -> 422 `VALIDATION_INVALID_FORMAT`.
+        - in: query
+          name: in_effect_only
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            When true, only items whose derived `is_in_effect` (section 5.4) is true are
+            returned. Default false.
+        - in: query
+          name: include_uncertain
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: |
+            When true (default), rows with `status = 'uncertain'` are returned with
+            `flags: ["uncertain"]`. When false, they are excluded. `disputed` rows are ALWAYS
+            returned with `flags: ["disputed"]`; `deleted` / `superseded` rows are NEVER
+            returned by `search` (history is accessed via `getLinkHistory` /
+            `getAttributeHistory` of `knowledge-graph`).
+        - in: query
+          name: expand
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: |
+            When true (default), the pipeline performs the graph expansion of step 4 from each
+            `node` hit. When false, the expansion step is skipped and only direct full-text
+            hits are returned.
+        - in: query
+          name: expand_depth
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+            default: 1
+          description: |
+            Expansion depth (ADR A16). Default 1, max 3. Out of `[1, 3]` -> 422
+            `BUSINESS_INVALID_TRAVERSE_DEPTH` (reused from `knowledge-graph` BR-18; same
+            ADR A16 constraint applies). Ignored when `expand=false`.
+        - in: query
+          name: expand_link_types
+          required: false
+          schema:
+            type: array
+            items: { type: string }
+            example: ["participates_in", "responsible_for"]
+          style: form
+          explode: true
+          description: |
+            Restrict expansion to specific LinkTypes (by name, from the catalog). Each name
+            must exist in `link_type.name`; otherwise 422 `BUSINESS_UNKNOWN_LINK_TYPE`
+            (reused from `knowledge-graph`). Ignored when `expand=false`.
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: "Page size. Default 20 (ADR A16). Max 100."
+        - in: query
+          name: offset
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: "Pagination offset. Default 0."
+      responses:
+        "200":
+          description: "Ranked, paginated, deduplicated retrieval result"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: "Invalid search input"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                emptyQueryAfterParse:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_SEARCH_QUERY"
+                      message: "query parsed by websearch_to_tsquery is empty"
+                      details:
+                        query: "   "
+                        parsed: ""
+                queryTooLong:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_SEARCH_QUERY"
+                      message: "query exceeds 1000 characters"
+                      details:
+                        length: 1421
+                        max: 1000
+                badLayer:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_SEARCH_LAYER"
+                      message: "layers[] contains an unsupported value"
+                      details:
+                        invalid: "graph"
+                        allowed: ["fragment", "node", "chunk"]
+                badDepth:
+                  value:
+                    error:
+                      code: "BUSINESS_INVALID_TRAVERSE_DEPTH"
+                      message: "expand_depth must be between 1 and 3"
+                      details:
+                        expand_depth: 5
+                        max: 3
+                unknownLinkType:
+                  value:
+                    error:
+                      code: "BUSINESS_UNKNOWN_LINK_TYPE"
+                      message: "link_type 'Foo' is not registered in the catalog"
+                      details:
+                        link_type: "Foo"
+                badAsOf:
+                  value:
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "as_of is not a valid ISO date"
+                      details:
+                        as_of: "2026-13-40"
+                badRange:
+                  value:
+                    error:
+                      code: "VALIDATION_OUT_OF_RANGE"
+                      message: "limit must be between 1 and 100"
+                      details:
+                        limit: 250
+                        max: 100
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # PROVENANCE -- cross-layer walk down to RawInformation. Three URLs, one per
+  # anchor kind, mirroring the MCP `get_provenance` "exactly one input" rule.
+  # ---------------------------------------------------------------------------
+
+  /api/v1/provenance/links/{link_id}:
+    parameters:
+      - in: path
+        name: link_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Provenance"]
+      operationId: getProvenanceByLink
+      summary: Walk the full provenance chain of a `KnowledgeLink` down to `RawInformation`
+      description: |
+        Mirrors the `link_id` shape of `get_provenance` (section 14.3). Returns every
+        `InformationFragment` cited by the `Provenance` rows attached to the link, and for
+        each fragment the supporting `RawChunk` rows (joined via `fragment_source`) with the
+        owning `RawInformation` metadata.
+
+        The chain is the section 13 anti-hallucination contract surfaced for inspection. For
+        every consolidated assertion this endpoint MUST return a non-empty `fragments[]`;
+        empty `fragments[]` indicates a legacy-data inconsistency and is reported by the
+        operational alarms of `knowledge-graph` BR-19 -- it is NOT a 404 here (the link
+        exists; the missing provenance is a system bug).
+
+        When the `RawInformation` underpinning ANY fragment in the chain was tombstoned by
+        `compliance_delete` (section 11) -- i.e., its `content` was nulled and its row marked
+        as deleted -- the endpoint returns 410 `BUSINESS_RAW_INFORMATION_DELETED`. We refuse
+        to recirculate tombstoned content even partially.
+
+        The excerpt of each chunk is computed from `RawChunk.text[offset_start:offset_end)`
+        using Unicode code-point indexing (ADR A22).
+      responses:
+        "200":
+          description: "Full provenance chain"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvenanceResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Link not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "KnowledgeLink with id 9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
+                      details:
+                        link_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        "410":
+          description: "Underlying RawInformation was tombstoned by compliance_delete"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                rawDeleted:
+                  value:
+                    error:
+                      code: "BUSINESS_RAW_INFORMATION_DELETED"
+                      message: "underlying RawInformation was deleted by compliance_delete"
+                      details:
+                        raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                        deleted_at: "2026-05-14T12:01:00Z"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/provenance/attributes/{attribute_id}:
+    parameters:
+      - in: path
+        name: attribute_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Provenance"]
+      operationId: getProvenanceByAttribute
+      summary: Walk the full provenance chain of a `NodeAttribute` down to `RawInformation`
+      description: |
+        Mirrors the `attribute_id` shape of `get_provenance` (section 14.3). Same semantics
+        as `getProvenanceByLink` with the anchor being a `NodeAttribute` row instead of a
+        `KnowledgeLink` row.
+      responses:
+        "200":
+          description: "Full provenance chain"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvenanceResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Attribute not found"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "NodeAttribute with id a11c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
+                      details:
+                        attribute_id: "a11c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        "410":
+          description: "Underlying RawInformation was tombstoned by compliance_delete"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                rawDeleted:
+                  value:
+                    error:
+                      code: "BUSINESS_RAW_INFORMATION_DELETED"
+                      message: "underlying RawInformation was deleted by compliance_delete"
+                      details:
+                        raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                        deleted_at: "2026-05-14T12:01:00Z"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/provenance/fragments/{fragment_id}:
+    parameters:
+      - in: path
+        name: fragment_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Provenance"]
+      operationId: getProvenanceByFragment
+      summary: Walk the chunk/raw chain of an `InformationFragment` down to `RawInformation`
+      description: |
+        Mirrors the `fragment_id` shape of `get_provenance` (section 14.3). The fragment is
+        the leaf of the consolidated graph; the chain below it is the `fragment_source` join
+        to `raw_chunk` plus the parent `raw_information`. There is no `Provenance` row to
+        traverse here -- the input IS the fragment.
+
+        Only `status = 'accepted'` fragments are reachable (partial GIN index of section
+        7.2 / DB line 261-262; the search pipeline never surfaces non-accepted fragments).
+        Calling with a `fragment_id` whose `status != 'accepted'` -> 404
+        `BUSINESS_FRAGMENT_NOT_ACCEPTED`. We do not surface the row's reason here because
+        the lifecycle of a non-accepted fragment belongs to the `ingestion` domain
+        (`status in {proposed, rejected, deleted}`).
+      responses:
+        "200":
+          description: "Fragment with its full chunk/raw chain"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvenanceResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Fragment not found or not accepted"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "InformationFragment with id ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
+                      details:
+                        fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                notAccepted:
+                  value:
+                    error:
+                      code: "BUSINESS_FRAGMENT_NOT_ACCEPTED"
+                      message: "InformationFragment is not in 'accepted' status"
+                      details:
+                        fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                        status: "rejected"
+        "410":
+          description: "Underlying RawInformation was tombstoned by compliance_delete"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                rawDeleted:
+                  value:
+                    error:
+                      code: "BUSINESS_RAW_INFORMATION_DELETED"
+                      message: "underlying RawInformation was deleted by compliance_delete"
+                      details:
+                        raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                        deleted_at: "2026-05-14T12:01:00Z"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase Auth JWT validated in the BFF middleware (sections 2.5, ADR A29). All
+        endpoints in this domain require a valid JWT; absence or invalidity returns 401
+        BEFORE any database access (cenario C16).
+
+  responses:
+    Unauthorized:
+      description: "Missing or invalid JWT"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            missingToken:
+              value:
+                error:
+                  code: "AUTH_UNAUTHORIZED"
+                  message: "Authorization header missing"
+                  details: {}
+            expiredToken:
+              value:
+                error:
+                  code: "AUTH_TOKEN_EXPIRED"
+                  message: "JWT expired at 2026-06-11T19:00:00Z"
+                  details:
+                    expired_at: "2026-06-11T19:00:00Z"
+            invalidToken:
+              value:
+                error:
+                  code: "AUTH_TOKEN_INVALID"
+                  message: "JWT signature could not be verified"
+                  details: {}
+    InternalError:
+      description: "Unexpected internal error"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            internal:
+              value:
+                error:
+                  code: "SYSTEM_INTERNAL_ERROR"
+                  message: "Unexpected internal error"
+                  details: {}
+    ServiceUnavailable:
+      description: "External service unavailable (Supabase Cloud)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            dbUnavailable:
+              value:
+                error:
+                  code: "SYSTEM_SERVICE_UNAVAILABLE"
+                  message: "Database read timed out against Supabase"
+                  details:
+                    upstream: "supabase"
+                    timeout_ms: 5000
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Error envelope (kept identical across REST + MCP, per ADR A28)
+    # -------------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          description: "Standard error envelope. Identical shape across REST and MCP (ADR A28)."
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: "SCREAMING_SNAKE_CASE error code from the global catalog."
+              example: "BUSINESS_INVALID_SEARCH_QUERY"
+            message:
+              type: string
+              description: "Human-readable error message for the operator."
+              example: "query parsed by websearch_to_tsquery is empty"
+            details:
+              type: object
+              description: "Optional structured context specific to the error code."
+              additionalProperties: true
+              example: { query: "   ", parsed: "" }
+
+    # -------------------------------------------------------------------------
+    # Enums shared with knowledge-graph domain (mirror the DB enums).
+    # -------------------------------------------------------------------------
+    AssertionFlag:
+      type: string
+      enum: [uncertain, disputed, low_confidence]
+      description: |
+        Display flags returned in `search` items (section 7.3, ADR A26). `low_confidence`
+        is attached to `fragment` kind items whose backing confidence band was < 0.40
+        (the fragment stayed `proposed` but is still indexed when it later gets accepted
+        through corroboration; until then it does NOT appear in search -- see
+        `information_fragment_fts_idx WHERE status = 'accepted'` in 0001_schema.sql).
+
+    SearchKind:
+      type: string
+      enum: [node, link, fragment]
+      description: |
+        Result row kind in the `search` payload. `attribute` is NOT a result kind — the graph expansion (`traverseNode`) returns only nodes and links; attributes are surfaced through provenance only. `chunk` is NOT a result kind: it always
+        collapses into the supporting `fragment` (section 7.2 step 2 dedup); the chunk
+        excerpt instead appears inside the `provenance[]` of the fragment row.
+      example: "fragment"
+
+    SearchLayer:
+      type: string
+      enum: [fragment, node, chunk]
+      description: "Layer of the section 7.2 pipeline that originated the hit."
+      example: "fragment"
+
+    # -------------------------------------------------------------------------
+    # Provenance (kept aligned with knowledge-graph ProvenanceEntry, see note).
+    # -------------------------------------------------------------------------
+    SearchProvenanceEntry:
+      type: object
+      required: [fragment_id, raw_information_id, source_type]
+      properties:
+        fragment_id:
+          type: string
+          format: uuid
+          description: "Primary key of the supporting `InformationFragment`."
+        fragment_text:
+          type: string
+          description: "Text of the `InformationFragment` as stored (max 1000 chars by DB CHECK)."
+          example: "O go-live do Projeto Apollo ocorrera em 15/07/2026."
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "LLM confidence score of the fragment (0.0–1.0). Threshold rules in section 13."
+          example: 0.92
+        raw_information_id:
+          type: string
+          format: uuid
+          description: "Primary key of the parent `RawInformation` document."
+        source_type:
+          type: string
+          enum: [pdf, email, ata, chat, artigo, transcricao, outro]
+          description: "Kind of source document (`raw_information.source_type`)."
+          example: "ata"
+        received_at:
+          type: string
+          format: date-time
+          description: "Timestamp the `RawInformation` document was ingested (`raw_information.received_at`)."
+          example: "2026-06-11T18:30:00Z"
+        excerpt:
+          type: string
+          description: |
+            Slice of the raw_chunk text using `[offset_start, offset_end)` indexed in
+            Unicode code points (ADR A22, section 9.2). Bounded to the supporting chunk;
+            additional context lives on the chunk itself, surfaced by `getProvenance*`
+            endpoints.
+          example: "...go-live do Projeto Apollo ocorrera em 15/07/2026..."
+
+    # -------------------------------------------------------------------------
+    # SEARCH response
+    # -------------------------------------------------------------------------
+    SearchItem:
+      type: object
+      required:
+        - kind
+        - layer
+        - id
+        - score
+        - summary
+        - provenance
+      properties:
+        kind: { $ref: "#/components/schemas/SearchKind" }
+        layer: { $ref: "#/components/schemas/SearchLayer" }
+        id:
+          type: string
+          format: uuid
+          description: |
+            The id of the consolidated row -- `KnowledgeNode.id` for kind `node`;
+            `KnowledgeLink.id` for `link`;
+            `InformationFragment.id` for `fragment`.
+          example: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        score:
+          type: number
+          minimum: 0
+          example: 0.81
+          description: |
+            Composite score. For direct full-text hits:
+            `ts_rank_cd * layer_weight` where `layer_weight` is fragment 1.0, node 0.9,
+            chunk 0.6 (ADR A15). For expansion hops (when `expand=true`):
+            `0.5^hop * source_node_score` (ADR A16).
+        hop:
+          type: integer
+          minimum: 0
+          maximum: 3
+          example: 0
+          description: |
+            0 for direct full-text hits; 1..3 for expansion hops (ADR A16). When omitted,
+            equals 0.
+        summary:
+          type: string
+          description: |
+            Human-readable summary suited to a result list. Concrete shape per kind:
+            - `node` -> `canonical_name` (e.g. "Projeto Apollo")
+            - `link` -> `"{source_canonical_name} -[{link_type}]-> {target_canonical_name}"`
+            - `fragment` -> `information_fragment.text` (<= 1000 chars by DB CHECK)
+          example: "O go-live do Projeto Apollo ocorrera em 15/07/2026."
+        flags:
+          type: array
+          items: { $ref: "#/components/schemas/AssertionFlag" }
+          description: |
+            Display flags. Returned ALWAYS for `disputed`. Returned for `uncertain` when
+            `include_uncertain=true` (the default; otherwise the row is omitted).
+            Returned `low_confidence` only for `fragment` kind hits whose backing
+            assertion was below the 0.40 band (rare, since the index is partial on
+            accepted; appears after a corroboration accepts the fragment but the original
+            confidence stays low -- relevant per cenario C13).
+          example: []
+        provenance:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SearchProvenanceEntry" }
+          description: |
+            Full provenance chain attached to the row -- always at least 1 entry (per
+            section 13 anti-hallucination). For `node` hits without a direct provenance
+            row, the chain is the union of the provenances of the matching `node_alias`
+            rows.
+
+    SearchResponse:
+      type: object
+      required: [total, items, limit, offset, query]
+      properties:
+        query:
+          type: string
+          description: "Echo of the parsed query, as fed to `websearch_to_tsquery`."
+          example: "reuniao implantacao apollo"
+        total:
+          type: integer
+          description: "Total number of matching items before pagination."
+          example: 4
+        limit:
+          type: integer
+          description: "Page size applied to this response (mirrors the `limit` parameter)."
+          example: 20
+        offset:
+          type: integer
+          description: "Pagination offset applied to this response (mirrors the `offset` parameter)."
+          example: 0
+        items:
+          type: array
+          description: "Ranked, deduplicated result items. Empty array when `total = 0`."
+          items: { $ref: "#/components/schemas/SearchItem" }
+      example:
+        query: "reuniao implantacao apollo"
+        total: 3
+        limit: 20
+        offset: 0
+        items:
+          - kind: "fragment"
+            layer: "fragment"
+            id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            score: 0.92
+            hop: 0
+            summary: "Maria Oliveira coordenara a implantacao do Projeto Apollo."
+            flags: []
+            provenance:
+              - fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                fragment_text: "Maria Oliveira coordenara a implantacao do Projeto Apollo."
+                confidence: 0.92
+                raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                source_type: "ata"
+                received_at: "2026-06-11T18:30:00Z"
+                excerpt: "...Maria Oliveira coordenara a implantacao do Projeto Apollo..."
+          - kind: "node"
+            layer: "node"
+            id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            score: 0.81
+            hop: 0
+            summary: "Projeto Apollo"
+            flags: []
+            provenance:
+              - fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0002"
+                fragment_text: "Projeto Apollo, go-live 15/07/2026."
+                confidence: 0.95
+                raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                source_type: "ata"
+                received_at: "2026-06-11T18:30:00Z"
+                excerpt: "...Projeto Apollo, go-live 15/07/2026..."
+          - kind: "link"
+            layer: "node"
+            id: "9c1c1e2f-0e57-4d3f-99b1-1d22ce5e0010"
+            score: 0.40
+            hop: 1
+            summary: "Maria Oliveira -[responsible_for]-> Projeto Apollo"
+            flags: []
+            provenance:
+              - fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0003"
+                fragment_text: "Maria Oliveira respondera pelo Projeto Apollo."
+                confidence: 0.88
+                raw_information_id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                source_type: "ata"
+                received_at: "2026-06-11T18:30:00Z"
+                excerpt: "...respondera pelo Projeto Apollo..."
+
+    # -------------------------------------------------------------------------
+    # PROVENANCE response (cross-layer walk).
+    # -------------------------------------------------------------------------
+    ProvenanceRawInformation:
+      type: object
+      required: [id, source_type, received_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Primary key of the `RawInformation` document."
+          example: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+        source_type:
+          type: string
+          enum: [pdf, email, ata, chat, artigo, transcricao, outro]
+          description: "Kind of source document (`raw_information.source_type`)."
+          example: "ata"
+        received_at:
+          type: string
+          format: date-time
+          description: "Timestamp the document was ingested (`raw_information.received_at`)."
+          example: "2026-06-11T18:30:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            `raw_information.metadata` (jsonb). Holds author, origin, title and, when
+            present, `document_date` (used in the dates justification chain, section 6.5).
+          example:
+            title: "Ata da reuniao Apollo"
+            author: "joao.silva@example.com"
+            document_date: "2026-06-11"
+
+    ProvenanceChunk:
+      type: object
+      required: [id, chunk_index, offset_start, offset_end, excerpt, raw_information]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Primary key of the `RawChunk` row."
+        chunk_index:
+          type: integer
+          minimum: 0
+          example: 0
+          description: |
+            Position of the chunk in the document (column `chunk_index` in `raw_chunk`;
+            the spec name is `index`, renamed in DB because `INDEX` is a SQL keyword).
+        offset_start:
+          type: integer
+          minimum: 0
+          example: 0
+          description: "Unicode code-point offset (ADR A22)."
+        offset_end:
+          type: integer
+          minimum: 1
+          example: 1742
+          description: "Unicode code-point offset, exclusive."
+        excerpt:
+          type: string
+          description: |
+            The exact slice `raw_chunk.text[offset_start:offset_end)` -- code-point indexed.
+          example: "Aos onze dias do mes de junho de 2026, reuniram-se ..."
+        locator:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            Granular citation hint (ADR A23 / `raw_chunk.locator`). Filled per
+            `source_type`: e.g. `{page: 7}` for pdf, `{speaker: "Maria", ts: "00:12:45"}`
+            for transcricao.
+          example: { page: 1 }
+        raw_information: { $ref: "#/components/schemas/ProvenanceRawInformation" }
+
+    ProvenanceFragment:
+      type: object
+      required: [id, text, confidence, status, chunks]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Primary key of the `InformationFragment`."
+        text:
+          type: string
+          maxLength: 1000
+          description: "Text of the fragment as stored (DB CHECK max 1000 chars)."
+          example: "Maria Oliveira coordenara a implantacao do Projeto Apollo."
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "LLM confidence score for this fragment (0.0–1.0). Threshold rules in section 13."
+          example: 0.92
+        status:
+          type: string
+          enum: [accepted, proposed, rejected, deleted]
+          example: "accepted"
+          description: |
+            For all `get_provenance` endpoints called via this domain, every returned
+            fragment is `accepted` (the search index is partial on accepted; links and
+            attributes only consolidate from accepted fragments). The enum lists all
+            states for documentation completeness; non-accepted statuses are filtered
+            out at the service layer.
+        chunks:
+          type: array
+          minItems: 1
+          description: "Raw chunks supporting this fragment via `fragment_source`. At least 1 entry."
+          items: { $ref: "#/components/schemas/ProvenanceChunk" }
+
+    ProvenanceResponse:
+      type: object
+      required: [fragments]
+      properties:
+        fragments:
+          type: array
+          minItems: 1
+          description: "Fragments that cite the anchor entity. At least 1 entry (section 13 anti-hallucination invariant)."
+          items: { $ref: "#/components/schemas/ProvenanceFragment" }
+      example:
+        fragments:
+          - id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            text: "Maria Oliveira coordenara a implantacao do Projeto Apollo."
+            confidence: 0.92
+            status: "accepted"
+            chunks:
+              - id: "cc1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                chunk_index: 0
+                offset_start: 0
+                offset_end: 1742
+                excerpt: "Aos onze dias do mes de junho de 2026, reuniram-se ..."
+                locator: { page: 1 }
+                raw_information:
+                  id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                  source_type: "ata"
+                  received_at: "2026-06-11T18:30:00Z"
+                  metadata:
+                    title: "Ata da reuniao Apollo"
+                    document_date: "2026-06-11"
