@@ -21,6 +21,7 @@ import { buildErrorHandler } from "./middleware/error-handler.js";
 import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
 import { registerIngestionRoutes } from "./modules/ingestion/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import {
   registerCurationRoutes,
   registerCurationToolset,
@@ -49,6 +50,13 @@ export interface AppDependencies {
    * knowledge-graph routes need not load the catalog.
    */
   readonly catalog?: CatalogSnapshot;
+  /**
+   * Ingestion module's local catalog snapshot — same source data as
+   * `catalog` above but with the ingestion-specific row shape (used by the
+   * propose-* REST mirrors and the extraction orchestrator). Optional for the
+   * same reason as `catalog`.
+   */
+  readonly ingestionCatalog?: IngestionCatalogSnapshot;
 }
 
 /**
@@ -62,7 +70,7 @@ export interface AppDependencies {
  *    request log is too verbose for production.
  */
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
-  const { env, logger, pool, auth, mcp, catalog } = deps;
+  const { env, logger, pool, auth, mcp, catalog, ingestionCatalog } = deps;
 
   const app = Fastify({
     // pino's `Logger` satisfies Fastify's `FastifyBaseLogger` structurally
@@ -97,10 +105,18 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       result: { user_id: request.user?.id ?? null },
     }));
 
-    // Ingestion module (TC-02) — POST /raw-information, GET .../{id}, GET .../{id}/chunks.
+    // Ingestion module (TC-02 + TC-13) — POST /raw-information, GET .../{id},
+    // GET .../{id}/chunks, plus the four propose-* REST mirrors of the
+    // ingest MCP toolset (TC-13). The ingestion catalog is passed through so
+    // the propose-node / propose-link / propose-attribute mirrors can mount;
+    // the propose-fragment mirror is independent of the catalog.
     await scoped.register(
       async (ingest) => {
-        await registerIngestionRoutes(ingest, { pool, logger });
+        await registerIngestionRoutes(ingest, {
+          pool,
+          logger,
+          ...(ingestionCatalog !== undefined ? { catalog: ingestionCatalog } : {}),
+        });
       },
       { prefix: "/ingest" }
     );
