@@ -83,28 +83,30 @@ export function attributeKeyCacheKey(
 export async function loadCatalog(
   client: PoolClient
 ): Promise<CatalogSnapshot> {
-  const [nodeTypeRes, linkTypeRes, ruleRes, attrRes] = await Promise.all([
-    client.query<NodeTypeRow>(
-      `SELECT id, name, description, version FROM node_type`
-    ),
-    client.query<LinkTypeRow>(
-      `SELECT id, name, label, description, inverse_name,
-              is_temporal, allows_multiple_current,
-              requires_valid_from, requires_valid_to_on_change, version
-         FROM link_type`
-    ),
-    client.query<LinkTypeRuleRow>(
-      `SELECT id, link_type_id, source_node_type_id, target_node_type_id,
-              valid_from, valid_to
-         FROM link_type_rule`
-    ),
-    client.query<AttributeKeyRow>(
-      `SELECT id, node_type_id, key, value_type, is_temporal,
-              allows_multiple_current, requires_valid_from,
-              description, version
-         FROM attribute_key`
-    ),
-  ]);
+  // A single PoolClient serializes queries — issue them sequentially. Running
+  // concurrent client.query() on one client is deprecated in pg (removed in
+  // pg@9). This loads four tiny catalog tables once at startup, so the serial
+  // round-trips are negligible.
+  const nodeTypeRes = await client.query<NodeTypeRow>(
+    `SELECT id, name, description, version FROM node_type`
+  );
+  const linkTypeRes = await client.query<LinkTypeRow>(
+    `SELECT id, name, label, description, inverse_name,
+            is_temporal, allows_multiple_current,
+            requires_valid_from, requires_valid_to_on_change, version
+       FROM link_type`
+  );
+  const ruleRes = await client.query<LinkTypeRuleRow>(
+    `SELECT id, link_type_id, source_node_type_id, target_node_type_id,
+            valid_from, valid_to
+       FROM link_type_rule`
+  );
+  const attrRes = await client.query<AttributeKeyRow>(
+    `SELECT id, node_type_id, key, value_type, is_temporal,
+            allows_multiple_current, requires_valid_from,
+            description, version
+       FROM attribute_key`
+  );
   return buildSnapshot({
     nodeTypes: nodeTypeRes.rows,
     linkTypes: linkTypeRes.rows,
