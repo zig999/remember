@@ -1,18 +1,11 @@
 // MCP `ingest.propose_fragment` (UC-08).
 //
-// Pipeline (BR-13 layered validation):
-//   1. Structural — Zod schema (text length, confidence range, non-empty
-//      chunk_ids) is applied at the transport; here we additionally verify
-//      every chunk_id exists and belongs to the run's `input_raw_information_id`.
-//   2. Graph rules — N/A (no link types involved).
-//   3. Temporal — N/A.
-//   4. Confidence — N/A here (the fragment carries the value verbatim;
-//      routing happens when the fragment is cited by a link/attribute).
-//   5. Anti-hallucination — N/A here (fragments ARE the anchor; layer 5
-//      applies to assertions, not fragments).
-//
-// On success: a new `information_fragment` row + one `fragment_source` per
-// chunk_id, committed in one transaction with the `tool_call` audit row.
+// Thin transport adapter. Business logic lives in
+// `service/propose-fragment.service.ts`. The handler:
+//   1. Zod-parses the raw input at the boundary.
+//   2. Opens a transaction via `runIngestHandler` (BR-19).
+//   3. Calls `proposeFragmentService(client, args, runCtx)`.
+//   4. Returns the envelope to the MCP transport.
 
 import type { Pool } from "pg";
 import type { Logger } from "pino";
@@ -22,13 +15,12 @@ import {
   type ProposeFragmentInput,
   type ProposeFragmentResult,
 } from "../dto/propose-fragment.dto.js";
-import {
-  countChunksInSource,
-  insertFragmentWithSources,
-} from "../repository/llm-run.repository.js";
+import { proposeFragmentService } from "../service/propose-fragment.service.js";
 import { ValidationFailure } from "../validation/errors.js";
+
 import {
   assertRunIsRunning,
+  deriveValidationOutcome,
   runIngestHandler,
   type McpEnvelope,
 } from "./handler-base.js";
@@ -40,7 +32,6 @@ export function buildProposeFragmentHandler(args: {
   llm_run_id: string;
 }) {
   return async (raw: unknown): Promise<McpEnvelope<ProposeFragmentResult>> => {
-    // Zod parse at the boundary -> STRUCTURAL_INVALID if it fails.
     const parsed = ProposeFragmentInputSchema.safeParse(raw);
     if (!parsed.success) {
       return await runIngestHandler({
@@ -65,8 +56,8 @@ export function buildProposeFragmentHandler(args: {
 }
 
 /**
- * Pure handler — exported for unit testing without the Zod-edge wrapper.
- * Assumes `input` has already passed Zod parse.
+ * Adapter — exported for unit testing without the Zod-edge wrapper. Assumes
+ * `input` has already passed Zod parse.
  */
 export async function proposeFragmentHandler(
   input: ProposeFragmentInput,
@@ -77,60 +68,29 @@ export async function proposeFragmentHandler(
     tool_name: "propose_fragment",
     input,
     run: async (client) => {
-      // Layer 1 — structural cross-checks against the run row + chunks.
+      // BR-21 (defence in depth at the service-call boundary). Returns the
+      // run's `input_raw_information_id` used to scope the service.
       const run = await assertRunIsRunning(client, deps.llm_run_id);
-
-      const matched = await countChunksInSource(client, {
-        chunk_ids: input.chunk_ids,
-        expected_raw_information_id: run.input_raw_information_id,
+      const envelope = await proposeFragmentService(client, input, {
+        llmRunId: deps.llm_run_id,
+        rawInformationId: run.input_raw_information_id,
       });
-      if (matched !== input.chunk_ids.length) {
-        // We can't tell from a single COUNT whether the miss is "not found" vs
-        // "wrong source". The spec maps both to errors:
-        //  - chunk_id resolves to no row -> NOT_FOUND (UC-08 alt 2b).
-        //  - chunk_id belongs to a different source -> STRUCTURAL_INVALID (alt 2c).
-        // Disambiguate with a follow-up count of existence-only.
-        const existsRes = await client.query<{ n: string }>(
-          `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])`,
-          [input.chunk_ids]
-        );
-        const exists = Number.parseInt(existsRes.rows[0]?.n ?? "0", 10);
-        if (exists !== input.chunk_ids.length) {
-          throw new ValidationFailure(
-            "NOT_FOUND",
-            "One or more chunk_ids do not resolve to an existing raw_chunk row.",
-            { chunk_ids: input.chunk_ids }
-          );
-        }
-        throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
-          "One or more chunk_ids are not part of this run's source.",
-          {
-            chunk_ids: input.chunk_ids,
-            expected_raw_information_id: run.input_raw_information_id,
-          }
-        );
+      // Service only returns success envelopes (errors throw ValidationFailure).
+      if (!envelope.ok) {
+        // Defensive: a future evolution of the service contract could return
+        // an error envelope directly. Map it to the audit shape so the
+        // handler shell records the right outcome.
+        return {
+          result: envelope as unknown as ProposeFragmentResult,
+          validation_outcome: "rejected",
+          tool_call_result: envelope as unknown as Record<string, unknown>,
+        };
       }
-
-      // Business write — fragment + sources in the same TX.
-      const fragment = await insertFragmentWithSources(client, {
-        llm_run_id: deps.llm_run_id,
-        text: input.text,
-        confidence: input.confidence,
-        chunk_ids: input.chunk_ids,
-      });
-
-      const result: ProposeFragmentResult = {
-        fragment_id: fragment.id,
-        status: "proposed",
-      };
       return {
-        result,
-        validation_outcome: "accepted",
-        // The audit `result` mirrors the envelope's `result` payload.
-        tool_call_result: { ...result },
+        result: envelope.result,
+        validation_outcome: deriveValidationOutcome(envelope),
+        tool_call_result: { ...(envelope.result as unknown as Record<string, unknown>) },
       };
     },
   });
 }
-

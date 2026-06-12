@@ -35,23 +35,11 @@ export interface IngestHandlerDeps {
   readonly llm_run_id: string;
 }
 
-/** Success envelope returned to the MCP transport. */
-export interface McpOk<R> {
-  readonly ok: true;
-  readonly result: R;
-}
-
-/** Failure envelope. */
-export interface McpErr {
-  readonly ok: false;
-  readonly error: {
-    readonly code: string;
-    readonly message: string;
-    readonly details?: Record<string, unknown>;
-  };
-}
-
-export type McpEnvelope<R> = McpOk<R> | McpErr;
+// Envelope shape is shared with the transport-agnostic service layer — the
+// canonical declaration lives there to keep all three transports (MCP, REST,
+// in-process orchestrator) on the same contract.
+export type { McpEnvelope, McpErr, McpOk } from "../service/propose.types.js";
+import type { McpEnvelope, McpErr } from "../service/propose.types.js";
 
 /**
  * Outcome shape returned by the inner `run` closure of a handler. The handler
@@ -63,6 +51,42 @@ export type HandlerBusinessOutcome<R> = {
   /** What we persist in `tool_call.result` (the verbatim envelope sent back). */
   readonly tool_call_result: Record<string, unknown>;
 };
+
+/**
+ * Map a service-layer success envelope to a `validation_outcome` for the
+ * `tool_call` audit row.
+ *
+ * Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+ * branch returns this), the audit row is `'rejected'` per BR-17. Every other
+ * `ok:true` envelope is `'accepted'`. Full graph-consolidation outcomes
+ * (`consolidated` / `superseded_previous` / `disputed` / `needs_review` /
+ * `uncertain`) become reachable in TC-010 / TC-011; this helper recognises
+ * them by their `outcome` field.
+ */
+export function deriveValidationOutcome<R>(
+  envelope: { ok: true; result: R }
+): ValidationOutcome {
+  const result = envelope.result as unknown as { outcome?: string; resolution?: string };
+  const tag = result?.outcome ?? result?.resolution;
+  switch (tag) {
+    case "rejected":
+      return "rejected";
+    case "consolidated":
+      return "consolidated";
+    case "superseded_previous":
+      return "superseded_previous";
+    case "disputed":
+      return "disputed";
+    case "needs_review":
+      return "needs_review";
+    case "uncertain":
+      return "uncertain";
+    default:
+      // `accepted`, `matched_existing`, `created_new`, `proposed`, missing
+      // tag — all collapse to `accepted` per the current contract.
+      return "accepted";
+  }
+}
 
 /**
  * Validate the ambient `llm_run_id` actually points at a `running` row. Throws
