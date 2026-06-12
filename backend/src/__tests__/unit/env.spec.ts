@@ -13,6 +13,7 @@ const baseEnv = {
   LOG_LEVEL: "info",
   DATABASE_URL: "postgresql://user:pw@localhost:5432/db",
   NEON_AUTH_URL: "https://ep-test.neon.tech/neondb/auth",
+  ANTHROPIC_API_KEY: "sk-ant-test-fixture",
 } satisfies NodeJS.ProcessEnv;
 
 describe("loadEnv", () => {
@@ -62,6 +63,15 @@ describe("loadEnv", () => {
     expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
   });
 
+  it("throws when ANTHROPIC_API_KEY is missing (TC-12 / BR-29)", () => {
+    // TC-12 acceptance criterion: ANTHROPIC_API_KEY absence at boot causes
+    // the Zod env parse to fail (the process refuses to start). The
+    // orchestrator (BR-26) is the sole LLM caller of the BFF.
+    const { ANTHROPIC_API_KEY: _unused, ...rest } = baseEnv;
+    void _unused;
+    expect(() => loadEnv(rest)).toThrowError(EnvValidationError);
+  });
+
   it("rejects an out-of-range PORT", () => {
     expect(() => loadEnv({ ...baseEnv, PORT: "70000" })).toThrowError(
       EnvValidationError
@@ -80,7 +90,11 @@ describe("loadEnv", () => {
     expect(err).toBeInstanceOf(EnvValidationError);
     const issues = (err as EnvValidationError).issues.map((i) => i.path);
     expect(issues).toEqual(
-      expect.arrayContaining(["DATABASE_URL", "NEON_AUTH_URL"])
+      expect.arrayContaining([
+        "DATABASE_URL",
+        "NEON_AUTH_URL",
+        "ANTHROPIC_API_KEY",
+      ])
     );
   });
 

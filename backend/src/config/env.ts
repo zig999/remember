@@ -48,6 +48,14 @@ const envSchema = z.object({
     )
     .refine((v) => /^https?:\/\//.test(v), "NEON_AUTH_URL must be a URL."),
   NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
+
+  // Anthropic SDK (BR-29). The orchestrator (TC-12 / BR-26) is the sole LLM
+  // caller of the BFF. Missing key at boot is a fatal config error; absence
+  // here causes the process to refuse to start (acceptance criterion of
+  // TC-12). The value never appears in logs, responses, or stack traces.
+  ANTHROPIC_API_KEY: z
+    .string()
+    .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),
 });
 
 export type Env = z.infer<typeof envSchema>;
