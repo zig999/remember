@@ -1,5 +1,5 @@
 > # ⚠️ DEPRECATED — substituída pela v7
-> Este documento foi **substituído por `segundo-cerebro-modelagem-v7.md`**, que é a fonte
+> Este documento foi **substituído por `remember-modelagem-v7.md`**, que é a fonte
 > normativa vigente e autocontida. A v7 preserva integralmente o modelo de dados, temporal,
 > de curadoria, validação, catálogo MCP, seed e cenários de aceitação desta v6, e incorpora
 > as decisões de plataforma do projeto (SPA React consumindo um BFF Fastify por REST; LLM por
