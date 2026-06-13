@@ -38,7 +38,6 @@ import {
   registerQueryToolset,
   type CatalogSnapshot,
 } from "./modules/knowledge-graph/index.js";
-import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import { registerQueryRetrievalRoutes } from "./modules/query-retrieval/index.js";
 
 export interface AppDependencies {
