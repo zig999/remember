@@ -136,15 +136,24 @@ export async function proposeLinkService(
   );
 
   // ---- Layer 3: Temporal -----------------------------------------------
-  // Pull document_date from the run's metadata via the source.
-  const docDateRes = await client.query<{ document_date: string | null }>(
-    `SELECT (metadata->>'document_date') AS document_date
+  // Pull document_date AND received_at from the run's source. `received_at`
+  // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+  // and is consumed by `validateTemporal` as the fallback for
+  // `requires_valid_from = true` rows that carry no stated/document date.
+  const sourceMetaRes = await client.query<{
+    document_date: string | null;
+    received_at: Date | null;
+  }>(
+    `SELECT (metadata->>'document_date') AS document_date,
+            received_at
        FROM raw_information WHERE id = $1`,
     [runCtx.rawInformationId]
   );
-  const documentDate = docDateRes.rows[0]?.document_date ?? null;
+  const documentDate = sourceMetaRes.rows[0]?.document_date ?? null;
+  const receivedAt =
+    sourceMetaRes.rows[0]?.received_at?.toISOString() ?? null;
 
-  validateTemporal({
+  const resolvedTemporal = validateTemporal({
     valid_from: args.valid_from ?? null,
     valid_to: args.valid_to ?? null,
     valid_from_basis: args.valid_from_basis ?? null,
@@ -152,6 +161,7 @@ export async function proposeLinkService(
     change_hint: args.change_hint,
     fragment_texts: fragmentTexts,
     document_date: documentDate,
+    received_at: receivedAt,
   });
 
   // ---- Layer 4: Confidence ---------------------------------------------
@@ -193,9 +203,12 @@ export async function proposeLinkService(
       target_node_id: args.target_node_id,
       link_type_id: resolvedLink.id,
       confidence: args.confidence,
-      valid_from: args.valid_from ?? null,
+      // Use the temporal layer's resolved values — when the `received`
+      // fallback applied, these carry the materialized date + basis instead
+      // of the raw input nulls (v7 §6.5 / A14).
+      valid_from: resolvedTemporal.valid_from,
       valid_to: args.valid_to ?? null,
-      valid_from_basis: args.valid_from_basis ?? null,
+      valid_from_basis: resolvedTemporal.valid_from_basis,
       change_hint: args.change_hint,
       fragment_ids: args.fragment_ids,
       status_for_new_row: statusForNewRow,
