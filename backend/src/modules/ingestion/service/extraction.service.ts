@@ -200,11 +200,21 @@ interface DispatchDeps {
 async function dispatchToolUse(
   toolName: string,
   rawInput: unknown,
-  deps: DispatchDeps
+  deps: DispatchDeps,
+  chunkId: string
 ): Promise<McpEnvelope<Record<string, unknown>>> {
   switch (toolName) {
     case "propose_fragment": {
-      const parsed = ProposeFragmentInputSchema.safeParse(rawInput);
+      // Option (b): the orchestrator is authoritative about which chunk is
+      // being processed, so it injects the current `chunk_id` instead of
+      // asking the LLM for an opaque uuid it cannot know (the propose_fragment
+      // tool schema sent to the model omits `chunk_ids`). Any `chunk_ids` the
+      // model emitted are overridden.
+      const withChunk = {
+        ...(rawInput as Record<string, unknown>),
+        chunk_ids: [chunkId],
+      };
+      const parsed = ProposeFragmentInputSchema.safeParse(withChunk);
       if (!parsed.success) return zodErrorEnvelope(parsed.error.issues);
       return (await proposeFragmentHandler(parsed.data, {
         pool: deps.pool,
@@ -297,11 +307,42 @@ function buildTool(
   // accepts a JSON Schema input_schema. We cast through `unknown` because
   // the SDK's `Tool.input_schema` is a JSONSchema7-like type, and the
   // shape is compatible at runtime.
+  let schema = IngestToolInputJsonSchemas[name] as unknown as Record<
+    string,
+    unknown
+  >;
+  if (name === "propose_fragment") {
+    // Option (b): `chunk_ids` is injected by the orchestrator
+    // (dispatchToolUse), so the model must not be asked for it — drop it from
+    // the tool schema the LLM sees.
+    schema = stripProperty(schema, "chunk_ids");
+  }
   return {
     name,
     description,
-    input_schema: IngestToolInputJsonSchemas[name] as unknown as Anthropic.Messages.Tool.InputSchema,
+    input_schema: schema as unknown as Anthropic.Messages.Tool.InputSchema,
   };
+}
+
+/**
+ * Shallow-clone a JSON-Schema object with `prop` removed from both
+ * `properties` and `required`. Hides orchestrator-injected fields from the
+ * LLM-facing tool schema without mutating the shared schema document.
+ */
+function stripProperty(
+  schema: Record<string, unknown>,
+  prop: string
+): Record<string, unknown> {
+  const clone: Record<string, unknown> = { ...schema };
+  const props = {
+    ...((clone.properties as Record<string, unknown> | undefined) ?? {}),
+  };
+  delete props[prop];
+  clone.properties = props;
+  if (Array.isArray(clone.required)) {
+    clone.required = (clone.required as string[]).filter((r) => r !== prop);
+  }
+  return clone;
 }
 
 // --------------------------------------------------------------------------
@@ -374,6 +415,7 @@ export async function runLlmExtraction(
         model: run.model,
         metadata,
         chunkText: chunk.text,
+        chunkId: chunk.id,
         prevTail,
         dispatchDeps,
         logger,
@@ -448,6 +490,7 @@ interface ChunkLoopInput {
   readonly model: string;
   readonly metadata: DocumentMetadata;
   readonly chunkText: string;
+  readonly chunkId: string;
   readonly prevTail: string;
   readonly dispatchDeps: DispatchDeps;
   readonly logger: Logger;
@@ -529,7 +572,8 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
       const envelope = await dispatchToolUse(
         block.name,
         block.input,
-        input.dispatchDeps
+        input.dispatchDeps,
+        input.chunkId
       );
 
       if (envelope.ok) {
