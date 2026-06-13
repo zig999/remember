@@ -38,6 +38,7 @@ import {
   registerQueryToolset,
   type CatalogSnapshot,
 } from "./modules/knowledge-graph/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import { registerQueryRetrievalRoutes } from "./modules/query-retrieval/index.js";
 
 export interface AppDependencies {
@@ -56,8 +57,8 @@ export interface AppDependencies {
   /**
    * Ingestion module's local catalog snapshot — same source data as
    * `catalog` above but with the ingestion-specific row shape (used by the
-   * propose-* REST mirrors and the extraction orchestrator). Optional for the
-   * same reason as `catalog`.
+   * propose-* REST mirrors/services and the extraction orchestrator,
+   * TC-12/TC-13 / BR-26). Optional for the same reason as `catalog`.
    */
   readonly ingestionCatalog?: IngestionCatalogSnapshot;
 }
@@ -108,17 +109,18 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       result: { user_id: request.user?.id ?? null },
     }));
 
-    // Ingestion module (TC-02 + TC-13) — POST /raw-information, GET .../{id},
-    // GET .../{id}/chunks, plus the four propose-* REST mirrors of the
-    // ingest MCP toolset (TC-13). The ingestion catalog is passed through so
-    // the propose-node / propose-link / propose-attribute mirrors can mount;
-    // the propose-fragment mirror is independent of the catalog.
+    // Ingestion module (TC-02 + TC-12 + TC-13) — POST /raw-information,
+    // GET .../{id}, GET .../{id}/chunks, the four propose-* REST mirrors of
+    // the ingest MCP toolset (TC-13), and POST /llm-runs/:id/run (the
+    // extraction orchestrator, TC-12). The ingestion catalog + env are passed
+    // through so the catalog-bound mirrors and the orchestrator endpoint mount.
     await scoped.register(
       async (ingest) => {
         await registerIngestionRoutes(ingest, {
           pool,
           logger,
           ...(ingestionCatalog !== undefined ? { catalog: ingestionCatalog } : {}),
+          env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
         });
       },
       { prefix: "/ingest" }

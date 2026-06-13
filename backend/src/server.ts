@@ -17,6 +17,7 @@ import { buildNeonAuth } from "./middleware/auth.js";
 import { buildMcpServer } from "./mcp/server.js";
 import { buildApp } from "./app.js";
 import { loadCatalog } from "./modules/knowledge-graph/index.js";
+import { loadCatalog as loadIngestionCatalog } from "./modules/ingestion/index.js";
 
 async function main(): Promise<void> {
   // Step 1 — env. Errors here are emitted to stderr because no logger exists
@@ -57,13 +58,16 @@ async function main(): Promise<void> {
   const auth = buildNeonAuth(env);
   const mcp = buildMcpServer(logger);
 
-  // Step 4b — catalog snapshot (knowledge-graph BR-10). Loaded once; the
-  // ONLY invalidation path is a process restart accompanying a catalog
-  // migration.
+  // Step 4b — catalog snapshots (knowledge-graph BR-10 + ingestion BR-10).
+  // Both modules carry their own snapshot shape against the same DB tables;
+  // load both once, then reuse the in-memory copies for the lifetime of the
+  // process. Invalidation = restart (accompanying every catalog migration).
   let catalog;
+  let ingestionCatalog;
   const catalogClient = await pool.connect();
   try {
     catalog = await loadCatalog(catalogClient);
+    ingestionCatalog = await loadIngestionCatalog(catalogClient);
     logger.info(
       {
         node_types: catalog.nodeTypeById.size,
@@ -86,7 +90,15 @@ async function main(): Promise<void> {
   }
 
   // Step 5 — Fastify app.
-  const app = await buildApp({ env, logger, pool, auth, mcp, catalog });
+  const app = await buildApp({
+    env,
+    logger,
+    pool,
+    auth,
+    mcp,
+    catalog,
+    ingestionCatalog,
+  });
   try {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     logger.info({ port: env.PORT }, "boot_ready");
