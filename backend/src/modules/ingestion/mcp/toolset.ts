@@ -3,19 +3,27 @@
 // `llm_run_id`: at runtime, the MCP transport opens a session, sets the
 // ambient id, and registers the toolset on a per-session McpServer instance.
 //
-// CLAUDE.md "Architecture / Backend": the `ingest` toolset is MCP-only;
-// `query` and `curation` are mirrored in REST. This module owns ONLY the
-// `ingest` side.
+// CLAUDE.md "Architecture / Backend" + BR-28: the four `propose_*` tools are
+// dual-transport (MCP + REST mirror); this module owns the MCP side. The
+// transport-agnostic business logic lives in `modules/ingestion/service/`.
+//
+// BR-24: the JSON Schemas used by external transports (Anthropic tool-use,
+// Fastify body validation) are derived from the same Zod sources once at
+// module init — they are imported here from `../dto/index.js` to keep the
+// MCP registration co-located with the canonical schema bundle.
 
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 import { z } from "zod";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
-import { ProposeAttributeInputSchema } from "../dto/propose-attribute.dto.js";
-import { ProposeFragmentInputSchema } from "../dto/propose-fragment.dto.js";
-import { ProposeLinkInputSchema } from "../dto/propose-link.dto.js";
-import { ProposeNodeInputSchema } from "../dto/propose-node.dto.js";
+import {
+  IngestToolInputJsonSchemas,
+  ProposeAttributeInputSchema,
+  ProposeFragmentInputSchema,
+  ProposeLinkInputSchema,
+  ProposeNodeInputSchema,
+} from "../dto/index.js";
 import type { McpServer } from "../../../mcp/server.js";
 import { buildProposeAttributeHandler } from "./propose-attribute.handler.js";
 import { buildProposeFragmentHandler } from "./propose-fragment.handler.js";
@@ -29,6 +37,16 @@ export interface IngestToolsetSessionDeps {
   readonly logger: Logger;
   readonly catalog: CatalogSnapshot;
   readonly llm_run_id: string;
+}
+
+/**
+ * Return the JSON Schemas used by external transports (Anthropic tool-use
+ * loop, future REST mirror). Exposed so the orchestrator (TC-12) can derive
+ * tool defs without re-importing each schema by hand. Read-only snapshot of
+ * the module-init derivation.
+ */
+export function getIngestToolJsonSchemas(): typeof IngestToolInputJsonSchemas {
+  return IngestToolInputJsonSchemas;
 }
 
 /**
@@ -53,6 +71,10 @@ export function registerIngestToolset(deps: IngestToolsetSessionDeps): void {
     logger: deps.logger,
     llm_run_id: deps.llm_run_id,
   };
+
+  // BR-24: pin the JSON Schemas at registration time so a forgotten boot-time
+  // derivation surfaces here, not deep inside the future orchestrator.
+  const jsonSchemas = IngestToolInputJsonSchemas;
 
   deps.mcp.registerTool("ingest", {
     name: "propose_fragment",
@@ -96,7 +118,11 @@ export function registerIngestToolset(deps: IngestToolsetSessionDeps): void {
   });
 
   deps.logger.info(
-    { component: "mcp.ingest", llm_run_id: deps.llm_run_id },
+    {
+      component: "mcp.ingest",
+      llm_run_id: deps.llm_run_id,
+      json_schema_tools: Object.keys(jsonSchemas),
+    },
     "ingest_toolset_registered"
   );
 }

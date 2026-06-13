@@ -20,7 +20,11 @@ import type { Env } from "./config/env.js";
 import { buildErrorHandler } from "./middleware/error-handler.js";
 import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
-import { registerIngestionRoutes } from "./modules/ingestion/index.js";
+import {
+  registerIngestionRoutes,
+  registerIngestMcpTransport,
+} from "./modules/ingestion/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import {
   registerCurationRoutes,
   registerCurationToolset,
@@ -49,6 +53,13 @@ export interface AppDependencies {
    * knowledge-graph routes need not load the catalog.
    */
   readonly catalog?: CatalogSnapshot;
+  /**
+   * Ingestion module's local catalog snapshot — same source data as
+   * `catalog` above but with the ingestion-specific row shape (used by the
+   * propose-* REST mirrors/services and the extraction orchestrator,
+   * TC-12/TC-13 / BR-26). Optional for the same reason as `catalog`.
+   */
+  readonly ingestionCatalog?: IngestionCatalogSnapshot;
 }
 
 /**
@@ -62,7 +73,7 @@ export interface AppDependencies {
  *    request log is too verbose for production.
  */
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
-  const { env, logger, pool, auth, mcp, catalog } = deps;
+  const { env, logger, pool, auth, mcp, catalog, ingestionCatalog } = deps;
 
   const app = Fastify({
     // pino's `Logger` satisfies Fastify's `FastifyBaseLogger` structurally
@@ -97,10 +108,19 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       result: { user_id: request.user?.id ?? null },
     }));
 
-    // Ingestion module (TC-02) — POST /raw-information, GET .../{id}, GET .../{id}/chunks.
+    // Ingestion module (TC-02 + TC-12 + TC-13) — POST /raw-information,
+    // GET .../{id}, GET .../{id}/chunks, the four propose-* REST mirrors of
+    // the ingest MCP toolset (TC-13), and POST /llm-runs/:id/run (the
+    // extraction orchestrator, TC-12). The ingestion catalog + env are passed
+    // through so the catalog-bound mirrors and the orchestrator endpoint mount.
     await scoped.register(
       async (ingest) => {
-        await registerIngestionRoutes(ingest, { pool, logger });
+        await registerIngestionRoutes(ingest, {
+          pool,
+          logger,
+          ...(ingestionCatalog !== undefined ? { catalog: ingestionCatalog } : {}),
+          env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
+        });
       },
       { prefix: "/ingest" }
     );
@@ -110,6 +130,22 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     // `/audit` are mounted at the root of the protected scope (paths are
     // siblings of `/api/v1/ingest`); catalog snapshot is NOT required.
     await registerComplianceAuditRoutes(scoped, { pool, logger });
+
+    // MCP-over-HTTP transport for the `ingest` toolset (TC-014). Mounted as
+    // POST /api/v1/mcp under the auth-protected scope, so requireNeonAuth
+    // is enforced for every JSON-RPC message. Per-request sessions bind the
+    // ambient llm_run_id from the X-LLM-Run-Id header; the toolset is
+    // invisible until that header is set (BR-21 first bullet). The catalog
+    // snapshot is required for the propose-node / propose-link /
+    // propose-attribute handlers — if it is absent the transport is skipped
+    // (same condition as the curation REST mirror).
+    if (ingestionCatalog !== undefined) {
+      await registerIngestMcpTransport(scoped, {
+        pool,
+        logger,
+        catalog: ingestionCatalog,
+      });
+    }
 
     // Knowledge-graph module (TC-04) — read-only catalog + graph endpoints.
     // Mounted at the root of `/api/v1` because the route paths the OpenAPI

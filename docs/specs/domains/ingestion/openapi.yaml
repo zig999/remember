@@ -1,23 +1,41 @@
 openapi: "3.0.3"
 info:
   title: "Remember — Ingestion Domain API"
-  version: "1.0.0"
+  version: "1.2.1"
   description: |
     REST contract for the ingestion domain of the Remember system.
 
     Scope: receive unstructured raw information, persist it immutably, perform
     deterministic chunking (chunking_version `v1`), open and audit `LLMRun`s,
-    and expose the produced raw/chunk/run/tool-call artifacts for the SPA.
+    drive the LLM-driven extraction synchronously and in-process via the
+    Anthropic SDK tool-use loop (UC-12), expose the four `ingest` propose-*
+    operations through a **dual-transport** surface (REST mirrors AND MCP
+    tools), and expose the produced raw/chunk/run/tool-call artifacts for
+    the SPA.
 
-    Out of scope here: the actual LLM-driven extraction is performed via the
-    `ingest` MCP toolset (§14.1 of the normative source v7) — `propose_fragment`,
-    `propose_node`, `propose_link`, `propose_attribute`. Those four tools are
-    MCP-only because they only operate inside an active `LLMRun`. Their contracts
-    are documented in `ingestion.spec.md` §3 (use cases UC-08..UC-11).
+    Dual-transport `ingest` toolset (v1.2.0 — documented departure from v7
+    §14 / A28, recorded in `CLAUDE.md`): the four propose-* operations
+    (`proposeFragment`, `proposeNode`, `proposeLink`, `proposeAttribute`) are
+    exposed both as REST mirrors (`POST /api/v1/ingest/llm-runs/{llmRunId}/propose-*`)
+    AND as MCP tools (§14.1 of the normative source v7), invoking the **same**
+    transport-agnostic service functions. The REST mirrors enable manual
+    replay / simulation by the Owner; the MCP tools remain available to LLM
+    extractors that connect through MCP. The in-process extraction
+    orchestrator of UC-12 invokes the same service functions without any
+    transport hop. The Zod input schemas are the single source of truth —
+    the JSON Schemas exposed via MCP and the Anthropic SDK tool definitions
+    are derived from them via `zod-to-json-schema` (BR-21).
 
-    Source of truth: `remember-modelagem-v7.md` (§3.1, §3.2, §3.5, §8,
-    §9, §11, §13, §14.1). Database schema: `migrations/0001_schema.sql` +
-    `migrations/0002_seed.sql`.
+    UC-12 (`runLlmExtraction`) triggers the synchronous in-process extraction
+    over a `running` `LLMRun`: the orchestrator iterates the run's chunks in
+    `chunk_index` order, runs a manual tool-use loop against the Anthropic
+    Messages API per chunk, and closes the run (`completed` or `failed`) on
+    exit. The HTTP request stays open for the entire run (LLM-bound minutes
+    per document acceptable at v1 scale — §16).
+
+    Source of truth: `remember-modelagem-v7.md` (§3.1, §3.2, §3.5, §4, §6.5,
+    §8, §9, §11, §13, §14.1). Database schema: `migrations/0001_init.sql`
+    (single bootstrap migration; v1.2.0 introduces no schema change).
 
     Authentication (§2.5, A29): every endpoint requires a valid Neon Auth (Stack Auth)
     JWT, verified in the BFF middleware. The service key never leaves the BFF.
@@ -39,6 +57,13 @@ tags:
     description: "Deterministic slices of raw documents, anchors of provenance (§3.1, §9.2)."
   - name: "llm-runs"
     description: "LLM extraction sessions and their audit trail (§3.5, §8, §9)."
+  - name: "ingest-propose"
+    description: |
+      REST mirrors of the MCP `ingest` toolset (UC-08..UC-11, v1.2.0). Same
+      service implementation, same envelope shape, same business semantics —
+      only the transport differs. Intended for human-driven replay /
+      simulation by the Owner; LLM extractors normally use the MCP transport
+      or the in-process orchestrator (UC-12).
 
 security:
   - bearerAuth: []
@@ -58,8 +83,13 @@ paths:
         performs chunking `v1` (§9.2), and opens an `LLMRun` with
         `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
 
+        The newly opened run is **not** extracted automatically — the caller
+        drives extraction explicitly via `runLlmExtraction` (UC-12) or by
+        letting the LLM call the MCP `ingest` tools directly.
+
         Returns the identifiers needed by the caller (typically an LLM
-        orchestrator) to drive the `ingest` MCP toolset against the new run.
+        orchestrator) to drive the `ingest` MCP toolset, the REST mirrors,
+        or `runLlmExtraction` against the new run.
       requestBody:
         required: true
         content:
@@ -72,7 +102,7 @@ paths:
                 title: "Ata Apollo 2026-06-11"
                 author: "Maria Oliveira"
                 document_date: "2026-06-11"
-              model: "claude-opus-4-7"
+              model: "claude-opus-4-8"
               prompt_version: "v1"
       responses:
         "201":
@@ -271,6 +301,356 @@ paths:
                     current_status: "running"
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/v1/ingest/llm-runs/{llmRunId}/run:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["llm-runs"]
+      operationId: runLlmExtraction
+      summary: "Trigger synchronous in-process LLM extraction over a running LLMRun (UC-12)."
+      description: |
+        Drives the extraction loop end-to-end: iterates the run's `RawChunk`
+        rows in `chunk_index` order, opens a fresh Anthropic Messages
+        conversation per chunk, runs a manual tool-use loop with the four
+        `ingest` propose-* tools (derived from the same Zod schemas exposed
+        by MCP — BR-24), invokes the matching in-process service function
+        for each `tool_use` block (each in its own DB transaction — BR-19),
+        and closes the run on completion (UC-07).
+
+        Pre-condition: the target run's `status` must be `running` — the
+        owner reopens a `failed` run via `retryLlmRun` first. The endpoint
+        is **synchronous**: the HTTP connection stays open for the full
+        run (LLM-bound; minutes per document is acceptable at v1 scale —
+        §16). Clients MUST set a generous client-side timeout.
+
+        On clean finish, the run transitions to `completed`. On a fatal
+        Anthropic SDK error (auth, quota, non-recoverable network) mid-run,
+        the orchestrator closes the run as `failed`, preserves every
+        already-committed `ToolCall` / fragment / node / link / attribute,
+        and returns `502 SYSTEM_LLM_PROVIDER_UNAVAILABLE` with the partial
+        run summary. On any other unhandled internal exception (or ≥ 3
+        consecutive `error` `validation_outcome` rows within one chunk),
+        the run is closed as `failed` and the endpoint returns
+        `500 SYSTEM_INTERNAL_ERROR`. The owner re-runs by invoking
+        `retryLlmRun` followed by `runLlmExtraction` again.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunLlmExtractionRequest" }
+            example: {}
+      responses:
+        "200":
+          description: "Run completed cleanly. Body is the final LLMRun (`status = 'completed'`) including the derived summary."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LlmRun" }
+              example:
+                id: "c0c0c0c0-1111-2222-3333-444455556666"
+                model: "claude-opus-4-8"
+                prompt_version: "v1"
+                started_at: "2026-06-11T20:24:00Z"
+                finished_at: "2026-06-11T20:29:42Z"
+                status: "completed"
+                attempts: 1
+                input_raw_information_id: "8f4a2c10-1d2e-4b3f-9a01-1234567890ab"
+                idempotency_key: "f1e2d3c4b5a6978877665544332211008899aabbccddeeff0011223344556677"
+                summary:
+                  accepted: 9
+                  consolidated: 2
+                  superseded_previous: 1
+                  needs_review: 0
+                  uncertain: 1
+                  disputed: 0
+                  rejected: 0
+                  error: 0
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Run is not runnable (current status is not 'running')."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                error:
+                  code: "BUSINESS_RUN_NOT_RUNNABLE"
+                  message: "LLMRun c0c0c0c0-1111-2222-3333-444455556666 is in status 'completed' and cannot be extracted (only 'running' is runnable; reopen a failed run via retryLlmRun first)."
+                  details:
+                    llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                    current_status: "completed"
+        "500": { $ref: "#/components/responses/InternalError" }
+        "502": { $ref: "#/components/responses/LlmProviderUnavailable" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/propose-fragment:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["ingest-propose"]
+      operationId: proposeFragment
+      summary: "REST mirror of MCP `propose_fragment` (UC-08)."
+      description: |
+        Persists an `InformationFragment` (atomic LLM-extracted claim) plus
+        its `FragmentSource` rows under the target run, and records the
+        corresponding `ToolCall`. Same business semantics as the MCP tool
+        `propose_fragment` — only the transport differs (BR-21, BR-28).
+
+        Run-state pre-checks: the run must exist (`404 RESOURCE_NOT_FOUND`
+        otherwise) AND have `status = 'running'` (`409 BUSINESS_RUN_NOT_RUNNING`
+        otherwise). Once past the pre-checks, every layered-validation
+        outcome (`STRUCTURAL_INVALID`, `NOT_FOUND` for missing chunks, etc.)
+        is returned **inside** the MCP envelope as `200 OK` with `ok: false`
+        — consistent with the MCP transport so a single client codepath
+        handles both.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposeFragmentInput" }
+            example:
+              text: "O go-live do Projeto Apollo ocorrerá em 15/07/2026."
+              confidence: 0.92
+              chunk_ids: ["1a2b3c4d-1111-2222-3333-444455556666"]
+      responses:
+        "200":
+          description: |
+            Service reached: the response body is the MCP envelope. Inspect
+            the `ok` field — `true` for accepted / business outcomes,
+            `false` for layered-validation rejections (`STRUCTURAL_INVALID`,
+            `NOT_FOUND`, `INTERNAL`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeMcpEnvelope" }
+              examples:
+                accepted:
+                  summary: "Accepted fragment"
+                  value:
+                    ok: true
+                    result:
+                      fragment_id: "feedface-0000-0000-0000-000000000001"
+                      status: "proposed"
+                      validation_outcome: "accepted"
+                rejected_structural:
+                  summary: "Structural rejection (text too long)"
+                  value:
+                    ok: false
+                    error:
+                      code: "STRUCTURAL_INVALID"
+                      message: "Field 'text' exceeds 1000 characters."
+                      details: { field: "text", limit: 1000 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunNotRunning" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/propose-node:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["ingest-propose"]
+      operationId: proposeNode
+      summary: "REST mirror of MCP `propose_node` (UC-09)."
+      description: |
+        Resolves or creates a `KnowledgeNode` of the requested `node_type`,
+        applying the §4 entity-resolution pipeline (exact alias match →
+        trigram candidates → A12 three-way decision per BR-24): outcomes
+        are `matched_existing` (reuse), `created_new` (new active node) or
+        `needs_review` (new node with `status = 'needs_review'` plus one
+        `EntityMatchReview` row per ambiguous candidate, fed to the
+        curation `entity_match` queue). The advisory lock of BR-20
+        serialises concurrent calls for the same `(node_type, norm(name))`.
+
+        Same business semantics as the MCP tool `propose_node` — only the
+        transport differs (BR-21, BR-28). Same run-state pre-checks and
+        envelope semantics as `proposeFragment` above.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposeNodeInput" }
+            example:
+              node_type: "Project"
+              name: "Projeto Apollo"
+              aliases: ["Apollo"]
+      responses:
+        "200":
+          description: "Service reached; inspect the MCP envelope `ok` field."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeMcpEnvelope" }
+              examples:
+                matched_existing:
+                  summary: "Existing node reused (strong trigram match)"
+                  value:
+                    ok: true
+                    result:
+                      node_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                      resolution: "matched_existing"
+                      validation_outcome: "accepted"
+                needs_review:
+                  summary: "Ambiguous — new node created in needs_review"
+                  value:
+                    ok: true
+                    result:
+                      node_id: "11111111-2222-3333-4444-555555555555"
+                      resolution: "needs_review"
+                      validation_outcome: "needs_review"
+                unknown_type:
+                  summary: "Unknown node_type"
+                  value:
+                    ok: false
+                    error:
+                      code: "UNKNOWN_TYPE"
+                      message: "node_type 'Animal' is not registered."
+                      details: { node_type: "Animal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunNotRunning" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/propose-link:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["ingest-propose"]
+      operationId: proposeLink
+      summary: "REST mirror of MCP `propose_link` (UC-10)."
+      description: |
+        Persists a `KnowledgeLink` relation between two entities under the
+        graph-consolidation flow of §6.5 (BR-27): vigent lookup under
+        `SELECT ... FOR UPDATE`, then decide between `accepted`,
+        `consolidated`, `superseded_previous`, `disputed`, or
+        `accepted`-correction. Provenance to the cited fragments is always
+        inserted in the same transaction (BR-18).
+
+        Same business semantics as the MCP tool `propose_link` — only the
+        transport differs (BR-21, BR-28). Same run-state pre-checks and
+        envelope semantics as `proposeFragment`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposeLinkInput" }
+            example:
+              source_node_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+              link_type: "leads"
+              target_node_id: "ffffffff-0000-1111-2222-333333333333"
+              confidence: 0.91
+              fragment_ids: ["feedface-0000-0000-0000-000000000001"]
+              valid_from: "2026-06-11"
+              valid_from_basis: "document"
+              change_hint: "none"
+      responses:
+        "200":
+          description: "Service reached; inspect the MCP envelope `ok` field."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeMcpEnvelope" }
+              examples:
+                accepted:
+                  summary: "New active link"
+                  value:
+                    ok: true
+                    result:
+                      link_id: "cccccccc-1111-2222-3333-444444444444"
+                      outcome: "accepted"
+                      validation_outcome: "accepted"
+                consolidated:
+                  summary: "Re-affirmation of an existing link"
+                  value:
+                    ok: true
+                    result:
+                      link_id: "cccccccc-1111-2222-3333-444444444444"
+                      outcome: "consolidated"
+                      validation_outcome: "consolidated"
+                superseded:
+                  summary: "Functional succession"
+                  value:
+                    ok: true
+                    result:
+                      link_id: "dddddddd-1111-2222-3333-444444444444"
+                      superseded_link_id: "cccccccc-1111-2222-3333-444444444444"
+                      outcome: "superseded_previous"
+                      validation_outcome: "superseded_previous"
+                rule_violation:
+                  summary: "No vigent LinkTypeRule authorises the triple"
+                  value:
+                    ok: false
+                    error:
+                      code: "RULE_VIOLATION"
+                      message: "No active LinkTypeRule authorises (Project, leads, Project)."
+                      details:
+                        source_node_type: "Project"
+                        link_type: "leads"
+                        target_node_type: "Project"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunNotRunning" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/ingest/llm-runs/{llmRunId}/propose-attribute:
+    parameters:
+      - $ref: "#/components/parameters/LlmRunId"
+    post:
+      tags: ["ingest-propose"]
+      operationId: proposeAttribute
+      summary: "REST mirror of MCP `propose_attribute` (UC-11)."
+      description: |
+        Persists a `NodeAttribute` literal value on a node under the
+        graph-consolidation flow of §6.5 (BR-27). Mirror of `proposeLink`
+        scoped by `(node_id, attribute_key_id)` instead of
+        `(source_node_id, link_type_id, target_node_id)`. Same outcomes
+        (`accepted` / `consolidated` / `superseded_previous` / `disputed` /
+        `accepted`-correction) and same provenance invariant (BR-18).
+
+        Same business semantics as the MCP tool `propose_attribute` — only
+        the transport differs (BR-21, BR-28). Same run-state pre-checks
+        and envelope semantics as `proposeFragment`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposeAttributeInput" }
+            example:
+              node_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+              key: "go_live_date"
+              value: "2026-07-15"
+              confidence: 0.92
+              fragment_ids: ["feedface-0000-0000-0000-000000000001"]
+              valid_from: "2026-06-11"
+              valid_from_basis: "document"
+              change_hint: "none"
+      responses:
+        "200":
+          description: "Service reached; inspect the MCP envelope `ok` field."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeMcpEnvelope" }
+              examples:
+                accepted:
+                  summary: "New active attribute"
+                  value:
+                    ok: true
+                    result:
+                      attribute_id: "eeeeeeee-1111-2222-3333-444444444444"
+                      outcome: "accepted"
+                      validation_outcome: "accepted"
+                value_type_mismatch:
+                  summary: "Value does not parse as the key's value_type"
+                  value:
+                    ok: false
+                    error:
+                      code: "STRUCTURAL_INVALID"
+                      message: "value 'tomorrow' does not parse as date."
+                      details: { key: "go_live_date", value_type: "date" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunNotRunning" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
 components:
 
   securitySchemes:
@@ -330,6 +710,52 @@ components:
               message: "Field 'content' is required."
               details:
                 field: "content"
+    RunNotRunning:
+      description: |
+        REST propose-* mirror called against a run whose `status != 'running'`
+        (UC-08..UC-11 alt 1a, REST branch — BR-21). The MCP transport
+        collapses this case into a `STRUCTURAL_INVALID` envelope; the REST
+        mirror surfaces it as a 409 because human callers benefit from the
+        explicit status code.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "BUSINESS_RUN_NOT_RUNNING"
+              message: "LLMRun c0c0c0c0-1111-2222-3333-444455556666 is in status 'completed'; propose-* is only available while the run is 'running'."
+              details:
+                llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                current_status: "completed"
+    LlmProviderUnavailable:
+      description: |
+        The Anthropic SDK raised a non-recoverable error (auth, quota,
+        persistent network failure) during a `runLlmExtraction` call
+        (UC-12 alt 4a, BR-26 fatal path). The orchestrator closed the run
+        as `failed`, preserved every already-committed `ToolCall` /
+        fragment / node / link / attribute, and returns the partial run
+        summary in the body. The owner re-runs by invoking `retryLlmRun`
+        followed by `runLlmExtraction` again.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: "SYSTEM_LLM_PROVIDER_UNAVAILABLE"
+              message: "Anthropic provider unreachable during extraction; run closed as failed."
+              details:
+                llm_run_id: "c0c0c0c0-1111-2222-3333-444455556666"
+                status: "failed"
+                attempts: 1
+                partial_summary:
+                  accepted: 3
+                  consolidated: 0
+                  superseded_previous: 0
+                  needs_review: 0
+                  uncertain: 0
+                  disputed: 0
+                  rejected: 0
+                  error: 0
     InternalError:
       description: "Unexpected internal error."
       content:
@@ -381,6 +807,26 @@ components:
       example: "consolidated"
       description: "Enum mirrored from PostgreSQL type `validation_outcome` (§3.5). Business rejection is `rejected` — not an HTTP error."
 
+    ValidFromBasis:
+      type: string
+      enum: [stated, document, received]
+      description: |
+        Date justification chain (§6.5, A14). `stated` requires the value to
+        appear textually in one of the cited fragments; `document` requires
+        `metadata.document_date` on the source `RawInformation`; `received`
+        is the BFF fallback (only when the type permits it).
+      example: "document"
+
+    ChangeHint:
+      type: string
+      enum: [none, succession, correction]
+      description: |
+        Caller-supplied hint that disambiguates re-affirmation from change
+        or errata in §6.5. The graph-consolidation service still requires
+        textual signals in the cited fragments to act on `succession` /
+        `correction` (BR-25).
+      example: "none"
+
     IngestRawInformationRequest:
       type: object
       required: [source_type, content, model, prompt_version]
@@ -409,7 +855,7 @@ components:
           type: string
           minLength: 1
           description: "LLM model identifier that will run the extraction. Part of the run idempotency key (A18)."
-          example: "claude-opus-4-7"
+          example: "claude-opus-4-8"
         prompt_version:
           type: string
           minLength: 1
@@ -563,7 +1009,7 @@ components:
         model:
           type: string
           description: "LLM model identifier."
-          example: "claude-opus-4-7"
+          example: "claude-opus-4-8"
         prompt_version:
           type: string
           example: "v1"
@@ -604,7 +1050,7 @@ components:
         arguments:
           type: object
           additionalProperties: true
-          description: "Verbatim JSON arguments passed to the MCP tool."
+          description: "Verbatim JSON arguments passed to the MCP tool (or REST mirror)."
           example:
             text: "O go-live do Projeto Apollo ocorrerá em 15/07/2026."
             confidence: 0.92
@@ -631,3 +1077,171 @@ components:
           maxLength: 500
           description: "Optional human-readable note describing why the retry was requested."
           example: "transient LLM provider timeout"
+
+    RunLlmExtractionRequest:
+      type: object
+      description: |
+        Empty body in v1.0.0 — the orchestrator reads `model` and
+        `prompt_version` from the target `LLMRun` row (declared at intake
+        via UC-01 and participating in `idempotency_key` per BR-08). The
+        body is reserved for future per-chunk overrides.
+      additionalProperties: false
+      properties: {}
+
+    ProposeMcpEnvelope:
+      type: object
+      description: |
+        Common envelope returned by every propose-* REST mirror, matching
+        the MCP envelope verbatim. Inspect `ok`: when `true`, `result`
+        holds the business outcome; when `false`, `error` holds the
+        layered-validation rejection code (`STRUCTURAL_INVALID`,
+        `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`,
+        `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`).
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        result:
+          type: object
+          additionalProperties: true
+          description: "Present iff `ok: true`. Shape depends on the operation — see the per-endpoint examples."
+        error:
+          type: object
+          description: "Present iff `ok: false`."
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [STRUCTURAL_INVALID, UNKNOWN_TYPE, RULE_VIOLATION, TEMPORAL_INCOHERENT, DATE_UNJUSTIFIED, NOT_FOUND, INTERNAL]
+              example: "STRUCTURAL_INVALID"
+            message:
+              type: string
+              example: "Field 'text' exceeds 1000 characters."
+            details:
+              type: object
+              additionalProperties: true
+
+    ProposeFragmentInput:
+      type: object
+      required: [text, confidence, chunk_ids]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: "Atomic claim text. Hard-bounded to 1000 chars (BR-22 / DB CHECK)."
+          example: "O go-live do Projeto Apollo ocorrerá em 15/07/2026."
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "LLM's self-assessed confidence in the claim. Routed per BR-17."
+          example: 0.92
+        chunk_ids:
+          type: array
+          minItems: 1
+          description: "RawChunk ids supporting the claim. Every chunk MUST belong to the run's `input_raw_information_id`."
+          items: { type: string, format: uuid }
+          example: ["1a2b3c4d-1111-2222-3333-444455556666"]
+
+    ProposeNodeInput:
+      type: object
+      required: [node_type, name]
+      properties:
+        node_type:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "Seeded NodeType name (e.g., `Person`, `Organization`, `Project`...). Catalog miss → `UNKNOWN_TYPE`."
+          example: "Project"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: "Canonical entity name. Normalized via `norm()` for resolution (BR-24)."
+          example: "Projeto Apollo"
+        aliases:
+          type: array
+          description: "Optional list of additional surface forms; each becomes a `NodeAlias` row (idempotent via UNIQUE `(node_id, alias_norm)`)."
+          items:
+            type: string
+            minLength: 1
+            maxLength: 500
+          example: ["Apollo"]
+
+    ProposeLinkInput:
+      type: object
+      required: [source_node_id, link_type, target_node_id, confidence, fragment_ids]
+      properties:
+        source_node_id: { type: string, format: uuid }
+        link_type:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "Seeded LinkType name. Catalog miss → `UNKNOWN_TYPE`; rule miss → `RULE_VIOLATION`."
+          example: "leads"
+        target_node_id: { type: string, format: uuid }
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.91
+        fragment_ids:
+          type: array
+          minItems: 1
+          description: "Cited `InformationFragment` ids; each must belong to this run (BR-18 anti-hallucination)."
+          items: { type: string, format: uuid }
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+          description: "Required when `link_type.requires_valid_from = true`. Justification per `valid_from_basis` (BR-16)."
+        valid_from_basis:
+          $ref: "#/components/schemas/ValidFromBasis"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          description: "Semi-open upper bound `[valid_from, valid_to)`. Must be strictly greater than `valid_from` when both are present."
+        change_hint:
+          $ref: "#/components/schemas/ChangeHint"
+
+    ProposeAttributeInput:
+      type: object
+      required: [node_id, key, value, confidence, fragment_ids]
+      properties:
+        node_id: { type: string, format: uuid }
+        key:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "Seeded AttributeKey `key`. Catalog miss → `UNKNOWN_TYPE`; node_type mismatch → `STRUCTURAL_INVALID`."
+          example: "go_live_date"
+        value:
+          description: "Literal value; MUST parse as the key's declared `value_type` (date / number / text / bool)."
+          oneOf:
+            - { type: string, example: "2026-07-15" }
+            - { type: number }
+            - { type: boolean }
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.92
+        fragment_ids:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_from_basis:
+          $ref: "#/components/schemas/ValidFromBasis"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+        change_hint:
+          $ref: "#/components/schemas/ChangeHint"

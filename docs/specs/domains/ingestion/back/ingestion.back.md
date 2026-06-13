@@ -1,10 +1,10 @@
 # Ingestion -- Back-end Spec
 
-> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw) | Version: 1.1.0 | Status: draft | Layer: permanent
+> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 via Neon (driver `pg` raw) | Version: 1.2.1 | Status: draft | Layer: permanent
 > Business spec: `../ingestion.spec.md`
 > REST contract: `../openapi.yaml`
 > MCP contract: `remember-modelagem-v7.md` §14.1 (toolset `ingest`)
-> Schema: `migrations/0001_schema.sql` + `migrations/0002_seed.sql`
+> Schema: `migrations/0001_init.sql` (single bootstrap; no DDL change required by this revision)
 
 ---
 
@@ -17,150 +17,66 @@
 | Language | TypeScript 5.x strict | CLAUDE.md default |
 | Runtime | Node.js 20 LTS | CLAUDE.md default |
 | HTTP framework | Fastify + `@fastify/swagger` (serves `openapi.yaml`) | CLAUDE.md default |
-| MCP server | Same BFF process, second transport over the same service layer (CLAUDE.md "Architecture / MCP Server"). The `ingest` toolset is MCP-only (UC-08..UC-11); `query` / `curation` are mirrored in REST (out of scope here). | CLAUDE.md default |
+| MCP server | Same BFF process, second transport over the same service layer (CLAUDE.md "Architecture / MCP Server"). Dual-transport (REST + MCP) for the four `ingest` tools — see BR-21 (revised) and BR-28. | Documented deviation from A28/§14 ("ingest is MCP-only") — confirmed by the owner; the same deviation is recorded in CLAUDE.md. |
 | ORM | None — raw `pg` driver with parameterized queries (A6, §2.2 of v7). String concatenation of SQL is forbidden (CLAUDE.md "Security"). | CLAUDE.md default |
-| Migration strategy | Versioned SQL files in `migrations/` (`0001_schema.sql`, `0002_seed.sql`). New catalog entries require a new migration (§12). New chunking versions require a new migration (BR-03). | CLAUDE.md default |
-| Architecture pattern | Monolith modular: `backend/src/modules/ingestion/`. Three internal layers per module: `routes` (Fastify route handlers + Zod request/response schemas) → `service` (transactional orchestration + the 5-layer validation of §13) → `repository` (parameterized SQL against the tables owned by this domain). | Aligned with CLAUDE.md "folder_structure: modules". |
-| Validation library | Zod v4 — every REST DTO and every MCP tool input (UC-08..UC-11) has a Zod schema. Failed Zod parse on REST → 422 with one of `VALIDATION_REQUIRED_FIELD` / `VALIDATION_INVALID_FORMAT` / `VALIDATION_OUT_OF_RANGE`. Failed Zod parse on MCP → envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }` and a `tool_call` row with `validation_outcome = 'rejected'` (BR-13, BR-14). | CLAUDE.md default |
-| Auth | Neon Auth (Stack Auth) JWT validated by a Fastify `preHandler` middleware `requireNeonAuth` on every route under `/api/v1/ingest/*` and on every MCP tool call. JWKS is fetched from `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA by default) and cached in-process for `NEON_AUTH_JWKS_TTL_S` seconds. PostgreSQL RLS is disabled (A29). Single-owner — no `User` entity, no role check. The legacy env vars `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_JWKS_TTL_S` are removed; the BFF now reads `NEON_AUTH_URL` and `NEON_AUTH_JWKS_TTL_S` only. | CLAUDE.md default (auth-as-gate, single-owner unchanged); provider swapped from Supabase Auth to Neon Auth. |
-| Logging | `pino` structured JSON. Required fields per request/tool call: `request_id`, `route` or `tool_name`, `llm_run_id?`, `raw_information_id?`, `outcome`, `latency_ms`. PII fields (`content`, `text`) are never logged at any level (CLAUDE.md "Security"). | CLAUDE.md default |
-| Observability | `observability_required: true`. The §16 run metrics (acceptance rate, consolidations, `needs_review`, `disputed`, `uncertain`/`low_confidence`, per-layer rejections) are derived at read time from `tool_call.validation_outcome` (BR-12); no separate metrics store. | CLAUDE.md default |
-| Transaction policy | Every state-mutating REST endpoint and every MCP `ingest` tool call runs inside a single PostgreSQL transaction opened by the service layer (BR-19, A19). The Fastify route handler is the only place that calls `pool.connect()` / `client.query('BEGIN')`; the service receives the live `client` as its first argument. | Extension of CLAUDE.md "Backend / pg raw". |
-| Concurrency | `SELECT ... FOR UPDATE` for functional succession (A11), `pg_advisory_xact_lock(hashtextextended(...))` for entity creation (§4.5). Both are issued from the service layer inside the open transaction. | Extension of CLAUDE.md "Conventions". |
+| Migration strategy | Versioned SQL files in `migrations/` (`0001_init.sql` consolidates schema + seed). New catalog entries require a new migration (§12). New chunking versions require a new migration (BR-03). **This revision adds NO migration** — the schema already supports entity-resolution and graph-consolidation (`node_alias.alias_norm` GENERATED, trigram index `node_alias_norm_trgm_idx`, `entity_match_review` table, partial dup-guard indexes, `knowledge_node.status`/`merged_into_node_id`, `norm()` / `immutable_unaccent()` functions). | CLAUDE.md default |
+| Architecture pattern | Monolith modular: `backend/src/modules/ingestion/`. Internal layers per module: `routes` (Fastify route handlers + Zod request/response schemas) → `mcp` (MCP tool handlers — thin adapters over the same services) → `service` (transport-agnostic business functions + the 5-layer validation of §13 + the extraction orchestrator) → `repository` (parameterized SQL against the tables owned by this domain). The four `propose_*` business functions live in `service/propose-fragment.service.ts`, `service/propose-node.service.ts`, `service/propose-link.service.ts`, `service/propose-attribute.service.ts`; the orchestrator in `service/extraction.service.ts`; the resolver in `service/entity-resolution.service.ts`; the consolidator in `service/graph-consolidation.service.ts`. The MCP handlers and REST mirrors are pure transport adapters that call those services with the same arguments and return the same envelope (BR-28). | Aligned with CLAUDE.md "folder_structure: modules". |
+| Validation library | Zod v4 — every REST DTO and every MCP tool input has a Zod schema. The **same** Zod schemas (`ProposeFragmentInputSchema`, `ProposeNodeInputSchema`, `ProposeLinkInputSchema`, `ProposeAttributeInputSchema` under `modules/ingestion/dto/`) feed three places: (a) Fastify route validation for the REST mirrors, (b) MCP tool input validation, (c) the Anthropic tool-use `input_schema` declarations, derived via `zod-to-json-schema` (BR-24, BR-28). Failed Zod parse on REST → 422 with one of `VALIDATION_REQUIRED_FIELD` / `VALIDATION_INVALID_FORMAT` / `VALIDATION_OUT_OF_RANGE`. Failed Zod parse on MCP / tool-use → envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }` and a `tool_call` row with `validation_outcome = 'rejected'` (BR-13, BR-14). | CLAUDE.md default |
+| Auth | Neon Auth (Stack Auth) JWT validated by a Fastify `preHandler` middleware `requireNeonAuth` on every route under `/api/v1/ingest/*` (including the new `POST /llm-runs/:id/run` and the four `POST /llm-runs/:id/propose-*` mirrors) and on every MCP tool call. JWKS is fetched from `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA by default) and cached in-process for `NEON_AUTH_JWKS_TTL_S` seconds. PostgreSQL RLS is disabled (A29). Single-owner — no `User` entity, no role check. | CLAUDE.md default (auth-as-gate, single-owner unchanged); provider Neon Auth. |
+| Logging | `pino` structured JSON. Required fields per request/tool call: `request_id`, `route` or `tool_name`, `llm_run_id?`, `raw_information_id?`, `outcome`, `latency_ms`. Extraction orchestrator additionally logs per-turn: `turn_index`, `chunk_index`, `stop_reason`, `tool_use_count`, `tokens_in?`, `tokens_out?`. PII fields (`content`, `text`) are never logged at any level (CLAUDE.md "Security"). | CLAUDE.md default |
+| Observability | `observability_required: true`. The §16 run metrics are derived at read time from `tool_call.validation_outcome` (BR-12); no separate metrics store. Orchestrator emits a single `run_completed` info log at the end of each run with the eight `validation_outcome` counts and `attempts`, `model`, `prompt_version` — same fields as `LlmRunSummary` (BR-26 closing path). | CLAUDE.md default |
+| Transaction policy | Every state-mutating REST endpoint and every MCP `ingest` tool call runs inside a single PostgreSQL transaction opened by the service layer (BR-19, A19). The transport adapter (Fastify route handler or MCP handler) is the only place that calls `pool.connect()` / `client.query('BEGIN')`; the service receives the live `client` as its first argument. **The extraction orchestrator (`extraction.service.ts`) does NOT wrap the whole run in one transaction** — it opens one transaction per tool-use (BR-26, §9.4). | Extension of CLAUDE.md "Backend / pg raw". |
+| Concurrency | `SELECT ... FOR UPDATE` for functional succession on `knowledge_link` / `node_attribute` (A11, used by graph-consolidation, BR-27), `pg_advisory_xact_lock(hashtextextended(...))` for entity creation (§4.5, BR-20). Both are issued from the service layer inside the open transaction. | Extension of CLAUDE.md "Conventions". |
 | Time source | `now()` provided by PostgreSQL — never `Date.now()` in business code. State dependent on the clock is derived at read time, never written (CLAUDE.md "Conventions", §5.4, A9). | CLAUDE.md default |
-| Idempotency primitive | `sha256(content)` as `content_hash`; `sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)` as `llm_run.idempotency_key`. Both UTF-8, hex lowercase, 64 chars (BR-01, BR-08, A18). | New (this domain). |
-| Body limit | Fastify `bodyLimit` set to 11 MiB on the `ingestRawInformation` route to accommodate the 10 MiB `content` cap (UC-01 alt 1c, BR-04 cross-ref) plus JSON envelope overhead. All other routes use the platform default (1 MiB). | New (this domain). |
-| Chunker | Pure TypeScript module `modules/ingestion/chunker/v1.ts` exporting `chunkV1(content: string, sourceType: SourceType): RawChunkInput[]`. Constants `CHUNK_TARGET=[1500,2000]`, `CHUNK_HARD_MAX=4000`, `READING_TAIL=200` live in `modules/ingestion/chunker/config.ts` (BR-04, A22). Sentence split uses `Intl.Segmenter('pt', { granularity: 'sentence' })` (BR-07). | New (this domain). |
-| Hashing | `node:crypto.createHash('sha256').update(...).digest('hex')`. UTF-8 encoding is explicit on every `.update()` call. | New (this domain). |
-| Database connection | `pg` `Pool` instantiated from `DATABASE_URL` (Neon direct connection string). The Neon endpoint is the single store; schema is unchanged from the v7-aligned `migrations/0001_schema.sql` + `migrations/0002_seed.sql`. TLS is required by Neon (`sslmode=require` carried in the connection string). | Provider swapped from Supabase Cloud to Neon; driver, schema and pooling semantics unchanged. |
-| Testing | Vitest unit tests on the chunker (BR-03 determinism), on the idempotency key composition (BR-08), and on the 5-layer validation per UC (BR-13..BR-18). C1–C15 of v7 §17 are the acceptance suite at the BFF level. | CLAUDE.md default |
+| Idempotency primitive | `sha256(content)` as `content_hash`; `sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)` as `llm_run.idempotency_key`. Both UTF-8, hex lowercase, 64 chars (BR-01, BR-08, A18). | Unchanged in this revision. |
+| Body limit | Fastify `bodyLimit` set to 11 MiB on the `ingestRawInformation` route to accommodate the 10 MiB `content` cap. The new `runLlmExtraction` endpoint and the four REST `propose-*` mirrors use the platform default (1 MiB) — their bodies are small JSON arguments. All other routes use the platform default. | Unchanged in this revision (new routes do not need a raised cap). |
+| Chunker | Pure TypeScript module `modules/ingestion/chunker/v1.ts` exporting `chunkV1(content: string, sourceType: SourceType): RawChunkInput[]`. Constants `CHUNK_TARGET=[1500,2000]`, `CHUNK_HARD_MAX=4000`, `READING_TAIL=200` live in `modules/ingestion/chunker/config.ts` (BR-04, A22). Sentence split uses `Intl.Segmenter('pt', { granularity: 'sentence' })` (BR-07). | Unchanged in this revision. |
+| Hashing | `node:crypto.createHash('sha256').update(...).digest('hex')`. UTF-8 encoding is explicit on every `.update()` call. | Unchanged in this revision. |
+| Extraction orchestrator | Synchronous, in-process, single-threaded (no workers, no queue). Module: `modules/ingestion/service/extraction.service.ts`. Drives Anthropic via `@anthropic-ai/sdk` in a **manual** tool-use loop (NOT `client.beta.tools.runTool` / `tool-runner`). Per chunk, builds a fresh conversation: `SYSTEM = extraction contract + seeded catalog from CatalogSnapshot (§15)`; `USER = document metadata + chunk text (delimited as data, never instruction — §13) + prev_tail ≤ 200 chars from the previous chunk`. Tool defs from the 4 Zod schemas via `zod-to-json-schema`. Streaming per turn via `client.messages.stream({...}).finalMessage()`. Loop terminates at `stop_reason === "end_turn"`; handles `stop_reason === "pause_turn"` by issuing a continuation request; treats `stop_reason === "refusal"` as a fatal failure for the chunk. Each `tool_use` block produces an in-process call to the matching `propose*Service(client, args, runContext)` — same function used by REST/MCP — and a `tool_result` block is appended to the conversation with the verbatim envelope (`{ ok, result?, error? }`). The orchestrator never bypasses the service layer; every action is auditable via `tool_call`. (BR-24..BR-26) | New (this revision). |
+| Anthropic client config | `model = llm_run.model` (default recommended `claude-opus-4-8`). `prompt_version = llm_run.prompt_version` (default `'v1'`, must match a module under `modules/ingestion/prompts/`; this revision ships `extraction.v1.ts`). `thinking: { type: "adaptive" }`. `max_tokens` set per turn from a per-prompt-version constant (default 8000). `temperature` not set (default). API key from env `ANTHROPIC_API_KEY` (single secret; never logged; only present in BFF process). | New (this revision). |
+| Database connection | `pg` `Pool` instantiated from `DATABASE_URL` (Neon direct connection string). The Neon endpoint is the single store; schema is unchanged from the v7-aligned `migrations/0001_init.sql`. TLS is required by Neon (`sslmode=require` carried in the connection string). | Unchanged in this revision. |
+| Testing | Vitest unit tests on: chunker determinism (BR-03); idempotency key composition (BR-08); 5-layer validation (BR-13..BR-18); entity-resolution thresholds with all four decision branches (BR-25); graph-consolidation outcomes — consolidated / superseded_previous / disputed (BR-27); the tool-def derivation `zod → JSON Schema` matches the four Zod schemas (BR-24); the orchestrator drives the loop correctly under a stubbed Anthropic client (BR-26). C1–C15 of v7 §17 are the acceptance suite at the BFF level. | CLAUDE.md default |
 
 ---
 
 ## 2. Data Model
 
-> Exact database types as defined in `migrations/0001_schema.sql`. This domain owns six tables: `raw_information`, `raw_chunk`, `llm_run`, `tool_call`, `information_fragment`, `fragment_source`. Catalog and graph tables (`node_type`, `link_type`, `link_type_rule`, `attribute_key`, `knowledge_node`, `node_alias`, `node_attribute`, `knowledge_link`, `provenance`, `entity_match_review`) are read (UC-09, UC-10, UC-11) and written through the consolidation/entity-resolution service layer; their full ownership belongs to those future domains (§7 of `ingestion.spec.md`).
+> Exact database types as defined in `migrations/0001_init.sql`. This revision **introduces no new tables, no new columns and no new indexes**. The ingestion domain still owns six tables: `raw_information`, `raw_chunk`, `llm_run`, `tool_call`, `information_fragment`, `fragment_source`. The new behavior introduced by this revision (entity-resolution at write time, graph consolidation at write time) reads and writes the existing tables of the graph layer (`knowledge_node`, `node_alias`, `node_attribute`, `knowledge_link`, `provenance`, `entity_match_review`) — those rows are written from inside the ingestion transaction; the tables themselves are owned by the future `graph-consolidation` and `entity-resolution` domains (§7 of `ingestion.spec.md`).
 
-### Table: raw_information
+### Tables owned by this domain
 
-> Immutable original document (§3.1 of v7). Only writer post-creation is `compliance_delete` (out of scope here).
+The six tables (`raw_information`, `raw_chunk`, `llm_run`, `tool_call`, `information_fragment`, `fragment_source`) are unchanged from the previous version of this spec. Full schemas are in `migrations/0001_init.sql`; the prior revision of this document (v1.1.0) listed them column by column — none of those columns is modified or extended by this revision.
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | uuid | PK, DEFAULT `gen_random_uuid()` | Primary key. |
-| source_type | source_type (enum) | NOT NULL | One of `pdf`, `email`, `ata`, `chat`, `artigo`, `transcricao`, `outro` (§3.1). Drives chunker hard boundaries (BR-06). |
-| content | text | NOT NULL | The original document, inline. Replaced with the literal string `"[REDACTED]"` by `compliance_delete` (§11). |
-| storage_ref | text | NULL allowed | Reserved for future externalization. Always NULL in this version (A5). |
-| content_hash | text | NOT NULL, UNIQUE, CHECK `~ '^[0-9a-f]{64}$'` | `sha256(content)` hex lowercase. Idempotency anchor (BR-01, §8). The UNIQUE constraint is what the `noop_existing` 200 path detects (UC-01 alt 4a). |
-| received_at | timestamptz | NOT NULL, DEFAULT `now()` | Wall-clock time the BFF accepted the document. |
-| metadata | jsonb | NOT NULL, DEFAULT `'{}'::jsonb` | Free-form bag. Reserved key `document_date` (ISO date) participates in the date-justification chain (A14, §6.5). Reserved key `compliance_deleted: true` is set by `compliance_delete`. |
+### Tables read/written across the domain boundary (cross-domain)
 
-### Table: raw_chunk
+The following tables are read and written from the ingestion service layer in service of UC-09 (entity resolution) and UC-10/UC-11 (graph consolidation). Schemas live in `migrations/0001_init.sql`; this domain is **not** the owner — it only emits rows under the invariants documented below.
 
-> Deterministic slice of `raw_information.content` (§3.1, §9.2). Offsets 0-based, semi-open `[offset_start, offset_end)`, in Unicode code points (BR-05, A22).
+| Table | Read | Write | Reason |
+|-------|------|-------|--------|
+| `knowledge_node` | YES — by id (resolution candidate join), by `(node_type_id, status='active')` filtered by trigram on `node_alias.alias_norm` | YES — INSERT a new node row (`status='active'` for "created_new", `status='needs_review'` for ambiguous), under `pg_advisory_xact_lock` (BR-20, BR-25) | UC-09 |
+| `node_alias` | YES — exact `alias_norm` match (1.0 score); trigram `%` candidates via `node_alias_norm_trgm_idx` | YES — INSERT a `(node_id, alias_text)` row whenever the LLM proposes an alias the node does not yet carry. UNIQUE `(node_id, alias_norm)` is the dup guard. | UC-09 |
+| `entity_match_review` | NO (read by the future curation domain) | YES — INSERT 1 row **per ambiguous candidate** when entity resolution returns the `needs_review` decision; the new node and these rows are inserted in the same transaction (BR-25). | UC-09 |
+| `knowledge_link` | YES — `SELECT ... FOR UPDATE` of the vigent row for `(source_node_id, link_type_id, target_node_id)` under A11 | YES — INSERT a new row on the consolidation flows of §6.5 (new active assertion / succession). For consolidation (re-affirmation) NO INSERT — only the `provenance` row is added. For succession, UPDATE the previous row to set `valid_to`, `superseded_at`, `status='superseded'` and INSERT the new row with `supersedes_link_id` set. (BR-27) | UC-10 |
+| `node_attribute` | YES — `SELECT ... FOR UPDATE` of the vigent row for `(node_id, attribute_key_id)` | YES — mirror of `knowledge_link` (consolidation / succession / dispute / correction). (BR-27) | UC-11 |
+| `provenance` | YES — anti-hallucination check (BR-18) | YES — INSERT one row per cited fragment, attached to either the new `knowledge_link.id` / `node_attribute.id` (new assertion) or the existing one (consolidation, re-affirmation accumulates provenance — §18). (BR-18, BR-27) | UC-10, UC-11 |
+| `node_type`, `link_type`, `link_type_rule`, `attribute_key` | YES — catalog cache loaded at boot from the seed §15 (BR-15) | NO — catalog is migration-only (§12). | UC-09, UC-10, UC-11 |
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | uuid | PK, DEFAULT `gen_random_uuid()` | Primary key. |
-| raw_information_id | uuid | NOT NULL, FK → `raw_information(id)` | Owning document. |
-| chunk_index | int | NOT NULL, CHECK `>= 0` | 0-based position. Spec name is `index`; renamed because `INDEX` is a SQL keyword (CLAUDE.md "Known Gotchas"). |
-| text | text | NOT NULL | Verbatim slice. Stored, not derived (allows offsetting drift in future re-chunking). |
-| offset_start | int | NOT NULL, CHECK `>= 0` | Start offset in code points. |
-| offset_end | int | NOT NULL, CHECK `offset_end > offset_start` | End offset, exclusive (BR-05). |
-| locator | jsonb | NULL allowed | Readable anchor for citation (page/line/speaker/ts) — shape depends on `source_type` (A23). |
-| chunking_version | text | NOT NULL, DEFAULT `'v1'` | Identifier of the chunking strategy (BR-03). |
-| text_search | tsvector | GENERATED ALWAYS, STORED | `to_tsvector('pt_unaccent_v1', text)` — backs full-text search (out of scope here; consumed by the future `retrieval` domain). |
+### Indexes (unchanged in this revision)
 
-**Composite UNIQUE:** `(raw_information_id, chunking_version, chunk_index)` — guarantees one chunk per slot per chunking version.
+All indexes consumed by the new resolver/consolidator already exist in `migrations/0001_init.sql`:
 
-### Table: llm_run
+| Table | Fields | Type | Used by |
+|-------|--------|------|---------|
+| node_alias | alias_norm | btree `node_alias_norm_idx` | Step 1 of resolver: exact `alias_norm = norm($1)` match. |
+| node_alias | alias_norm | GIN `node_alias_norm_trgm_idx` (`gin_trgm_ops`) | Step 2 of resolver: `alias_norm % norm($1)` candidate retrieval. |
+| node_alias | (node_id, alias_norm) | UNIQUE btree | Idempotent alias add — second INSERT with the same `(node_id, alias_norm)` is a silent no-op via `ON CONFLICT DO NOTHING`. |
+| knowledge_node | (status='needs_review') | partial btree `knowledge_node_needs_review_idx` | Curation queue read (downstream); written when resolver returns "ambiguous". |
+| knowledge_link | (source_node_id, link_type_id, target_node_id) WHERE vigent | partial UNIQUE `knowledge_link_current_dup_guard` | Without consolidation, a second identical assertion would hit this constraint. BR-27 turns that case into `consolidated` instead. |
+| node_attribute | (node_id, attribute_key_id, value) WHERE vigent | partial UNIQUE `node_attribute_current_dup_guard` | Same as above for attributes. |
 
-> One row per extraction session against one `raw_information` (§3.5). Retry reopens the same row in place (BR-10).
+### Relationships (unchanged in this revision)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | uuid | PK, DEFAULT `gen_random_uuid()` | Primary key. |
-| model | text | NOT NULL | LLM model identifier (e.g. `claude-opus-4-7`). Part of `idempotency_key`. |
-| prompt_version | text | NOT NULL | Versioned extraction prompt id. Part of `idempotency_key`. |
-| started_at | timestamptz | NOT NULL, DEFAULT `now()` | Set on first creation; never modified by retry (retry only flips `status` and bumps `attempts`). |
-| finished_at | timestamptz | NULL allowed | Set by the close path (UC-07); reset to NULL by retry (UC-06, BR-10). |
-| status | llm_run_status (enum) | NOT NULL, DEFAULT `'running'` | One of `running`, `completed`, `failed`. Drives ST-LR. |
-| attempts | int | NOT NULL, DEFAULT 1, CHECK `>= 1` | Incremented by 1 on every retry (BR-10). |
-| input_raw_information_id | uuid | NOT NULL, FK → `raw_information(id)` | The source document. |
-| idempotency_key | text | NOT NULL, UNIQUE | `sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)` (BR-08, A18). |
-
-**CHECK invariant:** `(status = 'running') = (finished_at IS NULL)` — ST-LR is the single source of truth (BR-11, §3.5).
-
-### Table: tool_call
-
-> Audit row of every MCP `ingest` tool invocation (§3.5). The §16 run summary (BR-12) is computed by aggregating `validation_outcome` of these rows.
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | uuid | PK, DEFAULT `gen_random_uuid()` | Primary key. |
-| llm_run_id | uuid | NOT NULL, FK → `llm_run(id)` | The run the call belongs to. |
-| tool_name | text | NOT NULL | One of `propose_fragment`, `propose_node`, `propose_link`, `propose_attribute` (§14.1). |
-| arguments | jsonb | NOT NULL | Verbatim arguments received from the LLM. Stored as-is for audit. |
-| result | jsonb | NULL allowed | Verbatim JSON envelope returned to the LLM (`{ ok: true, result }` or `{ ok: false, error }`). |
-| validation_outcome | validation_outcome (enum) | NOT NULL | One of `accepted`, `consolidated`, `superseded_previous`, `needs_review`, `uncertain`, `disputed`, `rejected`, `error` (§3.5). |
-| created_at | timestamptz | NOT NULL, DEFAULT `now()` | Used for chronological pagination (UC-05). |
-
-### Table: information_fragment
-
-> An atomic extracted claim (§3.2). Carries `confidence`. Lives in ST-IF.
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | uuid | PK, DEFAULT `gen_random_uuid()` | Primary key. |
-| llm_run_id | uuid | NOT NULL, FK → `llm_run(id)` | The run that produced this fragment. |
-| text | text | NOT NULL, CHECK `char_length(text) <= 1000` | Subject–predicate–object sentence. The 1000-char cap is the contract of `propose_fragment` (BR-22, §14.1). |
-| confidence | numeric | NOT NULL, CHECK `[0, 1]` | LLM-reported confidence. Drives routing (BR-17, A13). |
-| status | fragment_status (enum) | NOT NULL, DEFAULT `'proposed'` | One of `proposed`, `accepted`, `rejected`, `superseded`, `deleted` (ST-IF). |
-| text_search | tsvector | GENERATED ALWAYS, STORED | `to_tsvector('pt_unaccent_v1', text)` — out of scope here; consumed by retrieval. |
-| created_at | timestamptz | NOT NULL, DEFAULT `now()` | Insertion timestamp. |
-
-### Table: fragment_source
-
-> Join table — every fragment anchors back to at least one `raw_chunk` of the same `raw_information_id`. Anti-hallucination invariant for fragments (BR-18 anchors links/attributes; this table anchors the fragments themselves).
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| fragment_id | uuid | NOT NULL, FK → `information_fragment(id)` | The fragment. |
-| raw_chunk_id | uuid | NOT NULL, FK → `raw_chunk(id)` | A chunk of the run's `input_raw_information_id`. Cross-run anchoring is forbidden (UC-08 alt 2c). |
-
-**PK:** `(fragment_id, raw_chunk_id)` — no duplicate anchors.
-
-### Indexes
-
-> Justify each index with the query it optimizes. Every FK has its own index (CLAUDE.md "Conventions"). Index names and definitions are taken verbatim from `migrations/0001_schema.sql`.
-
-| Table | Fields | Type | Justification |
-|-------|--------|------|---------------|
-| raw_information | content_hash | UNIQUE btree (from `UNIQUE` constraint) | UC-01 alt 4a: idempotent re-ingestion looks up by `content_hash` before deciding `created` vs `noop_existing`. |
-| raw_chunk | (raw_information_id, chunking_version, chunk_index) | UNIQUE btree (composite) | UC-03 reads chunks of a `raw_information_id` ordered by `chunk_index`; the composite index serves both the uniqueness guard and the ordered range scan. |
-| raw_chunk | text_search | GIN | Out of scope for ingestion routes (consumed by future retrieval); listed because the column is generated by the writes this domain performs (UC-01 step 5). |
-| llm_run | input_raw_information_id | btree (`llm_run_input_idx`) | UC-01 alt 4a's `noop_existing` branch reads the existing `llm_run` row by `(input_raw_information_id, idempotency_key)`. Also used to confirm absence of a non-failed run before creating a new one. |
-| llm_run | idempotency_key | UNIQUE btree (from `UNIQUE` constraint) | BR-08 guard against duplicate runs; UC-01 alt 4a lookup. |
-| tool_call | llm_run_id | btree (`tool_call_run_idx`) | UC-04 (run summary aggregation, BR-12) and UC-05 (paginated audit list) both scan by `llm_run_id`. |
-| information_fragment | llm_run_id | btree (`information_fragment_run_idx`) | UC-06 retry flips orphan `proposed` fragments of the run to `rejected`; the index supports the scan. Also used by anti-hallucination checks (BR-18) to confirm a fragment belongs to the current run. |
-| information_fragment | text_search WHERE `status = 'accepted'` | partial GIN | Out of scope here (consumed by retrieval); listed because writes in this domain populate the column. |
-| fragment_source | (fragment_id, raw_chunk_id) | PK btree | UC-08 inserts; BR-18 reverse lookup (chunk → fragments) via the secondary index below. |
-| fragment_source | raw_chunk_id | btree (`fragment_source_chunk_idx`) | BR-18 needs to walk `fragment_id → raw_chunk_id → raw_information_id` to verify a fragment anchors a chunk of the run's source. The PK starts with `fragment_id`, so this secondary index serves the reverse direction. |
-
-### Relationships
-
-> FK + on-delete strategy. Cross-domain: via ID only — never nested objects.
-
-| From | To | Type | FK | On Delete |
-|------|----|------|----|-----------|
-| raw_chunk.raw_information_id | raw_information.id | N : 1 | `raw_chunk_raw_information_id_fkey` | NO ACTION (default) — `raw_information` is immutable; compliance_delete tombstones it (overwriting `content` only) and does **not** delete the row, so cascade is unnecessary and would defeat audit (BR-02). |
-| llm_run.input_raw_information_id | raw_information.id | N : 1 | `llm_run_input_raw_information_id_fkey` | NO ACTION — same reasoning. |
-| tool_call.llm_run_id | llm_run.id | N : 1 | `tool_call_llm_run_id_fkey` | NO ACTION — `llm_run` is never deleted; retry reopens in place (BR-10). |
-| information_fragment.llm_run_id | llm_run.id | N : 1 | `information_fragment_llm_run_id_fkey` | NO ACTION — same reasoning. Cleanup of orphan `proposed` fragments on retry is a status transition (`proposed → rejected`), never a row delete (BR-10). |
-| fragment_source.fragment_id | information_fragment.id | N : 1 | `fragment_source_fragment_id_fkey` | NO ACTION — fragments are not deleted; status `deleted` is a tombstone applied by compliance (out of scope here). |
-| fragment_source.raw_chunk_id | raw_chunk.id | N : 1 | `fragment_source_raw_chunk_id_fkey` | NO ACTION — chunks are not deleted in this domain. |
-
-**No CASCADE anywhere in this domain.** Data is immutable by design (BR-02); the only post-creation mutations are status transitions and the compliance tombstone — neither requires cascade.
+The FK + on-delete table from v1.1.0 stands. **No CASCADE anywhere.** Cross-domain inserts (`knowledge_node`, `node_alias`, `entity_match_review`, `knowledge_link`, `node_attribute`, `provenance`) happen in the same transaction as the `tool_call` row that audits them; on rollback every cross-domain row is also rolled back, except the `tool_call` audit which is then re-issued in a separate short transaction (BR-23, unchanged).
 
 ---
 
@@ -172,167 +88,268 @@
 **Related UC:** UC-01
 **Where to validate:** service (`ingestion.service.ingestRawInformation`) computes `sha256(content)` after the Zod parse and before the transaction opens. Format constraint (`^[0-9a-f]{64}$`) is enforced by the DB `CHECK` on `raw_information.content_hash`.
 **Description:** `content_hash = sha256(content)`, hex, lowercase, 64 chars. The DB `UNIQUE (content_hash)` is what UC-01 alt 4a turns into `outcome = "noop_existing"`.
-**Error returned:** No direct error — collision is a business outcome (`200 noop_existing`), not a 409. A `UNIQUE` violation raised by `pg` is caught by the service and translated into the re-read path; an unexpected `unique_violation` SQLSTATE `23505` on any other index becomes `500 SYSTEM_INTERNAL_ERROR`.
+**Error returned:** No direct error — collision is a business outcome (`200 noop_existing`), not a 409.
 
 ### BR-02 -- Source content is immutable
 **Related UC:** UC-01, UC-02
 **Where to validate:** repository — the ingestion module exposes no `UPDATE raw_information ...` query at all. The only writer that exists in the whole system targeting `raw_information.content` belongs to the future compliance module (`compliance_delete`).
 **Description:** After insert, `raw_information.{content, metadata, received_at}` is never modified by any code path of this domain.
-**Error returned:** Not applicable — enforced by absence of code (no error path needed). A reviewer who finds an `UPDATE raw_information` in this module must reject the PR.
+**Error returned:** Not applicable — enforced by absence of code (no error path needed).
 
 ### BR-03 -- Chunking is deterministic and versioned
 **Related UC:** UC-01
-**Where to validate:** Vitest unit test on `chunkV1` — running `chunkV1(content, sourceType)` twice produces strictly equal outputs (same array length, same offsets, same text). `chunking_version` is hardcoded to `'v1'` in the constant module; bumping it requires a new migration plus a new chunker module (out of scope for 1.0.0).
+**Where to validate:** Vitest unit test on `chunkV1` — running `chunkV1(content, sourceType)` twice produces strictly equal outputs. `chunking_version` is hardcoded to `'v1'`.
 **Description:** Same `(content, chunking_version)` → same chunks.
-**Error returned:** Not applicable at request time — a non-deterministic chunker is a code-level bug surfaced by the unit test, not an API error.
+**Error returned:** Not applicable at request time.
 
 ### BR-04 -- Chunk algorithm constants are fixed
 **Related UC:** UC-01
-**Where to validate:** `modules/ingestion/chunker/config.ts` — single source of truth. `CHUNK_TARGET=[1500,2000]`, `CHUNK_HARD_MAX=4000`, `READING_TAIL=200` (A22). Changing any of them requires a new chunking version (BR-03).
+**Where to validate:** `modules/ingestion/chunker/config.ts` — `CHUNK_TARGET=[1500,2000]`, `CHUNK_HARD_MAX=4000`, `READING_TAIL=200` (A22).
 **Description:** The three constants are not configurable per request.
 **Error returned:** Not applicable.
 
 ### BR-05 -- Chunk offsets are 0-based, semi-open, in Unicode code points
 **Related UC:** UC-01, UC-03
-**Where to validate:** chunker implementation — iterate via `[...str]` (code-point iterator), never via `str[i]` (UTF-16 unit). DB `CHECK (offset_end > offset_start)` is the safety net.
-**Description:** `offset_start >= 0`, `offset_end > offset_start`, both counted in code points of the original `content`.
-**Error returned:** Chunker producing an invalid pair → DB `CHECK` violation → caught and surfaced as `500 SYSTEM_INTERNAL_ERROR` (UC-01 alt 5a). This is a bug, not a user-facing failure mode.
+**Where to validate:** chunker implementation — iterate via `[...str]`. DB `CHECK (offset_end > offset_start)` is the safety net.
+**Description:** `offset_start >= 0`, `offset_end > offset_start`, both in code points of the original `content`.
+**Error returned:** DB `CHECK` violation → `500 SYSTEM_INTERNAL_ERROR`.
 
 ### BR-06 -- Hard boundaries close the current chunk
 **Related UC:** UC-01
-**Where to validate:** chunker — per-`source_type` dispatch table. `pdf`: form-feed / explicit page marker. `email`: header↔body delimiter (first blank line) plus every level of `^>+ ` quotation. `chat`, `transcricao`: speaker/turn delimiter, also forbids cross-speaker fusion. `ata`, `artigo`, `outro`: no hard boundary — `CHUNK_TARGET` / `CHUNK_HARD_MAX` only.
+**Where to validate:** chunker — per-`source_type` dispatch table.
 **Description:** Hard boundaries are mandatory closures; the chunker never overlaps chunks; `READING_TAIL` is not persisted.
-**Error returned:** Not applicable (chunker correctness, covered by BR-03 unit tests).
+**Error returned:** Not applicable.
 
 ### BR-07 -- Oversize blocks fall back to sentence split
 **Related UC:** UC-01
-**Where to validate:** chunker — a block strictly larger than `CHUNK_HARD_MAX` is split with `Intl.Segmenter('pt', { granularity: 'sentence' })`. Code blocks (markdown ``` fences) and tables (markdown `|...|` rows) are exempt and remain one chunk.
+**Where to validate:** chunker — `Intl.Segmenter('pt', { granularity: 'sentence' })`. Code blocks and tables are exempt.
 **Description:** Sentence-level split is a last-resort fallback; structural blocks are preserved intact.
 **Error returned:** Not applicable.
 
 ### BR-08 -- Run idempotency key composition
 **Related UC:** UC-01
-**Where to validate:** service — `idempotencyKey = sha256(utf8(content_hash) ∥ utf8(prompt_version) ∥ utf8(model) ∥ utf8(chunking_version))`, no separator. Hex lowercase 64 chars. DB `UNIQUE (llm_run.idempotency_key)` is the safety net.
-**Description:** Bumping any of the four operands yields a different key, hence a new run on the same `raw_information` (UC-01 alt 4a is keyed by `(content_hash, idempotency_key)` jointly).
-**Error returned:** Not applicable — collisions are translated into `200 noop_existing`; an unexpected `unique_violation` SQLSTATE `23505` on `llm_run_idempotency_key_key` is logged and re-raised as `500 SYSTEM_INTERNAL_ERROR`.
+**Where to validate:** service — `idempotencyKey = sha256(utf8(content_hash) ∥ utf8(prompt_version) ∥ utf8(model) ∥ utf8(chunking_version))`, no separator. Hex lowercase 64 chars.
+**Description:** Bumping any of the four operands yields a different key.
+**Error returned:** Not applicable — collisions translate into `200 noop_existing`.
 
 ### BR-09 -- Re-ingestion is a no-op on the live path
 **Related UC:** UC-01 alt 4a
-**Where to validate:** service. On `INSERT INTO raw_information ... RETURNING id`, catch SQLSTATE `23505` on `raw_information_content_hash_key`. Then in the same transaction: re-read the existing `raw_information` by `content_hash`, recompute `idempotency_key`, look up the existing `llm_run` by `idempotency_key`. If the run is found and `status <> 'failed'`, return `200` with `outcome = "noop_existing"` (empty `chunks` array, existing identifiers). If the run is `failed`, still return `200 noop_existing` (the caller is expected to invoke `retryLlmRun` next).
+**Where to validate:** service. Catch SQLSTATE `23505` on `raw_information_content_hash_key`, re-read, recompute `idempotency_key`, look up the existing `llm_run`. If the run is found, return `200 noop_existing` regardless of its `status` (failed runs still surface via this 200 path; the caller is expected to invoke `retryLlmRun` next).
 **Description:** No new rows are written in the no-op path.
-**Error returned:** None — this is a 200 success path.
+**Error returned:** None — 200 success.
 
 ### BR-10 -- Retry reopens the same LLMRun row
 **Related UC:** UC-06
-**Where to validate:** service (`ingestion.service.retryLlmRun`). One transaction does: `UPDATE llm_run SET status='running', attempts = attempts+1, finished_at = NULL WHERE id = $1 AND status = 'failed' RETURNING *`. If `rowCount = 0`, the run was not failed → return `409 BUSINESS_RUN_NOT_RETRYABLE`. In the same transaction, flip orphan `proposed` fragments to `rejected`:
-```sql
-UPDATE information_fragment
-SET status = 'rejected'
-WHERE llm_run_id = $1
-  AND status = 'proposed'
-  AND id NOT IN (SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL);
-```
-**Description:** A new `llm_run` row with the same `idempotency_key` is never created; orphan cleanup is by status transition.
+**Where to validate:** service (`ingestion.service.retryLlmRun`). One transaction: `UPDATE llm_run SET status='running', attempts = attempts+1, finished_at = NULL WHERE id = $1 AND status = 'failed' RETURNING *`. In the same transaction, flip orphan `proposed` fragments to `rejected` (no row in `provenance`).
+**Description:** A new `llm_run` row with the same `idempotency_key` is never created.
 **Error returned:** `409 BUSINESS_RUN_NOT_RETRYABLE` if not failed.
 
 ### BR-11 -- Only failed runs are retryable
 **Related UC:** UC-06
-**Where to validate:** service — the conditional `UPDATE ... WHERE status = 'failed'` of BR-10 plus a pre-read to distinguish "not found" (404) from "wrong status" (409).
+**Where to validate:** service — conditional `UPDATE ... WHERE status = 'failed'` plus a pre-read to distinguish 404 from 409.
 **Description:** Re-running a `running` or `completed` run is rejected.
-**Error returned:** HTTP 409 -- error.code: `BUSINESS_RUN_NOT_RETRYABLE` (registered).
+**Error returned:** HTTP 409 -- error.code: `BUSINESS_RUN_NOT_RETRYABLE`.
 
 ### BR-12 -- Run summary is derived, never stored
 **Related UC:** UC-04
-**Where to validate:** repository — `getLlmRunById` runs two queries: one for the run row, one aggregating `tool_call`:
-```sql
-SELECT validation_outcome, count(*)::int AS n
-  FROM tool_call WHERE llm_run_id = $1 GROUP BY validation_outcome;
-```
-The service zips the result into the eight `LlmRunSummary` fields, defaulting absent outcomes to 0.
-**Description:** No `summary_*` columns on `llm_run`. Aligns with §5.4 / A9 ("state dependent on downstream rows is derived").
+**Where to validate:** repository — aggregate `tool_call.validation_outcome` for the run.
+**Description:** No `summary_*` columns on `llm_run`.
 **Error returned:** None — read-only.
 
 ### BR-13 -- Layered validation order is fixed
 **Related UC:** UC-08, UC-09, UC-10, UC-11
-**Where to validate:** service. Each MCP `ingest` tool handler invokes the 5 layers in this exact order — `structural → graph rules → temporal → confidence → anti-hallucination`. The handler is implemented as a sequence of `await validateStructural(...); await validateGraphRules(...); ...` calls; each layer throws a typed `ValidationFailure` with the matching MCP error code. The top-level handler catches `ValidationFailure`, persists the `tool_call` row with `validation_outcome = 'rejected'`, and returns the MCP error envelope.
-**Description:** Rejection is a business result, not an exception; layers must not short-circuit out of order (e.g., temporal checks must not run before graph rules pass).
-**Error returned:** See BR-14..BR-17 for the per-layer code map.
+**Where to validate:** service. Each `propose_*` service function invokes the 5 layers in order: `structural → graph rules → temporal → confidence → anti-hallucination`. The handler catches `ValidationFailure` and returns the matching MCP error envelope; the `tool_call` row is persisted with `validation_outcome = 'rejected'`.
+**Description:** Rejection is a business result, not an exception; layers must not short-circuit out of order.
+**Error returned:** See BR-14..BR-17.
 
 ### BR-14 -- Structural failures map to STRUCTURAL_INVALID / UNKNOWN_TYPE / NOT_FOUND
 **Related UC:** UC-08, UC-09, UC-10, UC-11
-**Where to validate:** service / structural layer. Zod parse failures, wrong references inside the run, and value-type mismatches all surface here.
+**Where to validate:** service / structural layer.
 **Description:**
-- Missing/typed fields, value not parseable as `value_type`, cross-table compatibility (`key.node_type_id <> node.node_type_id`, chunk not in run's source) → `STRUCTURAL_INVALID`.
-- `node_type` / `link_type` / `key` not in the seeded catalog (joined miss in `node_type`, `link_type`, `attribute_key`) → `UNKNOWN_TYPE`.
-- Referenced `chunk_id` / `fragment_id` / `node_id` that resolves to no row → `NOT_FOUND`.
-**Error returned:** MCP envelope `{ ok: false, error: { code: "STRUCTURAL_INVALID" | "UNKNOWN_TYPE" | "NOT_FOUND" } }`. `tool_call.validation_outcome = 'rejected'`.
+- Missing/typed fields, cross-table compatibility mismatch → `STRUCTURAL_INVALID`.
+- Catalog miss → `UNKNOWN_TYPE`.
+- Referenced row not found → `NOT_FOUND`.
+**Error returned:** MCP envelope `{ ok: false, error: { code } }`. `tool_call.validation_outcome = 'rejected'`.
 
 ### BR-15 -- Graph-rule failures map to RULE_VIOLATION
 **Related UC:** UC-10
-**Where to validate:** service / graph-rule layer. Query the active `link_type_rule` (`valid_to IS NULL OR valid_to > current_date`) for the `(source_node_type_id, link_type_id, target_node_type_id)` triple.
-**Description:** The 22 seeded rules of §15.2 (`migrations/0002_seed.sql`) are the v1 authoritative set.
-**Error returned:** MCP envelope `{ ok: false, error.code: "RULE_VIOLATION" }`. `tool_call.validation_outcome = 'rejected'`.
+**Where to validate:** service / graph-rule layer. Query the active `link_type_rule`.
+**Description:** The 22 seeded rules of §15.2 (`migrations/0001_init.sql`) are the v1 authoritative set.
+**Error returned:** MCP envelope `{ ok: false, error.code: "RULE_VIOLATION" }`.
 
 ### BR-16 -- Temporal failures map to TEMPORAL_INCOHERENT / DATE_UNJUSTIFIED
 **Related UC:** UC-10, UC-11
 **Where to validate:** service / temporal layer.
-**Description:**
-- `valid_from >= valid_to` (semi-open `[from, to)` violated) → `TEMPORAL_INCOHERENT`.
-- `change_hint = 'correction'` without an errata signal in any cited fragment's `text` → `TEMPORAL_INCOHERENT`.
-- `link_type.requires_valid_from = true` and none of `stated` (in fragment text) / `document` (`metadata.document_date`) supplies a date, and the BFF cannot fall back to `received` for this type → `DATE_UNJUSTIFIED`.
-**Error returned:** MCP envelope `{ ok: false, error.code: "TEMPORAL_INCOHERENT" | "DATE_UNJUSTIFIED" }`. `tool_call.validation_outcome = 'rejected'`.
+**Description:** Per `ingestion.spec.md` §4 BR-16. Unchanged.
+**Error returned:** MCP envelope `{ ok: false, error.code: "TEMPORAL_INCOHERENT" | "DATE_UNJUSTIFIED" }`.
 
 ### BR-17 -- Confidence routing
 **Related UC:** UC-10, UC-11
 **Where to validate:** service / confidence layer (A13). Constants in `modules/ingestion/validation/confidence.ts`: `CONFIDENCE_FLOOR = 0.40`, `CONFIDENCE_UNCERTAIN_UPPER = 0.75`.
-**Description:**
-- `confidence >= 0.75` → assertion `status = 'active'`.
-- `0.40 <= confidence < 0.75` → assertion `status = 'uncertain'`.
-- `confidence < 0.40` → the link/attribute is **not** created; the supporting fragments stay `proposed` and the retrieval layer renders them with a `low_confidence` flag. The `tool_call` records `validation_outcome = 'rejected'` with `result.reason = "BELOW_CONFIDENCE_FLOOR"`.
-**Error returned:** Below floor: MCP envelope `{ ok: true, result: { outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR" } }` — note this is an `ok: true` envelope because it is a business outcome, not an error. The matching `tool_call.validation_outcome` is `'rejected'`.
+**Description:** `≥ 0.75 → 'active'`; `[0.40, 0.75) → 'uncertain'`; `< 0.40 → not created`.
+**Error returned:** Below floor: MCP envelope `{ ok: true, result: { outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR" } }` (business outcome, not error). The `tool_call.validation_outcome` is `'rejected'`.
 
 ### BR-18 -- Every accepted assertion has provenance
 **Related UC:** UC-10, UC-11
-**Where to validate:** service / anti-hallucination layer (§13.5). In the same transaction that inserts `knowledge_link` or `node_attribute`, the service must insert at least one `provenance` row pointing to an `information_fragment` whose `fragment_source` chain anchors a `raw_chunk` of the current run's `input_raw_information_id`. The check is implemented as:
-```sql
-SELECT count(*) FROM information_fragment f
-JOIN fragment_source fs ON fs.fragment_id = f.id
-JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id
-WHERE f.id = ANY($1::uuid[]) AND rc.raw_information_id = $2;
-```
-If the count is less than `length($1)`, the transaction is aborted with `STRUCTURAL_INVALID` and the `tool_call` is recorded with `validation_outcome = 'rejected'`.
-**Description:** No accepted link/attribute exists without provenance to a real fragment of the current run's source.
-**Error returned:** MCP envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`. `tool_call.validation_outcome = 'rejected'`.
+**Where to validate:** service / anti-hallucination layer (§13.5). The service inserts one `provenance` row per cited fragment in the same transaction that creates / consolidates the link or attribute, and verifies (in the same transaction) that every fragment is anchored to a chunk of the current run's `input_raw_information_id`.
+**Description:** No accepted (or consolidated) link/attribute exists without provenance to a real fragment of the current run's source.
+**Error returned:** MCP envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`.
 
 ### BR-19 -- One transaction per tool call
 **Related UC:** UC-08, UC-09, UC-10, UC-11
-**Where to validate:** service. Each MCP `ingest` handler opens exactly one transaction at entry, commits at the end of the success path, and rolls back on any thrown error (including `ValidationFailure`). The `tool_call` row is the only row that must be written even on a rollback — the handler therefore opens a **separate** short transaction to insert it after the rollback (BR-23).
-**Description:** A run of N chunks that fails on chunk K keeps the K-1 already-accepted units.
-**Error returned:** Not applicable (transactional pattern).
+**Where to validate:** service. Each `propose_*` service function opens exactly one transaction at entry, commits on success, rolls back on any thrown error. The `tool_call` row is the only row written even on rollback — opened in a separate short transaction after rollback (BR-23). **The extraction orchestrator never wraps multiple tool calls in one transaction (BR-26).**
+**Description:** A run of N tool calls that fails on call K keeps the K-1 already-accepted units.
+**Error returned:** Not applicable.
 
 ### BR-20 -- Entity creation is serialised by advisory lock
 **Related UC:** UC-09
-**Where to validate:** service (`propose_node` handler). Before the resolve-or-create branch, issue `SELECT pg_advisory_xact_lock(hashtextextended(node_type_id::text || '\x1F' || norm(name), 0))` (§4.5). The lock is automatically released at commit/rollback.
+**Where to validate:** service (`entity-resolution.service.resolveOrCreateNode`). Before the resolve-or-create branch, issue `SELECT pg_advisory_xact_lock(hashtextextended(node_type_id::text || '\x1F' || norm(name), 0))` (§4.5). The lock is automatically released at commit/rollback.
 **Description:** Two concurrent `propose_node` calls for the same `(node_type, normalized name)` cannot create duplicate nodes.
-**Error returned:** Not applicable (concurrency primitive; correctness covered by an acceptance test).
+**Error returned:** Not applicable.
 
-### BR-21 -- MCP `ingest` toolset only operates inside an active LLMRun
+### BR-21 -- `ingest` toolset only operates inside an active LLMRun (transport-agnostic)
 **Related UC:** UC-08, UC-09, UC-10, UC-11
-**Where to validate:** MCP transport — the `ingest` toolset is registered against an MCP session that already carries an ambient `llm_run_id`; the transport refuses to expose `propose_*` if the session has none. Service layer additionally verifies `llm_run.status = 'running'` at handler entry.
-**Description:** Calls without an ambient run are rejected by the transport before reaching the handler, so no `tool_call` row is written (the only case where BR-23 is bypassed).
-**Error returned:** MCP envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`. **No `tool_call` row** (BR-23 exception).
+**Where to validate:** service — every `propose_*` service function takes a `runContext = { llmRunId, rawInformationId }` argument and verifies at entry that `llm_run.status = 'running'` (SQLSTATE-safe read; if not running, throws `ValidationFailure('STRUCTURAL_INVALID')`). The transport-level guard is layered, not authoritative:
+- **MCP transport:** the toolset is registered against an MCP session that already carries an ambient `llm_run_id`; the transport refuses to expose `propose_*` if the session has none. The service still re-checks (defence in depth).
+- **REST mirror:** the route is `POST /api/v1/ingest/llm-runs/:llmRunId/propose-{fragment,node,link,attribute}` — the run id is in the path, the service verifies the same invariant.
+- **Extraction orchestrator (in-process):** carries the `runContext` of the run it is driving; the service check is the only guard (no transport in the middle).
+**Description:** The "ingest is MCP-only" constraint (§14 / A28) is **lifted** by this revision (documented deviation in CLAUDE.md). The service layer is the single source of truth for the active-run invariant; the three transports — MCP, REST mirror, and in-process orchestrator — call the same service.
+**Error returned:** MCP / REST envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`. On REST, the response body carries the MCP envelope verbatim (`200 OK` with `ok: false` is the envelope convention; the HTTP-level status is `200` for any reachable handler; auth/transport-level failures keep their HTTP error codes). On the MCP transport path that rejects "no ambient run" before the handler is reached, **no `tool_call` row** is written (BR-23 exception); on the REST path, the run-id is in the URL so the service is always reached and BR-23 always fires.
 
 ### BR-22 -- The fragment text is bounded to 1000 characters
 **Related UC:** UC-08
 **Where to validate:** Zod schema on `propose_fragment.text` (`.max(1000)`) and DB `CHECK (char_length(text) <= 1000)`.
 **Description:** Longer assertions are split into multiple atomic fragments by the LLM.
-**Error returned:** MCP envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`. `tool_call.validation_outcome = 'rejected'`.
+**Error returned:** MCP envelope `{ ok: false, error.code: "STRUCTURAL_INVALID" }`.
 
-### BR-23 -- ToolCall always records the call
+### BR-23 -- ToolCall always records the call (subject to BR-21 transport exception)
 **Related UC:** UC-08, UC-09, UC-10, UC-11
-**Where to validate:** service — the MCP handler wraps the business transaction in a `try/finally`. The `finally` block opens a separate short transaction to insert the `tool_call` row with the verbatim arguments, the verbatim result envelope, and the `validation_outcome` produced by the handler (or `'error'` on uncaught exception). The only exception is BR-21 (no ambient run), where there is no `llm_run_id` to associate.
-**Description:** Every reachable `ingest` invocation produces exactly one `tool_call` row.
-**Error returned:** Not applicable (audit invariant).
+**Where to validate:** service — the `propose_*` service function wraps the business transaction in a `try/finally`. The `finally` block opens a separate short transaction to insert the `tool_call` row with the verbatim arguments, the verbatim result envelope, and the `validation_outcome` produced by the handler (or `'error'` on uncaught exception). The only path that does NOT write a `tool_call` row is the **MCP-transport** pre-handler rejection of "no ambient `llm_run_id`" (BR-21 first bullet) — every other path, including REST and in-process orchestrator calls, persists the audit row.
+**Description:** Every reachable `propose_*` invocation produces exactly one `tool_call` row.
+**Error returned:** Not applicable.
+
+### BR-24 -- Tool schemas have a single source: the Zod DTOs
+**Related UC:** UC-08, UC-09, UC-10, UC-11
+**Where to validate:** module-init code in `modules/ingestion/dto/`. The four Zod schemas (`ProposeFragmentInputSchema`, `ProposeNodeInputSchema`, `ProposeLinkInputSchema`, `ProposeAttributeInputSchema`) are derived into JSON Schema once, at boot, via `zod-to-json-schema`. The resulting schemas are consumed by three sites:
+  1. Fastify route validation for the REST mirrors.
+  2. The MCP tool registration (`McpServer.tool({ name, description, input_schema })`).
+  3. The Anthropic tool-use call (`client.messages.create({ tools: [...] })`).
+A Vitest snapshot test asserts that the four derived JSON Schemas have not drifted from a committed baseline; any change requires updating both the Zod schema and the snapshot in the same PR.
+**Description:** No hand-written JSON Schema duplicates the Zod source; transport contracts cannot diverge from the validated DTO.
+**Error returned:** Not applicable (schema-derivation invariant; covered by unit test).
+
+### BR-25 -- Entity resolution thresholds and decision branches
+**Related UC:** UC-09
+**Where to validate:** service (`entity-resolution.service.resolveOrCreateNode`), called by `propose-node.service` between the advisory lock acquisition (BR-20) and the INSERT (the previous code path's deferred extension point). Constants in `modules/ingestion/service/entity-resolution.service.ts`:
+- `MATCH_STRONG = 0.85`
+- `MATCH_FLOOR  = 0.55`
+
+The procedure, in order:
+1. **Exact match:** `SELECT node_id FROM node_alias WHERE alias_norm = norm($name) AND node_id IN (SELECT id FROM knowledge_node WHERE node_type_id = $ntid AND status = 'active')`. If any row, score is 1.0 → **reuse** that node; add any new aliases (`ON CONFLICT DO NOTHING` on `(node_id, alias_norm)`); resolution = `matched_existing`.
+2. **Trigram candidates:** else
+   ```sql
+   SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1))) AS sim
+   FROM node_alias na
+   JOIN knowledge_node kn ON kn.id = na.node_id
+   WHERE kn.node_type_id = $2
+     AND kn.status = 'active'
+     AND na.alias_norm % norm($1)
+   GROUP BY na.node_id
+   ORDER BY sim DESC
+   LIMIT 10;
+   ```
+   (uses `node_alias_norm_trgm_idx` GIN with `gin_trgm_ops`, filtered by FK index on `node_alias.node_id`).
+3. **Decision (A12):**
+   - **Strong unique:** exactly one candidate with `sim ≥ MATCH_STRONG` AND no other candidate has `sim ≥ MATCH_FLOOR` → **reuse** that node (add new aliases); resolution = `matched_existing`.
+   - **Ambiguous:** any candidate has `sim ∈ [MATCH_FLOOR, MATCH_STRONG)` OR two-or-more candidates have `sim ≥ MATCH_STRONG` → create new node with `status = 'needs_review'`; for each ambiguous candidate (every row with `sim ≥ MATCH_FLOOR`), INSERT one row into `entity_match_review (proposed_node_id, candidate_node_id, similarity)`. The new node and the review rows are inserted in the same transaction (atomic). Resolution = `needs_review`.
+   - **Novel:** every candidate has `sim < MATCH_FLOOR` (including the empty case) → create new node with `status = 'active'`. Resolution = `created_new`.
+4. **Alias attachment:** in all three branches above, every alias supplied by the LLM that is not yet on the resolved/created node is INSERTed into `node_alias` (`ON CONFLICT (node_id, alias_norm) DO NOTHING`). The canonical name is inserted as the first alias for new nodes.
+
+The propose-node service then records a `tool_call` row with `validation_outcome = 'accepted'` for `matched_existing` / `created_new`, or `'needs_review'` for the ambiguous case. The Zod result schema (`ProposeNodeOutputSchema`) already carries `resolution: 'matched_existing' | 'created_new' | 'needs_review'`.
+
+**Description:** Resolution is deterministic given the catalog and the live graph; thresholds are not configurable per call. The `entity_match_review` rows feed the `entity_match` curation queue (consumed by the existing `resolveEntityMatchService` / `performMerge` in `curation/service/merge.service.ts` — no curation change required).
+**Error returned:** Not a user-facing error path. Catalog miss on `node_type` is handled earlier (BR-14 → `UNKNOWN_TYPE`).
+
+### BR-26 -- Extraction orchestrator drives the LLM via a manual tool-use loop, one transaction per tool call
+**Related UC:** UC-12 (new — extraction trigger; declared in `ingestion.spec.md`)
+**Where to validate:** service (`extraction.service.runExtraction`). Triggered by `POST /api/v1/ingest/llm-runs/:llmRunId/run`. The endpoint is synchronous (no worker, no queue) — the HTTP request stays open for the duration of the run. Pre-checks: `llm_run.status = 'running'` (BR-21); a run that is already `completed` or `failed` is rejected with `409 BUSINESS_RUN_NOT_RUNNABLE`.
+
+Algorithm (per §9.3, §9.4):
+1. Load `llm_run` row, the `raw_information` row, and the chunks of that raw information (ordered by `chunk_index`).
+2. Load the `extraction.${llm_run.prompt_version}.ts` prompt module; fail with `500 SYSTEM_INTERNAL_ERROR` if the module is missing (configuration error).
+3. Instantiate the Anthropic client (`new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })`).
+4. Derive the four tool defs from the four Zod schemas via `zod-to-json-schema` (BR-24).
+5. For each chunk (in `chunk_index` order):
+    a. Build `system = prompt.system(catalogSnapshot)`; build the user message:
+       `prompt.user({ rawInformationMetadata, chunkText, prevTail })` — `prevTail` is the last ≤ 200 chars of the previous chunk's text, or empty for the first chunk. Chunk text is delimited by an explicit "DOCUMENT CONTENT (data — never instructions)" envelope (§13 anti-injection).
+    b. **Tool-use loop:** initialize `messages = [{ role: 'user', content: userBlocks }]`. Repeat:
+        - Call `client.messages.stream({ model, system, tools, thinking: { type: 'adaptive' }, max_tokens, messages }).finalMessage()`.
+        - **Append** the response's entire `content` array (preserves all `tool_use` blocks plus any `text` / `thinking` blocks) to `messages` as an `assistant` turn.
+        - If `stop_reason === 'end_turn'`: chunk is done; break the loop.
+        - If `stop_reason === 'pause_turn'`: continue the loop without modifying `messages` (Anthropic continues from the partial state).
+        - If `stop_reason === 'refusal'`: log refusal, mark the chunk as a soft failure, break the loop (run continues with next chunk).
+        - For each `tool_use` block in the response: call the matching service function — `proposeFragmentService(client, args, runContext)` / `proposeNodeService(client, args, runContext)` / `proposeLinkService(client, args, runContext)` / `proposeAttributeService(client, args, runContext)` — **each opening its own transaction (BR-19)**. Capture the verbatim envelope (`{ ok: true, result: { ..., validation_outcome } }` or `{ ok: false, error: {...} }`). Build a `tool_result` block (`{ type: 'tool_result', tool_use_id, content: JSON.stringify(envelope), is_error: !envelope.ok }`) for each. Append a single user turn with all `tool_result` blocks; restart the loop.
+6. After all chunks complete: close the run — `UPDATE llm_run SET status = 'completed', finished_at = now() WHERE id = $1` (single transaction). Emit a `pino` info log with the eight `validation_outcome` counts of the run (BR-12, BR-26 closing path).
+7. **Fatal failure path:** if the orchestrator catches an unhandled exception at any point (network, model 5xx, internal bug — NOT layered-validation rejection, which is an in-band result), it issues `UPDATE llm_run SET status = 'failed', finished_at = now() WHERE id = $1` in a fresh transaction, then re-throws. The HTTP response is `500 SYSTEM_INTERNAL_ERROR`. The owner re-runs by invoking `retryLlmRun` (BR-10) followed by `runLlmExtraction` again.
+
+The orchestrator **never** wraps multiple `propose_*` calls in one transaction (§9.4): a single fragment / node / link / attribute persists or rolls back independently. The `tool_call` rows are the audit trail; the run summary (BR-12) is the human-facing aggregation.
+
+**Description:** Synchronous orchestration is acceptable at the current scale (hundreds of documents, §16); a queue / worker offload is a future evolution. The orchestrator is the single in-process LLM caller of the BFF; no other code path calls Anthropic.
+**Error returned:** `409 BUSINESS_RUN_NOT_RUNNABLE` if the run is not `running` at entry. `500 SYSTEM_INTERNAL_ERROR` on orchestrator fatal failure (after the run has been moved to `failed`). `200 OK` with a `RunExtractionResponse` body on success.
+
+### BR-27 -- Graph consolidation on `propose_link` / `propose_attribute`
+**Related UC:** UC-10, UC-11
+**Where to validate:** service (`graph-consolidation.service`) invoked by `propose-link.service` and `propose-attribute.service` after the 5-layer validation (BR-13..BR-18) has passed and the new assertion has been pre-built (target `value`, `valid_from`, `valid_from_basis`, `change_hint`, etc.).
+
+The consolidator implements §6.5 in this exact order, inside the same transaction as the `propose_*` call (BR-19):
+
+1. **Scope identification:**
+   - For `propose_link`: scope = `(source_node_id, link_type_id, target_node_id)`. Functional flag = `link_type.allows_multiple_current` (false → functional).
+   - For `propose_attribute`: scope = `(node_id, attribute_key_id)`. Functional flag = `attribute_key.allows_multiple_current`.
+2. **Vigent lookup (A11):**
+   ```sql
+   SELECT * FROM knowledge_link
+   WHERE source_node_id = $1 AND link_type_id = $2 AND target_node_id = $3
+     AND valid_to IS NULL AND superseded_at IS NULL
+   FOR UPDATE;
+   ```
+   (mirror for `node_attribute`, scoped by `(node_id, attribute_key_id)`). Lock is held until commit/rollback. This is what closes the race that the partial dup-guard index would otherwise turn into an SQLSTATE `23505`.
+3. **Decision tree (§6.5):**
+   - **Re-affirmation (consolidation):** vigent row exists; same `valid_from`; same value (target node for link, parsed value for attribute); `change_hint = 'none'`. → Do **not** insert a new row. Instead, INSERT one `provenance` row per cited fragment, attached to the existing assertion's id (§18). `tool_call.validation_outcome = 'consolidated'`. Response: `{ ok: true, result: { outcome: 'consolidated', link_id | attribute_id: <existing id> } }`.
+   - **Succession (functional types only):** vigent row exists; functional scope; new value differs from old; the supporting fragment text contains a textual succession signal AND/OR `change_hint = 'succession'`. → UPDATE the vigent row to set `valid_to = $newValidFrom` (or `now()::date` if the new row has no `valid_from`), `superseded_at = now()`, `status = 'superseded'`. INSERT the new row with `supersedes_link_id` / `supersedes_attribute_id` set to the old row's id. INSERT `provenance` rows attached to the new id. `tool_call.validation_outcome = 'superseded_previous'`. Response: `{ ok: true, result: { outcome: 'superseded_previous', link_id | attribute_id: <new>, superseded_id: <old> } }`.
+   - **Correction (errata):** vigent row exists; `change_hint = 'correction'` with the textual errata signal verified by BR-16; same period. → Apply the §6.5 correction flow: close the vigent row (`status = 'corrected'`, `superseded_at = now()`, do NOT change `valid_from`/`valid_to` of the old row), INSERT a new row with the corrected value and `supersedes_*` set; `provenance` attached to the new id. `tool_call.validation_outcome = 'accepted'` (per spec.md BR-25: correction is an accepted write; the audit trail lives in the supersedes-* chain and in `tool_call.result.reason`).
+   - **Conflict (dispute):** vigent row exists; same period (overlapping `[valid_from, valid_to)`); different value; no succession signal; no correction errata. → Two outcomes per §6.5 flow C: UPDATE the vigent row to `status = 'disputed'`; INSERT the new row also with `status = 'disputed'`; both rows now coexist as `disputed`; `provenance` attached to the new id. `tool_call.validation_outcome = 'disputed'`. Response: `{ ok: true, result: { outcome: 'disputed', link_id | attribute_id: <new>, conflicting_id: <old> } }`.
+   - **New assertion (no vigent row, or non-functional scope with no overlap):** INSERT a new row with `status` derived from BR-17 (`active` / `uncertain` / `disputed`). INSERT `provenance` rows attached to the new id. `tool_call.validation_outcome = 'accepted'`. Response: `{ ok: true, result: { outcome: 'accepted', link_id | attribute_id: <new> } }`.
+
+The consolidator never executes a plain INSERT against a vigent scope that already has a row — the `FOR UPDATE` lookup is mandatory. The pre-existing partial dup-guard indexes (`knowledge_link_current_dup_guard`, `node_attribute_current_dup_guard`) remain in place as a defence-in-depth safety net; they will only fire on a programming error (consolidator skipped).
+
+**Description:** Re-running an extraction over the same document re-affirms the existing graph rather than failing on dup-guard. Re-mentioning an existing entity in a second chunk reuses the existing node (via BR-25) and re-asserts its links by consolidation (via BR-27).
+**Error returned:** Not a user-facing error path — every branch returns `{ ok: true, result }`. Programming-error fall-through (e.g. consolidator skipped) → SQLSTATE `23505` on the partial dup-guard → `500 SYSTEM_INTERNAL_ERROR`.
+
+### BR-28 -- Dual-transport exposure of the `ingest` toolset
+**Related UC:** UC-08, UC-09, UC-10, UC-11
+**Where to validate:** transport layer + service layer.
+
+- The four `propose_*` functions live in `modules/ingestion/service/propose-{fragment,node,link,attribute}.service.ts`. Their signature is `(client: PoolClient, args: ParsedZodArgs, runContext: { llmRunId, rawInformationId }) → Promise<McpEnvelope>`. They are the canonical implementation.
+- **MCP transport:** the four MCP handlers under `modules/ingestion/mcp/propose-*.handler.ts` are thin adapters that (a) read the ambient `llm_run_id` from the MCP session, (b) acquire a `pg` client, (c) call the matching service, (d) return the envelope to MCP. These handlers already exist; this revision shrinks them to the adapter role.
+- **REST mirror:** four routes under `modules/ingestion/routes/ingestion.routes.ts`:
+  - `POST /api/v1/ingest/llm-runs/:llmRunId/propose-fragment`
+  - `POST /api/v1/ingest/llm-runs/:llmRunId/propose-node`
+  - `POST /api/v1/ingest/llm-runs/:llmRunId/propose-link`
+  - `POST /api/v1/ingest/llm-runs/:llmRunId/propose-attribute`
+  Each route: Zod-validates the body (same schema as MCP), reads `llmRunId` from the path, calls the matching service, returns the envelope verbatim. **HTTP semantics:** the response status is `200 OK` for any reachable handler — the envelope's `ok` field is the success indicator (consistent with MCP). Pre-handler-level errors (auth fail, unknown `llmRunId`, body not JSON) keep their normal HTTP error codes (`401 AUTH_UNAUTHORIZED`, `404 RESOURCE_NOT_FOUND`, `422 VALIDATION_*`).
+- **In-process orchestrator:** calls the services directly with the run context it carries (BR-26).
+
+This is the documented deviation from "ingest is MCP-only" (A28 / §14): confirmed by the owner; recorded in CLAUDE.md and in BR-21. The REST mirrors enable two things — (a) external HTTP clients to drive an extraction manually (for testing / replay), and (b) the orchestrator to be invoked without an MCP transport in the path.
+
+**Description:** A single source of business logic (the service layer), three transports (MCP, REST, in-process). No transport-specific business code exists — the adapters only translate between transport envelopes.
+**Error returned:** Per-transport envelope (MCP `{ ok: false, error: {...} }` / REST same body shape with HTTP 200). Transport-level errors are HTTP-native.
+
+### BR-29 -- Anthropic SDK is the sole LLM integration of the BFF
+**Related UC:** UC-12
+**Where to validate:** dependency manifest (`backend/package.json`); orchestrator (`extraction.service.ts`).
+**Description:** `@anthropic-ai/sdk` is the only LLM client dependency. No alternative LLM provider is configured; switching providers requires a new BFF release. The API key (`ANTHROPIC_API_KEY`) is loaded once at boot via the Zod env schema in `backend/src/config/env.ts`; it is never read from the request context, never logged, never returned. The Anthropic client is instantiated once per orchestrator run (not memoized across runs — keeps the dependency narrow).
+**Error returned:** Missing `ANTHROPIC_API_KEY` at boot → BFF refuses to start (Zod env parse failure). Network error / 5xx from Anthropic during a run → `BR-26` fatal-failure path (run flipped to `failed`; HTTP `500 SYSTEM_INTERNAL_ERROR`).
 
 ---
 
@@ -344,111 +361,101 @@ If the count is less than `length($1)`, the transaction is aborted with `STRUCTU
             ingestRawInformation
                     |
                     v
-               [running] --close ok-----> [completed]   (terminal)
+               [running] --runLlmExtraction success---> [completed]   (terminal)
+                    |        (BR-26 step 6)
                     |
-                    +--close err--> [failed]
+                    +--runLlmExtraction fatal failure--> [failed]
+                    |        (BR-26 step 7)
+                    |
+                    +--close err (legacy direct path)---> [failed]
                                        |
-                                       +-- retryLlmRun (status='failed' AND advisory check) --> [running]
-                                              (attempts += 1, finished_at -> NULL,
-                                               orphan proposed fragments -> rejected)
+                                       +-- retryLlmRun --> [running]
+                                              (BR-10)
 ```
 
 | From | To | Event | Guard | UC |
 |------|----|-------|-------|----|
-| (nothing) | running | `ingestRawInformation` creates a new run | `idempotency_key` is not already held by a `non-failed` run; advisory check before insert (§4.5 is for entity creation, not run creation — runs use the DB `UNIQUE` instead) | UC-01 |
-| running | completed | close signal, no fatal error | service sets `finished_at = now()`, `status = 'completed'`; DB `CHECK (status='running') = (finished_at IS NULL)` enforces simultaneous update | UC-07 |
-| running | failed | close signal, fatal error | service sets `finished_at = now()`, `status = 'failed'`; same DB CHECK | UC-07 |
+| (nothing) | running | `ingestRawInformation` creates a new run | `idempotency_key` is not already held by a `non-failed` run; UNIQUE constraint | UC-01 |
+| running | completed | `runLlmExtraction` finishes all chunks without fatal failure | BR-26 step 6 — single UPDATE setting `status='completed'`, `finished_at=now()` | UC-12 |
+| running | failed | `runLlmExtraction` catches unhandled exception | BR-26 step 7 — single UPDATE setting `status='failed'`, `finished_at=now()` | UC-12 |
+| running | failed | legacy close path (close-from-MCP, retained for backward compat) | service sets `finished_at = now()`, `status = 'failed'`; DB `CHECK (status='running') = (finished_at IS NULL)` enforces simultaneous update | UC-07 |
 | failed | running | `retryLlmRun` | atomic `UPDATE ... WHERE status = 'failed'`; in same TX orphan `proposed` fragments → `rejected` | UC-06 |
-| completed | — | — | terminal — `retryLlmRun` returns `409 BUSINESS_RUN_NOT_RETRYABLE` (BR-11) | — |
+| completed | — | — | terminal — `retryLlmRun` returns `409 BUSINESS_RUN_NOT_RETRYABLE`; `runLlmExtraction` returns `409 BUSINESS_RUN_NOT_RUNNABLE` | — |
 | running | — | `retryLlmRun` while still running | rejected → `409 BUSINESS_RUN_NOT_RETRYABLE` (BR-11) | UC-06 alt 2b |
+| running | — | `runLlmExtraction` while already running | rejected → `409 BUSINESS_RUN_NOT_RUNNABLE` (BR-26 pre-check) | UC-12 |
 
-**Invalid transitions:** any transition from `completed` or `running` triggered by `retryLlmRun` is rejected at the service layer with `409 BUSINESS_RUN_NOT_RETRYABLE`. The DB `CHECK (status = 'running') = (finished_at IS NULL)` rejects any UPDATE that desyncs the two columns.
+**Invalid transitions:** any transition from `completed` triggered by `retryLlmRun` or `runLlmExtraction` is rejected at the service layer. The DB `CHECK (status = 'running') = (finished_at IS NULL)` rejects any UPDATE that desyncs the two columns.
 
 ### ST-02 -- InformationFragment lifecycle (ST-IF of `ingestion.spec.md` §5.2)
 
-```
-   propose_fragment
-         |
-         v
-   [proposed]  --provenance row written (consolidation cites fragment)--> [accepted]
-         |
-         +-- retry orphan / curation reject --> [rejected]
-         |
-         +-- never cited AND confidence < 0.40 -----> [proposed]  (stays, flagged low_confidence)
-                                                        ^
-                                                        +-- not a transition; surface-only flag
-
-   [accepted] --re-extraction supersedes (out of scope here)--> [superseded]
-   [any]      --compliance_delete (out of scope here)----------> [deleted]
-```
-
-| From | To | Event | Guard | UC |
-|------|----|-------|-------|----|
-| (nothing) | proposed | `propose_fragment` (structural layer passes) | row + at least one `fragment_source` row written in the same TX | UC-08 |
-| proposed | accepted | `propose_link` / `propose_attribute` consolidated/accepted with this fragment in its `fragment_ids` | a `provenance` row referencing this fragment is committed | UC-10, UC-11 |
-| proposed | rejected | retry orphan cleanup (BR-10) OR curation reject (out of scope here) | for retry: status='proposed' AND no row in `provenance` for this fragment; reason recorded in `tool_call.result` (for retry it is implicit) or `curation_action` (curation) | UC-06 |
-| proposed | proposed | `confidence < 0.40` AND never cited | stays `proposed`; retrieval surfaces it with `low_confidence` flag (BR-17). Not a state transition. | UC-10, UC-11 |
-| accepted | superseded | newer run supersedes | out of scope here (graph-consolidation domain) | — |
-| any | deleted | `compliance_delete` of the raw source | out of scope here (compliance domain) | — |
-
-**Invalid transitions:** `proposed → superseded` (must go through `accepted` first), `rejected → accepted` (rejection is sticky; re-evaluation requires a new fragment). Both are enforced by the service layer; the DB does not encode a fragment status DAG.
+Unchanged from v1.1.0. The new orchestrator (BR-26) drives the same `proposed → accepted | rejected` transitions through the same service functions; consolidation (BR-27) is the path that promotes `proposed → accepted` via the cited fragments accumulating provenance.
 
 ---
 
 ## 5. Domain Events (EV)
 
-> The Remember architecture does **not** include an event bus. Cross-domain coordination happens through synchronous service calls and through the database (the §16 observability surface is queried, not pushed). The single audit substrate is `tool_call` for MCP calls and (for future consolidation/curation domains) `curation_action`.
+> The Remember architecture does **not** include an event bus. The single audit substrate is `tool_call` for MCP calls and (for future consolidation/curation domains) `curation_action`.
 
-**N/A — no domain events in this version.** The four observability outcomes the §16 dashboard cares about (acceptance rate, consolidations, `needs_review`, `disputed`, `uncertain` / `low_confidence`, per-layer rejections) are all derived from `tool_call.validation_outcome` at read time (BR-12).
+**N/A — no domain events in this version.** The orchestrator (BR-26) emits a single `pino` `info` log line at run completion with the eight `validation_outcome` counts — this is observability, not an event-bus message; consumers (a future dashboard) read it from the log pipeline, not from a queue.
 
-If a future domain (e.g. a notification surface) needs to react to ingestion outcomes, it must poll `tool_call` and `llm_run.status` — the database is the integration boundary, by spec (§2.2 "store único"; §13 "audit-first").
+If a future domain needs to react to ingestion outcomes (e.g. notify on `disputed` count > 0), it polls `tool_call` and `llm_run.status`.
 
 ---
 
 ## 6. External Integrations
 
-> Timeout and fallback required per integration. No fallback = operational risk — document the decision.
+> Timeout and fallback required per integration.
 
 | Service | Type | Purpose | Timeout | Fallback |
 |---------|------|---------|---------|----------|
 | Neon Auth (Stack Auth) | REST (JWT verify via JWKS) | Validate the bearer token on every REST and MCP call. The middleware `requireNeonAuth` fetches the JWKS from `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA keys by default) and verifies the token signature; auth-as-gate semantics preserved (§2.5 of v7, A29). | 2 s per JWKS fetch, JWKS cached in-process for `NEON_AUTH_JWKS_TTL_S` seconds (default 600). | None — without a verifiable JWT, the request is rejected with `401 AUTH_UNAUTHORIZED`. Cache miss + network failure → `503 SYSTEM_SERVICE_UNAVAILABLE`. |
-| PostgreSQL 17 (Neon) | TCP (`pg` pool, connection string `DATABASE_URL`, `sslmode=require`) | Store all rows of this domain; only state of the system (§2.2 of v7). Schema is unchanged from `migrations/0001_schema.sql` + `migrations/0002_seed.sql`. | Statement timeout: 10 s (default); 30 s on the `ingestRawInformation` route (long chunker runs on large content). Pool: min 2, max 10 connections per BFF instance. | None — PostgreSQL is the single store (§2.2). Outage → `500 SYSTEM_INTERNAL_ERROR` after retry-on-deadlock budget exhausted. Deadlock (`40P01`) is retried up to 3 times with exponential backoff (50 ms / 100 ms / 200 ms). |
-| MCP transport | stdio / WebSocket (per MCP server config) | Surface the `ingest` toolset to the LLM (CLAUDE.md "MCP Server"). | Per-tool-call hard ceiling: 30 s (covers the §13 validation pipeline plus the consolidation transaction). | None at this layer — a slow tool call surfaces as MCP transport timeout to the LLM; the BFF nevertheless commits or rolls back the transaction on its own deadline. |
+| PostgreSQL 17 (Neon) | TCP (`pg` pool, connection string `DATABASE_URL`, `sslmode=require`) | Store all rows of this domain; only state of the system (§2.2 of v7). Schema unchanged from `migrations/0001_init.sql`. | Statement timeout: 10 s (default); 30 s on the `ingestRawInformation` route. The `runLlmExtraction` route has **no statement-level timeout override** — it manages many short transactions (BR-26 / BR-19); each tool-call transaction respects the 10 s default. Pool: min 2, max 10 connections per BFF instance; the orchestrator does NOT hold a connection across tool calls — it acquires per call. | None — PostgreSQL is the single store (§2.2). Outage → `500 SYSTEM_INTERNAL_ERROR` after retry-on-deadlock budget exhausted. Deadlock (`40P01`) retried up to 3 times with exponential backoff (50 ms / 100 ms / 200 ms). |
+| MCP transport | stdio / WebSocket / Streamable HTTP (per `McpServer` config, `@modelcontextprotocol/sdk`) | Surface the `ingest` toolset to external MCP clients. The toolset is registered against an MCP session that carries an ambient `llm_run_id` (BR-21 / BR-28 — MCP transport bullet). | Per-tool-call hard ceiling: 30 s. | None at this layer. The MCP transport is now **optional** from the orchestrator's perspective — the orchestrator uses the in-process path (BR-26) and does not depend on MCP availability. |
+| Anthropic API (`@anthropic-ai/sdk`) | HTTPS (Anthropic's hosted API), via the official Node SDK | Drive the extraction loop (BR-26). The BFF is an Anthropic API client; the LLM never calls back into the BFF except indirectly via the in-process service calls inside the orchestrator. **Endpoint:** `client.messages.stream({...}).finalMessage()` per turn (streaming avoids the SDK's default request-level timeout on long completions). **Auth:** `ANTHROPIC_API_KEY` from BFF env; the key never leaves the BFF, never logged. **Tools:** the four `propose_*` schemas (BR-24); `thinking: { type: 'adaptive' }`. **Default model:** `claude-opus-4-8` (carried in `llm_run.model`; idempotency-key participant per BR-08). | Per-turn SDK default (governs the connection lifecycle, not the model latency — streaming keeps the connection alive). Orchestrator-level deadline: the HTTP request to `runLlmExtraction` stays open for the entire run; the BFF does not enforce a per-run wall-clock cap in v1 (acceptable at v1 scale per §16). | None — Anthropic is the sole LLM provider (BR-29). Network error / 5xx → the orchestrator's fatal-failure path (BR-26 step 7): run → `failed`; HTTP `500 SYSTEM_INTERNAL_ERROR`; owner re-invokes `retryLlmRun` then `runLlmExtraction`. `429` Anthropic rate-limit: SDK exposes `Retry-After`; the orchestrator honours it with at most 1 retry per turn (cap 60 s); a second 429 falls through to the fatal-failure path. `refusal` stop reason is **not** a fatal failure — it is a soft per-chunk skip (BR-26 step 5b bullet 4). |
 
-**No LLM provider integration in this domain.** The LLM lives upstream of the BFF (it calls the MCP tools); the BFF never originates LLM calls.
+**No alternative LLM provider** — `@anthropic-ai/sdk` is the only integration (BR-29).
 
 ---
 
 ## 7. Known Technical Constraints
 
-- **Single-instance assumption for advisory locks.** `pg_advisory_xact_lock` is database-scoped; horizontal scaling of the BFF is safe because the lock lives in Postgres, not in the process. Multi-database deployments would break BR-20 — out of scope, a single Neon project is the v1 topology.
-- **No row-level security.** PostgreSQL RLS is disabled (A29). All authorization is enforced in the BFF middleware via Neon Auth JWT verification (`requireNeonAuth`). Direct database access bypassing the BFF (e.g. `psql` with the Neon connection string) is **not** access-controlled and is therefore restricted to operator break-glass — the `DATABASE_URL` secret never leaves the BFF process (CLAUDE.md "Security").
-- **10 MiB body cap is per request, not per document.** Larger documents must be pre-split externally; this domain does not offer multi-part ingestion in v1.0.0.
-- **Chunker is in-process, synchronous, single-threaded.** A 10 MiB document with extreme content (very long lines, dense PDF) can occupy an event-loop tick. The Fastify route inherits the BFF process priority — no worker-thread offload in v1.0.0 (§16 acceptance: ingestion is LLM-bound; chunker latency is dwarfed by LLM latency).
-- **`Intl.Segmenter('pt')` requires Node.js built with full ICU.** Node 20 LTS official Linux x64 binaries ship full ICU; verify if the deployment image uses `node-slim`. Documented because BR-07 depends on it.
-- **Catalog data (NodeType, LinkType, AttributeKey, LinkTypeRule) is read-only at runtime.** The seed in `migrations/0002_seed.sql` is the authoritative v1 set. Adding/removing/modifying entries requires a versioned migration (§12). The ingestion service caches the seed in-process at startup; cache invalidation requires a BFF restart after a migration.
-- **`tool_call.arguments` and `tool_call.result` are stored verbatim.** Storage cost is proportional to total MCP traffic. At the §16 scale (hundreds of documents), the per-row footprint is small (< 4 KiB typical). No compression is configured; Postgres TOAST handles oversized rows transparently.
-- **PostgreSQL `UNIQUE` violation detection relies on SQLSTATE `23505` and constraint name.** The service distinguishes `raw_information_content_hash_key` (idempotent path, BR-09) from `llm_run_idempotency_key_key` (logged + 500, BR-08) by inspecting `err.constraint`. A constraint rename in a future migration must be paired with the matching code change.
-- **`unaccent()` is STABLE in Postgres.** Wrappers in generated columns and expression indexes must use `immutable_unaccent` (CLAUDE.md "Known Gotchas"). This domain uses none of those generated columns directly, but read paths that join `node_alias.alias_norm` (UC-09 entity resolution) must.
-- **Neon Auth JWKS keys are EdDSA by default.** The middleware must declare EdDSA in the accepted algorithm list (e.g. `jose`'s `algorithms: ['EdDSA']`); rejecting unsupported algorithms is required to keep token validation tight (no `alg = none` accepted).
+- **Single-instance assumption for advisory locks.** Unchanged — see v1.1.0.
+- **No row-level security.** Unchanged.
+- **10 MiB body cap is per request, not per document.** Unchanged.
+- **Chunker is in-process, synchronous, single-threaded.** Unchanged.
+- **`Intl.Segmenter('pt')` requires Node.js built with full ICU.** Unchanged.
+- **Catalog data (`NodeType`, `LinkType`, `AttributeKey`, `LinkTypeRule`) is read-only at runtime.** Unchanged; cached in `CatalogSnapshot` at boot; consumed by both the validators (BR-13..BR-17) and the prompt builder (BR-26 step 5a). A migration that adds catalog rows requires a BFF restart to surface them.
+- **`tool_call.arguments` and `tool_call.result` are stored verbatim.** Unchanged — but the new in-process orchestrator (BR-26) routinely produces tool-call counts in the tens-to-low-hundreds per run, which fits comfortably within the §16 ceiling.
+- **PostgreSQL `UNIQUE` violation detection relies on SQLSTATE `23505` and constraint name.** Unchanged; this revision adds awareness of `knowledge_link_current_dup_guard` and `node_attribute_current_dup_guard` — those should now only fire on a programming error (consolidator skipped, BR-27).
+- **`unaccent()` is STABLE in Postgres.** Unchanged.
+- **Neon Auth JWKS keys are EdDSA by default.** Unchanged.
+- **Anthropic API is the only LLM provider (BR-29).** Switching providers requires a code change and a new release. The `ANTHROPIC_API_KEY` is the only LLM-side secret; it is loaded once at boot and never propagated to the request context.
+- **`runLlmExtraction` is synchronous; the HTTP request stays open for the full run.** v1 acceptable per §16 (LLM-bound, minutes per document is fine at the v1 scale of hundreds of documents). Frontend / external callers MUST set their own client timeout to at least the expected per-document budget. A future evolution is a job queue; out of scope for v1.
+- **Anthropic `stop_reason = 'pause_turn'` requires loop continuation without modifying messages.** The orchestrator implementation must handle this verbatim per BR-26 step 5b; failure to do so would silently truncate extractions. Covered by the orchestrator unit test (stubbed Anthropic client emitting a `pause_turn` then an `end_turn`).
+- **No DDL change in this revision.** The schema (`migrations/0001_init.sql`) already supports entity resolution (`node_alias.alias_norm` GENERATED, `node_alias_norm_trgm_idx` GIN, `entity_match_review` table, `knowledge_node.status` / `merged_into_node_id`, `norm()` / `immutable_unaccent()` functions, partial dup-guard indexes). If a future tweak to thresholds or indexes requires DDL, it follows the "Database Changes Require Explicit Approval" rule of CLAUDE.md.
+- **Entity-resolution thresholds (`MATCH_STRONG = 0.85`, `MATCH_FLOOR = 0.55`) are not configurable per call** (BR-25). They live in `entity-resolution.service.ts`; tuning requires a code change. The §16 metrics (acceptance rate, `needs_review` rate) are the calibration input.
+- **`merged_into_node_id` path compression must happen on write** (CLAUDE.md "Known Gotchas"). The resolver hits `knowledge_node` filtered by `status = 'active'`, so merged nodes are naturally excluded from candidates; the merge service (`curation/service/merge.service.ts`) is responsible for repointing inbound edges to active survivors — no change in this revision.
+- **The orchestrator does NOT hold a `pg` connection across turns.** Each tool-use invocation calls the corresponding service which acquires its own connection (BR-19). Otherwise the pool of `max=10` would be exhausted by a single long run.
 
 ---
 
 ## 8. Out of Scope
 
-- **Embeddings / vector search.** Permanent non-goal (§20.1, A24, CLAUDE.md "Anti-patterns"). No embedding column, no `pgvector`, ever.
-- **Consolidation rules into the graph** (§6.5: succession / correction / conflict). UC-10 and UC-11 call into a future `graph-consolidation` module; their write-graph rules are referenced here only as the contract that ingestion exposes to the LLM.
-- **Entity resolution algorithm** (§4 of v7). UC-09 calls into a future `entity-resolution` module; thresholds (A12), trigram index management and advisory lock semantics belong there.
-- **Retrieval** (§7) — `search`, `traverse`, `get_node`, `get_history`, `get_provenance` belong to a future `retrieval` domain.
-- **Curation** (§10) — `list_review_queue`, `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item` belong to a future `curation` domain.
-- **Compliance deletion** (§11) — `compliance_delete` belongs to a future `compliance` domain. It is the only writer permitted to mutate `raw_information` rows post-creation (BR-02 carve-out).
-- **System-time travel** (§5.3 query c, A25) — permanently deferred at this layer.
+- **Embeddings / vector search.** Permanent non-goal (§20.1, A24, CLAUDE.md "Anti-patterns").
+- **System-time travel** (§5.3 query c, A25) — permanently deferred.
 - **Multi-tenant / `User` entity** (§2.3, §20.3, A20) — permanent non-goal.
-- **Catalog mutation API.** New `NodeType` / `LinkType` / `AttributeKey` rows enter through versioned SQL migrations only (§12).
-- **Event bus / message queue.** No Kafka, RabbitMQ, etc. The database is the integration boundary (§2.2 "store único").
-- **Rate limiting / quota.** Single-owner; no per-tenant quota required in v1.0.0. The 10 MiB body cap and the Postgres pool ceiling are the only back-pressure mechanisms.
-- **Async ingestion / job queue.** `ingestRawInformation` is synchronous — chunker plus run-open finish inside the request. The LLM-driven extraction runs asynchronously upstream (driven by the LLM orchestrator calling the MCP tools), not by a BFF-managed worker.
-- **Re-chunking of existing documents.** Bumping `chunking_version` requires a new migration and is not exposed at the API in v1.0.0 (BR-03).
+- **Catalog mutation API.** Migration-only (§12).
+- **Event bus / message queue.** Database is the integration boundary (§2.2 "store único").
+- **Rate limiting / quota.** Single-owner; no per-tenant quota required in v1.0.0.
+- **Async / queued ingestion or extraction.** `ingestRawInformation` and `runLlmExtraction` are both synchronous in v1; future worker offload is out of scope.
+- **Re-chunking of existing documents.** Bumping `chunking_version` requires a new migration; not exposed in v1.
+- **Retrieval (§7)** — owned by future `retrieval` domain.
+- **Curation (§10)** — owned by future `curation` domain. The `entity_match` queue produced by BR-25 is consumed by the **existing** `resolveEntityMatchService` / `performMerge` (`curation/service/merge.service.ts`), with zero curation-side change required by this revision.
+- **Compliance deletion (§11)** — owned by future `compliance` domain.
+- **Alternative LLM providers.** Anthropic is the sole integration (BR-29); switching providers is a code-level change, not configuration.
+- **Per-run wall-clock cap or cost cap on the Anthropic call.** v1 trusts the LLM to terminate the loop at `stop_reason='end_turn'`; the orchestrator is otherwise patient. A future evolution may add a `max_turns_per_chunk` cap or a per-run token-budget; out of scope for v1.
+- **Re-running an extraction from a partial state.** Retry (`retryLlmRun` + `runLlmExtraction`) starts the extraction from the first chunk again; the consolidation flow (BR-27) absorbs the re-runs by `consolidated` outcomes. A future evolution may add a "resume from chunk N" mode using the existing `tool_call` history; out of scope for v1.
+- **Schema migration in this revision.** No DDL; if any future entity-resolution/consolidation tweak requires DDL, it is handled in its own change (subject to CLAUDE.md's "Database Changes Require Explicit Approval" rule).
 
 ---
 
@@ -456,5 +463,7 @@ If a future domain (e.g. a notification surface) needs to react to ingestion out
 
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
-| 1.0.0 | 2026-06-11 | Back Spec Agent | initial | Initial back-end spec for the ingestion domain. Mirrors `ingestion.spec.md` v1.0.0 (23 BRs, 11 UCs, 2 state machines) into a Fastify + raw-`pg` implementation on PostgreSQL 17 (Supabase Cloud), aligned with CLAUDE.md and the v7 normative source. Tables owned: `raw_information`, `raw_chunk`, `llm_run`, `tool_call`, `information_fragment`, `fragment_source`. MCP `ingest` toolset documented at the contract level; UC-08..UC-11 delegate consolidation/entity-resolution to future domains. Error code `BUSINESS_RUN_NOT_RETRYABLE` was already registered in `docs/specs/_global/error-codes.md` by the spec.md author; no new entries added by this revision. | -- |
-| 1.1.0 | 2026-06-12 | Back Spec Agent | update | Infrastructure swap: PostgreSQL 17 via Supabase Cloud → PostgreSQL 17 via Neon (driver `pg` raw, `DATABASE_URL`, `sslmode=require`); Supabase Auth JWT middleware → Neon Auth (Stack Auth) JWT middleware `requireNeonAuth` using JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA), cached for `NEON_AUTH_JWKS_TTL_S` seconds. Env vars `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_JWKS_TTL_S` removed. Schema unchanged; single-owner model unchanged; auth-as-gate semantics unchanged. Updated §1 (Auth row + new Database connection row), §6 (External Integrations rows for Neon Auth and PostgreSQL on Neon) and §7 (no-RLS note + new EdDSA-algorithm note). No BR / UC / ST changes. No new error codes. | migrate-neon |
+| 1.0.0 | 2026-06-11 | Back Spec Agent | initial | Initial back-end spec for the ingestion domain. Mirrors `ingestion.spec.md` v1.0.0 (23 BRs, 11 UCs, 2 state machines) into a Fastify + raw-`pg` implementation on PostgreSQL 17 (Supabase Cloud). Tables owned: `raw_information`, `raw_chunk`, `llm_run`, `tool_call`, `information_fragment`, `fragment_source`. MCP `ingest` toolset documented at the contract level; UC-08..UC-11 delegate consolidation/entity-resolution to future domains. Error code `BUSINESS_RUN_NOT_RETRYABLE` registered. | -- |
+| 1.1.0 | 2026-06-12 | Back Spec Agent | update | Infrastructure swap: Supabase Cloud → Neon (driver `pg` raw, `DATABASE_URL`, `sslmode=require`); Supabase Auth JWT → Neon Auth (Stack Auth) JWT via `requireNeonAuth` + JWKS (EdDSA), cached `NEON_AUTH_JWKS_TTL_S` s. Env vars renamed. Schema unchanged; single-owner unchanged; auth-as-gate unchanged. No BR / UC / ST changes. | migrate-neon |
+| 1.2.0 | 2026-06-12 | Back Spec Agent | update | **Extraction pipeline + entity resolution + graph consolidation + dual-transport `ingest`.** Adds the in-process extraction orchestrator (`extraction.service.ts`) driven by `@anthropic-ai/sdk` in a manual tool-use loop (BR-26) and triggered by the new `POST /api/v1/ingest/llm-runs/:id/run` endpoint (UC-12, declared in `ingestion.spec.md` v1.2.0). Promotes entity resolution and graph consolidation from out-of-scope to in-scope at the service layer: new `entity-resolution.service.ts` implements §4 thresholds `MATCH_STRONG=0.85` / `MATCH_FLOOR=0.55` and writes `entity_match_review` rows for the ambiguous decision branch (BR-25); new `graph-consolidation.service.ts` implements §6.5 consolidate / supersede / dispute / correct decisions under `SELECT ... FOR UPDATE` (BR-27). Removes the "MCP-only" constraint from BR-21 (now transport-agnostic); adds BR-28 (dual-transport REST + MCP + in-process, single Zod source via `zod-to-json-schema`, documented A28 deviation) and BR-29 (`@anthropic-ai/sdk` is the sole LLM integration). Adds Anthropic API as a new external integration row in §6. **No schema change** — the existing `migrations/0001_init.sql` already supports every new behaviour (`node_alias.alias_norm` GENERATED, `node_alias_norm_trgm_idx` GIN, `entity_match_review`, partial dup-guards, `knowledge_node.status` / `merged_into_node_id`). New env var: `ANTHROPIC_API_KEY` (BFF-only secret). No new BUSINESS_ error codes — `BUSINESS_RUN_NOT_RETRYABLE` is reused by `runLlmExtraction` against a non-`running` run (BR-26 pre-check), and all extraction outcomes flow through the existing MCP envelope codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) or the `tool_call.validation_outcome` values (`accepted`, `consolidated`, `superseded_previous`, `needs_review`, `uncertain`, `disputed`, `rejected`, `error`). Updated §1 (architecture, validation, observability, extraction orchestrator, Anthropic client rows), §2 (cross-domain tables / indexes used by the new services), §3 (BR-21 rewritten transport-agnostic; new BR-24..BR-29), §4 (ST-LR adds `runLlmExtraction` transitions), §6 (Anthropic row), §7 (new constraints), §8 (out-of-scope refresh). | ingestion-extraction |
+| 1.2.1 | 2026-06-12 | Back Spec Agent | correction | Three error-code corrections and an OpenAPI surface alignment. (1) BR-26: pre-check for `runLlmExtraction` against a non-`running` run now returns `409 BUSINESS_RUN_NOT_RUNNABLE` (was `BUSINESS_RUN_NOT_RETRYABLE`, which is reserved for `retryLlmRun` per BR-11). (2) ST-LR table updated: completed→runLlmExtraction returns `BUSINESS_RUN_NOT_RUNNABLE`; completed→retryLlmRun returns `BUSINESS_RUN_NOT_RETRYABLE` (split row). (3) BR-27 correction branch: `tool_call.validation_outcome = 'accepted'` (was `'superseded_previous'`) and the closed vigent row's status is `'corrected'` (was `'superseded'`) — both align with `ingestion.spec.md` BR-25 correction flow. (4) OpenAPI surface (`openapi.yaml`) updated to expose the five new endpoints corresponding to v1.2.0 of the spec: `POST /llm-runs/{llmRunId}/run` (operationId `runLlmExtraction`), `POST /llm-runs/{llmRunId}/propose-fragment` (operationId `proposeFragment`), `POST /llm-runs/{llmRunId}/propose-node` (operationId `proposeNode`), `POST /llm-runs/{llmRunId}/propose-link` (operationId `proposeLink`), `POST /llm-runs/{llmRunId}/propose-attribute` (operationId `proposeAttribute`); plus new shared response `LlmProviderUnavailable` (502 `SYSTEM_LLM_PROVIDER_UNAVAILABLE` per UC-12 alt 4a), new shared response `RunNotRunning` (409 `BUSINESS_RUN_NOT_RUNNING` per UC-08..UC-11 alt 1a REST branch), and DTO schemas `ProposeMcpEnvelope`, `ProposeFragmentInput`, `ProposeNodeInput`, `ProposeLinkInput`, `ProposeAttributeInput`, `RunLlmExtractionRequest`, `ValidFromBasis`, `ChangeHint`. Root aggregator (`docs/specs/openapi.root.yaml`) extended with the five new paths. Error catalog (`docs/specs/_global/error-codes.md`) already registers `BUSINESS_RUN_NOT_RUNNABLE`, `BUSINESS_RUN_NOT_RUNNING`, and `SYSTEM_LLM_PROVIDER_UNAVAILABLE` (registered upstream by spec-back task 1). No schema change. | ingestion-extraction |
