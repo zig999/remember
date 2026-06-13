@@ -2,8 +2,18 @@
 
 import { z } from "zod";
 
-/** Closed enum for `valid_from_basis` (§6.5 / A14). */
-export const ValidFromBasisSchema = z.enum(["stated", "document", "received"]);
+/**
+ * Closed enum for the caller-supplied `valid_from_basis` (§6.5 / A14).
+ *
+ * Only `stated` and `document` are accepted at the API boundary. The third
+ * value, `received`, is a backend-only fallback that the temporal validator
+ * applies internally when neither `stated` nor `document` can justify the
+ * date — it is never sent by an LLM or any external caller, so it MUST NOT
+ * appear in this input enum. Internal service / repository / validator
+ * types still carry `received` because the resolved value is stored and
+ * surfaced on read.
+ */
+export const ValidFromBasisSchema = z.enum(["stated", "document"]);
 export type ValidFromBasis = z.infer<typeof ValidFromBasisSchema>;
 
 /** Closed enum for the optional `change_hint`. */
