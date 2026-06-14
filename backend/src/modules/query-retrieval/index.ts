@@ -4,6 +4,20 @@
 export { registerQueryRetrievalRoutes } from "./routes/query-retrieval.routes.js";
 export type { QueryRetrievalRouteDeps } from "./routes/query-retrieval.routes.js";
 
+// MCP toolset registration — registers the four query-retrieval read tools
+// onto the shared `query` MCP server instance owned by `knowledge-graph`
+// (BR-23 of `query-retrieval.back.md`).
+export {
+  QUERY_RETRIEVAL_TOOL_NAMES,
+  QueryRetrievalToolDescriptions,
+  QueryRetrievalToolInputJsonSchemas,
+  registerQueryRetrievalToolset,
+} from "./mcp/query-toolset.js";
+export type {
+  QueryRetrievalToolName,
+  QueryRetrievalToolsetDeps,
+} from "./mcp/query-toolset.js";
+
 // FTS configuration + scoring constants — exposed for tests and for any
 // future tooling that needs to assert layer-weight ordering.
 export { FTS_NAME_CONFIG, FTS_PROSE_CONFIG } from "./repository/fts-config.js";

@@ -38,8 +38,15 @@ import {
   registerQueryMcpTransport,
   registerQueryToolset,
   type CatalogSnapshot,
+  type QueryMcpToolDescriptor,
 } from "./modules/knowledge-graph/index.js";
-import { registerQueryRetrievalRoutes } from "./modules/query-retrieval/index.js";
+import {
+  QUERY_RETRIEVAL_TOOL_NAMES,
+  QueryRetrievalToolDescriptions,
+  QueryRetrievalToolInputJsonSchemas,
+  registerQueryRetrievalRoutes,
+  registerQueryRetrievalToolset,
+} from "./modules/query-retrieval/index.js";
 
 export interface AppDependencies {
   readonly env: Env;
@@ -160,10 +167,28 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // MCP-over-HTTP read transport — POST /api/v1/mcp/query (TC-02,
       // knowledge-graph.back.md BR-23). Mounted under the same auth scope as
       // the REST surface, with no extra headers and no audit-row writes
-      // (BR-23 rules 1-3). The nine read-only tools live on the shared
-      // McpServer registry under the `query` toolset key (see
-      // `registerQueryToolset` call below).
-      await registerQueryMcpTransport(scoped, { pool, logger, mcp });
+      // (BR-23 rules 1-3). The nine knowledge-graph read tools live on the
+      // shared McpServer registry under the `query` toolset key (see
+      // `registerQueryToolset` call below); the four query-retrieval tools
+      // (`search`, `get_provenance_link|attribute|fragment`) are co-tenants
+      // of the same registry — TC-03 / query-retrieval.back.md BR-23. The
+      // descriptors are handed to the transport here so its tools/list +
+      // closed-whitelist gate can advertise / admit them without creating a
+      // reverse dependency from knowledge-graph into query-retrieval.
+      const queryRetrievalToolDescriptors: QueryMcpToolDescriptor[] =
+        QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({
+          name,
+          description: QueryRetrievalToolDescriptions[name],
+          inputSchema: QueryRetrievalToolInputJsonSchemas[
+            name
+          ] as unknown as Record<string, unknown>,
+        }));
+      await registerQueryMcpTransport(scoped, {
+        pool,
+        logger,
+        mcp,
+        extraTools: queryRetrievalToolDescriptors,
+      });
       // Curation module (TC-07) — POST verbs over the layered validation
       // pipeline. Mounted at /api/v1/curation/* (siblings of /api/v1/ingest).
       // TC-04 of valid-values-attribute-domains additionally requires the
@@ -195,6 +220,12 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   // (TC-07).
   if (catalog !== undefined) {
     registerQueryToolset({ mcp, pool, logger, catalog });
+    // Query-retrieval MCP toolset (TC-03 / query-retrieval.back.md BR-23) —
+    // co-tenants of the `query` toolset key. Composed at boot onto the SAME
+    // McpServer instance the knowledge-graph registrar just populated; the
+    // shared transport above is already aware of the four extra tool
+    // descriptors and will admit + advertise them.
+    registerQueryRetrievalToolset({ mcp, pool, logger, catalog });
     // Curation MCP toolset — like the REST routes, the `correct_item` tool
     // depends on the ingestion catalog for the closed-value-domain check
     // (TC-04 of valid-values-attribute-domains). Skip toolset registration

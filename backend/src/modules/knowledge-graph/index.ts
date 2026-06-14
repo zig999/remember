@@ -24,7 +24,10 @@ export type { QueryToolsetDeps } from "./mcp/query-toolset.js";
 
 // MCP query transport — POST /api/v1/mcp/query (TC-02, BR-23).
 export { registerQueryMcpTransport } from "./mcp/query-transport.js";
-export type { QueryMcpTransportDeps } from "./mcp/query-transport.js";
+export type {
+  QueryMcpToolDescriptor,
+  QueryMcpTransportDeps,
+} from "./mcp/query-transport.js";
 // NOTE: the `curation` MCP toolset moved to `backend/src/modules/curation/` in
 // TC-07; the stale skeleton at `./mcp/curation-toolset.ts` is kept only as a
 // no-op so legacy imports continue to compile. Bootstrap now imports the

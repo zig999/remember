@@ -111,18 +111,45 @@ interface McpEnvelopeJson {
 // Public registration entry point.
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-tool metadata a co-tenant domain (e.g. `query-retrieval`) hands to the
+ * transport at boot so it can (a) advertise the tool through `tools/list` and
+ * (b) admit it through the closed-whitelist gate (BR-23 rule 5). The
+ * transport itself never imports the co-tenant module — composition happens
+ * in the bootstrap (`app.ts`), preserving the one-way dependency from
+ * query-retrieval into knowledge-graph.
+ */
+export interface QueryMcpToolDescriptor {
+  readonly name: string;
+  readonly description: string;
+  /** JSON Schema (2020-12) for the tool input — same object pinned at
+   *  registration time by the co-tenant toolset module (BR-25). */
+  readonly inputSchema: Record<string, unknown>;
+}
+
 export interface QueryMcpTransportDeps {
   readonly pool: Pool;
   readonly logger: Logger;
   readonly mcp: McpServer;
+  /** Optional co-tenant descriptors. The knowledge-graph nine tools are
+   *  always advertised; entries here extend that set without creating a
+   *  reverse dependency from this module into the co-tenant. */
+  readonly extraTools?: readonly QueryMcpToolDescriptor[];
 }
 
-/** Closed enumeration whitelist — BR-23 rule 5. Anything outside this set is
- *  rejected with NOT_FOUND even if a tool by that name happens to be present
- *  in the shared `McpServer` core (e.g. an ingest `propose_*`). */
-const QUERY_TOOL_NAME_SET: ReadonlySet<string> = new Set<string>(
-  QUERY_TOOL_NAMES
-);
+/** Build the closed-whitelist set for one request — the nine knowledge-graph
+ *  tools plus any extras handed in by the bootstrap. Anything outside this
+ *  set is rejected with NOT_FOUND even if a tool by that name happens to be
+ *  present in the shared `McpServer` core (e.g. an ingest `propose_*`). */
+function buildToolNameSet(
+  deps: QueryMcpTransportDeps
+): ReadonlySet<string> {
+  const set = new Set<string>(QUERY_TOOL_NAMES);
+  if (deps.extraTools !== undefined) {
+    for (const tool of deps.extraTools) set.add(tool.name);
+  }
+  return set;
+}
 
 /**
  * Register `POST /mcp/query` inside the calling Fastify scope. The route is
@@ -247,6 +274,7 @@ function buildToolsListResult(
   deps: QueryMcpTransportDeps
 ): { tools: McpToolDescriptor[] } {
   const tools: McpToolDescriptor[] = [];
+  // (a) knowledge-graph nine tools — owned by this module.
   for (const name of QUERY_TOOL_NAMES) {
     const tool = deps.mcp.getTool("query", name);
     if (tool === undefined) continue;
@@ -260,6 +288,20 @@ function buildToolsListResult(
         unknown
       >,
     });
+  }
+  // (b) co-tenant extras (e.g. query-retrieval) — passed in by the
+  // bootstrap. Same registry intersection rule: omit tools that failed to
+  // register on the shared McpServer rather than fabricating an entry.
+  if (deps.extraTools !== undefined) {
+    for (const desc of deps.extraTools) {
+      const tool = deps.mcp.getTool("query", desc.name);
+      if (tool === undefined) continue;
+      tools.push({
+        name: desc.name,
+        description: desc.description,
+        inputSchema: desc.inputSchema,
+      });
+    }
   }
   return { tools };
 }
@@ -307,8 +349,10 @@ async function handleToolsCall(
 
   // BR-23 rule 5: closed whitelist. An `ingest.propose_*` invocation cannot
   // reach the handler even if it accidentally shares the underlying
-  // McpServer instance.
-  if (!QUERY_TOOL_NAME_SET.has(bareName)) {
+  // McpServer instance. The set is built per-request from the static
+  // knowledge-graph names + any `extraTools` handed in by the bootstrap.
+  const toolNameSet = buildToolNameSet(deps);
+  if (!toolNameSet.has(bareName)) {
     return {
       ok: false,
       error: {
