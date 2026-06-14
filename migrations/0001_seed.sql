@@ -1,27 +1,25 @@
 -- ============================================================================
--- 0001_seed.sql — Remember (spec v7 §15) — CATÁLOGO SEED da aplicação
--- PostgreSQL 17 (Neon). Dados de PREPARAÇÃO da aplicação: o catálogo
--- obrigatório (§15) — NodeTypes, LinkTypes (+ regras de par) e AttributeKeys.
+-- 0001_seed.sql — Remember — SEED ÚNICA DA ONTOLOGIA (catálogo §15 completo)
+-- PostgreSQL 17 (Neon). Popula TODA a ontologia num único arquivo:
+--   9 NodeTypes, 13 LinkTypes (+28 regras), 16 AttributeKeys, 9 valid_values.
 --
--- DEPENDE de 0001_init.sql (estrutura). Aplique SEMPRE depois do init: estas
--- inserções resolvem as FKs por NOME (JOIN node_type / link_type), então a
--- ordem interna importa — NodeTypes → LinkTypes → LinkTypeRules → AttributeKeys.
+-- Consolida as antigas 0001_seed (base §15) + 0002_catalog_tier1 (Tier-1:
+-- Document, concerns/delivered_to/sponsors, atributos ocos) + 0003 (domínios
+-- fechados doc_type/event_type) num só lugar (2026-06-14).
 --
--- Conteúdo validado item a item contra a v7 §15:
---   8 NodeTypes, 10 LinkTypes (+22 regras), 10 AttributeKeys.
--- Novos tipos de catálogo entram por MIGRAÇÃO VERSIONADA subsequente (§12) —
--- não editar este arquivo em produção.
+-- DEPENDE de 0001_init.sql (estrutura). Aplique DEPOIS do init. Resolve FKs por
+-- NOME (JOIN node_type/link_type), então a ordem importa:
+--   NodeTypes -> LinkTypes -> LinkTypeRules -> AttributeKeys -> valid_values.
 --
--- NÃO idempotente (rodar uma vez). Separado de 0001_init.sql em 2026-06-14:
---   0001_init.sql = 100% estrutural (extensões, funções, tipos, tabelas,
---                   índices, views, triggers);
---   0001_seed.sql = dados de preparação (este arquivo).
+-- IDEMPOTENTE (ON CONFLICT / WHERE NOT EXISTS) — seguro re-rodar e usar para
+-- RE-CRIAR a ontologia após `ops/truncate_ontology.sql`. Novos tipos de
+-- catálogo entram por migração de seed subsequente (§12) + RESTART do BFF.
 -- ============================================================================
 
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. NodeTypes (§15.1)
+-- 1. NodeTypes (§15.1) — 9
 -- ----------------------------------------------------------------------------
 INSERT INTO node_type (name, description) VALUES
   ('Person',       'Pessoa física'),
@@ -31,10 +29,12 @@ INSERT INTO node_type (name, description) VALUES
   ('Role',         'Cargo/função (vocabulário controlado)'),
   ('Category',     'Rótulo taxonômico para classificação'),
   ('Concept',      'Conceito/tema referenciável'),
-  ('Location',     'Lugar físico ou lógico');
+  ('Location',     'Lugar físico ou lógico'),
+  ('Document',     'Artefato referenciado no conteúdo (proposta, ata, contrato, relatório); não é a fonte ingerida')
+ON CONFLICT (name) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
--- 2. LinkTypes (§15.2) — flags: temporal / multi / req.valid_from / valid_to_on_change
+-- 2. LinkTypes (§15.2) — 13 — flags: temporal / multi / req.valid_from / valid_to_on_change
 -- ----------------------------------------------------------------------------
 INSERT INTO link_type
   (name, label, inverse_name, description,
@@ -69,10 +69,20 @@ VALUES
    false, true,  false, false),
   ('related_to', 'relacionado a', 'related_to',
    'Relação temática simétrica (estável — sem eixo de validade)',
-   false, true,  false, false);
+   false, true,  false, false),
+  ('concerns', 'trata de', 'addressed_by',
+   'Documento ou evento trata de / tem como assunto (aboutness estável)',
+   false, true,  false, false),
+  ('delivered_to', 'entregue a', 'recipient_of',
+   'Documento entregue a uma pessoa',
+   true,  true,  false, false),
+  ('sponsors', 'patrocina', 'sponsored_by',
+   'Organização patrocina / mantém projeto',
+   true,  true,  true,  false)
+ON CONFLICT (name) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
--- 3. LinkTypeRules (§15.2, coluna "pares permitidos") — 22 regras
+-- 3. LinkTypeRules (§15.2, "pares permitidos") — 28
 --    valid_from/valid_to nulos = vigentes desde sempre (§5.1)
 -- ----------------------------------------------------------------------------
 INSERT INTO link_type_rule (link_type_id, source_node_type_id, target_node_type_id)
@@ -99,15 +109,26 @@ FROM (VALUES
   ('belongs_to_category', 'Concept',      'Category'),
   ('belongs_to_category', 'Location',     'Category'),
   ('related_to',          'Concept',      'Concept'),
-  ('related_to',          'Project',      'Concept')
+  ('related_to',          'Project',      'Concept'),
+  ('concerns',            'Document',     'Project'),
+  ('concerns',            'Document',     'Event'),
+  ('concerns',            'Document',     'Organization'),
+  ('concerns',            'Event',        'Project'),
+  ('delivered_to',        'Document',     'Person'),
+  ('sponsors',            'Organization', 'Project')
 ) AS r(link_name, source_name, target_name)
 JOIN link_type lt ON lt.name = r.link_name
 JOIN node_type s  ON s.name  = r.source_name
-JOIN node_type t  ON t.name  = r.target_name;
+JOIN node_type t  ON t.name  = r.target_name
+WHERE NOT EXISTS (
+  SELECT 1 FROM link_type_rule x
+  WHERE x.link_type_id = lt.id
+    AND x.source_node_type_id = s.id
+    AND x.target_node_type_id = t.id
+);
 
 -- ----------------------------------------------------------------------------
--- 4. AttributeKeys (§15.3) — cobre todas as combinações de flags:
---    temporal-funcional, temporal-multi e estável (gabarito para novas chaves)
+-- 4. AttributeKeys (§15.3) — 16
 -- ----------------------------------------------------------------------------
 INSERT INTO attribute_key
   (node_type_id, key, value_type, is_temporal, allows_multiple_current,
@@ -125,6 +146,10 @@ FROM (VALUES
    'Orçamento do projeto (funcional)'),
   ('Event',        'event_date',  'date',   true,  false, true,
    'Data do evento (funcional)'),
+  ('Event',        'end_date',    'date',   true,  false, true,
+   'Data de término do evento (funcional; espelha event_date)'),
+  ('Event',        'event_type',  'text',   false, false, false,
+   'Tipo do evento (reunião/workshop/go-live)'),
   ('Person',       'email',       'text',   true,  true,  false,
    'E-mail da pessoa (multi-valor)'),
   ('Person',       'phone',       'text',   true,  true,  false,
@@ -134,8 +159,42 @@ FROM (VALUES
   ('Organization', 'cnpj',        'text',   false, false, false,
    'CNPJ (estável; typo corrige-se via 6.5-B, sem fingir mudança no mundo)'),
   ('Organization', 'website',     'text',   true,  false, false,
-   'Site institucional vigente (funcional)')
+   'Site institucional vigente (funcional)'),
+  ('Location',     'city',        'text',   false, false, false,
+   'Cidade da localização (estável)'),
+  ('Location',     'address',     'text',   false, false, false,
+   'Endereço da localização (estável)'),
+  ('Concept',      'definition',  'text',   false, false, false,
+   'Definição do conceito (estável)'),
+  ('Document',     'doc_type',    'text',   false, false, false,
+   'Tipo do documento (proposta/ata/contrato…) — domínio fechado em valid_values')
 ) AS a(node_type, key, value_type, is_temporal, multi, req_vf, description)
-JOIN node_type nt ON nt.name = a.node_type;
+JOIN node_type nt ON nt.name = a.node_type
+ON CONFLICT (node_type_id, key) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 5. valid_values (§ domínios fechados, BR-30) — 9
+--    chave com >= 1 linha aqui => domínio FECHADO (backend rejeita fora do conjunto)
+-- ----------------------------------------------------------------------------
+INSERT INTO attribute_valid_value (attribute_key_id, value, label, sort_order)
+SELECT ak.id, v.value, v.label, v.sort_order
+FROM attribute_key ak
+JOIN node_type nt ON nt.id = ak.node_type_id
+JOIN (VALUES
+  ('Document', 'doc_type',   'proposta',  'Proposta',  1),
+  ('Document', 'doc_type',   'ata',       'Ata',       2),
+  ('Document', 'doc_type',   'contrato',  'Contrato',  3),
+  ('Document', 'doc_type',   'relatório', 'Relatório', 4),
+  ('Document', 'doc_type',   'outro',     'Outro',     5),
+  ('Event',    'event_type', 'reunião',   'Reunião',   1),
+  ('Event',    'event_type', 'go-live',   'Go-live',   2),
+  ('Event',    'event_type', 'workshop',  'Workshop',  3),
+  ('Event',    'event_type', 'outro',     'Outro',     4)
+) AS v(node_type, key, value, label, sort_order)
+  ON v.node_type = nt.name AND v.key = ak.key
+WHERE NOT EXISTS (
+  SELECT 1 FROM attribute_valid_value x
+  WHERE x.attribute_key_id = ak.id AND x.value = v.value
+);
 
 COMMIT;
