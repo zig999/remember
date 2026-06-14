@@ -35,6 +35,7 @@ import {
   NodeIdKeyParamSchema,
   TraverseQuerySchema,
 } from "../dto/queries.dto.js";
+import { mapErrorToHttpResponse } from "../mcp/error-envelope.js";
 import { getAttributeByIdService } from "../service/attribute.service.js";
 import {
   listAttributeKeysService,
@@ -110,14 +111,8 @@ export async function registerKnowledgeGraphRoutes(
         });
       } catch (err) {
         if (err instanceof UnknownNodeTypeError) {
-          return reply.status(422).send({
-            ok: false,
-            error: {
-              code: err.code,
-              message: err.message,
-              details: { node_type: err.nodeType },
-            },
-          });
+          const { statusCode, envelope } = mapErrorToHttpResponse(err);
+          return reply.status(statusCode).send(envelope);
         }
         throw err;
       }
@@ -151,14 +146,8 @@ export async function registerKnowledgeGraphRoutes(
       });
     } catch (err) {
       if (err instanceof UnknownNodeTypeError) {
-        return reply.status(422).send({
-          ok: false,
-          error: {
-            code: err.code,
-            message: err.message,
-            details: { node_type: err.nodeType },
-          },
-        });
+        const { statusCode, envelope } = mapErrorToHttpResponse(err);
+        return reply.status(statusCode).send(envelope);
       }
       throw err;
     }
@@ -341,33 +330,47 @@ export async function registerKnowledgeGraphRoutes(
   );
 }
 
+/**
+ * Route-side wrappers around the shared mapper (`mapErrorToHttpResponse`).
+ *
+ * These wrappers exist to preserve the pre-refactor behaviour of the GET
+ * routes: KNOWN business errors are caught and rendered with route context
+ * (`extraDetails`); UNKNOWN errors (e.g. pg connection failures, runtime
+ * bugs) are re-thrown so they reach the Fastify global error handler
+ * (`backend/src/middleware/error-handler.ts`), which logs them via pino and
+ * applies its own pg-unavailable / 500 mapping. We deliberately do NOT
+ * intercept those paths here — the global handler owns the structured-logging
+ * surface for request failures.
+ *
+ * The classification core itself lives in `mcp/error-envelope.ts`; the MCP
+ * query transport (TC-02+) will consume the same module and will NOT re-throw
+ * unknown errors (MCP transports must always produce a JSON-RPC `result`, so
+ * the shared mapper's "anything else → SYSTEM_INTERNAL_ERROR" branch is the
+ * terminal branch on that path).
+ */
+
+/** Known sentinels recognised by the shared mapper — anything else falls
+ *  through to the global Fastify error handler via `throw`. */
+function isMappableServiceError(err: unknown): boolean {
+  return (
+    err instanceof InvalidTraverseDepthError ||
+    err instanceof NodeDeletedError ||
+    err instanceof ResourceNotFoundError ||
+    err instanceof UnknownAttributeKeyError ||
+    err instanceof UnknownLinkTypeError ||
+    err instanceof UnknownNodeTypeError
+  );
+}
+
 /** Error mapper for the traversal endpoint. */
 function handleTraversalError(
   err: unknown,
   reply: FastifyReply,
   details: Record<string, unknown>
 ): FastifyReply {
-  if (err instanceof InvalidTraverseDepthError) {
-    return reply.status(422).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { depth: err.depth, max: err.max, ...details },
-      },
-    });
-  }
-  if (err instanceof UnknownLinkTypeError) {
-    return reply.status(422).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { link_type: err.linkType, ...details },
-      },
-    });
-  }
-  return handleReadError(err, reply, details);
+  if (!isMappableServiceError(err)) throw err;
+  const { statusCode, envelope } = mapErrorToHttpResponse(err, details);
+  return reply.status(statusCode).send(envelope);
 }
 
 /** Error mapper for the `(node, key)` history endpoint. */
@@ -376,17 +379,9 @@ function handleAttributeKeyHistoryError(
   reply: FastifyReply,
   details: Record<string, unknown>
 ): FastifyReply {
-  if (err instanceof UnknownAttributeKeyError) {
-    return reply.status(404).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { node_type: err.nodeType, key: err.key, ...details },
-      },
-    });
-  }
-  return handleReadError(err, reply, details);
+  if (!isMappableServiceError(err)) throw err;
+  const { statusCode, envelope } = mapErrorToHttpResponse(err, details);
+  return reply.status(statusCode).send(envelope);
 }
 
 /**
@@ -399,27 +394,9 @@ function handleReadError(
   reply: FastifyReply,
   details: Record<string, unknown>
 ): FastifyReply {
-  if (err instanceof ResourceNotFoundError) {
-    return reply.status(404).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { entity: err.entity, id: err.entityId, ...details },
-      },
-    });
-  }
-  if (err instanceof NodeDeletedError) {
-    return reply.status(410).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { node_id: err.nodeId, ...details },
-      },
-    });
-  }
-  throw err;
+  if (!isMappableServiceError(err)) throw err;
+  const { statusCode, envelope } = mapErrorToHttpResponse(err, details);
+  return reply.status(statusCode).send(envelope);
 }
 
 /**

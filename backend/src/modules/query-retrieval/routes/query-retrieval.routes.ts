@@ -36,6 +36,7 @@ import {
 } from "../service/provenance.service.js";
 import { ResourceNotFoundError } from "../../knowledge-graph/service/errors.js";
 import { UnknownLinkTypeError } from "../../knowledge-graph/service/errors.js";
+import { mapErrorToHttpResponse } from "../../knowledge-graph/mcp/error-envelope.js";
 
 export interface QueryRetrievalRouteDeps {
   readonly pool: Pool;
@@ -150,41 +151,40 @@ export async function registerQueryRetrievalRoutes(
 }
 
 // ---------------------------------------------------------------------------
-// Error mappers
+// Error mappers — route-side wrappers around the shared envelope mapper.
+//
+// BR-24 (knowledge-graph.back.md / query-retrieval.back.md): both REST and MCP
+// transports surface IDENTICAL error codes / messages for any thrown service
+// error. The classification core lives in
+// `backend/src/modules/knowledge-graph/mcp/error-envelope.ts`; the route
+// wrappers below recognise which thrown values are KNOWN business sentinels
+// and delegate to the shared mapper, re-throwing everything else so it
+// reaches the Fastify global error handler (which logs + maps pg / unknown
+// errors to their canonical envelopes). Behaviour is preserved verbatim from
+// the previous inline cascade.
 // ---------------------------------------------------------------------------
 
+function isMappableSearchError(err: unknown): boolean {
+  return (
+    err instanceof InvalidSearchQueryError ||
+    err instanceof InvalidSearchLayerError ||
+    err instanceof UnknownLinkTypeError
+  );
+}
+
+function isMappableProvenanceError(err: unknown): boolean {
+  return (
+    err instanceof ResourceNotFoundError ||
+    err instanceof FragmentNotAcceptedError ||
+    err instanceof RawInformationDeletedError ||
+    err instanceof EmptyProvenanceError
+  );
+}
+
 function handleSearchError(err: unknown, reply: FastifyReply): FastifyReply {
-  if (err instanceof InvalidSearchQueryError) {
-    return reply.status(422).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: err.details,
-      },
-    });
-  }
-  if (err instanceof InvalidSearchLayerError) {
-    return reply.status(422).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { invalid: err.invalid, allowed: err.allowed },
-      },
-    });
-  }
-  if (err instanceof UnknownLinkTypeError) {
-    return reply.status(422).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { link_type: err.linkType },
-      },
-    });
-  }
-  throw err;
+  if (!isMappableSearchError(err)) throw err;
+  const { statusCode, envelope } = mapErrorToHttpResponse(err);
+  return reply.status(statusCode).send(envelope);
 }
 
 function handleProvenanceError(
@@ -192,49 +192,14 @@ function handleProvenanceError(
   reply: FastifyReply,
   details: Record<string, unknown>
 ): FastifyReply {
-  if (err instanceof ResourceNotFoundError) {
-    return reply.status(404).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { entity: err.entity, id: err.entityId, ...details },
-      },
-    });
-  }
-  if (err instanceof FragmentNotAcceptedError) {
-    return reply.status(404).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: { fragment_id: err.fragmentId, status: err.status },
-      },
-    });
-  }
-  if (err instanceof RawInformationDeletedError) {
-    return reply.status(410).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: err.message,
-        details: {
-          raw_information_id: err.rawInformationId,
-          deleted_at: err.deletedAt.toISOString(),
-        },
-      },
-    });
-  }
-  if (err instanceof EmptyProvenanceError) {
-    return reply.status(500).send({
-      ok: false,
-      error: {
-        code: err.code,
-        message: "Internal server error.",
-      },
-    });
-  }
-  throw err;
+  if (!isMappableProvenanceError(err)) throw err;
+  // Only `ResourceNotFoundError` merges route-scoped extras into `details`;
+  // the other branches own structured detail objects whose shape is fixed by
+  // the error class (see the shared mapper).
+  const extras =
+    err instanceof ResourceNotFoundError ? details : undefined;
+  const { statusCode, envelope } = mapErrorToHttpResponse(err, extras);
+  return reply.status(statusCode).send(envelope);
 }
 
 /** Run `fn` inside a READ ONLY transaction (BR — back spec §1). */
