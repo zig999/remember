@@ -19,7 +19,10 @@
 import { describe, expect, it } from "vitest";
 import type { PoolClient } from "pg";
 
-import { searchChunkLayer } from "../../../modules/query-retrieval/repository/search.repository.js";
+import {
+  listProvenanceForNodes,
+  searchChunkLayer,
+} from "../../../modules/query-retrieval/repository/search.repository.js";
 import { findTombstone } from "../../../modules/query-retrieval/repository/provenance.repository.js";
 
 function buildCapturingClient(): { client: PoolClient; captured: string[] } {
@@ -43,6 +46,34 @@ describe("searchChunkLayer SQL contract", () => {
     // The predicate must match the partial index raw_chunk_fts_idx
     // (WHERE superseded_at IS NULL) — deleted content never resurfaces.
     expect(sql).toContain("rc.superseded_at IS NULL");
+  });
+});
+
+describe("listProvenanceForNodes SQL contract", () => {
+  it("matches the node alias with plainto_tsquery, never a bare to_tsquery", async () => {
+    // Regression for the /search 500 surfaced by the live E2E: a node whose
+    // alias_norm is multi-word (e.g. "rodrigo isensee") fed into a bare
+    // `to_tsquery(cfg, alias_norm)` raises `syntax error in tsquery` on a real
+    // DB, because to_tsquery requires operators between lexemes. plainto_tsquery
+    // treats the alias as plain text (ANDs the lexemes) and accepts any phrase.
+    // The fake-pool suite cannot execute tsquery, so we pin the SQL shape here.
+    const { client, captured } = buildCapturingClient();
+    await listProvenanceForNodes(client, [
+      "22222222-0000-4000-8000-000000000001",
+    ]);
+    expect(captured).toHaveLength(1);
+    const sql = captured[0]!;
+    expect(sql).toContain("plainto_tsquery(");
+    // The bare form `@@ to_tsquery(` is the crash; plainto_tsquery is allowed
+    // even though "to_tsquery" is a substring of it.
+    expect(sql).not.toMatch(/@@\s*to_tsquery\(/);
+  });
+
+  it("short-circuits without touching the DB when no node ids are given", async () => {
+    const { client, captured } = buildCapturingClient();
+    const result = await listProvenanceForNodes(client, []);
+    expect(result).toEqual([]);
+    expect(captured).toHaveLength(0);
   });
 });
 

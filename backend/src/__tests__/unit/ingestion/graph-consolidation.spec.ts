@@ -153,6 +153,9 @@ interface MockState {
     provenance: Array<Record<string, unknown>>;
   };
   readonly updates: Array<{ table: string; bindings: unknown[]; sql: string }>;
+  /** §6.6 fragment promotions (UPDATE information_fragment) — kept separate
+   * from `updates` so graph-row close counts stay meaningful. */
+  readonly fragmentPromotions: Array<{ bindings: unknown[]; sql: string }>;
   readonly savepoints: string[];
   readonly releases: string[];
   readonly rollbacks: string[];
@@ -184,6 +187,7 @@ function buildClient(cfg: MockConfig = {}) {
     sql: [],
     inserts: { knowledge_link: [], node_attribute: [], provenance: [] },
     updates: [],
+    fragmentPromotions: [],
     savepoints: [],
     releases: [],
     rollbacks: [],
@@ -305,6 +309,12 @@ function buildClient(cfg: MockConfig = {}) {
       if (sql.startsWith("UPDATE node_attribute")) {
         state.updates.push({ table: "node_attribute", bindings: params, sql });
         return { rows: [], rowCount: 1 };
+      }
+      // UPDATE information_fragment — §6.6 proposed -> accepted promotion.
+      // Captured separately from `updates` (which counts graph-row closes).
+      if (sql.startsWith("UPDATE information_fragment")) {
+        state.fragmentPromotions.push({ bindings: params, sql });
+        return { rows: [], rowCount: ((params[0] as string[] | undefined) ?? []).length };
       }
 
       // INSERT knowledge_link
@@ -453,6 +463,32 @@ describe("TC-011 — consolidateLink — accepted (new)", () => {
     expect(state.inserts.knowledge_link[0]!.supersedes_link_id).toBeNull();
     // active status because confidence >= 0.75 (BR-17).
     expect(state.inserts.knowledge_link[0]!.status).toBe("active");
+  });
+
+  it("promotes the cited fragment proposed -> accepted when provenance is created (§6.6)", async () => {
+    // Regression: a populated graph with fragments stuck at 'proposed' makes
+    // /search return nothing (the fragment layer + node-provenance synthesis
+    // both filter status='accepted'). §6.6 requires the fragment to flip to
+    // 'accepted' exactly when its Provenance row is created on consolidation.
+    const catalog = buildCatalog();
+    const { client, state } = buildClient({ vigentLink: null });
+
+    const envelope = await proposeLinkService(
+      client,
+      baseLinkArgs(),
+      runCtx,
+      { catalog, now: () => new Date("2026-06-12T12:00:00Z") }
+    );
+
+    expect(envelope.ok).toBe(true);
+    expect(state.inserts.provenance.length).toBe(1);
+    // The promotion must be issued, scoped to the cited fragment, and guarded
+    // to only touch 'proposed' rows (idempotent under re-affirmation, §18).
+    expect(state.fragmentPromotions.length).toBe(1);
+    const promotion = state.fragmentPromotions[0]!;
+    expect(promotion.sql).toContain("status = 'accepted'");
+    expect(promotion.sql).toContain("status = 'proposed'");
+    expect(promotion.bindings[0]).toEqual([FRAGMENT_ID]);
   });
 
   it("inserts with status='uncertain' when 0.40 <= confidence < 0.75", async () => {

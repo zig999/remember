@@ -207,6 +207,10 @@ function isDupGuardViolation(err: unknown, guard: string): boolean {
 /**
  * Insert provenance rows for a (link_id | attribute_id, fragment_id) pair
  * set. `ON CONFLICT DO NOTHING` makes re-affirmation idempotent (§18).
+ *
+ * Creating a Provenance row is the §6.6 trigger that promotes each cited
+ * fragment `proposed -> accepted`, so each inserter follows the write with
+ * `promoteFragmentsToAccepted` in the same transaction.
  */
 async function insertLinkProvenance(
   client: PoolClient,
@@ -219,6 +223,7 @@ async function insertLinkProvenance(
        ON CONFLICT DO NOTHING`,
     [linkId, fragmentIds]
   );
+  await promoteFragmentsToAccepted(client, fragmentIds);
 }
 
 async function insertAttributeProvenance(
@@ -231,6 +236,30 @@ async function insertAttributeProvenance(
        SELECT $1, f FROM unnest($2::uuid[]) AS f
        ON CONFLICT DO NOTHING`,
     [attributeId, fragmentIds]
+  );
+  await promoteFragmentsToAccepted(client, fragmentIds);
+}
+
+/**
+ * §6.6 state machine: an InformationFragment cited by an accepted
+ * consolidation (a `Provenance` row was just created) transitions
+ * `proposed -> accepted`. Scoped to `status = 'proposed'` so the write is
+ * idempotent under re-affirmation (§18) and never resurrects a `rejected`,
+ * `superseded`, or `deleted` fragment. Without this the search fragment layer
+ * and node-provenance synthesis (both `WHERE status = 'accepted'`) never see
+ * ingested fragments — the graph populates but `/search` returns nothing.
+ */
+async function promoteFragmentsToAccepted(
+  client: PoolClient,
+  fragmentIds: readonly string[]
+): Promise<void> {
+  if (fragmentIds.length === 0) return;
+  await client.query(
+    `UPDATE information_fragment
+        SET status = 'accepted'
+      WHERE id = ANY($1::uuid[])
+        AND status = 'proposed'`,
+    [fragmentIds]
   );
 }
 

@@ -365,7 +365,7 @@ export async function listProvenanceForNodes(
       FROM knowledge_node kn
       JOIN node_alias na          ON na.node_id = kn.id
       JOIN information_fragment f ON f.status = 'accepted'
-                                  AND f.text_search @@ to_tsquery($1::regconfig, na.alias_norm)
+                                  AND f.text_search @@ plainto_tsquery($1::regconfig, na.alias_norm)
       JOIN fragment_source fs     ON fs.fragment_id = f.id
       JOIN raw_chunk rc           ON rc.id = fs.raw_chunk_id
       JOIN raw_information ri     ON ri.id = rc.raw_information_id

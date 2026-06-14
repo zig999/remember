@@ -301,6 +301,11 @@ function buildFakeClient(store: FakeStore): import("pg").PoolClient {
         store.provenance_inserted += fragIds.length;
         return { rows: [], rowCount: fragIds.length };
       }
+      // UPDATE information_fragment — §6.6 proposed -> accepted promotion that
+      // follows every provenance write in graph-consolidation.service.ts.
+      if (sql.startsWith("UPDATE information_fragment")) {
+        return { rows: [], rowCount: ((params[0] as string[] | undefined) ?? []).length };
+      }
 
       throw new Error(`fake client (propose): unknown SQL: ${sql.slice(0, 160)}`);
     },
