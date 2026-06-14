@@ -1,3 +1,18 @@
+# E2E funcionais (standalone `tsx`, fora do `vitest run`)
+
+Esta pasta tem **dois** E2E funcionais contra a infra real (BFF in-process + Neon):
+
+| Script | Cobre | LLM? | Asserções |
+|---|---|---|---|
+| [`ingestion-e2e-apollo.mts`](./ingestion-e2e-apollo.mts) | ingestão texto→grafo (§9, §13) | **sim** (Anthropic) | exatas no pipeline + **soft** na consulta |
+| [`query-e2e.mts`](./query-e2e.mts) | recuperação: search/fuzzy/expansão/traversal/temporal/proveniência (UC-01/06/07/09) | **não** (seed determinístico) | **exatas** |
+
+Os dois exigem `E2E_CONFIRM=1` e escrevem linhas duráveis/imutáveis — leia "⚠️ Segurança"
+abaixo e prefira um branch efêmero do Neon. A seção principal documenta o de ingestão;
+a seção [**Query E2E**](#query-e2e--consulta-de-conteúdo) documenta o de consulta.
+
+---
+
 # E2E — Ingestão → Grafo de Conhecimento (texto → grafo)
 
 Teste **end-to-end funcional** do pipeline de ingestão: pega um documento de
@@ -189,3 +204,94 @@ que fecha o loop com a **LLM real**.
 - **Branch efêmero:** apague o branch (`neonctl branches delete …`). Pronto.
 - **Banco persistente:** as linhas ficam (imutáveis). Para remover, use o fluxo
   de `compliance_delete` (§11) sobre o `raw_information_id` impresso no passo 1.
+
+---
+
+# Query E2E — consulta de conteúdo
+
+Teste **end-to-end funcional** da camada de recuperação. Diferente do E2E de
+ingestão, ele **não usa a LLM**: semeia um mini-grafo **determinístico** pelo
+caminho de escrita real e faz **asserções exatas** sobre toda a superfície de
+consulta.
+
+- **Script:** [`query-e2e.mts`](./query-e2e.mts)
+- **Tipo:** script standalone (`tsx`) — **não** faz parte de `vitest run`.
+
+## Por que sem LLM
+
+A consulta é 100% lógica de código (full-text, trigrama, expansão por grafo,
+travessia, filtro temporal, caminhada de proveniência) — nada disso depende da
+LLM (Golden Rule 5). Então o seed é determinístico e barato, e cada contagem é
+**exata** (sem variância de modelo). O E2E de ingestão continua sendo o único que
+fecha o loop com a LLM real.
+
+## Como semeia (caminho de escrita real, sem LLM)
+
+Sobe o BFF real e chama os **mesmos handlers MCP `propose_*`** que o loop de
+extração chama — só que com proposals canned, sem Anthropic. Isso roda a
+validação em camadas real (§13), a resolução de entidade (§4) e a consolidação
+(§6.5/§6.6), então as linhas têm forma idêntica à de produção e a promoção
+`proposed→accepted` do fragmento acontece de verdade.
+
+Mini-grafo (nomes carregam um nonce por execução → sem colisão, tudo atribuível):
+
+```
+Person "Marina Closs"  reports_to       Person "Gabriel Amancio"
+Person "Marina Closs"  responsible_for  Task   "Migracao do faturamento"
+Task   "Migracao …"    part_of          Project "Projeto Helios"
+Task   "Migracao …"    status=em andamento, priority=alta   (domínios fechados, 0002)
++ 1 fragmento NÃO citado (fica 'proposed' → alimenta o teste negativo de proveniência)
+```
+
+## O que verifica
+
+```
+GET /search?layers=node          → full-text acha o nó semeado + proveniência
+GET /search (token com typo)     → fuzzy de trigrama (pg_trgm) ainda acha   [soft]
+GET /search?expand=true&depth=2  → expansão por grafo alcança vizinhos (hop>0)
+GET /nodes/:id/traverse          → travessia retorna os links semeados (depth 1 e 2)
+GET …/traverse?as_of=…&in_effect_only=true → filtro temporal (§5) liga/desliga os links
+GET /provenance/links/:id        → caminha link→fragmento→chunk→raw (anti-alucinação, §13)
+GET /provenance/fragments/:id    → aceito=200; só-proposto=404 FRAGMENT_NOT_ACCEPTED
+GET /search?query= / layers=bogus / nó inexistente → 422 / 422 / 404
+deltas no banco                  → +4 nós, +3 links, +2 atributos, +5 fragmentos (exato)
+```
+
+## Pré-requisitos
+
+Iguais ao de ingestão, **menos a `ANTHROPIC_API_KEY`** (não há chamada à LLM):
+
+1. `backend/.env` com `DATABASE_URL` (string **direta** do Neon) e `NEON_AUTH_URL`
+   presente (valor não usado — auth stubada).
+2. Banco com `0001_init` + `0001_seed` + `0002_ontology_status_task` aplicados
+   (o seed usa o NodeType `Task` e os domínios fechados `status`/`priority`).
+3. `node_modules` do backend (`tsx` vem do `backend/devDependencies`).
+
+## Como rodar
+
+```bash
+cd backend
+
+# contra um branch efêmero (recomendado):
+E2E_CONFIRM=1 DATABASE_URL='postgresql://…<BRANCH>…/neondb?sslmode=require' \
+  ./node_modules/.bin/tsx ../temp/e2e/query-e2e.mts
+
+# ou contra o que estiver em backend/.env:
+E2E_CONFIRM=1 ./node_modules/.bin/tsx ../temp/e2e/query-e2e.mts
+```
+
+| Var | Default | Para quê |
+|---|---|---|
+| `E2E_CONFIRM` | — | **obrigatória** = `1`; sem ela aborta |
+| `E2E_MODEL` | `claude-opus-4-8` | só gravado em `llm_run.model` (não há chamada) |
+| `E2E_PROMPT_VERSION` | `query-e2e.seed.v1` | gravado em `llm_run.prompt_version` |
+| `BACKEND_ENV_FILE` | `backend/.env` | caminho alternativo do `.env` |
+| `LOG_LEVEL` | `warn` | suba para ver os logs do BFF |
+
+Códigos de saída: `0` passou · `1` asserção falhou · `2` abortado · `3` crash.
+
+## Limpeza
+
+O seed deixa **um RawInformation imutável** por execução (mais nós/links/atributos/
+fragmentos). Rode contra um **branch efêmero** e descarte-o, ou use
+`compliance_delete` (§11) sobre o `raw_information_id` impresso no passo 1.
