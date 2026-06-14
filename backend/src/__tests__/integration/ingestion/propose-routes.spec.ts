@@ -407,7 +407,11 @@ async function signValidJwt(privateKey: CryptoKey): Promise<string> {
     .sign(privateKey);
 }
 
-async function buildAppWith(store: FakeStore, fixture: AuthFixture) {
+async function buildAppWith(
+  store: FakeStore,
+  fixture: AuthFixture,
+  catalog: ReturnType<typeof buildCatalog> = buildCatalog()
+) {
   return await buildApp({
     env: envFixture,
     logger: silentLogger,
@@ -416,7 +420,58 @@ async function buildAppWith(store: FakeStore, fixture: AuthFixture) {
       ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
     ),
     mcp: buildMcpServer(silentLogger),
-    ingestionCatalog: buildCatalog(),
+    ingestionCatalog: catalog,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Catalog variant — Project.project_name closed to {Apollo, Gemini, Mercury}.
+// Used by the BR-30 domain integration tests below. Sharing the same node /
+// link / attribute_key UUIDs as the default catalog so the rest of the fake
+// store keeps working — only `attributeValidValues` changes.
+// ---------------------------------------------------------------------------
+
+function buildCatalogWithClosedProjectName() {
+  return buildSnapshot({
+    nodeTypes: [
+      { id: NODE_TYPE_PERSON_ID, name: "Person" },
+      { id: NODE_TYPE_PROJECT_ID, name: "Project" },
+    ],
+    linkTypes: [
+      {
+        id: LINK_TYPE_PARTICIPATES_ID,
+        name: "participates_in",
+        is_temporal: true,
+        allows_multiple_current: true,
+        requires_valid_from: true,
+        requires_valid_to_on_change: false,
+      },
+    ],
+    linkTypeRules: [
+      {
+        link_type_id: LINK_TYPE_PARTICIPATES_ID,
+        source_node_type_id: NODE_TYPE_PERSON_ID,
+        target_node_type_id: NODE_TYPE_PROJECT_ID,
+        valid_from: null,
+        valid_to: null,
+      },
+    ],
+    attributeKeys: [
+      {
+        id: ATTR_KEY_PROJECT_NAME_ID,
+        node_type_id: NODE_TYPE_PROJECT_ID,
+        key: "project_name",
+        value_type: "text",
+        is_temporal: false,
+        allows_multiple_current: false,
+        requires_valid_from: false,
+      },
+    ],
+    attributeValidValues: [
+      { attribute_key_id: ATTR_KEY_PROJECT_NAME_ID, value: "Apollo" },
+      { attribute_key_id: ATTR_KEY_PROJECT_NAME_ID, value: "Gemini" },
+      { attribute_key_id: ATTR_KEY_PROJECT_NAME_ID, value: "Mercury" },
+    ],
   });
 }
 
@@ -718,6 +773,103 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-attribute (TC-13 / UC-11)", (
       expect(store.attributes_inserted).toBe(1);
       // BR-18 provenance invariant.
       expect(store.provenance_inserted).toBeGreaterThanOrEqual(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-06 (valid-values-attribute-domains) — BR-30 closed-domain enforcement
+  // at the REST boundary.
+  //
+  //   - in-domain literal  → 200 ok:true, outcome=accepted, attribute inserted
+  //   - out-of-domain     → 200 ok:false STRUCTURAL_INVALID envelope with
+  //                          details = { value, allowed_values }; NO inserts
+  //
+  // Strategy: same fake store as the happy-path test, but the app is built
+  // with `buildCatalogWithClosedProjectName()` so `domainOf(project_name)`
+  // returns {Apollo, Gemini, Mercury}.
+  // -------------------------------------------------------------------------
+  it("BR-30 closed-domain in-domain literal → 200 ok:true accepted", async () => {
+    const store = emptyStore();
+    seedRunningRun(store, RUN_RUNNING_ID);
+    const app = await buildAppWith(
+      store,
+      fixture,
+      buildCatalogWithClosedProjectName()
+    );
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/ingest/llm-runs/${RUN_RUNNING_ID}/propose-attribute`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          node_id: TARGET_NODE_ID,
+          key: "project_name",
+          value: "Apollo", // in-domain
+          confidence: 0.9,
+          fragment_ids: [FRAGMENT_ID],
+          valid_from_basis: "document",
+          change_hint: "none",
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { ok: boolean; result?: Record<string, unknown> };
+      expect(body.ok).toBe(true);
+      expect(body.result?.outcome).toBe("accepted");
+      expect(store.attributes_inserted).toBe(1);
+      expect(store.provenance_inserted).toBeGreaterThanOrEqual(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("BR-30 closed-domain out-of-domain literal → 200 ok:false STRUCTURAL_INVALID with allowed_values", async () => {
+    const store = emptyStore();
+    seedRunningRun(store, RUN_RUNNING_ID);
+    const app = await buildAppWith(
+      store,
+      fixture,
+      buildCatalogWithClosedProjectName()
+    );
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/ingest/llm-runs/${RUN_RUNNING_ID}/propose-attribute`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          node_id: TARGET_NODE_ID,
+          key: "project_name",
+          value: "Voyager", // NOT in {Apollo, Gemini, Mercury}
+          confidence: 0.9,
+          fragment_ids: [FRAGMENT_ID],
+          valid_from_basis: "document",
+          change_hint: "none",
+        },
+      });
+      // Per BR-28 / SD-1: service-layer ValidationFailure surfaces as
+      // HTTP 200 with { ok: false, error: ... } envelope.
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        ok: boolean;
+        error?: {
+          code: string;
+          message: string;
+          details: { value: string; allowed_values: string[] };
+        };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error?.code).toBe("STRUCTURAL_INVALID");
+      expect(body.error?.details.value).toBe("Voyager");
+      // allowed_values is lexicographically sorted per TC-02/TC-03 contract.
+      expect(body.error?.details.allowed_values).toEqual([
+        "Apollo",
+        "Gemini",
+        "Mercury",
+      ]);
+      // The rejection fires BEFORE any INSERT — no attribute, no provenance.
+      expect(store.attributes_inserted).toBe(0);
+      expect(store.provenance_inserted).toBe(0);
     } finally {
       await app.close();
     }
