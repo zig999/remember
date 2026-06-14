@@ -16,7 +16,7 @@
 import type { PoolClient } from "pg";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
-import { attributeKeyCacheKey } from "../catalog/catalog.js";
+import { attributeKeyCacheKey, domainOf } from "../catalog/catalog.js";
 import type {
   ProposeAttributeInput,
   ProposeAttributeResult,
@@ -30,6 +30,7 @@ import { ValidationFailure } from "../validation/errors.js";
 import {
   assertFound,
   assertKnownType,
+  assertValueInDomain,
   parseAttributeValue,
 } from "../validation/structural.js";
 import { validateTemporal } from "../validation/temporal.js";
@@ -80,6 +81,19 @@ export async function proposeAttributeService(
 
   // Parse `value` against the declared `value_type`.
   parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type });
+
+  // Closed-domain gate (BR-30). Runs IMMEDIATELY after parseAttributeValue
+  // and BEFORE any subsequent layer (graph rules / temporal / confidence /
+  // anti-hallucination). When `domainOf` returns `null` the key has an open
+  // domain (zero rows in `attribute_valid_value`) — backward-compatible
+  // no-op for every legacy key. When it returns a `ReadonlySet<string>` the
+  // key is closed and `assertValueInDomain` rejects out-of-domain literals
+  // with `STRUCTURAL_INVALID` carrying `{ value, allowed_values }`. Exact
+  // match (no normalisation) per spec §1 / BR-30 v1 semantics.
+  const domain = domainOf(deps.catalog, resolvedKey.id);
+  if (domain !== null) {
+    assertValueInDomain(args.value, domain);
+  }
 
   // Fragment refs (existence + ownership). Same pattern as propose_link.
   const fragRes = await client.query<{

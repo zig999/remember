@@ -86,6 +86,45 @@ export function parseAttributeValue(args: {
 }
 
 /**
+ * Closed-domain gate for `propose_attribute` (BR-30).
+ *
+ * The caller is expected to skip this helper entirely when the
+ * `AttributeKey` has an open domain — `domainOf(keyId)` returning `null`
+ * means "no rows in `attribute_valid_value`" and is the backward-compatible
+ * default (every legacy key stays open). This helper is therefore a pure
+ * structural check on a known-closed domain: exact-match string equality,
+ * no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30).
+ *
+ * Why no `attribute_key_id` parameter? The TC-03 contract narrows the
+ * signature relative to the spec's reference signature to `(value, domain)`:
+ * the helper is dumber, the call site in `propose-attribute.service.ts` is
+ * the only one that knows the resolved key id and the open-domain guard.
+ * The omission is recorded in the delivery's `spec_divergences`.
+ *
+ * On miss, raises `STRUCTURAL_INVALID` with deterministic-ordered
+ * `allowed_values` so the LLM can re-issue the call with an in-domain value
+ * on the next turn (BR-26 step 5b) and the owner can review rejection
+ * clusters from the §16 metrics.
+ */
+export function assertValueInDomain(
+  value: string,
+  domain: ReadonlySet<string>
+): void {
+  if (domain.has(value)) {
+    return;
+  }
+  // `[...domain].sort()` is locale-default lexicographic, which matches the
+  // prompt builder's enumeration order (BR-30 §1 Prompt builder row) — the
+  // diagnostic and the prompt list will line up.
+  const allowed_values = [...domain].sort();
+  throw new ValidationFailure(
+    "STRUCTURAL_INVALID",
+    "attribute value not in closed domain",
+    { value, allowed_values }
+  );
+}
+
+/**
  * Assert a referenced entity exists, raising `NOT_FOUND` on miss. Used to map
  * missing chunk_id / fragment_id / node_id to a typed envelope code.
  */
