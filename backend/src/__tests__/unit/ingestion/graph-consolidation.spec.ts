@@ -781,6 +781,51 @@ describe("TC-011 — consolidateLink — superseded_previous (succession)", () =
     expect(state.inserts.provenance.length).toBe(1);
   });
 
+  it("intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)", async () => {
+    // When the new version's valid_from equals the vigent row's valid_from
+    // (a same-day succession on a day-granular validity axis), setting
+    // valid_to = that same date would make valid_from == valid_to and violate
+    // the strict `valid_from < valid_to` CHECK. The succession close must guard
+    // this: emit valid_to only when valid_from < closeDate, else leave it.
+    const catalog = buildCatalog();
+    const { client, state } = buildClient({
+      vigentLink: {
+        id: EXISTING_LINK_ID,
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-01", // SAME day as the new proposal below
+        status: "active",
+      },
+      fragmentText: "Ada deixou de liderar o projeto Apollo",
+    });
+
+    const envelope = await proposeLinkService(
+      client,
+      baseLinkArgs({
+        target_node_id: TARGET_NODE_B,
+        valid_from: "2026-06-01", // same-day change
+        change_hint: "none", // signal from text
+      }),
+      runCtx,
+      { catalog, now: () => new Date("2026-06-12T12:00:00Z") }
+    );
+
+    expect(envelope.ok).toBe(true);
+    if (!envelope.ok) return;
+    expect(envelope.result.outcome).toBe("superseded_previous");
+    // The close stays a single guarded UPDATE on the vigent row.
+    expect(state.updates.length).toBe(1);
+    const close = state.updates[0]!;
+    expect(close.table).toBe("knowledge_link");
+    // SQL-contract: the collapse guard must be present (a regression that
+    // reverts to a blind `valid_to = $2::date` would crash on a real DB).
+    expect(close.sql).toContain("CASE");
+    expect(close.sql).toContain("valid_from >=");
+    expect(close.sql).toContain("THEN valid_to");
+    expect(close.sql).toContain("superseded_at");
+    // closeDate is still bound as $2 (the CASE decides whether to apply it).
+    expect(close.bindings[1]).toBe("2026-06-01");
+  });
+
   it("recognizes change_hint='succession' as a succession signal even without textual marker", async () => {
     const catalog = buildCatalog();
     const { client, state } = buildClient({

@@ -264,6 +264,47 @@ async function promoteFragmentsToAccepted(
 }
 
 /**
+ * Close a vigent row for a §6.5-A succession.
+ *
+ * Normally sets `valid_to = closeDate` (the new version's `valid_from`, or
+ * `today` when the new row has no declared `valid_from`) and supersedes on the
+ * transaction axis. BUT validity is day-granular (`date`, §5.1) and the
+ * `valid_from < valid_to` invariant is strict (CHECK + temporal.ts): when the
+ * vigent row's own `valid_from` is on/after `closeDate` — an intra-day (same
+ * effective date) succession — setting `valid_to = closeDate` would produce a
+ * degenerate `[valid_from, valid_to)` interval and fail the CHECK. In that case
+ * we close on the TRANSACTION axis ONLY (`superseded_at` / `status`), leaving
+ * `valid_to` untouched — identical to the Correction branch (§6.5-B). The
+ * supersedes_* lineage + the `timestamptz` transaction axis still order the
+ * versions; only the sub-day validity boundary (which `date` cannot represent)
+ * is dropped. The CASE is evaluated in SQL so the comparison uses the row's own
+ * `valid_from` and the DB clock — no TS/SQL clock skew.
+ *
+ * `table` is a fixed literal (never input) — safe to interpolate.
+ */
+async function closeVigentForSuccession(
+  client: PoolClient,
+  table: "knowledge_link" | "node_attribute",
+  vigentId: string,
+  closeDate: string | null
+): Promise<void> {
+  const closeExpr = closeDate !== null ? "$2::date" : "now()::date";
+  const params: unknown[] = closeDate !== null ? [vigentId, closeDate] : [vigentId];
+  await client.query(
+    `UPDATE ${table}
+        SET valid_to = CASE
+                         WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr}
+                           THEN valid_to
+                         ELSE ${closeExpr}
+                       END,
+            superseded_at = now(),
+            status        = 'superseded'::assertion_status
+      WHERE id = $1`,
+    params
+  );
+}
+
+/**
  * Acquire FOR UPDATE on the vigent knowledge_link row for the functional
  * scope (source, link_type). Returns the row (if any). Note: dup-guard
  * scope is (source, link_type, target) but FUNCTIONAL succession scope is
@@ -539,30 +580,16 @@ async function consolidateLinkOnce(
       (args.change_hint === "succession" ||
         hasSuccessionSignal(fragmentTexts))
     ) {
-      // Compute the close-date for the old row: BR-27 says
-      // `valid_to = $newValidFrom` (or `now()::date` if the new row has
-      // no valid_from).
-      const closeDate = args.valid_from; // YYYY-MM-DD string or null
-      if (closeDate !== null) {
-        await client.query(
-          `UPDATE knowledge_link
-              SET valid_to      = $2::date,
-                  superseded_at = now(),
-                  status        = 'superseded'::assertion_status
-            WHERE id = $1`,
-          [vigent.id, closeDate]
-        );
-      } else {
-        // No declared valid_from for the new row — close at today.
-        await client.query(
-          `UPDATE knowledge_link
-              SET valid_to      = now()::date,
-                  superseded_at = now(),
-                  status        = 'superseded'::assertion_status
-            WHERE id = $1`,
-          [vigent.id]
-        );
-      }
+      // Close the old row for succession (§6.5-A): valid_to = the new row's
+      // valid_from (or today when absent), EXCEPT for an intra-day succession
+      // where that would collapse the interval — then close on the transaction
+      // axis only. See closeVigentForSuccession.
+      await closeVigentForSuccession(
+        client,
+        "knowledge_link",
+        vigent.id,
+        args.valid_from
+      );
       const newRow = await insertLinkRow(client, args, runCtx, {
         status: args.status_for_new_row,
         supersedes_link_id: vigent.id,
@@ -773,26 +800,13 @@ async function consolidateAttributeOnce(
       (args.change_hint === "succession" ||
         hasSuccessionSignal(fragmentTexts))
     ) {
-      const closeDate = args.valid_from;
-      if (closeDate !== null) {
-        await client.query(
-          `UPDATE node_attribute
-              SET valid_to      = $2::date,
-                  superseded_at = now(),
-                  status        = 'superseded'::assertion_status
-            WHERE id = $1`,
-          [vigent.id, closeDate]
-        );
-      } else {
-        await client.query(
-          `UPDATE node_attribute
-              SET valid_to      = now()::date,
-                  superseded_at = now(),
-                  status        = 'superseded'::assertion_status
-            WHERE id = $1`,
-          [vigent.id]
-        );
-      }
+      // §6.5-A succession close with the same intra-day collapse guard as links.
+      await closeVigentForSuccession(
+        client,
+        "node_attribute",
+        vigent.id,
+        args.valid_from
+      );
       const newRow = await insertAttributeRow(client, args, runCtx, {
         status: args.status_for_new_row,
         supersedes_attribute_id: vigent.id,
