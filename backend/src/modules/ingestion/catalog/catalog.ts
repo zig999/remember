@@ -15,6 +15,12 @@ import type { PoolClient } from "pg";
 export interface NodeTypeRow {
   readonly id: string;
   readonly name: string;
+  /**
+   * Catalog description — rendered in the extraction prompt so the LLM can map
+   * abstract types (e.g. `Document`) from the text. Optional: in-memory test
+   * fixtures may omit it; the live `loadCatalog` always populates it.
+   */
+  readonly description?: string;
 }
 
 /** A `link_type` row plus the flags consulted by the temporal layer. */
@@ -79,7 +85,7 @@ export async function loadCatalog(
   client: PoolClient
 ): Promise<CatalogSnapshot> {
   const nodeTypeRes = await client.query<NodeTypeRow>(
-    `SELECT id, name FROM node_type`
+    `SELECT id, name, description FROM node_type`
   );
   const linkTypeRes = await client.query<LinkTypeRow>(
     `SELECT id, name, is_temporal, allows_multiple_current,

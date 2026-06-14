@@ -143,3 +143,131 @@ describe("validateGraphRule (BR-15)", () => {
     expect(active).toBe(false);
   });
 });
+
+// Tier 1 ontology additions (migration 0002): the `concerns` (aboutness) and
+// `delivered_to` LinkTypes resolve the orphan-fragment + event-aboutness gaps.
+// This exercises the rule lookup for the new triples — Document/Event aboutness
+// is authorised, but `concerns` from a Document to a Person is not.
+describe("validateGraphRule — Tier 1 catalog (concerns / delivered_to)", () => {
+  const today = new Date("2026-06-14T12:00:00Z");
+
+  const PERSON = "00000000-0000-0000-0000-0000000000a1";
+  const PROJECT = "00000000-0000-0000-0000-0000000000a2";
+  const EVENT = "00000000-0000-0000-0000-0000000000a3";
+  const ORG = "00000000-0000-0000-0000-0000000000a4";
+  const DOCUMENT = "00000000-0000-0000-0000-0000000000a5";
+
+  const CONCERNS = "00000000-0000-0000-0000-0000000000b1";
+  const DELIVERED_TO = "00000000-0000-0000-0000-0000000000b2";
+
+  const t1NodeTypes = [
+    { id: PERSON, name: "Person" },
+    { id: PROJECT, name: "Project" },
+    { id: EVENT, name: "Event" },
+    { id: ORG, name: "Organization" },
+    { id: DOCUMENT, name: "Document" },
+  ];
+  const t1LinkTypes = [
+    {
+      id: CONCERNS,
+      name: "concerns",
+      is_temporal: false,
+      allows_multiple_current: true,
+      requires_valid_from: false,
+      requires_valid_to_on_change: false,
+    },
+    {
+      id: DELIVERED_TO,
+      name: "delivered_to",
+      is_temporal: true,
+      allows_multiple_current: true,
+      requires_valid_from: false,
+      requires_valid_to_on_change: false,
+    },
+  ];
+  const rule = (
+    link_type_id: string,
+    source_node_type_id: string,
+    target_node_type_id: string
+  ) => ({
+    link_type_id,
+    source_node_type_id,
+    target_node_type_id,
+    valid_from: null,
+    valid_to: null,
+  });
+
+  const snapshot: CatalogSnapshot = buildSnapshot({
+    nodeTypes: t1NodeTypes,
+    linkTypes: t1LinkTypes,
+    linkTypeRules: [
+      rule(CONCERNS, DOCUMENT, PROJECT),
+      rule(CONCERNS, DOCUMENT, EVENT),
+      rule(CONCERNS, DOCUMENT, ORG),
+      rule(CONCERNS, EVENT, PROJECT),
+      rule(DELIVERED_TO, DOCUMENT, PERSON),
+    ],
+    attributeKeys: [],
+  });
+
+  it("accepts Event concerns Project (aboutness, not part_of composition)", () => {
+    expect(() =>
+      validateGraphRule(
+        snapshot,
+        {
+          source_node_type_id: EVENT,
+          link_type_id: CONCERNS,
+          target_node_type_id: PROJECT,
+        },
+        today
+      )
+    ).not.toThrow();
+  });
+
+  it("accepts Document concerns Project", () => {
+    expect(() =>
+      validateGraphRule(
+        snapshot,
+        {
+          source_node_type_id: DOCUMENT,
+          link_type_id: CONCERNS,
+          target_node_type_id: PROJECT,
+        },
+        today
+      )
+    ).not.toThrow();
+  });
+
+  it("accepts Document delivered_to Person", () => {
+    expect(() =>
+      validateGraphRule(
+        snapshot,
+        {
+          source_node_type_id: DOCUMENT,
+          link_type_id: DELIVERED_TO,
+          target_node_type_id: PERSON,
+        },
+        today
+      )
+    ).not.toThrow();
+  });
+
+  it("rejects Document concerns Person with RULE_VIOLATION", () => {
+    let caught: unknown = null;
+    try {
+      validateGraphRule(
+        snapshot,
+        {
+          source_node_type_id: DOCUMENT,
+          link_type_id: CONCERNS,
+          target_node_type_id: PERSON, // concerns Document->Person is not authorised
+        },
+        today
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).code).toBe("RULE_VIOLATION");
+  });
+});

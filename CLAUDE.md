@@ -203,6 +203,9 @@ migrations/
                                   #   compliance), índices, views, triggers
   0001_seed.sql                   # Catálogo seed da §15 — aplicar DEPOIS do init (resolve FKs por nome):
                                   #   8 NodeTypes, 10 LinkTypes +22 regras, 10 AttributeKeys
+  0002_catalog_tier1.sql          # Extensão ADITIVA do catálogo (Tier 1, deviation do §15 fechado):
+                                  #   +Document, +concerns/delivered_to/sponsors (+6 regras),
+                                  #   +6 AttributeKeys -> totais 9/13/28/16. Exige RESTART do BFF.
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
 .claude/                          # Motor de orquestração (skills, hooks, scripts, agents, lib)
 

@@ -40,8 +40,8 @@
 **Main flow:**
 1. Owner calls `GET /api/v1/node-types`.
 2. BFF middleware validates the JWT (section 2.5).
-3. Service layer reads `node_type` rows (currently 8 per seed §15.1: `Person`, `Organization`, `Project`, `Event`, `Role`, `Category`, `Concept`, `Location`).
-4. BFF returns `200` with `total = 8` and the items.
+3. Service layer reads `node_type` rows (currently 9: the 8 of seed §15.1 — `Person`, `Organization`, `Project`, `Event`, `Role`, `Category`, `Concept`, `Location` — plus `Document` added by migration `0002_catalog_tier1.sql`).
+4. BFF returns `200` with `total = 9` and the items.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401 `AUTH_UNAUTHORIZED` or `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`.
@@ -58,7 +58,7 @@
 **Main flow:**
 1. Owner calls `GET /api/v1/link-types?include_rules=true`.
 2. BFF middleware validates the JWT.
-3. Service layer reads `link_type` rows (10 per seed §15.2) and, when `include_rules=true`, joins `link_type_rule` (22 rules per seed §15.2).
+3. Service layer reads `link_type` rows (13: 10 of seed §15.2 + `concerns`/`delivered_to`/`sponsors` via `0002`) and, when `include_rules=true`, joins `link_type_rule` (28: 22 of seed §15.2 + 6 via `0002`).
 4. BFF returns `200`.
 
 **Alternative flows:**

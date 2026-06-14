@@ -71,7 +71,9 @@ export interface DocumentMetadata {
  * layer rejects anything outside this list (`UNKNOWN_TYPE`, BR-14).
  */
 export function system(catalog: CatalogSnapshot): string {
-  const nodeTypes = [...catalog.nodeTypeByName.keys()].sort();
+  const nodeTypes = [...catalog.nodeTypeByName.values()]
+    .map((nt) => ({ name: nt.name, description: nt.description }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const linkTypes = [...catalog.linkTypeByName.values()]
     .map((lt) => ({
       name: lt.name,
@@ -151,7 +153,9 @@ export function system(catalog: CatalogSnapshot): string {
     "",
     "## Catalog (read-only)",
     `### NodeType (${nodeTypes.length}):`,
-    `  ${nodeTypes.join(", ")}`,
+    ...nodeTypes.map(
+      (nt) => `  - ${nt.name}${nt.description ? ` — ${nt.description}` : ""}`
+    ),
     `### LinkType (${linkTypes.length}):`,
     ...linkTypes.map(
       (lt) =>
@@ -169,15 +173,24 @@ export function system(catalog: CatalogSnapshot): string {
     "  by `propose_fragment` in this same chunk.",
     "",
     "## Worked example (shape only — use the REAL catalog above; document_date 2026-06-11)",
-    "Chunk: \"Ana lidera o projeto Zeus. O prazo do Zeus é 2026-12-01.\"",
+    "Chunk: \"Ana lidera o projeto Zeus. O prazo do Zeus é 2026-12-01. A proposta do Zeus foi entregue a Luiz.\"",
     "  propose_fragment {text:\"Ana lidera o projeto Zeus.\", confidence:0.95}    -> F1",
     "  propose_fragment {text:\"O prazo do Zeus é 2026-12-01.\", confidence:0.9}  -> F2",
+    "  propose_fragment {text:\"A proposta do Zeus foi entregue a Luiz.\", confidence:0.9} -> F3",
     "  propose_node {node_type:\"Person\", name:\"Ana\"}                            -> A",
     "  propose_node {node_type:\"Project\", name:\"Zeus\"}                          -> Z",
+    "  propose_node {node_type:\"Document\", name:\"Proposta do Zeus\"}             -> D",
+    "  propose_node {node_type:\"Person\", name:\"Luiz\"}                           -> L",
     "  propose_link {source_node_id:A, link_type:\"responsible_for\", target_node_id:Z,",
     "    confidence:0.9, fragment_ids:[F1], valid_from:\"2026-06-11\", valid_from_basis:\"document\"}",
     "  propose_attribute {node_id:Z, key:\"deadline\", value:\"2026-12-01\",",
     "    confidence:0.9, fragment_ids:[F2], valid_from:\"2026-06-11\", valid_from_basis:\"document\"}",
+    "  // a document/event is its own node; `concerns` (aboutness, no valid_from) links it to the topic,",
+    "  // `delivered_to` records the recipient. Do NOT leave \"a proposta\" as a bare fragment.",
+    "  propose_link {source_node_id:D, link_type:\"concerns\", target_node_id:Z,",
+    "    confidence:0.9, fragment_ids:[F3]}",
+    "  propose_link {source_node_id:D, link_type:\"delivered_to\", target_node_id:L,",
+    "    confidence:0.9, fragment_ids:[F3]}",
     "  then end_turn.",
   ].join("\n");
 }
