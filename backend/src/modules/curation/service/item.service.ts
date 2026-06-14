@@ -3,6 +3,13 @@
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 
+import type { CatalogSnapshot } from "../../ingestion/index.js";
+import { domainOf } from "../../ingestion/index.js";
+import {
+  assertValueInDomain,
+  parseAttributeValue,
+} from "../../ingestion/validation/structural.js";
+import { isValidationFailure } from "../../ingestion/validation/errors.js";
 import type { CorrectItemBody, ConfirmItemBody, RejectItemBody } from "../dto/item.dto.js";
 import type { AssertionStatus, ItemKind } from "../dto/enums.dto.js";
 import {
@@ -26,6 +33,20 @@ import { withTransaction } from "./transaction.js";
 export interface ItemServiceDeps {
   readonly pool: Pool;
   readonly logger: Logger;
+  /**
+   * Boot-loaded ingestion CatalogSnapshot — shared with the `propose_attribute`
+   * pipeline. Required by `correctItemService` (UC-10 / BR-23) to resolve the
+   * predecessor's `attribute_key` for the type-parse + closed-value-domain
+   * legs. `confirmItemService` and `rejectItemService` do not consult it but
+   * accept the field uniformly so the route/MCP wiring stays a single shape.
+   *
+   * The ingestion catalog is used (rather than the knowledge-graph one)
+   * because it materializes `attributeValidValuesByKeyId` and exposes the
+   * `domainOf` helper added by TC-02 of the valid-values-attribute-domains
+   * workflow. Both catalogs share the `attributeKeyById` lookup; only the
+   * ingestion catalog also carries the closed-domain map.
+   */
+  readonly catalog: CatalogSnapshot;
 }
 
 export interface ItemActionResult {
@@ -204,6 +225,89 @@ export async function correctItemService(
           "valid_from_fragment_id does not reference an accepted fragment",
           { fragment_id: body.corrected.valid_from_fragment_id }
         );
+      }
+    }
+
+    // BR-23 (TC-04): when correcting an attribute AND `corrected.value` is
+    // supplied, run two legs against the predecessor's `attribute_key`
+    // BEFORE any DB write:
+    //   (1) parseAttributeValue against `value_type` (type leg)
+    //   (2) assertValueInDomain when the key has a closed domain (domain leg)
+    // Both helpers throw `ValidationFailure` with `STRUCTURAL_INVALID` —
+    // curation re-raises as `BUSINESS_INVALID_ATTRIBUTE_VALUE` (HTTP 422)
+    // because curation collapses business reasons into the BUSINESS_*
+    // envelope. Other curator actions (`prefer_one`, `adjust_periods`,
+    // `confirm_item`, `reject_item`) do not write `value` and are out of
+    // scope (curation.spec.md UC-10 main flow step 5; alt 5a, 5b).
+    if (
+      body.item_kind === "attribute" &&
+      body.corrected.value !== undefined &&
+      body.corrected.value !== null
+    ) {
+      const attributeKeyId = predecessor.attribute_key_id;
+      if (!attributeKeyId) {
+        // Defensive: loadItemsForUpdate always selects `attribute_key_id`
+        // for the `attribute` kind. If this fires the SELECT shape drifted.
+        throw new BusinessError(
+          "BUSINESS_INVALID_ATTRIBUTE_VALUE",
+          "predecessor attribute row is missing attribute_key_id",
+          { item_id: body.item_id }
+        );
+      }
+      const attrKey = deps.catalog.attributeKeyById.get(attributeKeyId);
+      if (!attrKey) {
+        // The predecessor row's attribute_key_id is not in the catalog
+        // snapshot. This can happen only if the catalog was loaded before a
+        // migration added the key OR if the predecessor was written against a
+        // stale schema. Surface as BUSINESS_INVALID_ATTRIBUTE_VALUE rather
+        // than 500 — the operator can re-run with a fresh boot.
+        throw new BusinessError(
+          "BUSINESS_INVALID_ATTRIBUTE_VALUE",
+          "predecessor attribute_key_id does not resolve in the catalog snapshot",
+          { attribute_key_id: attributeKeyId, value: body.corrected.value }
+        );
+      }
+
+      // Type leg — details: { value_type, value } (BR-23 first leg).
+      try {
+        parseAttributeValue({
+          value: body.corrected.value,
+          value_type: attrKey.value_type,
+        });
+      } catch (err) {
+        if (isValidationFailure(err)) {
+          throw new BusinessError(
+            "BUSINESS_INVALID_ATTRIBUTE_VALUE",
+            "corrected.value does not parse against attribute_key.value_type",
+            { value_type: attrKey.value_type, value: body.corrected.value }
+          );
+        }
+        throw err;
+      }
+
+      // Domain leg — runs only when the key has a closed domain. Details:
+      // { attribute_key, value, allowed_values } (BR-23 second leg).
+      const domain = domainOf(deps.catalog, attrKey.id);
+      if (domain !== null) {
+        try {
+          assertValueInDomain(body.corrected.value, domain);
+        } catch (err) {
+          if (isValidationFailure(err)) {
+            // Pull the sorted allowed_values from the underlying failure to
+            // match the prompt-builder ordering (TC-02 contract).
+            const detail = err.details as { allowed_values?: string[] };
+            throw new BusinessError(
+              "BUSINESS_INVALID_ATTRIBUTE_VALUE",
+              "corrected.value is not in the closed value domain",
+              {
+                attribute_key: attrKey.key,
+                value: body.corrected.value,
+                allowed_values: detail.allowed_values ?? [],
+              }
+            );
+          }
+          throw err;
+        }
       }
     }
 

@@ -16,6 +16,7 @@ import type { Logger } from "pino";
 import { z } from "zod";
 
 import type { CatalogSnapshot } from "../../knowledge-graph/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "../../ingestion/index.js";
 import type { McpServer } from "../../../mcp/server.js";
 import {
   MergeNodesBodySchema,
@@ -46,6 +47,12 @@ export interface CurationToolsetDeps {
   readonly pool: Pool;
   readonly logger: Logger;
   readonly catalog: CatalogSnapshot;
+  /**
+   * Ingestion catalog snapshot — required by `correctItemService` (UC-10 /
+   * BR-23) for the type-parse + closed-value-domain legs. See the matching
+   * field on `CurationRouteDeps` for the rationale.
+   */
+  readonly ingestionCatalog: IngestionCatalogSnapshot;
 }
 
 /** ResolveEntityMatchInput accepts `node_id` alongside the REST body. */
@@ -60,6 +67,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
     pool: deps.pool,
     logger: deps.logger,
     catalog: deps.catalog,
+    ingestionCatalog: deps.ingestionCatalog,
   };
 
   deps.mcp.registerTool("curation", {
@@ -122,7 +130,11 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
     inputSchema: ConfirmItemBodySchema,
     handler: async (input) =>
       confirmItemService(
-        { pool: ctx.pool, logger: ctx.logger },
+        {
+          pool: ctx.pool,
+          logger: ctx.logger,
+          catalog: ctx.ingestionCatalog,
+        },
         ConfirmItemBodySchema.parse(input)
       ),
   });
@@ -133,7 +145,11 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
     inputSchema: RejectItemBodySchema,
     handler: async (input) =>
       rejectItemService(
-        { pool: ctx.pool, logger: ctx.logger },
+        {
+          pool: ctx.pool,
+          logger: ctx.logger,
+          catalog: ctx.ingestionCatalog,
+        },
         RejectItemBodySchema.parse(input)
       ),
   });
@@ -144,7 +160,11 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
     inputSchema: CorrectItemBodySchema,
     handler: async (input) =>
       correctItemService(
-        { pool: ctx.pool, logger: ctx.logger },
+        {
+          pool: ctx.pool,
+          logger: ctx.logger,
+          catalog: ctx.ingestionCatalog,
+        },
         CorrectItemBodySchema.parse(input)
       ),
   });

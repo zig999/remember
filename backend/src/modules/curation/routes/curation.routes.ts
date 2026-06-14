@@ -22,6 +22,7 @@ import type { Logger } from "pino";
 import { ZodError } from "zod";
 
 import type { CatalogSnapshot } from "../../knowledge-graph/index.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "../../ingestion/index.js";
 import {
   MergeNodesBodySchema,
   NodeIdPathSchema,
@@ -57,6 +58,14 @@ export interface CurationRouteDeps {
   readonly pool: Pool;
   readonly logger: Logger;
   readonly catalog: CatalogSnapshot;
+  /**
+   * Ingestion catalog snapshot — separate from `catalog` because only the
+   * ingestion catalog carries the closed-value-domain map
+   * (`attributeValidValuesByKeyId`) materialized by TC-02. Required by
+   * `correctItemService` (UC-10 / BR-23). The knowledge-graph snapshot is
+   * still used by the dispute service and the queue listing.
+   */
+  readonly ingestionCatalog: IngestionCatalogSnapshot;
 }
 
 export async function registerCurationRoutes(
@@ -165,7 +174,11 @@ export async function registerCurationRoutes(
       }
       try {
         const result = await confirmItemService(
-          { pool: deps.pool, logger: deps.logger },
+          {
+            pool: deps.pool,
+            logger: deps.logger,
+            catalog: deps.ingestionCatalog,
+          },
           body
         );
         return reply.status(200).send(result);
@@ -189,7 +202,11 @@ export async function registerCurationRoutes(
       }
       try {
         const result = await rejectItemService(
-          { pool: deps.pool, logger: deps.logger },
+          {
+            pool: deps.pool,
+            logger: deps.logger,
+            catalog: deps.ingestionCatalog,
+          },
           body
         );
         return reply.status(200).send(result);
@@ -213,7 +230,11 @@ export async function registerCurationRoutes(
       }
       try {
         const result = await correctItemService(
-          { pool: deps.pool, logger: deps.logger },
+          {
+            pool: deps.pool,
+            logger: deps.logger,
+            catalog: deps.ingestionCatalog,
+          },
           body
         );
         return reply.status(200).send(result);

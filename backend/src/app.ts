@@ -158,12 +158,23 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       await registerKnowledgeGraphRoutes(scoped, { pool, logger, catalog });
       // Curation module (TC-07) — POST verbs over the layered validation
       // pipeline. Mounted at /api/v1/curation/* (siblings of /api/v1/ingest).
-      await scoped.register(
-        async (cur) => {
-          await registerCurationRoutes(cur, { pool, logger, catalog });
-        },
-        { prefix: "/curation" }
-      );
+      // TC-04 of valid-values-attribute-domains additionally requires the
+      // ingestion catalog snapshot for the closed-value-domain check on
+      // `correct_item`; if it is absent we skip the curation routes the same
+      // way we skip the MCP transport when the catalog is missing.
+      if (ingestionCatalog !== undefined) {
+        await scoped.register(
+          async (cur) => {
+            await registerCurationRoutes(cur, {
+              pool,
+              logger,
+              catalog,
+              ingestionCatalog,
+            });
+          },
+          { prefix: "/curation" }
+        );
+      }
       // Query-retrieval module (TC-06) — read-only search + provenance walks.
       // Mounted at the root of /api/v1 because the OpenAPI declares
       // /api/v1/search and /api/v1/provenance/* as siblings of /api/v1/nodes.
@@ -176,7 +187,20 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   // (TC-07).
   if (catalog !== undefined) {
     registerQueryToolset({ mcp, pool, logger, catalog });
-    registerCurationToolset({ mcp, pool, logger, catalog });
+    // Curation MCP toolset — like the REST routes, the `correct_item` tool
+    // depends on the ingestion catalog for the closed-value-domain check
+    // (TC-04 of valid-values-attribute-domains). Skip toolset registration
+    // when the ingestion catalog is absent — the REST mirror is also skipped
+    // in that case, so callers see a coherent (empty) curation surface.
+    if (ingestionCatalog !== undefined) {
+      registerCurationToolset({
+        mcp,
+        pool,
+        logger,
+        catalog,
+        ingestionCatalog,
+      });
+    }
   }
 
   // Compliance-audit MCP tool (TC-08) — `curation.compliance_delete` (BR-14).

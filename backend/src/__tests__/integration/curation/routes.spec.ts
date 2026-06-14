@@ -34,6 +34,7 @@ import type { Env } from "../../../config/env.js";
 import { buildMcpServer } from "../../../mcp/server.js";
 import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/knowledge-graph/catalog/catalog.js";
+import { buildSnapshot as buildIngestionSnapshot } from "../../../modules/ingestion/catalog/catalog.js";
 
 // ---------------------------------------------------------------------------
 // In-memory store
@@ -131,6 +132,15 @@ interface Store {
     value_type: "date" | "number" | "text" | "bool";
     allows_multiple_current: boolean;
   }[];
+  /**
+   * TC-04 (valid-values-attribute-domains) — closed value domain entries
+   * consumed by `correctItemService` via the ingestion catalog snapshot.
+   * Empty array = every attribute_key has an open domain (back-compat).
+   */
+  attribute_valid_values: {
+    attribute_key_id: string;
+    value: string;
+  }[];
 }
 
 function genId(prefix: string, n: number): string {
@@ -189,6 +199,7 @@ function buildEmptyStore(): Store {
         allows_multiple_current: true,
       },
     ],
+    attribute_valid_values: [],
   };
 }
 
@@ -1100,6 +1111,38 @@ function buildCatalogFromStore(store: Store) {
   });
 }
 
+function buildIngestionCatalogFromStore(store: Store) {
+  // The ingestion catalog has a narrower AttributeKeyRow shape (no description
+  // / version) and additionally materializes `attributeValidValuesByKeyId` —
+  // consulted by `correctItemService` for the closed-value-domain leg.
+  return buildIngestionSnapshot({
+    nodeTypes: store.node_types.map((n) => ({
+      id: n.id,
+      name: n.name,
+      description: n.name,
+    })),
+    linkTypes: store.link_types.map((l) => ({
+      id: l.id,
+      name: l.name,
+      is_temporal: true,
+      allows_multiple_current: l.allows_multiple_current,
+      requires_valid_from: false,
+      requires_valid_to_on_change: false,
+    })),
+    linkTypeRules: [],
+    attributeKeys: store.attribute_keys.map((a) => ({
+      id: a.id,
+      node_type_id: a.node_type_id,
+      key: a.key,
+      value_type: a.value_type,
+      is_temporal: true,
+      allows_multiple_current: a.allows_multiple_current,
+      requires_valid_from: false,
+    })),
+    attributeValidValues: store.attribute_valid_values,
+  });
+}
+
 async function buildAppWith(store: Store, fixture: AuthFixture) {
   return buildApp({
     env: envFixture,
@@ -1110,6 +1153,7 @@ async function buildAppWith(store: Store, fixture: AuthFixture) {
     ),
     mcp: buildMcpServer(silentLogger),
     catalog: buildCatalogFromStore(store),
+    ingestionCatalog: buildIngestionCatalogFromStore(store),
   });
 }
 
@@ -1725,6 +1769,313 @@ describe("Curation — UC-10 (correct_item) preserves predecessor valid_to + pro
       expect(res.statusCode).toBe(422);
       const body = res.json() as { error: { code: string } };
       expect(body.error.code).toBe("BUSINESS_DATE_UNJUSTIFIED");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-04 (valid-values-attribute-domains) — BR-23 value validation.
+  // Covers the spec acceptance criteria for `correctItemService`:
+  //   (a) accept an in-domain corrected.value (existing test exercised the
+  //       happy path; this one adds an explicit closed-domain success);
+  //   (b) reject out-of-domain literal → 422 BUSINESS_INVALID_ATTRIBUTE_VALUE
+  //       (domain leg, details = { attribute_key, value, allowed_values });
+  //   (c) reject literal that fails type-parse → 422
+  //       BUSINESS_INVALID_ATTRIBUTE_VALUE (type leg, details = { value_type,
+  //       value }).
+  // -------------------------------------------------------------------------
+  it("BR-23 happy path: closed-domain corrected.value is accepted", async () => {
+    const store = buildEmptyStore();
+    // Add a closed-domain text key (mirrors knowledge-graph seed semantics:
+    // Document.doc_type ∈ {proposta, ata, contrato, relatório, outro}).
+    const docTypeKey = "33333333-0000-4000-8000-000000000010";
+    store.attribute_keys.push({
+      id: docTypeKey,
+      node_type_id: UUID.PROJECT_NT,
+      key: "doc_type",
+      value_type: "text",
+      allows_multiple_current: false,
+    });
+    store.attribute_valid_values.push(
+      { attribute_key_id: docTypeKey, value: "proposta" },
+      { attribute_key_id: docTypeKey, value: "ata" },
+      { attribute_key_id: docTypeKey, value: "contrato" }
+    );
+    const predId = "aaaaaaaa-0000-4000-8000-000000000301";
+    store.attributes.push({
+      id: predId,
+      node_id: "77777777-0000-4000-8000-000000000301",
+      attribute_key_id: docTypeKey,
+      value_type: "text",
+      value: "ata",
+      valid_from: "2026-01-01",
+      valid_to: null,
+      status: "active",
+      confidence: "0.9",
+      valid_from_source: "document",
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/items/correct",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          item_kind: "attribute",
+          item_id: predId,
+          corrected: { value: "contrato" },
+          reason: "errata received",
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { new_item_id: string };
+      const newRow = store.attributes.find((a) => a.id === body.new_item_id)!;
+      expect(newRow.value).toBe("contrato");
+      expect(newRow.status).toBe("active");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("BR-23 domain leg: out-of-domain corrected.value returns 422 BUSINESS_INVALID_ATTRIBUTE_VALUE", async () => {
+    const store = buildEmptyStore();
+    const docTypeKey = "33333333-0000-4000-8000-000000000011";
+    store.attribute_keys.push({
+      id: docTypeKey,
+      node_type_id: UUID.PROJECT_NT,
+      key: "doc_type",
+      value_type: "text",
+      allows_multiple_current: false,
+    });
+    store.attribute_valid_values.push(
+      { attribute_key_id: docTypeKey, value: "proposta" },
+      { attribute_key_id: docTypeKey, value: "ata" },
+      { attribute_key_id: docTypeKey, value: "contrato" }
+    );
+    const predId = "aaaaaaaa-0000-4000-8000-000000000302";
+    store.attributes.push({
+      id: predId,
+      node_id: "77777777-0000-4000-8000-000000000302",
+      attribute_key_id: docTypeKey,
+      value_type: "text",
+      value: "ata",
+      valid_from: "2026-01-01",
+      valid_to: null,
+      status: "active",
+      confidence: "0.9",
+      valid_from_source: "document",
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/items/correct",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          item_kind: "attribute",
+          item_id: predId,
+          corrected: { value: "memorando" },
+          reason: "errata received",
+        },
+      });
+      expect(res.statusCode).toBe(422);
+      const body = res.json() as {
+        error: {
+          code: string;
+          details: {
+            attribute_key: string;
+            value: string;
+            allowed_values: string[];
+          };
+        };
+      };
+      expect(body.error.code).toBe("BUSINESS_INVALID_ATTRIBUTE_VALUE");
+      expect(body.error.details.attribute_key).toBe("doc_type");
+      expect(body.error.details.value).toBe("memorando");
+      // allowed_values is sorted lexicographically (TC-02 contract).
+      expect(body.error.details.allowed_values).toEqual([
+        "ata",
+        "contrato",
+        "proposta",
+      ]);
+
+      // Predecessor MUST NOT have been mutated (validation runs before
+      // supersedePredecessor).
+      const pred = store.attributes.find((a) => a.id === predId)!;
+      expect(pred.status).toBe("active");
+      expect(pred.superseded_at).toBe(null);
+      // No new row inserted.
+      const successors = store.attributes.filter(
+        (a) => a.supersedes_attribute_id === predId
+      );
+      expect(successors.length).toBe(0);
+      // No curation_action audit row written.
+      expect(store.curation_actions.length).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("BR-23 type leg: corrected.value that does not parse against value_type returns 422 BUSINESS_INVALID_ATTRIBUTE_VALUE", async () => {
+    const store = buildEmptyStore();
+    // AK_DEADLINE has value_type='date' in the default fixture — feeding a
+    // non-ISO literal triggers the type leg (no closed domain on this key).
+    const predId = "aaaaaaaa-0000-4000-8000-000000000303";
+    store.attributes.push({
+      id: predId,
+      node_id: "77777777-0000-4000-8000-000000000303",
+      attribute_key_id: UUID.AK_DEADLINE,
+      value_type: "date",
+      value: "2026-07-15",
+      valid_from: "2026-01-01",
+      valid_to: null,
+      status: "active",
+      confidence: "0.9",
+      valid_from_source: "document",
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/items/correct",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          item_kind: "attribute",
+          item_id: predId,
+          corrected: { value: "tomorrow" },
+          reason: "errata received",
+        },
+      });
+      expect(res.statusCode).toBe(422);
+      const body = res.json() as {
+        error: {
+          code: string;
+          details: { value_type: string; value: string };
+        };
+      };
+      expect(body.error.code).toBe("BUSINESS_INVALID_ATTRIBUTE_VALUE");
+      expect(body.error.details.value_type).toBe("date");
+      expect(body.error.details.value).toBe("tomorrow");
+
+      // Predecessor untouched, no audit row.
+      const pred = store.attributes.find((a) => a.id === predId)!;
+      expect(pred.status).toBe("active");
+      expect(pred.superseded_at).toBe(null);
+      expect(store.curation_actions.length).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("BR-23 open-domain text key: any string passes (back-compat)", async () => {
+    // AK_EMAIL is value_type='text' with no rows in attribute_valid_values
+    // — open domain. Any non-empty literal must be accepted.
+    const store = buildEmptyStore();
+    const predId = "aaaaaaaa-0000-4000-8000-000000000304";
+    store.attributes.push({
+      id: predId,
+      node_id: "77777777-0000-4000-8000-000000000304",
+      attribute_key_id: UUID.AK_EMAIL,
+      value_type: "text",
+      value: "old@example.com",
+      valid_from: "2026-01-01",
+      valid_to: null,
+      status: "active",
+      confidence: "0.9",
+      valid_from_source: "document",
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/items/correct",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          item_kind: "attribute",
+          item_id: predId,
+          corrected: { value: "new@example.com" },
+          reason: "errata received",
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { new_item_id: string };
+      const newRow = store.attributes.find((a) => a.id === body.new_item_id)!;
+      expect(newRow.value).toBe("new@example.com");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("BR-23 scope: correcting valid_from only (no corrected.value) skips value validation", async () => {
+    // When corrected.value is NOT supplied (the curator is only adjusting
+    // dates), the new value-validation legs MUST NOT run.
+    const store = buildEmptyStore();
+    const docTypeKey = "33333333-0000-4000-8000-000000000012";
+    store.attribute_keys.push({
+      id: docTypeKey,
+      node_type_id: UUID.PROJECT_NT,
+      key: "doc_type",
+      value_type: "text",
+      allows_multiple_current: false,
+    });
+    store.attribute_valid_values.push(
+      { attribute_key_id: docTypeKey, value: "proposta" }
+    );
+    const predId = "aaaaaaaa-0000-4000-8000-000000000305";
+    // The predecessor's `value` is NOT in the closed domain — this is a
+    // legacy row written before the catalog was closed. correctItem with
+    // only date changes MUST still succeed: the rule only fires when the
+    // curator is rewriting the literal.
+    store.attributes.push({
+      id: predId,
+      node_id: "77777777-0000-4000-8000-000000000305",
+      attribute_key_id: docTypeKey,
+      value_type: "text",
+      value: "memorando",
+      valid_from: "2026-01-01",
+      valid_to: null,
+      status: "active",
+      confidence: "0.9",
+      valid_from_source: "document",
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/items/correct",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          item_kind: "attribute",
+          item_id: predId,
+          corrected: {
+            valid_from: "2026-02-01",
+            valid_from_source: "received",
+          },
+          reason: "errata received",
+        },
+      });
+      expect(res.statusCode).toBe(200);
     } finally {
       await app.close();
     }
