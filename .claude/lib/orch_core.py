@@ -1489,6 +1489,9 @@ def _handle_task_claimed(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
+    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
+    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
+        return
     if task.status != TaskStatus.READY:
         raise IllegalTransition(
             f"task_claimed: task {task_id!r} is {task.status!r}, expected ready"
@@ -1509,7 +1512,10 @@ def _handle_task_completed(state: OrchState, event: Event) -> None:
     # on_subagent_stop hook and orchestrator Step 6.4 racing on the same task.
     if task.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED, TaskStatus.DLQ):
         return
-    if task.status != TaskStatus.RUNNING:
+    # C2b: Hook-synthesized false-positive recovery — if the on_subagent_stop hook
+    # emitted task_failed before the actual task_completed arrived (same attempt),
+    # allow the completion to supersede the hook-synthesized failure.
+    if task.status not in (TaskStatus.RUNNING, TaskStatus.FAILED):
         raise IllegalTransition(
             f"task_completed: task {task_id!r} is {task.status!r}, expected running"
         )
@@ -1573,6 +1579,9 @@ def _handle_task_scheduled_retry(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
+    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
+    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
+        return
     if task.status != TaskStatus.FAILED:
         raise IllegalTransition(
             f"task_scheduled_retry: task {task_id!r} is {task.status!r}, expected failed"
@@ -1588,6 +1597,9 @@ def _handle_task_retried(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
+    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
+    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
+        return
     if task.status != TaskStatus.SCHEDULED:
         raise IllegalTransition(
             f"task_retried: task {task_id!r} is {task.status!r}, expected scheduled"
