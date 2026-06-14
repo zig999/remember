@@ -32,7 +32,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 
-import type { CatalogSnapshot } from "../catalog/catalog.js";
+import { domainOf, type CatalogSnapshot } from "../catalog/catalog.js";
 
 // --------------------------------------------------------------------------
 // Public constants.
@@ -84,12 +84,34 @@ export function system(catalog: CatalogSnapshot): string {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Group attribute keys by node-type name for legibility.
+  //
+  // BR-30 prompt support (TC-05): when an AttributeKey has a closed value
+  // domain (`domainOf(catalog, ak.id)` returns a non-null Set), append the
+  // sorted literal allowed values to its line so the LLM can emit them
+  // verbatim. The values are surface strings (e.g. `"ata"`, `"proposta"`),
+  // sorted with default `Array.prototype.sort()` (locale-default,
+  // deterministic — same ordering used by `assertValueInDomain`'s
+  // `allowed_values` diagnostic, keeping prompt and rejection envelope in
+  // sync). Open-domain keys (no rows in `attribute_valid_value`,
+  // `domainOf` returns `null`) print unchanged — backward-compatible. The
+  // runtime check (`assertValueInDomain`, BR-30) is still the authoritative
+  // gate; this is a hint to steer the LLM toward in-domain values.
   const attrKeysByNodeType = new Map<string, string[]>();
   for (const ak of catalog.attributeKeyById.values()) {
     const nt = catalog.nodeTypeById.get(ak.node_type_id);
     if (nt === undefined) continue; // defensive — catalog FK invariant
     const list = attrKeysByNodeType.get(nt.name) ?? [];
-    list.push(`${ak.key} (${ak.value_type}${ak.is_temporal ? ", temporal" : ""})`);
+    const domain = domainOf(catalog, ak.id);
+    const valuesSuffix =
+      domain !== null
+        ? `, values: [${[...domain]
+            .sort()
+            .map((v) => JSON.stringify(v))
+            .join(",")}]`
+        : "";
+    list.push(
+      `${ak.key} (${ak.value_type}${ak.is_temporal ? ", temporal" : ""}${valuesSuffix})`
+    );
     attrKeysByNodeType.set(nt.name, list);
   }
   const attrSection = [...attrKeysByNodeType.entries()]
