@@ -554,6 +554,149 @@ describe("TC-011 — consolidateLink — consolidated (re-affirmation)", () => {
 });
 
 // ============================================================================
+// Multi-current link re-affirmation with divergent valid_from (§18 bug fix)
+// ============================================================================
+//
+// Bug: branch (a) used to require `sameValidFrom`. For multi-current link
+// types (e.g. `holds_role`, `participates_in`), the per-document `received`
+// fallback in temporal.ts FR-001 yields a different `valid_from` on each
+// document — so re-affirming the same fact from a second document landed
+// in the INSERT path and hit the dup-guard unique index, surfacing as
+// `STRUCTURAL_INVALID "graph consolidation hit dup-guard twice"`.
+//
+// Fix: for multi-current types, recognize re-affirmation by
+// `sameTarget && change_hint === 'none'` WITHOUT requiring `sameValidFrom`.
+// The dup-guard scope (source, target, link_type) already guarantees there
+// is at most one vigent row per triple, so a vigent row here IS the same
+// assertion. Functional types still require `sameValidFrom` (a different
+// period on a functional type is potential succession or dispute, not
+// re-affirmation).
+describe("TC-011 — multi-current link re-affirmation with divergent valid_from (§18 bug fix)", () => {
+  // §18: "Re-afirmação consolida, nunca duplica — proveniência acumula no
+  // item existente." On a multi-current link type, a re-affirmation from a
+  // second document with a `received`-fallback `valid_from` must consolidate
+  // on the existing vigent row, not attempt to insert a coexisting row.
+  it("consolidates a multi-current link when second document has a different valid_from (received fallback)", async () => {
+    const catalog = buildCatalog();
+    const { client, state } = buildClient({
+      vigentLink: {
+        id: EXISTING_LINK_ID,
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-13", // first doc received_at
+        status: "active",
+      },
+    });
+
+    const envelope = await proposeLinkService(
+      client,
+      baseLinkArgs({
+        link_type: "participates_in", // multi-current (allows_multiple_current=true)
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-14", // second doc received_at -> different valid_from
+        valid_from_basis: "received",
+        change_hint: "none",
+      }),
+      runCtx,
+      { catalog, now: () => new Date("2026-06-14T12:00:00Z") }
+    );
+
+    expect(envelope.ok).toBe(true);
+    if (!envelope.ok) return;
+    expect(envelope.result.outcome).toBe("consolidated");
+    expect(envelope.result.link_id).toBe(EXISTING_LINK_ID);
+    // No new row inserted — re-affirmation consolidates on the existing one.
+    expect(state.inserts.knowledge_link.length).toBe(0);
+    // Provenance accumulated on the vigent link (BR-18).
+    expect(state.inserts.provenance.length).toBe(1);
+    expect(state.inserts.provenance[0]!.target_id).toBe(EXISTING_LINK_ID);
+    // No UPDATE — only branch (a) was taken.
+    expect(state.updates.length).toBe(0);
+  });
+
+  // Counterpart: a multi-current proposal with change_hint='succession' is
+  // semantically odd (succession does not apply to multi-current types per
+  // §6.5) and must NOT be treated as a silent re-affirmation. The fix only
+  // relaxes branch (a) for `change_hint === 'none'` — any change signal
+  // keeps the original branching.
+  it("does NOT consolidate when change_hint='succession' even on a multi-current link", async () => {
+    const catalog = buildCatalog();
+    const { client } = buildClient({
+      vigentLink: {
+        id: EXISTING_LINK_ID,
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-13",
+        status: "active",
+      },
+      fragmentText: "neutral text without succession markers",
+    });
+
+    let envelope: Awaited<ReturnType<typeof proposeLinkService>> | null = null;
+    let thrown: unknown = null;
+    try {
+      envelope = await proposeLinkService(
+        client,
+        baseLinkArgs({
+          link_type: "participates_in",
+          target_node_id: TARGET_NODE_A,
+          valid_from: "2026-06-14",
+          valid_from_basis: "received",
+          change_hint: "succession",
+        }),
+        runCtx,
+        { catalog, now: () => new Date("2026-06-14T12:00:00Z") }
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    // Either an envelope with a non-consolidated outcome OR a thrown
+    // ValidationFailure is acceptable — what matters is that we did NOT
+    // silently consolidate (which would hide the change signal).
+    if (envelope !== null && envelope.ok) {
+      expect(envelope.result.outcome).not.toBe("consolidated");
+    } else {
+      expect(thrown).not.toBeNull();
+    }
+  });
+
+  // Functional types must still require `sameValidFrom` for branch (a) —
+  // different valid_from on a functional type is a different period, which
+  // belongs to branches (c) succession or (d) dispute, not consolidation.
+  it("functional link with different valid_from does NOT auto-consolidate (still requires sameValidFrom)", async () => {
+    const catalog = buildCatalog();
+    const { client, state } = buildClient({
+      vigentLink: {
+        id: EXISTING_LINK_ID,
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-13",
+        status: "active",
+      },
+      fragmentText: "neutral text without succession or errata markers",
+    });
+
+    const envelope = await proposeLinkService(
+      client,
+      baseLinkArgs({
+        link_type: "leads", // functional (allows_multiple_current=false)
+        target_node_id: TARGET_NODE_A,
+        valid_from: "2026-06-14", // different period
+        change_hint: "none",
+      }),
+      runCtx,
+      { catalog, now: () => new Date("2026-06-14T12:00:00Z") }
+    );
+
+    expect(envelope.ok).toBe(true);
+    if (!envelope.ok) return;
+    // Not consolidated — functional + different valid_from + sameTarget +
+    // no signal => dispute (branch (d)).
+    expect(envelope.result.outcome).not.toBe("consolidated");
+    expect(envelope.result.outcome).toBe("disputed");
+    // The new row was inserted (dispute branch INSERTs the conflicting row).
+    expect(state.inserts.knowledge_link.length).toBe(1);
+  });
+});
+
+// ============================================================================
 // Branch 3 — superseded_previous (succession)
 // ============================================================================
 describe("TC-011 — consolidateLink — superseded_previous (succession)", () => {

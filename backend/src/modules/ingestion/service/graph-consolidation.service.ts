@@ -387,7 +387,7 @@ export async function consolidateLink(
       if (attempt === 2) {
         throw new ValidationFailure(
           "STRUCTURAL_INVALID",
-          "graph consolidation hit dup-guard twice; concurrent contention not resolvable.",
+          "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
           { scope: "knowledge_link" }
         );
       }
@@ -446,13 +446,30 @@ async function consolidateLinkOnce(
     const sameTarget = vigent.target_node_id === args.target_node_id;
     const sameValidFrom = vigent.valid_from === (args.valid_from ?? null);
 
-    // (a) Re-affirmation (consolidation) — same target, same valid_from,
-    //     change_hint='none'. No new row; just append provenance.
-    if (
+    // (a) Re-affirmation (consolidation) — same target, change_hint='none'.
+    //
+    //     For MULTI-CURRENT types (`functional === false`): `valid_from`
+    //     equality is NOT required. The dup-guard scope already enforces
+    //     at most one vigent row per (source, target, link_type), so a
+    //     vigent row reached here IS the same assertion. The only reason
+    //     `valid_from` may differ between proposals is the per-document
+    //     `received` fallback (temporal.ts FR-001) — a metadata artifact
+    //     of the receiving document, not an assertion of the fact itself.
+    //     Consolidating regardless of `valid_from` satisfies v7 §18
+    //     "re-afirmação consolida, nunca duplica" and v7 §6.5 (same
+    //     source/target/link_type + change_hint='none' + no
+    //     succession/correction signal = re-affirmation).
+    //
+    //     For FUNCTIONAL types (`functional === true`): also require
+    //     `sameValidFrom`. On a functional type, a different `valid_from`
+    //     genuinely signals a different period — potential succession or
+    //     dispute, not a simple re-affirmation. The stricter check
+    //     preserves branches (c) and (d).
+    const reaffirmation =
       sameTarget &&
-      sameValidFrom &&
-      args.change_hint === "none"
-    ) {
+      args.change_hint === "none" &&
+      (!functional || sameValidFrom);
+    if (reaffirmation) {
       await insertLinkProvenance(client, vigent.id, args.fragment_ids);
       return { outcome: "consolidated", link_id: vigent.id };
     }
@@ -529,17 +546,20 @@ async function consolidateLinkOnce(
       };
     }
 
-    // (d) Dispute — vigent row exists with overlapping period, different
-    //     value (or different target on a multi-valued type that
-    //     somehow landed here), no succession / correction signal.
+    // (d) Dispute — functional vigent row exists with overlapping
+    //     period, different value, no succession / correction signal.
     //
-    //     For multi-valued types: a vigent row exists with SAME target —
-    //     would have been caught by branch (a) when valid_from matches.
-    //     Different valid_from on a multi-valued type is legitimate
-    //     coexistence, not dispute. So multi-valued only reaches here on
-    //     same target / different valid_from — treat as accepted-new.
+    //     For multi-valued types: a vigent row with the SAME target is
+    //     ALWAYS caught by branch (a) above (re-affirmation now ignores
+    //     `valid_from` differences for multi-current types). Multi-valued
+    //     can only reach here when change_hint is 'succession' or
+    //     'correction' on a multi-current type — semantically odd, since
+    //     succession does not apply to multi-current types (§6.5). We
+    //     fall through to (e) which will hit the dup-guard and surface
+    //     STRUCTURAL_INVALID — the correct outcome for a malformed
+    //     proposal on a multi-current type.
     if (!functional) {
-      // Multi-valued coexistence — fall through to (e) below.
+      // Multi-valued — fall through to (e) below.
     } else {
       // Functional, vigent row exists, NOT a re-affirmation, NOT
       // correction, NOT succession -> dispute (§6.5-C).
@@ -644,7 +664,7 @@ export async function consolidateAttribute(
       if (attempt === 2) {
         throw new ValidationFailure(
           "STRUCTURAL_INVALID",
-          "graph consolidation hit dup-guard twice; concurrent contention not resolvable.",
+          "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
           { scope: "node_attribute" }
         );
       }
