@@ -6,6 +6,7 @@ import { ValidationFailure } from "../../../modules/ingestion/validation/errors.
 import {
   assertFound,
   assertKnownType,
+  assertValueInDomain,
   parseAttributeValue,
 } from "../../../modules/ingestion/validation/structural.js";
 
@@ -104,5 +105,71 @@ describe("assertKnownType", () => {
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
     expect((caught as ValidationFailure).code).toBe("UNKNOWN_TYPE");
+  });
+});
+
+describe("assertValueInDomain (BR-30)", () => {
+  it("is silent when value IS in the closed domain (exact match)", () => {
+    const domain = new Set(["proposta", "ata", "contrato", "relatório", "outro"]);
+    expect(() => assertValueInDomain("proposta", domain)).not.toThrow();
+    expect(() => assertValueInDomain("relatório", domain)).not.toThrow();
+  });
+
+  it("throws STRUCTURAL_INVALID with {value, allowed_values} on miss", () => {
+    const domain = new Set(["proposta", "ata", "contrato"]);
+    let caught: unknown = null;
+    try {
+      assertValueInDomain("PROPOSAL", domain);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    const vf = caught as ValidationFailure;
+    expect(vf.code).toBe("STRUCTURAL_INVALID");
+    expect(vf.message).toBe("attribute value not in closed domain");
+    expect(vf.details.value).toBe("PROPOSAL");
+    // allowed_values is deterministic-ordered (lexicographic).
+    expect(vf.details.allowed_values).toEqual(["ata", "contrato", "proposta"]);
+  });
+
+  it("treats case differences as a miss (exact-match, no normalisation)", () => {
+    const domain = new Set(["proposta"]);
+    let caught: unknown = null;
+    try {
+      assertValueInDomain("Proposta", domain);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).code).toBe("STRUCTURAL_INVALID");
+  });
+
+  it("treats accent differences as a miss (exact-match, no normalisation)", () => {
+    const domain = new Set(["relatório"]);
+    let caught: unknown = null;
+    try {
+      assertValueInDomain("relatorio", domain);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).code).toBe("STRUCTURAL_INVALID");
+  });
+
+  it("sorts allowed_values lexicographically for diagnostic stability", () => {
+    // Insertion order: zeta, alpha, mu. Expected sorted: alpha, mu, zeta.
+    const domain = new Set(["zeta", "alpha", "mu"]);
+    let caught: unknown = null;
+    try {
+      assertValueInDomain("nope", domain);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).details.allowed_values).toEqual([
+      "alpha",
+      "mu",
+      "zeta",
+    ]);
   });
 });
