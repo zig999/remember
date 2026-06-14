@@ -8,6 +8,16 @@
 //
 // The catalog covers BR-14 (UNKNOWN_TYPE on node_type / link_type / key) and
 // BR-15 (RULE_VIOLATION via `LinkTypeRule`).
+//
+// As of TC-02 (valid-values-attribute-domains, BR-30), the snapshot also
+// materializes the closed value domains per `AttributeKey` from the new
+// `attribute_valid_value` table (owned by the `knowledge-graph` domain,
+// migration `0003_attribute_valid_value.sql`; read-only here). A key with
+// zero rows = open domain (backward-compatible legacy behavior; any literal
+// that parses against `value_type` is accepted). A key with >= 1 rows =
+// closed domain — only the listed values are accepted by the structural
+// validator. Surface: `attributeValidValuesByKeyId` map +
+// `domainOf(snapshot, keyId)` helper.
 
 import type { PoolClient } from "pg";
 
@@ -57,6 +67,19 @@ export interface AttributeKeyRow {
   readonly requires_valid_from: boolean;
 }
 
+/**
+ * Row shape for `attribute_valid_value` — only the two columns needed at
+ * boot. The migration also stores `label`, `sort_order`, `description` and
+ * `version`, but those are surface metadata that the validator does not
+ * consult; loading them would only enlarge the snapshot without changing
+ * behavior. If a future feature needs them, extend this row and the SELECT
+ * in `loadCatalog`.
+ */
+export interface AttributeValidValueRow {
+  readonly attribute_key_id: string;
+  readonly value: string;
+}
+
 /** Read-only snapshot exposed to the validation layers. */
 export interface CatalogSnapshot {
   readonly nodeTypeByName: ReadonlyMap<string, NodeTypeRow>;
@@ -69,6 +92,24 @@ export interface CatalogSnapshot {
   readonly attributeKeyByNodeTypeAndKey: ReadonlyMap<string, AttributeKeyRow>;
   /** Keyed by `attribute_key.id` — used by `propose_attribute` cross-checks. */
   readonly attributeKeyById: ReadonlyMap<string, AttributeKeyRow>;
+  /**
+   * Closed value domains per `AttributeKey` (BR-30).
+   *
+   * Key: `attribute_key.id`. Value: the set of allowed literal values for
+   * that key. Absence of an entry — or an empty set, which `loadCatalog`
+   * does not produce but `buildSnapshot` accepts — means **open domain**:
+   * any literal that parses against `attribute_key.value_type` is
+   * accepted. Presence with at least one value means **closed domain**:
+   * only the listed values are accepted.
+   *
+   * Backward compatibility: every `AttributeKey` already in the catalog
+   * has zero rows in `attribute_valid_value` at the time `0003` is applied
+   * (except for the explicitly seeded `Document.doc_type` /
+   * `Event.event_type`), so existing behavior is preserved.
+   *
+   * Boot-only: changes to `attribute_valid_value` require a BFF restart.
+   */
+  readonly attributeValidValuesByKeyId: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /**
@@ -102,12 +143,20 @@ export async function loadCatalog(
             is_temporal, allows_multiple_current, requires_valid_from
        FROM attribute_key`
   );
+  // BR-30 — closed value domains per AttributeKey. The table is owned by
+  // the knowledge-graph domain (migration 0003_attribute_valid_value.sql)
+  // and is read-only here. Only the two columns consumed by the validator
+  // are loaded — see the comment on `AttributeValidValueRow`.
+  const validValueRes = await client.query<AttributeValidValueRow>(
+    `SELECT attribute_key_id, value FROM attribute_valid_value`
+  );
 
   return buildSnapshot({
     nodeTypes: nodeTypeRes.rows,
     linkTypes: linkTypeRes.rows,
     linkTypeRules: ruleRes.rows,
     attributeKeys: attrRes.rows,
+    attributeValidValues: validValueRes.rows,
   });
 }
 
@@ -120,6 +169,13 @@ export function buildSnapshot(args: {
   linkTypes: readonly LinkTypeRow[];
   linkTypeRules: readonly LinkTypeRuleRow[];
   attributeKeys: readonly AttributeKeyRow[];
+  /**
+   * Optional — when omitted, every `AttributeKey` is treated as having an
+   * open domain. Test fixtures that do not exercise BR-30 may leave this
+   * out; the live `loadCatalog` always passes the full result of
+   * `SELECT attribute_key_id, value FROM attribute_valid_value`.
+   */
+  attributeValidValues?: readonly AttributeValidValueRow[];
 }): CatalogSnapshot {
   const nodeTypeByName = new Map<string, NodeTypeRow>();
   const nodeTypeById = new Map<string, NodeTypeRow>();
@@ -142,6 +198,19 @@ export function buildSnapshot(args: {
     );
     attributeKeyById.set(r.id, r);
   }
+  // BR-30 — accumulate the closed value domain per attribute_key_id. A
+  // `Set` deduplicates incidentally; the table's UNIQUE(attribute_key_id,
+  // value) constraint (0003) already guarantees uniqueness at the DB
+  // level, but tests pass raw arrays so we still build via .add().
+  const attributeValidValuesByKeyId = new Map<string, Set<string>>();
+  for (const r of args.attributeValidValues ?? []) {
+    let bucket = attributeValidValuesByKeyId.get(r.attribute_key_id);
+    if (bucket === undefined) {
+      bucket = new Set<string>();
+      attributeValidValuesByKeyId.set(r.attribute_key_id, bucket);
+    }
+    bucket.add(r.value);
+  }
   return {
     nodeTypeByName,
     nodeTypeById,
@@ -150,7 +219,46 @@ export function buildSnapshot(args: {
     linkTypeRules: args.linkTypeRules,
     attributeKeyByNodeTypeAndKey,
     attributeKeyById,
+    attributeValidValuesByKeyId,
   };
+}
+
+/**
+ * Closed-domain lookup for `AttributeKey` (BR-30).
+ *
+ * Returns `null` when the key has NO entry in
+ * `attributeValidValuesByKeyId` — i.e. an **open domain**: no closed-domain
+ * check applies and the structural validator falls through to its
+ * subsequent layers. This is the backward-compatible default for every
+ * key that has not been explicitly closed in `0003_attribute_valid_value`
+ * (or a successor migration).
+ *
+ * Returns the (read-only) `Set<string>` of allowed values when the key has
+ * at least one entry — i.e. a **closed domain**: only values present in
+ * the set are accepted; everything else fails with `STRUCTURAL_INVALID`
+ * carrying `{ value, allowed_values }`.
+ *
+ * Pure function: no DB access, no mutation of the snapshot. The returned
+ * `Set` is the snapshot's own instance — callers MUST NOT mutate it. The
+ * snapshot fields are typed `ReadonlyMap<…, ReadonlySet<…>>` to make that
+ * contract explicit.
+ *
+ * The keyId is an `attribute_key.id` (a UUID); the convention `keyId` is
+ * preserved from the spec to match the BR-30 description.
+ */
+export function domainOf(
+  snapshot: CatalogSnapshot,
+  keyId: string
+): ReadonlySet<string> | null {
+  const domain = snapshot.attributeValidValuesByKeyId.get(keyId);
+  // Defensive: a set with zero entries is also treated as open. The live
+  // loader never produces such a row (every entry in the snapshot map
+  // comes from a real DB row), but a hand-built test fixture might, and
+  // an empty set carries the same semantic as no entry at all.
+  if (domain === undefined || domain.size === 0) {
+    return null;
+  }
+  return domain;
 }
 
 /**

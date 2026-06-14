@@ -64,13 +64,15 @@ export type { McpEnvelope, RunContext } from "./service/propose.types.js";
 // `registerIngestToolset` on every MCP session.
 export {
   buildSnapshot,
+  domainOf,
   isLinkRuleActive,
   loadCatalog,
 } from "./catalog/catalog.js";
 export type {
+  AttributeKeyRow,
+  AttributeValidValueRow,
   CatalogSnapshot,
-  NodeTypeRow,
   LinkTypeRow,
   LinkTypeRuleRow,
-  AttributeKeyRow,
+  NodeTypeRow,
 } from "./catalog/catalog.js";
