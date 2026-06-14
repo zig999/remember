@@ -35,6 +35,7 @@ import {
 } from "./modules/compliance-audit/index.js";
 import {
   registerKnowledgeGraphRoutes,
+  registerQueryMcpTransport,
   registerQueryToolset,
   type CatalogSnapshot,
 } from "./modules/knowledge-graph/index.js";
@@ -156,6 +157,13 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     // can stay light).
     if (catalog !== undefined) {
       await registerKnowledgeGraphRoutes(scoped, { pool, logger, catalog });
+      // MCP-over-HTTP read transport — POST /api/v1/mcp/query (TC-02,
+      // knowledge-graph.back.md BR-23). Mounted under the same auth scope as
+      // the REST surface, with no extra headers and no audit-row writes
+      // (BR-23 rules 1-3). The nine read-only tools live on the shared
+      // McpServer registry under the `query` toolset key (see
+      // `registerQueryToolset` call below).
+      await registerQueryMcpTransport(scoped, { pool, logger, mcp });
       // Curation module (TC-07) — POST verbs over the layered validation
       // pipeline. Mounted at /api/v1/curation/* (siblings of /api/v1/ingest).
       // TC-04 of valid-values-attribute-domains additionally requires the
