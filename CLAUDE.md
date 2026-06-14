@@ -198,10 +198,11 @@ design_system:
 ```
 remember-modelagem-v7.md   # FONTE NORMATIVA — especificação fechada (v7; v6 deprecated)
 migrations/
-  0001_init.sql                   # Migração ÚNICA de bootstrap: extensões, configs de full-text,
+  0001_init.sql                   # Bootstrap ESTRUTURAL (100% DDL): extensões, configs de full-text,
                                   #   funções, tipos enum, tabelas (incl. colunas de tombstone de
-                                  #   compliance), índices, views, triggers + catálogo seed (§15:
-                                  #   8 NodeTypes, 10 LinkTypes +22 regras, 10 AttributeKeys)
+                                  #   compliance), índices, views, triggers
+  0001_seed.sql                   # Catálogo seed da §15 — aplicar DEPOIS do init (resolve FKs por nome):
+                                  #   8 NodeTypes, 10 LinkTypes +22 regras, 10 AttributeKeys
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
 .claude/                          # Motor de orquestração (skills, hooks, scripts, agents, lib)
 
@@ -319,13 +320,15 @@ Orchestrators refuse to spawn if `nesting_depth >= 3`. If this error appears, th
 
 - Platform: Neon (managed Postgres). (Desvio do v7, que registra Supabase Cloud.)
 - Database: PostgreSQL 17. Extensões: `unaccent`, `pg_trgm` (migração 0001).
-- Migrations: SQL puro, versionadas em `migrations/` — `0001_init.sql` é a migração única de
-  bootstrap (schema + seed; substitui as antigas 0001/0002/0003), aplicada por ferramenta de
-  migração (§16). Inclui as colunas de tombstone de compliance (`raw_information.status`/
+- Migrations: SQL puro, versionadas em `migrations/` — bootstrap em DOIS arquivos: `0001_init.sql`
+  (estrutura, 100% DDL: schema, índices, views, triggers) + `0001_seed.sql` (catálogo §15; aplicar
+  DEPOIS do init). Substituem as antigas 0001/0002/0003; aplicadas por ferramenta de migração (§16).
+  O `0001_init.sql` inclui as colunas de tombstone de compliance (`raw_information.status`/
   `superseded_at`, `raw_chunk.status`/`superseded_at`, `information_fragment.superseded_at`)
   exigidas pelo UC-01 de compliance-audit.
-- Seeds: seção 13 de `migrations/0001_init.sql` — catálogo obrigatório da §15. Novos tipos de
-  catálogo entram por migração versionada (§12).
+- Seeds: `migrations/0001_seed.sql` — catálogo obrigatório da §15 (NodeTypes/LinkTypes/regras/
+  AttributeKeys), aplicado após o `0001_init.sql`. Novos tipos de catálogo entram por migração
+  versionada (§12).
 - Business logic: invariantes de aplicação são garantidos pelo **backend** (não exprimíveis em
   DDL — ver cabeçalho da 0001); o banco carrega funções de apoio (`norm`, `immutable_unaccent`,
   `canonical_date`, `canonical_number`, `set_updated_at`) e as views resolvidas.
