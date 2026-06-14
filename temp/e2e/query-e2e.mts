@@ -494,6 +494,48 @@ async function main(): Promise<void> {
       "fuzzy (trigram) search with a typo still finds Helios"
     );
 
+    // ---- Step 3b: REST↔MCP parity for `search` (TC-04, BR-26 / BR-25) ----
+    //
+    // Same logical request issued twice: once over REST GET /search, once
+    // over MCP POST /api/v1/mcp/query `tools/call name=search`. The seeded
+    // graph is identical (Step 1/2 above wrote it once via the ingest path),
+    // so any divergence between the two payloads is a transport-layer bug.
+    // The parity assertion compares the item ids — the only thing the LLM
+    // caller actually consumes; the rest of the payload is asserted equal
+    // under the integration suite where determinism is guaranteed.
+    log("[3b] MCP↔REST parity: tools/call search");
+    const restQ = tag("hel");
+    const restParity = await searchNode(restQ);
+    const restIds = (restParity.body?.items ?? [])
+      .map((i: any) => i.id as string)
+      .sort();
+    const mcpParity = await http(baseUrl, "POST", `/api/v1/mcp/query`, {
+      body: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "search",
+          arguments: { query: restQ, layers: ["node"], expand: false },
+        },
+      },
+    });
+    assert(
+      mcpParity.status === 200 && mcpParity.body?.result?.ok === true,
+      "MCP tools/call search → JSON-RPC 200 + ok=true"
+    );
+    const mcpIds = ((mcpParity.body?.result?.result?.items ?? []) as any[])
+      .map((i) => i.id as string)
+      .sort();
+    assert(
+      JSON.stringify(mcpIds) === JSON.stringify(restIds),
+      `MCP search items match REST items for query '${restQ}' (REST=${restIds.length} MCP=${mcpIds.length})`
+    );
+    assert(
+      mcpIds.includes(heliosId),
+      "MCP search returns the seeded Helios node (parity hit)"
+    );
+
     // ---- Step 4: graph expansion from a search hit (UC-01, expand) ----
     log("[4/8] GET /search  (expand=true, depth=2)");
     const expanded = await http(
