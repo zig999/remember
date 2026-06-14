@@ -100,3 +100,42 @@ export const IngestToolInputJsonSchemas = {
 } as const;
 
 export type IngestToolJsonSchemaName = keyof typeof IngestToolInputJsonSchemas;
+
+/**
+ * Single source of truth for the four `propose_*` tool DESCRIPTIONS.
+ *
+ * Consumed by BOTH transports so the LLM sees the same contract regardless of
+ * how it connects:
+ *   - the MCP registrar (`mcp/toolset.ts`), and
+ *   - the in-process Anthropic tool-use loop (`service/extraction.service.ts`).
+ *
+ * Written for the model deciding when/how to act — prescriptive about WHEN to
+ * call each tool, its ordering/dependencies, and the evidence it must cite —
+ * not for a developer reading the schema. Keep free of internal jargon (spec
+ * §-refs, advisory locks, "5-layer validated", column names): those do not help
+ * the caller and only spend prompt tokens.
+ */
+export const IngestToolDescriptions = {
+  propose_fragment:
+    "Record one atomic factual claim quoted verbatim from the current chunk " +
+    "(max 1000 chars). Call this FIRST — propose_link and propose_attribute must " +
+    "cite the fragment_id returned here as their evidence. One claim per call; " +
+    "split compound sentences into separate fragments.",
+  propose_node:
+    "Register an entity mentioned in the chunk (a person, project, document, …). " +
+    "Propose every entity freely: the backend matches it to an existing entity or " +
+    "creates a new one and never duplicates. Returns a node_id to cite from " +
+    "propose_link / propose_attribute. node_type must be one of the catalog NodeTypes.",
+  propose_link:
+    "Assert a relation between two entities already registered with propose_node " +
+    "(e.g. a Person responsible_for a Project). Both nodes must exist first, and you " +
+    "must cite at least one fragment_id as evidence. Use only when the chunk " +
+    "explicitly states the relation. link_type must be a catalog LinkType allowed " +
+    "for the two node types.",
+  propose_attribute:
+    "Assert a literal value belonging to an entity (e.g. a Project's deadline). " +
+    "Use for dates, numbers, or strings that are values OF an entity — never model a " +
+    "literal as its own node. The node must exist; cite at least one fragment_id. " +
+    "key must be a catalog AttributeKey for that node type, and value must match the " +
+    "key's value type.",
+} as const;

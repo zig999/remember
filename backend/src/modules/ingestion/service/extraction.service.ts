@@ -39,6 +39,7 @@ import type { Logger } from "pino";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
+  IngestToolDescriptions,
   IngestToolInputJsonSchemas,
   ProposeAttributeInputSchema,
   ProposeFragmentInputSchema,
@@ -291,11 +292,13 @@ function zodErrorEnvelope(
 // --------------------------------------------------------------------------
 
 function buildTools(): Anthropic.Messages.Tool[] {
+  // Descriptions come from the single source in `dto/index.ts` so the MCP
+  // transport and this in-process loop present the LLM the same contract.
   return [
-    buildTool("propose_fragment", "Record an atomic claim quoted from the chunk."),
-    buildTool("propose_node", "Register an entity referenced by the chunk."),
-    buildTool("propose_link", "Assert a relation between two existing nodes."),
-    buildTool("propose_attribute", "Assert a literal value for an existing node."),
+    buildTool("propose_fragment", IngestToolDescriptions.propose_fragment),
+    buildTool("propose_node", IngestToolDescriptions.propose_node),
+    buildTool("propose_link", IngestToolDescriptions.propose_link),
+    buildTool("propose_attribute", IngestToolDescriptions.propose_attribute),
   ];
 }
 

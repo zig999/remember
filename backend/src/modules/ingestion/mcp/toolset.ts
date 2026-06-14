@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
+  IngestToolDescriptions,
   IngestToolInputJsonSchemas,
   ProposeAttributeInputSchema,
   ProposeFragmentInputSchema,
@@ -78,16 +79,14 @@ export function registerIngestToolset(deps: IngestToolsetSessionDeps): void {
 
   deps.mcp.registerTool("ingest", {
     name: "propose_fragment",
-    description:
-      "Propose an atomic InformationFragment for the active LLMRun (§14.1 of v7).",
+    description: IngestToolDescriptions.propose_fragment,
     inputSchema: ProposeFragmentInputSchema as unknown as z.ZodTypeAny,
     handler: buildProposeFragmentHandler(sharedDeps),
   });
 
   deps.mcp.registerTool("ingest", {
     name: "propose_node",
-    description:
-      "Propose a KnowledgeNode (entity) — match-or-create under advisory lock.",
+    description: IngestToolDescriptions.propose_node,
     inputSchema: ProposeNodeInputSchema as unknown as z.ZodTypeAny,
     handler: buildProposeNodeHandler({
       ...sharedDeps,
@@ -97,8 +96,7 @@ export function registerIngestToolset(deps: IngestToolsetSessionDeps): void {
 
   deps.mcp.registerTool("ingest", {
     name: "propose_link",
-    description:
-      "Propose a KnowledgeLink between two existing nodes (5-layer validated).",
+    description: IngestToolDescriptions.propose_link,
     inputSchema: ProposeLinkInputSchema as unknown as z.ZodTypeAny,
     handler: buildProposeLinkHandler({
       ...sharedDeps,
@@ -108,8 +106,7 @@ export function registerIngestToolset(deps: IngestToolsetSessionDeps): void {
 
   deps.mcp.registerTool("ingest", {
     name: "propose_attribute",
-    description:
-      "Propose a NodeAttribute literal (5-layer validated; value parsed against key.value_type).",
+    description: IngestToolDescriptions.propose_attribute,
     inputSchema: ProposeAttributeInputSchema as unknown as z.ZodTypeAny,
     handler: buildProposeAttributeHandler({
       ...sharedDeps,

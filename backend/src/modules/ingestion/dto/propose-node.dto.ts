@@ -8,9 +8,25 @@
 import { z } from "zod";
 
 export const ProposeNodeInputSchema = z.object({
-  node_type: z.string().min(1),
-  name: z.string().min(1).max(500),
-  aliases: z.array(z.string().min(1).max(500)).optional(),
+  node_type: z
+    .string()
+    .min(1)
+    .describe(
+      "The entity's type — must be one of the catalog NodeTypes (e.g. Person, Project, Document)."
+    ),
+  name: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe(
+      "The canonical name of the entity as referred to in the text (max 500 characters)."
+    ),
+  aliases: z
+    .array(z.string().min(1).max(500))
+    .optional()
+    .describe(
+      "Optional alternative names or spellings for the same entity; attached without duplicating."
+    ),
 });
 export type ProposeNodeInput = z.infer<typeof ProposeNodeInputSchema>;
 

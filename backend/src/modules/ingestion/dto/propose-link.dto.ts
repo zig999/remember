@@ -26,15 +26,49 @@ const IsoDateSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
 
 export const ProposeLinkInputSchema = z.object({
-  source_node_id: z.string().uuid(),
-  link_type: z.string().min(1),
-  target_node_id: z.string().uuid(),
-  confidence: z.number().min(0).max(1),
-  fragment_ids: z.array(z.string().uuid()).min(1),
-  valid_from: IsoDateSchema.optional(),
-  valid_to: IsoDateSchema.optional(),
-  valid_from_basis: ValidFromBasisSchema.optional(),
-  change_hint: ChangeHintSchema.default("none"),
+  source_node_id: z
+    .string()
+    .uuid()
+    .describe(
+      "node_id of the source entity (returned by propose_node). Must already exist."
+    ),
+  link_type: z
+    .string()
+    .min(1)
+    .describe(
+      "The relation type — must be a catalog LinkType allowed for the source/target node types (e.g. responsible_for)."
+    ),
+  target_node_id: z
+    .string()
+    .uuid()
+    .describe(
+      "node_id of the target entity (returned by propose_node). Must already exist."
+    ),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe(
+      "Confidence 0–1 in this relation. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped."
+    ),
+  fragment_ids: z
+    .array(z.string().uuid())
+    .min(1)
+    .describe(
+      "Evidence: id(s) of propose_fragment claims from this chunk that state the relation. At least one required."
+    ),
+  valid_from: IsoDateSchema.optional().describe(
+    "Date the relation STARTS holding (YYYY-MM-DD). Omit if the text does not state it — never invent a date."
+  ),
+  valid_to: IsoDateSchema.optional().describe(
+    "Date the relation STOPS holding (YYYY-MM-DD), if stated. Intervals are half-open [from, to)."
+  ),
+  valid_from_basis: ValidFromBasisSchema.optional().describe(
+    "Justification for valid_from: 'stated' (written in the chunk) or 'document' (the document's date). Omit when valid_from is omitted."
+  ),
+  change_hint: ChangeHintSchema.default("none").describe(
+    "'none' = plain assertion (re-affirming an identical fact consolidates, never duplicates); 'succession' = the relation changed; 'correction' = fixes a previously wrong value."
+  ),
 });
 export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>;
 
