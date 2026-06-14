@@ -1,9 +1,12 @@
 -- ============================================================================
 -- 0001_init.sql — Remember (spec v7 + docs/specs) — ESTRUTURA do banco
--- PostgreSQL 17 (Neon) — bootstrap ESTRUTURAL (100% DDL): extensões, configs
--- de full-text, funções, tipos enum, tabelas, índices, views e triggers.
+-- PostgreSQL 17 (Neon) — bootstrap ESTRUTURAL ÚNICO (100% DDL): extensões,
+-- configs de full-text, funções, tipos enum, TODAS as 19 tabelas, índices,
+-- views e triggers. Após executar este arquivo, o schema completo existe.
 -- O catálogo seed obrigatório (§15) foi SEPARADO para `0001_seed.sql` (split
--- em 2026-06-14). Bootstrap completo = 0001_init.sql DEPOIS 0001_seed.sql.
+-- em 2026-06-14); a tabela `attribute_valid_value` foi CONSOLIDADA aqui da
+-- antiga 0003 (2026-06-14) — toda a estrutura mora neste arquivo, único.
+-- Bootstrap completo = 0001_init.sql, depois 0001_seed.sql, 0002, 0003 (seeds).
 --
 -- Consolida e SUBSTITUI as migrações anteriores:
 --   0001_schema.sql (schema, escrita contra a v6 — a v7 preserva o schema),
@@ -198,6 +201,24 @@ CREATE TABLE attribute_key (
 );
 
 CREATE INDEX attribute_key_node_type_idx ON attribute_key (node_type_id);
+
+-- Domínio fechado de valores por chave (valid_values): 1 linha por valor
+-- permitido. Chave com >= 1 linha aqui => domínio FECHADO (o backend rejeita
+-- value fora do conjunto); 0 linhas => ABERTO (qualquer value do value_type).
+-- Mutação só por migração versionada (§12). (Estrutura consolidada da antiga
+-- 0003 em 2026-06-14; o SEED dos domínios fica na migração de seed 0003.)
+CREATE TABLE attribute_valid_value (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  attribute_key_id uuid NOT NULL REFERENCES attribute_key (id),
+  value            text NOT NULL,
+  label            text,
+  sort_order       int,
+  description      text,
+  version          int  NOT NULL DEFAULT 1,
+  UNIQUE (attribute_key_id, value)
+);
+
+CREATE INDEX attribute_valid_value_key_idx ON attribute_valid_value (attribute_key_id);
 
 -- ----------------------------------------------------------------------------
 -- 6. Camada de origem — a verdade bruta (§3.1)
