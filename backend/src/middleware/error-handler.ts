@@ -23,33 +23,19 @@ import type { Logger } from "pino";
 import { ZodError } from "zod";
 
 import { AuthError } from "./auth.js";
+import {
+  internalError,
+  isPgUnavailable,
+  serviceUnavailableError,
+} from "../shared/error-mapping.js";
+import type { ErrorEnvelope } from "../shared/error-mapping.js";
 
-/** Canonical error envelope returned by every failed request. */
-export interface ErrorEnvelope {
-  ok: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-/** PostgreSQL error codes (SQLSTATE) we treat as "service unavailable". */
-const PG_UNAVAILABLE_SQLSTATES: ReadonlySet<string> = new Set([
-  "57P03", // cannot_connect_now
-  "57014", // query_canceled (statement timeout)
-  "08000", // connection_exception
-  "08003", // connection_does_not_exist
-  "08006", // connection_failure
-]);
-
-/** Node errno codes we treat as "service unavailable" when DB calls fail. */
-const PG_UNAVAILABLE_ERRNOS: ReadonlySet<string> = new Set([
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-  "ENOTFOUND",
-  "ECONNRESET",
-]);
+// The canonical `ErrorEnvelope` type and pg detection now live in the shared
+// error-mapping module (single source for this global handler AND the per-domain
+// mappers — previously copy-pasted in all three). Re-exported for back-compat
+// with existing importers (the error-handler unit test imports `isPgUnavailable`).
+export { isPgUnavailable };
+export type { ErrorEnvelope };
 
 /**
  * Build the Fastify error handler. Returns a closure so the bootstrap can
@@ -138,17 +124,7 @@ export function classify(err: unknown): {
 
   // 4. Database connectivity / statement-timeout (BR-18 of knowledge-graph).
   if (isPgUnavailable(err)) {
-    return {
-      statusCode: 503,
-      envelope: {
-        ok: false,
-        error: {
-          code: "SYSTEM_SERVICE_UNAVAILABLE",
-          message: "A backing service is temporarily unavailable.",
-        },
-      },
-      logLevel: "error",
-    };
+    return serviceUnavailableError();
   }
 
   // 5. Fastify-thrown HTTP errors with a known statusCode (e.g. 404 from the
@@ -168,17 +144,7 @@ export function classify(err: unknown): {
   }
 
   // 6. Anything else — generic 500. We do NOT leak the underlying message.
-  return {
-    statusCode: 500,
-    envelope: {
-      ok: false,
-      error: {
-        code: "SYSTEM_INTERNAL_ERROR",
-        message: "Internal server error.",
-      },
-    },
-    logLevel: "error",
-  };
+  return internalError();
 }
 
 function isFastifyValidationError(
@@ -198,18 +164,6 @@ function isFastifyHttpError(
   if (typeof err !== "object" || err === null) return false;
   const code = (err as { statusCode?: unknown }).statusCode;
   return typeof code === "number" && code >= 400 && code < 600;
-}
-
-/**
- * Detect pg connection / timeout errors. `pg` exposes the SQLSTATE on
- * `err.code` (string) for protocol-level failures, and Node's `errno`/`code`
- * for socket-level ones; both shapes are checked.
- */
-export function isPgUnavailable(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const code = (err as { code?: unknown }).code;
-  if (typeof code !== "string") return false;
-  return PG_UNAVAILABLE_SQLSTATES.has(code) || PG_UNAVAILABLE_ERRNOS.has(code);
 }
 
 function codeFromHttpStatus(status: number): string {
