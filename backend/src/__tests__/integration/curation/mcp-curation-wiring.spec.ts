@@ -167,12 +167,19 @@ interface JsonRpcEnvelope {
   jsonrpc: "2.0";
   id: number | string | null;
   result?: {
-    ok?: boolean;
-    result?: unknown;
-    error?: { code: string; message: string; details?: unknown };
-    tools?: Array<{ name: string; description: string; inputSchema: unknown }>;
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+    tools?: Array<{ name: string; description: string; inputSchema?: unknown }>;
   };
   error?: { code: number; message: string };
+}
+
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
+
+/** Parse the structured { code, message, details } an isError MCP result carries. */
+function mcpErrPayload(body: JsonRpcEnvelope): { code: string; message: string; details?: unknown } {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "{}");
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +221,7 @@ describe("MCP curation transport — wiring (BR-29)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcList(),
       });
       expect(res.statusCode).toBe(404);
@@ -229,7 +236,7 @@ describe("MCP curation transport — wiring (BR-29)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcList(),
       });
       expect(res.statusCode).toBe(200);
@@ -260,13 +267,13 @@ describe("MCP curation transport — wiring (BR-29)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` }, // NO X-LLM-Run-Id
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT }, // NO X-LLM-Run-Id
         payload: rpcCall("does_not_exist", {}),
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("NOT_FOUND");
     } finally {
       await app.close();
     }
@@ -289,13 +296,13 @@ describe("MCP curation transport — closed whitelist (BR-29 rule 5)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("propose_node", {}),
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("NOT_FOUND");
     } finally {
       await app.close();
     }
@@ -309,13 +316,13 @@ describe("MCP curation transport — closed whitelist (BR-29 rule 5)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("get_node", {}),
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("NOT_FOUND");
     } finally {
       await app.close();
     }

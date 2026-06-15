@@ -1040,9 +1040,8 @@ interface JsonRpcEnvelope {
   jsonrpc: "2.0";
   id: number | string | null;
   result?: {
-    ok: boolean;
-    result?: unknown;
-    error?: { code: string; message: string; details?: unknown };
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
   };
 }
 
@@ -1050,15 +1049,32 @@ interface ErrorEnvelope {
   error: { code: string; message: string; details?: unknown };
 }
 
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
+
+/** Parse the JSON payload a successful MCP tools/call carries in its text block. */
+function mcpOkPayload(body: JsonRpcEnvelope): unknown {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "null");
+}
+
+/** Parse the structured { code, message, details } an isError MCP result carries. */
+function mcpErrPayload(body: JsonRpcEnvelope): {
+  code: string;
+  message: string;
+  details?: unknown;
+} {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "{}");
+}
+
 /**
- * Strip transport envelopes so REST body and MCP `result.result` can be
- * compared byte-for-byte (BR-32 assertion #1). REST returns the bare body;
- * MCP wraps it inside JSON-RPC `result` + `{ ok: true, result: ... }`.
+ * Strip transport envelopes so REST body and the MCP success payload can be
+ * compared byte-for-byte (BR-32 assertion #1). REST returns the bare body; MCP
+ * carries it as JSON in the tool result's text content block.
  */
 function stripMcpEnvelope(rpcBody: JsonRpcEnvelope): unknown {
   expect(rpcBody.result).toBeDefined();
-  expect(rpcBody.result?.ok).toBe(true);
-  return rpcBody.result?.result;
+  expect(rpcBody.result?.isError).toBeFalsy();
+  return mcpOkPayload(rpcBody);
 }
 
 // ---------------------------------------------------------------------------
@@ -1124,7 +1140,7 @@ describe("MCP curation parity — success payload (BR-32 #1)", () => {
         const mcpRes = await app2.inject({
           method: "POST",
           url: "/api/v1/mcp/curation",
-          headers: { authorization: `Bearer ${token}` },
+          headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
           payload: rpcCall("merge_nodes", {
             survivor_id: survivor2,
             absorbed_id: absorbed2,
@@ -1225,7 +1241,7 @@ describe("MCP curation parity — success payload (BR-32 #1)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("confirm_item", {
           item_kind: "attribute",
           item_id: attrIdMcp,
@@ -1304,7 +1320,7 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("resolve_entity_match", {
           node_id: nodeMcp,
           decision: "keep_separate",
@@ -1313,8 +1329,8 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       });
       expect(res.statusCode).toBe(200); // MCP wraps over HTTP 200.
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe(restErrorCode);
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe(restErrorCode);
     } finally {
       await appMcp.close();
     }
@@ -1373,7 +1389,7 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("resolve_entity_match", {
           node_id: mcpSeed.proj,
           decision: "merge_into",
@@ -1383,8 +1399,8 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe(restCode);
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe(restCode);
     } finally {
       await appMcp.close();
     }
@@ -1449,7 +1465,7 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("correct_item", {
           item_kind: "attribute",
           item_id: mcpSeed.predId,
@@ -1463,8 +1479,8 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe(restCode);
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe(restCode);
     } finally {
       await appMcp.close();
     }
@@ -1495,7 +1511,7 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("confirm_item", {
           item_kind: "attribute",
           item_id: "not-a-uuid",
@@ -1503,8 +1519,8 @@ describe("MCP curation parity — error codes (BR-32 #2)", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe(restCode);
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe(restCode);
     } finally {
       await appMcp.close();
     }
@@ -1573,7 +1589,7 @@ describe("MCP curation parity — audit row count (BR-32 #3)", () => {
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("reject_item", {
           item_kind: "link",
           item_id: mcpSeed.linkId,
@@ -1582,7 +1598,7 @@ describe("MCP curation parity — audit row count (BR-32 #3)", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(true);
+      expect(body.result?.isError).toBeFalsy();
       // BR-32 #3 — same count on MCP.
       expect(mcpSeed.store.curationActionInsertCount).toBe(1);
       expect(mcpSeed.store.curation_actions.length).toBe(1);
@@ -1629,13 +1645,13 @@ describe("MCP curation parity — closed whitelist (BR-32 #4 / BR-29 rule 5)", (
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("propose_node", {}),
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("NOT_FOUND");
     } finally {
       await app.close();
     }
@@ -1648,13 +1664,13 @@ describe("MCP curation parity — closed whitelist (BR-32 #4 / BR-29 rule 5)", (
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("get_node", {}),
       });
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("NOT_FOUND");
     } finally {
       await app.close();
     }
@@ -1719,7 +1735,7 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("compliance_delete", {
           raw_information_id: rawIdMcp,
           reason: "owner request",
@@ -1727,8 +1743,8 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       });
       expect(res.statusCode).toBe(200);
       const env = res.json() as JsonRpcEnvelope;
-      expect(env.result?.ok).toBe(true);
-      const inner = env.result?.result as typeof restBody;
+      expect(env.result?.isError).toBeFalsy();
+      const inner = mcpOkPayload(env) as typeof restBody;
       expect(inner.outcome).toBe("deleted");
       // BR-32 #5: discriminated union is byte-identical after stripping the
       // intrinsically-divergent fields (`deletion.id`, `executed_at`,
@@ -1786,7 +1802,7 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       const res = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("compliance_delete", {
           raw_information_id: missing,
           reason: "owner request",
@@ -1794,9 +1810,9 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       });
       expect(res.statusCode).toBe(200);
       const env = res.json() as JsonRpcEnvelope;
-      expect(env.result?.ok).toBe(false);
+      expect(env.result?.isError).toBe(true);
       // §14 canonical — NOT the rich REST `RESOURCE_NOT_FOUND`.
-      expect(env.result?.error?.code).toBe("NOT_FOUND");
+      expect(mcpErrPayload(env).code).toBe("NOT_FOUND");
       // No audit row on the MCP path either.
       expect(storeMcp.curationActionInsertCount).toBe(0);
     } finally {
@@ -1847,7 +1863,7 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       const first = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("compliance_delete", {
           raw_information_id: rawIdMcp,
           reason: "first call",
@@ -1859,7 +1875,7 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       const second = await appMcp.inject({
         method: "POST",
         url: "/api/v1/mcp/curation",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("compliance_delete", {
           raw_information_id: rawIdMcp,
           reason: "second call",
@@ -1867,8 +1883,8 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       });
       expect(second.statusCode).toBe(200);
       const env = second.json() as JsonRpcEnvelope;
-      expect(env.result?.ok).toBe(true);
-      const inner = env.result?.result as { outcome: string };
+      expect(env.result?.isError).toBeFalsy();
+      const inner = mcpOkPayload(env) as { outcome: string };
       expect(inner.outcome).toBe("noop_already_deleted");
       // Constraint: zero extra audit rows on the no-op compliance_delete
       // path on the MCP transport too.

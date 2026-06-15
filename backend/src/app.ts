@@ -14,7 +14,6 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Logger } from "pino";
 import type { Pool } from "pg";
-import { z } from "zod";
 
 import { pingDatabase } from "./config/db.js";
 import type { Env } from "./config/env.js";
@@ -27,13 +26,12 @@ import {
 } from "./modules/ingestion/index.js";
 import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import {
+  CURATION_TOOL_NAMES,
   registerCurationMcpTransport,
   registerCurationRoutes,
   registerCurationToolset,
-  type CurationMcpToolDescriptor,
 } from "./modules/curation/index.js";
 import {
-  ComplianceDeleteRequestSchema,
   registerComplianceAuditRoutes,
   registerComplianceToolset,
 } from "./modules/compliance-audit/index.js";
@@ -178,7 +176,6 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // request time and registers them on a fresh per-request SDK server; the
       // closed tool set is structural (only these names are registered).
       await registerQueryMcpTransport(scoped, {
-        pool,
         logger,
         mcp,
         toolNames: [...QUERY_TOOL_NAMES, ...QUERY_RETRIEVAL_TOOL_NAMES],
@@ -201,31 +198,19 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
           },
           { prefix: "/curation" }
         );
-        // MCP-over-HTTP write transport — POST /api/v1/mcp/curation (TC-mcc-03,
-        // curation.back.md BR-29). Sibling of the REST surface, same
-        // requireNeonAuth, NO X-LLM-Run-Id header, closed whitelist of 8 names
-        // (CURATION_TOOL_NAMES ∪ {'compliance_delete'}). The seven curation
-        // tools live on the shared McpServer under the `curation` toolset key
-        // (registered by `registerCurationToolset` below); the eighth tool,
-        // `compliance_delete`, is owned by `compliance-audit` and registered
-        // under the same toolset key by `registerComplianceToolset` below.
-        // We hand the eighth tool's descriptor (name + description +
-        // JSON Schema) to the transport here so its tools/list + closed-
-        // whitelist gate can advertise / admit it without creating a reverse
-        // dependency from curation into compliance-audit.
-        const complianceDeleteDescriptor: CurationMcpToolDescriptor = {
-          name: "compliance_delete",
-          description:
-            "Tombstone a RawInformation under LGPD or owner request. Idempotent.",
-          inputSchema: z.toJSONSchema(ComplianceDeleteRequestSchema, {
-            unrepresentable: "any",
-          }) as unknown as Record<string, unknown>,
-        };
+        // MCP-over-HTTP write transport — POST /api/v1/mcp/curation
+        // (curation.back.md BR-29). Sibling of the REST surface, same
+        // requireNeonAuth, NO X-LLM-Run-Id header. Closed set of 8 names
+        // (CURATION_TOOL_NAMES ∪ {'compliance_delete'}); the seven curation
+        // tools and the eighth (`compliance_delete`, owned by compliance-audit)
+        // all live on the shared registry under the `curation` toolset key
+        // (registered by `registerCurationToolset` / `registerComplianceToolset`
+        // below). The transport reads their descriptors from the registry at
+        // request time — no reverse dependency into compliance-audit.
         await registerCurationMcpTransport(scoped, {
-          pool,
           logger,
           mcp,
-          extraTools: [complianceDeleteDescriptor],
+          toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"],
         });
       }
       // Query-retrieval module (TC-06) — read-only search + provenance walks.
