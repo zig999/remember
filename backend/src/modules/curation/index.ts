@@ -16,3 +16,10 @@ export type {
   CurationToolName,
   CurationToolsetDeps,
 } from "./mcp/curation-toolset.js";
+
+// MCP curation transport — POST /api/v1/mcp/curation (TC-mcc-03, BR-29).
+export { registerCurationMcpTransport } from "./mcp/curation-transport.js";
+export type {
+  CurationMcpToolDescriptor,
+  CurationMcpTransportDeps,
+} from "./mcp/curation-transport.js";

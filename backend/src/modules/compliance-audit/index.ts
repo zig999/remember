@@ -11,4 +11,9 @@ export {
 } from "./mcp/compliance-toolset.js";
 export type { ComplianceToolsetDeps } from "./mcp/compliance-toolset.js";
 
+// Re-exported DTO so the bootstrap (`app.ts`) can derive the MCP tool descriptor
+// for `compliance_delete` on the curation transport (TC-mcc-03 / BR-29 / BR-31)
+// without reaching into the dto/ subfolder directly.
+export { ComplianceDeleteRequestSchema } from "./dto/compliance-delete.dto.js";
+
 export { REDACTED_LITERAL } from "./service/compliance-audit.service.js";
