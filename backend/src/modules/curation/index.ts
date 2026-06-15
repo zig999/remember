@@ -7,6 +7,12 @@ export {
 export type { CurationRouteDeps } from "./routes/curation.routes.js";
 
 export {
+  CURATION_TOOL_NAMES,
+  CurationToolDescriptions,
+  CurationToolInputJsonSchemas,
   registerCurationToolset,
 } from "./mcp/curation-toolset.js";
-export type { CurationToolsetDeps } from "./mcp/curation-toolset.js";
+export type {
+  CurationToolName,
+  CurationToolsetDeps,
+} from "./mcp/curation-toolset.js";
