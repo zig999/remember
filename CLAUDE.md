@@ -40,8 +40,9 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 > 2. **Supabase Auth (JWT em middleware)** — autenticação como porta de acesso, mantendo o modelo
 >    single-owner sem entidade `User` (v7 §2.3, §2.5).
 > 3. **Driver `pg` raw** — substitui o query builder Kysely/Drizzle (v7 §2.2, A6).
-> 4. **MCP × REST** — dois transportes sobre uma única camada de serviço; `query`/`curation`
->    espelhados em REST, `ingest` MCP-only (v7 §2, §14, A28).
+> 4. **MCP × REST** — dois transportes sobre uma única camada de serviço; os três toolsets
+>    (`ingest`/`query`/`curation`) duais REST+MCP (v7 §2, §14, A28). Realização atual no SDK
+>    oficial — ver nota "Migração MCP→SDK" abaixo.
 
 > **Desvio da fonte normativa (2026-06-12) — infraestrutura.** Por decisão do dono, a
 > infraestrutura saiu do Supabase:
@@ -54,6 +55,23 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 > O **v7 (§2.2/§2.5) ainda registra Supabase** — este CLAUDE.md reflete o estado atual. As specs em
 > `docs/specs/` também ainda citam Supabase; reconciliar v7 + specs numa revisão futura (ex.: via
 > `/u-improve`).
+
+> **Migração MCP→SDK (2026-06-15) — transportes.** Os três transportes MCP foram migrados para o
+> SDK oficial **`@modelcontextprotocol/sdk`**, sobre um kernel único
+> `backend/src/mcp/sdk-http-transport.ts` (`mountMcpEndpoint`; low-level `Server`, Streamable HTTP
+> **stateless**, **MCP 2025-06-18** `content`/`isError`). Substitui o JSON-RPC artesanal anterior;
+> consumível por qualquer cliente MCP padrão.
+> 1. **Rotas:** `POST /api/v1/mcp/ingest` · `POST /api/v1/mcp/query` · `POST /api/v1/mcp/curation`
+>    (o `ingest` saiu de `/api/v1/mcp` para `/api/v1/mcp/ingest`, simétrico aos outros).
+> 2. **Wire:** `{ ok, result, error }` é o contrato **lógico**; REST o devolve direto (com HTTP
+>    status), MCP o renderiza como `content`/`isError` (mapeamento em
+>    `backend/src/shared/error-mapping.ts`). Validação fica nos handlers (preserva
+>    `VALIDATION_INVALID_FORMAT`/`BUSINESS_*`).
+> 3. **`ingest` dual + run-id por argumento:** `llm_run_id` é **argumento de ferramenta** (não mais
+>    o header `X-LLM-Run-Id`); o modelo per-session foi aposentado. O `ingest` é dual (espelhos REST
+>    `propose-*`) — revoga o rótulo "MCP-only" antes registrado.
+> Reconciliado na fonte normativa pela **Emenda v7.2** e na back-spec `ingestion.back.md`
+> (BR-21/23/24/28).
 
 #### Core concepts
 
@@ -301,8 +319,11 @@ Orchestrators refuse to spawn if `nesting_depth >= 3`. If this error appears, th
 - API (frontend): **REST (Fastify)** — OpenAPI via `@fastify/swagger`.
 - API (LLM): ferramentas MCP tipadas, organizadas em três toolsets — `ingest`, `query`, `curation`
   (catálogo normativo: §14). O toolset `ingest` só está disponível dentro de um `LLMRun`.
-- Envelope comum de resposta MCP: `{ "ok": true, "result": { … } }` /
-  `{ "ok": false, "error": { "code", "message", "details" } }`. Códigos de erro:
+- Envelope **lógico** de negócio: `{ "ok": true, "result": { … } }` /
+  `{ "ok": false, "error": { "code", "message", "details" } }`. Renderização por transporte: REST
+  devolve esse envelope direto (com HTTP status); **MCP** o renderiza no formato **MCP 2025-06-18**
+  (`content`/`isError`) via `backend/src/mcp/sdk-http-transport.ts` + `shared/error-mapping.ts`.
+  Códigos de erro:
   `STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`,
   `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`. Resultados de negócio (consolidado, disputado,
   em revisão…) **não são erros** — voltam em `result.outcome`.
@@ -365,7 +386,10 @@ Required protocol:
 ### MCP Server
 
 - role: um dos dois transportes do BFF (o outro é REST, para a SPA) — a LLM só age através das
-  ferramentas dele (§2). Toolsets `query`/`curation` espelhados em REST; `ingest` é MCP-only.
+  ferramentas dele (§2). Os três toolsets (`ingest`/`query`/`curation`) são duais REST+MCP,
+  montados via o kernel SDK único `backend/src/mcp/sdk-http-transport.ts`
+  (`@modelcontextprotocol/sdk`, MCP 2025-06-18 `content`/`isError`). Rotas:
+  `POST /api/v1/mcp/{ingest,query,curation}`.
 - auth: **JWT válido (Neon Auth) exigido**, verificado no middleware do BFF — igual ao REST
   (§2.5). Single-owner, sem autorização por papel.
 - contract: catálogo normativo de ferramentas na §14 (schema JSON normativo em §14.2).
