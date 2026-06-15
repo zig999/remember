@@ -21,8 +21,10 @@ import { buildErrorHandler } from "./middleware/error-handler.js";
 import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
 import {
+  INGEST_TOOL_NAMES,
   registerIngestionRoutes,
   registerIngestMcpTransport,
+  registerIngestToolset,
 } from "./modules/ingestion/index.js";
 import type { CatalogSnapshot as IngestionCatalogSnapshot } from "./modules/ingestion/index.js";
 import {
@@ -139,19 +141,23 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     // siblings of `/api/v1/ingest`); catalog snapshot is NOT required.
     await registerComplianceAuditRoutes(scoped, { pool, logger });
 
-    // MCP-over-HTTP transport for the `ingest` toolset (TC-014). Mounted as
-    // POST /api/v1/mcp under the auth-protected scope, so requireNeonAuth
-    // is enforced for every JSON-RPC message. Per-request sessions bind the
-    // ambient llm_run_id from the X-LLM-Run-Id header; the toolset is
-    // invisible until that header is set (BR-21 first bullet). The catalog
-    // snapshot is required for the propose-node / propose-link /
-    // propose-attribute handlers — if it is absent the transport is skipped
-    // (same condition as the curation REST mirror).
+    // MCP-over-HTTP transport for the `ingest` toolset (v1.2.4 — migrated to
+    // the shared SDK kernel). Mounted as POST /api/v1/mcp/ingest under the
+    // auth-protected scope, so requireNeonAuth is enforced for every request.
+    // Stateless single-shape (no per-session model, no X-LLM-Run-Id ambient
+    // header) — `llm_run_id` is a per-call tool argument validated by the
+    // MCP-facing Zod schemas (Option B — BR-21 revised, BR-28). The four
+    // `propose_*` tools live on the shared registry `mcp` (registered below
+    // by `registerIngestToolset`); the transport reads their descriptors from
+    // there at request time. The catalog snapshot is required for the
+    // toolset's propose-node / propose-link / propose-attribute handlers —
+    // if it is absent the transport is skipped (same condition as the
+    // curation REST mirror).
     if (ingestionCatalog !== undefined) {
       await registerIngestMcpTransport(scoped, {
-        pool,
         logger,
-        catalog: ingestionCatalog,
+        mcp,
+        toolNames: [...INGEST_TOOL_NAMES],
       });
     }
 
@@ -256,6 +262,23 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   // namespace with the other seven tools is intentional — v7 §14.4 defines
   // the catalog of curation tools as a single list.
   registerComplianceToolset({ mcp, pool, logger });
+
+  // Ingest MCP toolset (v1.2.4 — TC-MCI-001) — the four `propose_*` tool
+  // handlers wired onto the shared registry under the `ingest` toolset key.
+  // The MCP transport above (POST /api/v1/mcp/ingest) resolves these
+  // descriptors at request time. Requires the ingestion catalog snapshot
+  // (the toolset's propose-{node,link,attribute} handlers consume it for the
+  // 5-layer validation pipeline); skipped when it is absent — the transport
+  // is also skipped under the same condition, so callers see a coherent
+  // (empty) ingest surface.
+  if (ingestionCatalog !== undefined) {
+    registerIngestToolset({
+      mcp,
+      pool,
+      logger,
+      catalog: ingestionCatalog,
+    });
+  }
 
   return app;
 }

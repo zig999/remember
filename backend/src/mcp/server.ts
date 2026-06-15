@@ -5,17 +5,18 @@
 // exposes its single service/validation layer over two transports: REST (for
 // the SPA) and MCP (for the LLM). Three MCP transports coexist in this one
 // process — each a Fastify route over a disjoint, closed tool whitelist:
-//   - POST /api/v1/mcp           `ingest`   — MCP-only, requires X-LLM-Run-Id.
-//                                              Tools live on a per-session
-//                                              registry (ingestion/mcp/
-//                                              session-factory.ts), NOT here.
+//   - POST /api/v1/mcp/ingest    `ingest`   — dual MCP+REST, audited writes
+//                                              (4 propose_* tools); `llm_run_id`
+//                                              is a per-call tool argument
+//                                              (Option B, BR-21 revised).
 //   - POST /api/v1/mcp/query     `query`    — dual MCP+REST, read-only
 //                                              (9 knowledge-graph + 4
 //                                              query-retrieval tools).
 //   - POST /api/v1/mcp/curation  `curation` — dual MCP+REST, audited writes
 //                                              (7 curation + compliance_delete).
-// This module is the registry the `query` and `curation` toolsets bind to at
-// boot; `ingest` uses its own per-session instance (see above).
+// This module is the registry all three toolsets bind to at boot; each MCP
+// transport reads its descriptors from here at request time. (The per-session
+// `ingest` factory of v1.2.3 has been retired in v1.2.4.)
 //
 // Envelope (CLAUDE.md "Architecture / Backend"):
 //   success -> { ok: true,  result: <payload> }
@@ -53,10 +54,8 @@ export interface McpTool<I = unknown, O = unknown> {
 
 /**
  * The MCP server core: an in-process tool registry plus the lookup surface a
- * transport dispatches through. Instantiated twice in this codebase — once as
- * the process-wide singleton shared by the `query` and `curation` transports,
- * and once per LLM session for the `ingest` toolset (ingestion/mcp/
- * session-factory.ts), whose tools close over the ambient llm_run_id.
+ * transport dispatches through. Instantiated once as the process-wide
+ * singleton shared by all three transports (`ingest`, `query`, `curation`).
  *
  * Each transport advertises a static descriptor list and resolves the live
  * handler from this registry at dispatch time (registration may run after the
