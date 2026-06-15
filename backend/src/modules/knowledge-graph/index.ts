@@ -28,10 +28,9 @@ export type {
   QueryMcpToolDescriptor,
   QueryMcpTransportDeps,
 } from "./mcp/query-transport.js";
-// NOTE: the `curation` MCP toolset moved to `backend/src/modules/curation/` in
-// TC-07; the stale skeleton at `./mcp/curation-toolset.ts` is kept only as a
-// no-op so legacy imports continue to compile. Bootstrap now imports the
-// real registrar from the `curation` module.
+// NOTE: the `curation` MCP toolset is owned by `backend/src/modules/curation/`
+// (registered from the `curation` module at bootstrap). Knowledge-graph owns
+// only the read-side `query` transport above.
 
 // Re-export the temporal-filter helper so other modules (TC-05 traversal,
 // query-retrieval) can reuse it.

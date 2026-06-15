@@ -1,13 +1,21 @@
-// MCP server skeleton.
+// MCP server core — the in-process tool registry the HTTP/JSON-RPC transports
+// dispatch through.
 //
-// TC-01 scope: the skeleton itself — toolset registry, typed tool descriptor,
-// and the dispatch surface. Real toolsets (`ingest`, `query`, `curation`)
-// are added by future TCs; this module exposes the surface they will plug
-// into.
-//
-// CLAUDE.md "Architecture / Backend": MCP is the second transport of the BFF
-// (the first is REST). Both share the same service layer. The `ingest`
-// toolset is MCP-only; `query` / `curation` are mirrored in REST.
+// Topology (CLAUDE.md "Architecture / Backend"; v7 §2, §14, A28). The BFF
+// exposes its single service/validation layer over two transports: REST (for
+// the SPA) and MCP (for the LLM). Three MCP transports coexist in this one
+// process — each a Fastify route over a disjoint, closed tool whitelist:
+//   - POST /api/v1/mcp           `ingest`   — MCP-only, requires X-LLM-Run-Id.
+//                                              Tools live on a per-session
+//                                              registry (ingestion/mcp/
+//                                              session-factory.ts), NOT here.
+//   - POST /api/v1/mcp/query     `query`    — dual MCP+REST, read-only
+//                                              (9 knowledge-graph + 4
+//                                              query-retrieval tools).
+//   - POST /api/v1/mcp/curation  `curation` — dual MCP+REST, audited writes
+//                                              (7 curation + compliance_delete).
+// This module is the registry the `query` and `curation` toolsets bind to at
+// boot; `ingest` uses its own per-session instance (see above).
 //
 // Envelope (CLAUDE.md "Architecture / Backend"):
 //   success -> { ok: true,  result: <payload> }
@@ -44,12 +52,15 @@ export interface McpTool<I = unknown, O = unknown> {
 }
 
 /**
- * The MCP server itself. Holds the registry and exposes a `dispatch` entry
- * point that the transport layer (stdio / websocket / future) will call.
+ * The MCP server core: an in-process tool registry plus the lookup surface a
+ * transport dispatches through. Instantiated twice in this codebase — once as
+ * the process-wide singleton shared by the `query` and `curation` transports,
+ * and once per LLM session for the `ingest` toolset (ingestion/mcp/
+ * session-factory.ts), whose tools close over the ambient llm_run_id.
  *
- * Transport binding is intentionally out of scope of TC-01 — we only build
- * the in-process registry. A subsequent TC will wire the actual MCP protocol
- * layer (e.g. `@modelcontextprotocol/sdk`) on top of this surface.
+ * Each transport advertises a static descriptor list and resolves the live
+ * handler from this registry at dispatch time (registration may run after the
+ * route is mounted — see app.ts).
  */
 export class McpServer {
   private readonly tools = new Map<string, McpTool>();

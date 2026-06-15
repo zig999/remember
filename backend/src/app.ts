@@ -245,9 +245,11 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     }
   }, { prefix: "/api/v1" });
 
-  // MCP toolsets — query and curation. Query is a skeleton in TC-04 (lands in
-  // TC-05); curation registers the seven write tools alongside list_review_queue
-  // (TC-07).
+  // MCP toolsets — bind tool handlers onto the shared (process-wide) McpServer
+  // registry. `query`: 9 knowledge-graph + 4 query-retrieval read tools;
+  // `curation`: 7 curation write tools + `compliance_delete` (compliance-audit).
+  // The `query`/`curation` transports mounted above resolve these handlers at
+  // dispatch time, so registering here (after the routes are mounted) is fine.
   if (catalog !== undefined) {
     registerQueryToolset({ mcp, pool, logger, catalog });
     // Query-retrieval MCP toolset (TC-03 / query-retrieval.back.md BR-23) —
