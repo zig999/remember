@@ -76,8 +76,31 @@ export interface CurationRouteDeps {
  * handler would emit (see `backend/src/middleware/error-handler.ts`), and
  * surfacing them from this layer keeps REST and MCP error codes in lockstep.
  */
-function sendError(err: unknown, reply: FastifyReply): FastifyReply {
-  const { statusCode, envelope } = mapErrorToHttpResponse(err);
+function sendError(
+  err: unknown,
+  reply: FastifyReply,
+  logger: Logger
+): FastifyReply {
+  const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
+  // Infra / unknown faults (logLevel "error": pg unavailable, unhandled
+  // exceptions) have their `err.message` masked in the envelope. Log the
+  // original server-side so the cause is not lost — before the BR-30 refactor
+  // these errors were re-thrown to the global handler, which logged them with
+  // this same shape (see middleware/error-handler.ts). Expected client-driven
+  // faults (logLevel "warn": business / validation / not-found) are NOT logged
+  // here, matching the pre-refactor behaviour and avoiding log noise.
+  if (logLevel === "error") {
+    logger.error(
+      {
+        route: reply.request.routeOptions?.url ?? reply.request.url,
+        method: reply.request.method,
+        error_code: envelope.error.code,
+        cause_message: err instanceof Error ? err.message : String(err),
+        cause_name: err instanceof Error ? err.name : typeof err,
+      },
+      "curation_request_failed"
+    );
+  }
   return reply.status(statusCode).send(envelope);
 }
 
@@ -108,7 +131,7 @@ export async function registerCurationRoutes(
       try {
         body = ResolveEntityMatchBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await resolveEntityMatchService(
@@ -118,7 +141,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );
@@ -133,7 +156,7 @@ export async function registerCurationRoutes(
       try {
         body = MergeNodesBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await mergeNodesService(
@@ -144,7 +167,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );
@@ -159,7 +182,7 @@ export async function registerCurationRoutes(
       try {
         body = ResolveDisputeBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await resolveDisputeService(
@@ -168,7 +191,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );
@@ -183,7 +206,7 @@ export async function registerCurationRoutes(
       try {
         body = ConfirmItemBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await confirmItemService(
@@ -196,7 +219,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );
@@ -211,7 +234,7 @@ export async function registerCurationRoutes(
       try {
         body = RejectItemBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await rejectItemService(
@@ -224,7 +247,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );
@@ -239,7 +262,7 @@ export async function registerCurationRoutes(
       try {
         body = CorrectItemBodySchema.parse(request.body ?? {});
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
       try {
         const result = await correctItemService(
@@ -252,7 +275,7 @@ export async function registerCurationRoutes(
         );
         return reply.status(200).send(result);
       } catch (err) {
-        return sendError(err, reply);
+        return sendError(err, reply, deps.logger);
       }
     }
   );

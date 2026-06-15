@@ -2098,3 +2098,133 @@ describe("Curation — Auth", () => {
     }
   });
 });
+
+describe("Curation — observability (BUG-01 regression)", () => {
+  let fixture: AuthFixture;
+  let token: string;
+  beforeAll(async () => {
+    fixture = await buildAuthFixture();
+    token = await signValidJwt(fixture.privateKey);
+  });
+
+  // pino logger that captures every emitted record so we can assert what is
+  // logged server-side. A plain object with `write` is a valid pino destination.
+  function buildCaptureLogger() {
+    const records: Array<Record<string, unknown>> = [];
+    const logger = pino(
+      { level: "trace" },
+      { write: (s: string) => records.push(JSON.parse(s)) }
+    );
+    return { logger, records };
+  }
+
+  // A pool that behaves as if Postgres were unreachable — both `connect` and
+  // the returned client's `query` raise an ECONNREFUSED error, so whichever
+  // path a service takes lands in the shared mapper's `logLevel: "error"`
+  // (503 SYSTEM_SERVICE_UNAVAILABLE) branch.
+  function buildUnavailablePool(): any {
+    const fail = (): never => {
+      throw Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), {
+        code: "ECONNREFUSED",
+      });
+    };
+    const client = { query: async () => fail(), release: () => undefined };
+    return {
+      connect: async () => client,
+      query: async () => fail(),
+      on: () => undefined,
+      end: async () => undefined,
+    };
+  }
+
+  async function buildAppWithLogger(
+    logger: ReturnType<typeof pino>,
+    pool: unknown
+  ) {
+    const store = buildEmptyStore();
+    return buildApp({
+      env: envFixture,
+      logger: logger as never,
+      pool: pool as never,
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(logger as never),
+      catalog: buildCatalogFromStore(store),
+      ingestionCatalog: buildIngestionCatalogFromStore(store),
+    });
+  }
+
+  // The regression: `sendError` previously discarded the mapper's `logLevel`,
+  // so pg-unavailable / unknown faults on curation routes stopped being logged
+  // server-side after the BR-30 refactor (the masked envelope hides the cause).
+  it("logs pg-unavailable on a write route at error level (cause preserved server-side)", async () => {
+    const { logger, records } = buildCaptureLogger();
+    const app = await buildAppWithLogger(logger, buildUnavailablePool());
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/nodes/merge",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          survivor_id: "11111111-1111-4111-8111-111111111111",
+          absorbed_id: "22222222-2222-4222-8222-222222222222",
+          reason: "operator dedup merge",
+        },
+      });
+
+      // Client gets the masked 503 — `err.message` is never leaked.
+      expect(res.statusCode).toBe(503);
+      const body = res.json() as {
+        ok: boolean;
+        error: { code: string; message: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("SYSTEM_SERVICE_UNAVAILABLE");
+      expect(body.error.message).not.toContain("ECONNREFUSED");
+
+      // Server-side: the cause IS logged at error level (this is what BUG-01
+      // had regressed).
+      const failureLog = records.find(
+        (r) => r.msg === "curation_request_failed"
+      );
+      expect(failureLog).toBeDefined();
+      expect(failureLog?.level).toBe(50); // pino numeric level for "error"
+      expect(failureLog?.error_code).toBe("SYSTEM_SERVICE_UNAVAILABLE");
+      expect(String(failureLog?.cause_message)).toContain("ECONNREFUSED");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Counterpart: expected client-driven faults (warn) must NOT be logged at
+  // error level — preserving the pre-refactor behaviour and avoiding noise.
+  it("does NOT log expected business/validation faults at error level", async () => {
+    const { logger, records } = buildCaptureLogger();
+    // Self-merge fails Zod validation before the pool is touched -> warn path.
+    const app = await buildAppWithLogger(logger, buildUnavailablePool());
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/curation/nodes/merge",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          survivor_id: "11111111-1111-4111-8111-111111111111",
+          absorbed_id: "11111111-1111-4111-8111-111111111111",
+          reason: "self merge",
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      const body = res.json() as { error: { code: string } };
+      expect(body.error.code).toBe("BUSINESS_SELF_MERGE_FORBIDDEN");
+
+      const errorFailureLogs = records.filter(
+        (r) => r.msg === "curation_request_failed" && r.level === 50
+      );
+      expect(errorFailureLogs).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+});
