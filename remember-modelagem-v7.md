@@ -82,15 +82,18 @@ LLM  ──MCP tools─────┘                                          
 - A **LLM** lê o conteúdo e **sugere** conhecimento estruturado chamando as ferramentas tipadas
   do catálogo da seção 14.
 - O **BFF** é a **fronteira única**: nem a SPA nem a LLM tocam o banco. Ele expõe **a mesma
-  camada de serviço/validação** por **dois transportes**:
+  camada de serviço/validação** por **dois transportes** (REST e MCP):
   - **REST** (documentado por OpenAPI via `@fastify/swagger`) — consumido pela **SPA**;
   - **MCP** — três toolsets `ingest`, `query`, `curation` (catálogo da seção 14) — consumido pela
-    **LLM**.
+    **LLM**, em **três rotas distintas**:
+    - `POST /api/v1/mcp` — toolset `ingest` (escrita; **exclusivo MCP**; exige `X-LLM-Run-Id`);
+    - `POST /api/v1/mcp/query` — toolset `query` (**dual MCP+REST**; somente leitura);
+    - `POST /api/v1/mcp/curation` — toolset `curation` (**dual MCP+REST**; escrita auditada).
 
-  Os toolsets `query` (seção 14.3) e `curation` (seção 14.4) têm correspondência **direta** em
-  rotas REST para a SPA; o toolset `ingest` (seção 14.1) é **exclusivo do MCP**, pois só opera
-  dentro de um `LLMRun`. As regras de validação (seção 13) e a camada de serviço são **únicas** —
-  REST e MCP são fachadas finas sobre elas, **nunca** lógicas paralelas.
+  O toolset `ingest` (seção 14.1) é **exclusivo do MCP**, pois só opera dentro de um `LLMRun`. Os
+  toolsets `query` (seção 14.3) e `curation` (seção 14.4) são **duais**: expostos tanto como
+  ferramentas MCP quanto como rotas REST para a SPA — mesma camada de serviço, mesma validação
+  (seção 13). REST e MCP são fachadas finas sobre a mesma lógica, **nunca** lógicas paralelas.
 - O **BFF** **valida** (estrutura, regras, existência, confiança, proveniência, regras temporais)
   e decide o que persistir.
 - O **Banco** **persiste** tudo de forma durável e auditável.
@@ -1113,10 +1116,28 @@ registro), `RULE_VIOLATION` (par de tipos ilegal), `TEMPORAL_INCOHERENT`, `DATE_
 `NOT_FOUND`, `INTERNAL`. Resultados de negócio (consolidado, disputado, em revisão…) **não são
 erros** — voltam em `result.outcome`.
 
-> **Transporte.** Os toolsets `query` (14.3) e `curation` (14.4) têm rotas REST equivalentes,
-> consumidas pela SPA; o toolset `ingest` (14.1) é **exclusivo do MCP** — só opera dentro de um
-> `LLMRun` (seção 2). A camada de serviço e as validações (seção 13) são únicas para os dois
-> transportes.
+> **Transporte e topologia de rotas.** Três transportes MCP coexistem no mesmo processo BFF
+> (ADR A28 — núcleo único, transportes disjuntos):
+>
+> | Toolset | Rota MCP | REST equivalente | Modo |
+> |---|---|---|---|
+> | `ingest` (14.1) | `POST /api/v1/mcp` | — (**exclusivo MCP**) | escrita; exige `X-LLM-Run-Id` |
+> | `query` (14.3) | `POST /api/v1/mcp/query` | `GET /api/v1/...` | somente leitura; dual |
+> | `curation` (14.4) | `POST /api/v1/mcp/curation` | `POST /api/v1/curation/...` | escrita auditada; dual |
+>
+> A camada de serviço e as validações (seção 13) são **únicas** — REST e MCP são fachadas finas
+> sobre elas, nunca lógicas paralelas. Os três transportes compartilham o mesmo núcleo `McpServer`
+> mas têm registros de ferramentas disjuntos (lista fechada por transporte).
+>
+> **Códigos de erro por transporte.** O conjunto canônico acima (`STRUCTURAL_INVALID` …
+> `INTERNAL`) aplica-se ao toolset `ingest` e ao toolset `curation` / ferramenta
+> `compliance_delete` (que mantém o mapeamento canônico original — ADR A28). O toolset `query` e
+> as demais sete ferramentas do toolset `curation` (`list_review_queue`, `resolve_entity_match`,
+> `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item`) usam o conjunto
+> **estendido** da taxonomia REST: `RESOURCE_NOT_FOUND`, `BUSINESS_NODE_DELETED`, `BUSINESS_*`
+> (e.g. `BUSINESS_REASON_REQUIRED`, `BUSINESS_TEMPORAL_INCOHERENT`, …),
+> `VALIDATION_INVALID_FORMAT`, além dos códigos canônicos. O conjunto canônico é a **base**; o
+> conjunto estendido adiciona os códigos específicos do domínio.
 
 ### 14.1 Toolset `ingest` (disponível apenas dentro de um `LLMRun`; o run é contexto ambiente)
 
@@ -1591,7 +1612,7 @@ configuração, não de arquitetura.
 | A25 | **Eixo de transação — consulta (c)** | Colunas `recorded_at`/`superseded_at` **mantidas**; `superseded_at` usado (correção, linhagem, versão corrente); **consulta (c)** (system-time travel) **diferida** — dados preservados via `recorded_at`, caminho não construído/testado/mantido até necessidade real (seção 5.3, 20.2) |
 | A26 | **Filas de curadoria** | **Duas** filas dedicadas: `entity_match`, `disputed`. `uncertain` e `low_confidence` são **flags de exibição**, sem fila; promoção a fila dedicada é aditiva e diferida até o volume justificar (seção 10, 20.2) |
 | A27 | **Frontend / SPA** | React 19 + TypeScript (strict) + Vite 6; Tailwind v4 (CSS-first via `@theme`) + shadcn/ui (Radix); TanStack Router/Query v5/Table; Zustand v5; React Hook Form v7 + Zod v4; Framer Motion, sonner, lucide-react; testes Vitest + Playwright + MSW. Consome o BFF **só por REST** (seção 2.4) |
-| A28 | **BFF — framework e transporte** | Node.js 20 LTS + TypeScript (strict) + Fastify; REST documentado por `@fastify/swagger` (SPA) e ferramentas MCP (LLM) sobre **uma** camada de serviço/validação; `ingest` é **MCP-only**; `query`/`curation` espelhados em REST; logs `pino`; validação de DTO/env com Zod v4 (seção 2) |
+| A28 | **BFF — framework e transporte** | Node.js 20 LTS + TypeScript (strict) + Fastify; REST documentado por `@fastify/swagger` (SPA) e ferramentas MCP (LLM) sobre **uma** camada de serviço/validação. Três transportes MCP disjuntos (núcleo único): `POST /api/v1/mcp` (`ingest`, **MCP-only**, exige `X-LLM-Run-Id`); `POST /api/v1/mcp/query` (`query`, **dual MCP+REST**, somente leitura); `POST /api/v1/mcp/curation` (`curation`, **dual MCP+REST**, escrita auditada, 8 ferramentas: 7 owned by `curation` + `compliance_delete` owned by `compliance-audit`). Lista de ferramentas por transporte é fechada (whitelist). Logs `pino`; validação de DTO/env com Zod v4 (seção 2, 14) |
 | A29 | **Autenticação e fronteira de acesso** | **Supabase Auth** — JWT validado no middleware do BFF; **service key só no BFF**; **RLS desligado** (autorização centralizada no BFF); há superfície de rede, fechada por autenticação (seção 2.5) |
 
 ## Apêndice B — Changelog v6 → v7
@@ -1612,3 +1633,18 @@ configuração, não de arquitetura.
 | Princípio 16 adicionado (BFF como fronteira única, acesso autenticado) | 18 |
 | Cenário C16 adicionado (rejeição de acesso sem JWT válido) | 17 |
 | Logs estruturados atribuídos a `pino` | 16 |
+
+## Apêndice C — Emenda v7.1 (2026-06-15): transporte MCP curation
+
+> Emenda aditiva à v7: reconcilia o modelo de transporte para um modelo **simétrico** em que os
+> três toolsets têm topologias explícitas e consistentes. Não altera o modelo de dados, o schema,
+> os cenários de aceitação, nem as validações de negócio. Fora do escopo desta emenda:
+> reconciliação Supabase→Neon (registrada no CLAUDE.md como desvio de infraestrutura).
+
+| Mudança | Seções afetadas |
+|---|---|
+| **Transporte MCP curation adicionado** (`POST /api/v1/mcp/curation`): o toolset `curation` passa a ser **dual MCP+REST**, simetricamente ao toolset `query`. 8 ferramentas na whitelist fechada: 7 owned by `curation` (`list_review_queue`, `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item`) + `compliance_delete` owned by `compliance-audit`. | 2, 14, A28 |
+| **Topologia de três transportes documentada explicitamente** no §2 e §14 (antes implícita): rota, modo (MCP-only / dual), tipo (leitura / escrita auditada). | 2, 14, A28 |
+| **Conjunto de códigos de erro por transporte esclarecido** no §14: `ingest` e `compliance_delete` usam o conjunto canônico; `query` e as outras 7 ferramentas de `curation` usam o conjunto estendido com a taxonomia REST completa (`RESOURCE_NOT_FOUND`, `BUSINESS_*`, `VALIDATION_INVALID_FORMAT`). | 14 |
+| **A28 atualizado** para espelhar os três transportes com rotas, modos e ownership de ferramentas. | A28 |
+| **Back-specs correspondentes aprovadas**: `domains/curation/back/curation.back.md` v1.2.0 (BR-29 a BR-32) e `domains/compliance-audit/back/compliance-audit.back.md` v1.2.0 (BR-14, BR-15) — fontes normativas do detalhe de implementação. | — |
