@@ -4,30 +4,28 @@
 export { registerIngestionRoutes } from "./routes/ingestion.routes.js";
 export type { IngestionRouteDeps } from "./routes/ingestion.routes.js";
 
-// MCP ingest toolset — registered per-session by the MCP transport layer
-// once an ambient `llm_run_id` is established (BR-21).
-export { registerIngestToolset, getIngestToolJsonSchemas } from "./mcp/toolset.js";
-export type { IngestToolsetSessionDeps } from "./mcp/toolset.js";
-
-// Per-session McpServer factory (TC-014). Built once per MCP session; binds
-// the ambient `llm_run_id` against the four propose-* tools.
+// MCP ingest toolset — registered on the SHARED in-process `McpServer`
+// registry at boot. The MCP transport below resolves the four tool
+// descriptors at request time. (Per-session factory retired in v1.2.4.)
 export {
-  createIngestSession,
-  type IngestSession,
-  type IngestSessionFactoryDeps,
-} from "./mcp/session-factory.js";
+  registerIngestToolset,
+  INGEST_TOOL_NAMES,
+  type IngestToolsetDeps,
+  type IngestMcpToolName,
+} from "./mcp/ingest-toolset.js";
 
-// MCP-over-HTTP transport (TC-014). Mounted as `POST /mcp` under the
-// auth-protected `/api/v1` scope by the bootstrap. JSON-RPC 2.0 wire format,
-// JWT-guarded by the parent scope's `requireNeonAuth` preHandler.
+// MCP-over-HTTP transport (v1.2.4) — thin wrapper over the shared SDK kernel
+// `mountMcpEndpoint`, mounted as `POST /mcp/ingest` under the auth-protected
+// `/api/v1` scope by the bootstrap. Stateless single-shape; tools are always
+// listed (BR-21 revised). NO `X-LLM-Run-Id` ambient header — `llm_run_id` is
+// a per-call tool argument validated by the MCP-facing Zod schemas (Option B).
 export {
   registerIngestMcpTransport,
-  LLM_RUN_HEADER,
   type IngestMcpTransportDeps,
 } from "./mcp/transport.js";
 
 // Tool input schemas — single source per BR-24 (Zod + derived JSON Schema).
-// Future REST mirror (TC-12) and Anthropic tool-use loop (TC-12) consume the
+// Future REST mirror (TC-13) and Anthropic tool-use loop (TC-12) consume the
 // derived JSON Schemas from here.
 export {
   IngestToolInputJsonSchemas,
@@ -52,8 +50,7 @@ export type {
 } from "./dto/index.js";
 
 // Transport-agnostic `propose_*` services (BR-28). The MCP handlers, the
-// future REST mirrors, and the future extraction orchestrator all call
-// through these.
+// REST mirrors, and the extraction orchestrator all call through these.
 export { proposeAttributeService } from "./service/propose-attribute.service.js";
 export { proposeFragmentService } from "./service/propose-fragment.service.js";
 export { proposeLinkService } from "./service/propose-link.service.js";
@@ -61,7 +58,7 @@ export { proposeNodeService } from "./service/propose-node.service.js";
 export type { McpEnvelope, RunContext } from "./service/propose.types.js";
 
 // Catalog snapshot — loaded once at BFF startup by the bootstrap; passed to
-// `registerIngestToolset` on every MCP session.
+// `registerIngestToolset` once, and passed to the propose-* REST mirrors.
 export {
   buildSnapshot,
   domainOf,
