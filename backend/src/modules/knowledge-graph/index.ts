@@ -19,15 +19,12 @@ export type {
 } from "./catalog/catalog.js";
 
 // MCP toolset registration entry points.
-export { registerQueryToolset } from "./mcp/query-toolset.js";
+export { registerQueryToolset, QUERY_TOOL_NAMES } from "./mcp/query-toolset.js";
 export type { QueryToolsetDeps } from "./mcp/query-toolset.js";
 
 // MCP query transport — POST /api/v1/mcp/query (TC-02, BR-23).
 export { registerQueryMcpTransport } from "./mcp/query-transport.js";
-export type {
-  QueryMcpToolDescriptor,
-  QueryMcpTransportDeps,
-} from "./mcp/query-transport.js";
+export type { QueryMcpTransportDeps } from "./mcp/query-transport.js";
 // NOTE: the `curation` MCP toolset is owned by `backend/src/modules/curation/`
 // (registered from the `curation` module at bootstrap). Knowledge-graph owns
 // only the read-side `query` transport above.

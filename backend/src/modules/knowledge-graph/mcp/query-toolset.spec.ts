@@ -1,39 +1,37 @@
 // Unit tests for the MCP `query` toolset + the `POST /api/v1/mcp/query`
-// transport.
+// transport (now on @modelcontextprotocol/sdk, Streamable HTTP).
 //
-// Acceptance criteria addressed (TC-02 validation.criteria):
-//   (a) tools/list returns all 9 names with non-empty inputSchema JSON.
-//   (b) tools/call get_node success path returns { ok: true, result: <node> }.
-//   (c) tools/call with unknown tool name returns { ok: false, error: { code: ... } }.
-//   (d) tools/call with invalid Zod input returns VALIDATION_INVALID_FORMAT.
-// Plus the BR-23 rule 5 closed-whitelist guard (proposes are unreachable),
-// the BR-25 JSON-Schema-from-Zod pinning, and a generic error-mapping path.
+// What this suite owns (post-SDK migration):
+//   (a) tools/list advertises the 9 names with non-empty JSON Schemas.
+//   (b) tools/call success → the service payload in a text content block.
+//   (c) business errors → an isError result carrying our { code, ... } envelope.
+//   (d) input that fails Zod validation is rejected before the service runs.
+//   (e) the closed tool set is STRUCTURAL: only `toolNames` are registered on
+//       the per-request SDK server, so an ingest/rogue name is unreachable.
+//   (f) per-tool argument mapping (MCP arg names → service args).
+//   (g) initialize handshake advertises serverInfo + tools capability.
+//
+// JSON-RPC framing, protocol-version negotiation, unknown-method / malformed-
+// request handling, and the exact validation-error wording are now the SDK's
+// responsibility (covered by the SDK's own tests), so the hand-rolled-transport
+// assertions for those were removed in the migration.
 //
 // Strategy: stub the nine service functions via `vi.mock` so the test never
-// touches pg. The fake pool only needs to honour `BEGIN READ ONLY` / ROLLBACK
-// — every meaningful read is intercepted at the service layer.
+// touches pg. The fake pool only honours BEGIN READ ONLY / ROLLBACK.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Fastify from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import pino from "pino";
 
 import { buildMcpServer } from "../../../mcp/server.js";
 import { buildSnapshot, type CatalogSnapshot } from "../catalog/catalog.js";
-import {
-  NodeDeletedError,
-  ResourceNotFoundError,
-} from "../service/errors.js";
+import { NodeDeletedError, ResourceNotFoundError } from "../service/errors.js";
 import {
   QUERY_TOOL_NAMES,
   QueryToolInputJsonSchemas,
   registerQueryToolset,
 } from "./query-toolset.js";
 import { registerQueryMcpTransport } from "./query-transport.js";
-
-// ---------------------------------------------------------------------------
-// vi.mock — stub every service function the toolset wraps. Each mock is set
-// per-test via `mockedX.mockResolvedValueOnce(...)` or `.mockRejectedValueOnce`.
-// ---------------------------------------------------------------------------
 
 vi.mock("../service/node.service.js", () => ({
   getNodeByIdService: vi.fn(),
@@ -53,10 +51,7 @@ vi.mock("../service/traversal.service.js", () => ({
   traverseNodeService: vi.fn(),
 }));
 
-import {
-  getNodeByIdService,
-  listNodesService,
-} from "../service/node.service.js";
+import { getNodeByIdService, listNodesService } from "../service/node.service.js";
 import {
   listAttributeKeysService,
   listLinkTypesService,
@@ -79,27 +74,16 @@ const mockedGetAttributeHistory = vi.mocked(getAttributeHistoryService);
 const mockedGetAttributeKeyHistory = vi.mocked(getAttributeKeyHistoryService);
 const mockedTraverse = vi.mocked(traverseNodeService);
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 const silentLogger = pino({ level: "silent" });
+
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
 
 function buildCatalog(): CatalogSnapshot {
   return buildSnapshot({
     nodeTypes: [
-      {
-        id: "00000000-0000-4000-8000-000000000001",
-        name: "Person",
-        description: null,
-        version: 1,
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000002",
-        name: "Project",
-        description: null,
-        version: 1,
-      },
+      { id: "00000000-0000-4000-8000-000000000001", name: "Person", description: null, version: 1 },
+      { id: "00000000-0000-4000-8000-000000000002", name: "Project", description: null, version: 1 },
     ],
     linkTypes: [],
     linkTypeRules: [],
@@ -107,41 +91,56 @@ function buildCatalog(): CatalogSnapshot {
   });
 }
 
-/** Minimal pg.Pool fake: every read services are mocked, so the client only
- *  needs to honour `BEGIN READ ONLY` / `ROLLBACK`. */
 function buildFakePool(): import("pg").Pool {
   const client = {
-    query: async (...args: unknown[]) => {
-      const sql = String(args[0]).replace(/\s+/g, " ").trim().toUpperCase();
-      if (
-        sql === "BEGIN READ ONLY" ||
-        sql === "BEGIN" ||
-        sql === "COMMIT" ||
-        sql === "ROLLBACK"
-      ) {
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    },
+    query: async () => ({ rows: [], rowCount: 0 }),
     release: () => undefined,
   } as unknown as import("pg").PoolClient;
-  return {
-    connect: async () => client,
-  } as unknown as import("pg").Pool;
+  return { connect: async () => client } as unknown as import("pg").Pool;
 }
 
-/** Build a fresh `McpServer`, register the toolset on it, mount the transport
- *  on a bare Fastify scope (no auth — the auth path is covered upstream by
- *  the parent scope in `app.ts`). */
+/** Build a fresh in-process registry, register the 9 KG tools, and mount the
+ *  SDK transport on a bare Fastify scope (no auth — covered upstream in app.ts). */
 async function buildTransportApp() {
   const mcp = buildMcpServer(silentLogger);
-  const catalog = buildCatalog();
-  const pool = buildFakePool();
-  registerQueryToolset({ mcp, pool, logger: silentLogger, catalog });
-
+  registerQueryToolset({ mcp, pool: buildFakePool(), logger: silentLogger, catalog: buildCatalog() });
   const app = Fastify({ logger: false });
-  await registerQueryMcpTransport(app, { pool, logger: silentLogger, mcp });
+  await registerQueryMcpTransport(app, {
+    pool: buildFakePool(),
+    logger: silentLogger,
+    mcp,
+    toolNames: QUERY_TOOL_NAMES,
+  });
   return { app, mcp };
+}
+
+// ---- MCP call helpers ----
+
+function rpc(method: string, params?: unknown): object {
+  return { jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) };
+}
+function toolCall(name: string, args: Record<string, unknown>): object {
+  return rpc("tools/call", { name, arguments: args });
+}
+async function post(app: FastifyInstance, payload: object) {
+  return app.inject({
+    method: "POST",
+    url: "/mcp/query",
+    headers: { accept: MCP_ACCEPT },
+    payload,
+  });
+}
+interface ToolResult {
+  content?: Array<{ type: string; text: string }>;
+  isError?: boolean;
+  tools?: Array<{ name: string; inputSchema?: unknown }>;
+}
+function result(res: { json: () => unknown }): ToolResult {
+  return (res.json() as { result: ToolResult }).result;
+}
+/** Parse the JSON payload carried in a tool result's text content block. */
+function payload(res: { json: () => unknown }): unknown {
+  return JSON.parse(result(res).content?.[0]?.text ?? "null");
 }
 
 const NODE_ID = "11111111-1111-4111-8111-111111111111";
@@ -153,34 +152,22 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// (a) tools/list — BR-25: nine names + non-empty JSON Schemas.
+// (a) tools/list
 // ---------------------------------------------------------------------------
 
 describe("MCP query transport — tools/list (BR-25)", () => {
-  it("returns all nine tool names with non-empty inputSchema", async () => {
-    // Acceptance (a) — every name from the closed enumeration is present and
-    // every entry carries a JSON Schema object derived from the Zod source.
+  it("advertises all nine tool names with non-empty inputSchema", async () => {
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
-      });
+      const res = await post(app, rpc("tools/list"));
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result: { tools: Array<{ name: string; inputSchema: unknown }> };
-      };
-      const names = body.result.tools.map((t) => t.name).sort();
-      expect(names).toEqual([...QUERY_TOOL_NAMES].sort());
-      for (const tool of body.result.tools) {
-        expect(tool.inputSchema).toBeTypeOf("object");
-        expect(tool.inputSchema).not.toBeNull();
-        // JSON-Schema-2020-12 derivations always carry `type` or `$ref`.
+      const tools = result(res).tools ?? [];
+      expect(tools.map((t) => t.name).sort()).toEqual([...QUERY_TOOL_NAMES].sort());
+      for (const tool of tools) {
         const schema = tool.inputSchema as Record<string, unknown>;
-        expect(
-          schema.type !== undefined || schema.$ref !== undefined
-        ).toBe(true);
+        expect(schema).toBeTypeOf("object");
+        expect(schema).not.toBeNull();
+        expect(schema.type !== undefined || schema.$ref !== undefined).toBe(true);
       }
     } finally {
       await app.close();
@@ -188,12 +175,7 @@ describe("MCP query transport — tools/list (BR-25)", () => {
   });
 
   it("pins the same JSON Schema object exposed by the toolset module", () => {
-    // BR-25 single-source guarantee: a downstream consumer importing
-    // QueryToolInputJsonSchemas observes the same objects the transport
-    // serves over tools/list.
-    expect(Object.keys(QueryToolInputJsonSchemas).sort()).toEqual(
-      [...QUERY_TOOL_NAMES].sort()
-    );
+    expect(Object.keys(QueryToolInputJsonSchemas).sort()).toEqual([...QUERY_TOOL_NAMES].sort());
     for (const name of QUERY_TOOL_NAMES) {
       const schema = QueryToolInputJsonSchemas[name] as Record<string, unknown>;
       expect(schema).toBeTypeOf("object");
@@ -203,14 +185,12 @@ describe("MCP query transport — tools/list (BR-25)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (b) tools/call get_node — success path wraps service return value verbatim.
+// (b) tools/call success
 // ---------------------------------------------------------------------------
 
 describe("MCP query transport — tools/call success (BR-23)", () => {
-  it("get_node returns { ok: true, result: <node payload> } verbatim", async () => {
-    // Acceptance (b) — the toolset's handler wraps the service result in the
-    // canonical MCP envelope and never re-shapes the payload.
-    const payload = {
+  it("get_node returns the service payload verbatim in a text content block", async () => {
+    const node = {
       id: NODE_ID,
       node_type: "Person",
       canonical_name: "Alice",
@@ -218,29 +198,18 @@ describe("MCP query transport — tools/call success (BR-23)", () => {
       aliases: [],
       attributes: [],
     };
-    mockedGetNode.mockResolvedValueOnce(payload as never);
+    mockedGetNode.mockResolvedValueOnce(node as never);
 
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "get_node", arguments: { node_id: NODE_ID } },
-        },
-      });
+      const res = await post(app, toolCall("get_node", { node_id: NODE_ID }));
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { result: { ok: boolean; result: unknown } };
-      expect(body.result).toEqual({ ok: true, result: payload });
+      expect(result(res).isError).toBeFalsy();
+      expect(payload(res)).toEqual(node);
 
-      // The service was called with the flattened input shape — the toolset
-      // is the only place that maps MCP→service argument names.
+      // The toolset maps MCP arg names → service args.
       expect(mockedGetNode).toHaveBeenCalledTimes(1);
-      const args = mockedGetNode.mock.calls[0]!;
-      expect(args[1]).toMatchObject({
+      expect(mockedGetNode.mock.calls[0]![1]).toMatchObject({
         nodeId: NODE_ID,
         inEffectOnly: false,
         includeUncertain: true,
@@ -249,74 +218,30 @@ describe("MCP query transport — tools/call success (BR-23)", () => {
       await app.close();
     }
   });
-
-  it("accepts the fully-qualified `query.get_node` form too", async () => {
-    // Convenience: MCP clients can call either bare or qualified.
-    mockedGetNode.mockResolvedValueOnce({ id: NODE_ID } as never);
-
-    const { app } = await buildTransportApp();
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "query.get_node",
-            arguments: { node_id: NODE_ID },
-          },
-        },
-      });
-      const body = res.json() as { result: { ok: boolean } };
-      expect(body.result.ok).toBe(true);
-    } finally {
-      await app.close();
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
-// (c) tools/call unknown tool name — closed enumeration whitelist.
+// (e) closed tool set is structural
 // ---------------------------------------------------------------------------
 
-describe("MCP query transport — closed whitelist (BR-23 rule 5)", () => {
-  it("returns NOT_FOUND for an unknown tool name", async () => {
-    // Acceptance (c) — unknown names never reach a handler.
+describe("MCP query transport — closed tool set (structural)", () => {
+  it("an unknown tool name is unreachable (isError)", async () => {
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "totally_made_up_tool", arguments: {} },
-        },
-      });
+      const res = await post(app, toolCall("totally_made_up_tool", {}));
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string } };
-      };
-      expect(body.result.ok).toBe(false);
-      expect(body.result.error.code).toBe("NOT_FOUND");
+      expect(result(res).isError).toBe(true);
     } finally {
       await app.close();
     }
   });
 
-  it("rejects ingest-side tool names even if registered on the same McpServer", async () => {
-    // BR-23 rule 5: the query transport must refuse `propose_*` even if a
-    // future bug accidentally registers one under the `query` toolset key.
-    // We simulate that scenario by registering an `propose_node` tool on
-    // the SAME McpServer instance and asserting the transport still refuses
-    // to dispatch it.
+  it("a rogue tool on the shared registry is NOT exposed (only toolNames are registered)", async () => {
+    // Even if a future bug registers `propose_node` under the `query` key on
+    // the shared registry, the per-request SDK server only registers the names
+    // in `toolNames` — so it is structurally unreachable here.
     const { app, mcp } = await buildTransportApp();
     try {
-      // Register a rogue tool — this would never happen in production but
-      // proves the whitelist is the only gate that matters.
       const { z } = await import("zod");
       mcp.registerTool("query", {
         name: "propose_node",
@@ -324,22 +249,8 @@ describe("MCP query transport — closed whitelist (BR-23 rule 5)", () => {
         inputSchema: z.object({}),
         handler: async () => ({ ok: true, result: "should not be reached" }),
       });
-
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "propose_node", arguments: {} },
-        },
-      });
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string } };
-      };
-      expect(body.result.ok).toBe(false);
-      expect(body.result.error.code).toBe("NOT_FOUND");
+      const res = await post(app, toolCall("propose_node", {}));
+      expect(result(res).isError).toBe(true);
     } finally {
       await app.close();
     }
@@ -347,130 +258,36 @@ describe("MCP query transport — closed whitelist (BR-23 rule 5)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (d) tools/call invalid Zod input — VALIDATION_INVALID_FORMAT envelope.
+// (d) input validation — rejected before the service runs
 // ---------------------------------------------------------------------------
 
-describe("MCP query transport — input validation (BR-24)", () => {
-  it("returns VALIDATION_INVALID_FORMAT when input fails Zod parsing", async () => {
-    // Acceptance (d) — bad input is mapped to the canonical Zod envelope via
-    // the shared error mapper from TC-01.
+describe("MCP query transport — input validation", () => {
+  it("rejects a non-UUID node_id and never invokes the service", async () => {
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "get_node",
-            // `node_id` must be a UUID — pass garbage to trip the Zod schema.
-            arguments: { node_id: "not-a-uuid" },
-          },
-        },
-      });
-      const body = res.json() as {
-        result: {
-          ok: boolean;
-          error: { code: string; message: string; details: unknown };
-        };
-      };
-      expect(body.result.ok).toBe(false);
-      expect(body.result.error.code).toBe("VALIDATION_INVALID_FORMAT");
-      expect(Array.isArray(body.result.error.details)).toBe(true);
-      // The service must NEVER be invoked when input validation fails.
+      const res = await post(app, toolCall("get_node", { node_id: "not-a-uuid" }));
+      expect(res.statusCode).toBe(200);
+      expect(result(res).isError).toBe(true);
+      // The SDK validates input against the Zod schema; the service must not run.
       expect(mockedGetNode).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
   });
-
-  it("returns STRUCTURAL_INVALID when tools/call params are malformed", async () => {
-    // Defensive: the transport-level ToolsCallParamsSchema also produces a
-    // typed envelope when `name` is missing.
-    const { app } = await buildTransportApp();
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { arguments: { foo: "bar" } }, // no `name`
-        },
-      });
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string } };
-      };
-      expect(body.result.ok).toBe(false);
-      expect(body.result.error.code).toBe("STRUCTURAL_INVALID");
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("returns INVALID_REQUEST (transport level) for non-JSON-RPC bodies", async () => {
-    const { app } = await buildTransportApp();
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: { foo: "bar" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { error: { code: number; message: string } };
-      // -32600 = JSON-RPC INVALID_REQUEST. Transport-level failures travel
-      // in the JSON-RPC `error` field, not the tool envelope.
-      expect(body.error.code).toBe(-32600);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("returns METHOD_NOT_FOUND for unsupported JSON-RPC methods", async () => {
-    const { app } = await buildTransportApp();
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/banana" },
-      });
-      const body = res.json() as { error: { code: number } };
-      expect(body.error.code).toBe(-32601);
-    } finally {
-      await app.close();
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
-// Error-mapping parity with REST — BR-24 / BR-26.
+// (c) business errors map via the shared envelope (BR-24)
 // ---------------------------------------------------------------------------
 
-describe("MCP query transport — service errors map via the shared envelope (BR-24)", () => {
+describe("MCP query transport — business errors map via the shared envelope (BR-24)", () => {
   it("get_node propagates RESOURCE_NOT_FOUND for an unknown node id", async () => {
-    mockedGetNode.mockRejectedValueOnce(
-      new ResourceNotFoundError("KnowledgeNode", NODE_ID)
-    );
+    mockedGetNode.mockRejectedValueOnce(new ResourceNotFoundError("KnowledgeNode", NODE_ID));
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "get_node", arguments: { node_id: NODE_ID } },
-        },
-      });
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string } };
-      };
-      expect(body.result.ok).toBe(false);
-      expect(body.result.error.code).toBe("RESOURCE_NOT_FOUND");
+      const res = await post(app, toolCall("get_node", { node_id: NODE_ID }));
+      expect(result(res).isError).toBe(true);
+      expect((payload(res) as { code: string }).code).toBe("RESOURCE_NOT_FOUND");
     } finally {
       await app.close();
     }
@@ -480,47 +297,20 @@ describe("MCP query transport — service errors map via the shared envelope (BR
     mockedGetNode.mockRejectedValueOnce(new NodeDeletedError(NODE_ID));
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "get_node", arguments: { node_id: NODE_ID } },
-        },
-      });
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string } };
-      };
-      expect(body.result.error.code).toBe("BUSINESS_NODE_DELETED");
+      const res = await post(app, toolCall("get_node", { node_id: NODE_ID }));
+      expect((payload(res) as { code: string }).code).toBe("BUSINESS_NODE_DELETED");
     } finally {
       await app.close();
     }
   });
 
   it("collapses unknown thrown errors to SYSTEM_INTERNAL_ERROR without leaking the message", async () => {
-    // BR-24: never leak `err.message` on an unknown throw.
-    mockedListNodeTypes.mockRejectedValueOnce(
-      new Error("secret internal detail")
-    );
+    mockedListNodeTypes.mockRejectedValueOnce(new Error("secret internal detail"));
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "list_node_types", arguments: {} },
-        },
-      });
-      const body = res.json() as {
-        result: { ok: boolean; error: { code: string; message: string } };
-      };
-      expect(body.result.error.code).toBe("SYSTEM_INTERNAL_ERROR");
-      expect(JSON.stringify(body)).not.toContain("secret internal");
+      const res = await post(app, toolCall("list_node_types", {}));
+      expect((payload(res) as { code: string }).code).toBe("SYSTEM_INTERNAL_ERROR");
+      expect(JSON.stringify(res.json())).not.toContain("secret internal");
     } finally {
       await app.close();
     }
@@ -528,73 +318,36 @@ describe("MCP query transport — service errors map via the shared envelope (BR
 });
 
 // ---------------------------------------------------------------------------
-// Service wrapping — each remaining tool exercises its handler at least once
-// so the toolset's argument-mapping logic is covered.
+// (f) per-tool argument-mapping coverage
 // ---------------------------------------------------------------------------
 
 describe("MCP query transport — service wrapping coverage", () => {
   it("list_nodes returns the service payload verbatim", async () => {
-    mockedListNodes.mockResolvedValueOnce({
-      total: 0,
-      limit: 20,
-      offset: 0,
-      items: [],
-    } as never);
+    mockedListNodes.mockResolvedValueOnce({ total: 0, limit: 20, offset: 0, items: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "list_nodes", arguments: {} },
-        },
-      });
-      const body = res.json() as { result: { ok: boolean; result: unknown } };
-      expect(body.result.ok).toBe(true);
-      expect(body.result.result).toEqual({
-        total: 0,
-        limit: 20,
-        offset: 0,
-        items: [],
-      });
+      const res = await post(app, toolCall("list_nodes", {}));
+      expect(result(res).isError).toBeFalsy();
+      expect(payload(res)).toEqual({ total: 0, limit: 20, offset: 0, items: [] });
     } finally {
       await app.close();
     }
   });
 
   it("traverse forwards link_types + depth + direction to the service", async () => {
-    mockedTraverse.mockResolvedValueOnce({
-      starting_node_id: NODE_ID,
-      nodes: [],
-      links: [],
-    } as never);
-
+    mockedTraverse.mockResolvedValueOnce({ starting_node_id: NODE_ID, nodes: [], links: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "traverse",
-            arguments: {
-              node_id: NODE_ID,
-              depth: 2,
-              direction: "out",
-              link_types: ["responsible_for"],
-            },
-          },
-        },
-      });
-      expect(res.statusCode).toBe(200);
-      const args = mockedTraverse.mock.calls[0]!;
-      expect(args[2]).toMatchObject({
+      await post(
+        app,
+        toolCall("traverse", {
+          node_id: NODE_ID,
+          depth: 2,
+          direction: "out",
+          link_types: ["responsible_for"],
+        })
+      );
+      expect(mockedTraverse.mock.calls[0]![2]).toMatchObject({
         startingNodeId: NODE_ID,
         direction: "out",
         depth: 2,
@@ -609,133 +362,52 @@ describe("MCP query transport — service wrapping coverage", () => {
     mockedGetLinkHistory.mockResolvedValueOnce({ versions: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "get_history_link",
-            arguments: { link_id: LINK_ID },
-          },
-        },
-      });
-      expect(mockedGetLinkHistory).toHaveBeenCalledWith(
-        expect.anything(),
-        LINK_ID,
-        expect.anything()
-      );
+      await post(app, toolCall("get_history_link", { link_id: LINK_ID }));
+      expect(mockedGetLinkHistory).toHaveBeenCalledWith(expect.anything(), LINK_ID, expect.anything());
     } finally {
       await app.close();
     }
   });
 
   it("get_history_attribute forwards the attribute_id", async () => {
-    mockedGetAttributeHistory.mockResolvedValueOnce({
-      versions: [],
-    } as never);
+    mockedGetAttributeHistory.mockResolvedValueOnce({ versions: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "get_history_attribute",
-            arguments: { attribute_id: ATTR_ID },
-          },
-        },
-      });
-      expect(mockedGetAttributeHistory).toHaveBeenCalledWith(
-        expect.anything(),
-        ATTR_ID,
-        expect.anything()
-      );
+      await post(app, toolCall("get_history_attribute", { attribute_id: ATTR_ID }));
+      expect(mockedGetAttributeHistory).toHaveBeenCalledWith(expect.anything(), ATTR_ID, expect.anything());
     } finally {
       await app.close();
     }
   });
 
   it("get_history_attribute_key forwards (node_id, key)", async () => {
-    mockedGetAttributeKeyHistory.mockResolvedValueOnce({
-      versions: [],
-    } as never);
+    mockedGetAttributeKeyHistory.mockResolvedValueOnce({ versions: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "get_history_attribute_key",
-            arguments: { node_id: NODE_ID, key: "title" },
-          },
-        },
-      });
-      const args = mockedGetAttributeKeyHistory.mock.calls[0]!;
-      expect(args[2]).toEqual({ nodeId: NODE_ID, key: "title" });
+      await post(app, toolCall("get_history_attribute_key", { node_id: NODE_ID, key: "title" }));
+      expect(mockedGetAttributeKeyHistory.mock.calls[0]![2]).toEqual({ nodeId: NODE_ID, key: "title" });
     } finally {
       await app.close();
     }
   });
 
-  it("list_link_types forwards include_rules", async () => {
-    mockedListLinkTypes.mockResolvedValueOnce({
-      total: 0,
-      items: [],
-    } as never);
+  it("list_link_types coerces include_rules='true' to boolean before the service", async () => {
+    mockedListLinkTypes.mockResolvedValueOnce({ total: 0, items: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "list_link_types",
-            arguments: { include_rules: "true" },
-          },
-        },
-      });
-      const args = mockedListLinkTypes.mock.calls[0]!;
-      expect(args[1]).toEqual({ include_rules: true });
+      await post(app, toolCall("list_link_types", { include_rules: "true" }));
+      expect(mockedListLinkTypes.mock.calls[0]![1]).toEqual({ include_rules: true });
     } finally {
       await app.close();
     }
   });
 
   it("list_attribute_keys forwards node_type", async () => {
-    mockedListAttributeKeys.mockResolvedValueOnce({
-      total: 0,
-      items: [],
-    } as never);
+    mockedListAttributeKeys.mockResolvedValueOnce({ total: 0, items: [] } as never);
     const { app } = await buildTransportApp();
     try {
-      await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        payload: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: {
-            name: "list_attribute_keys",
-            arguments: { node_type: "Person" },
-          },
-        },
-      });
-      const args = mockedListAttributeKeys.mock.calls[0]!;
-      expect(args[2]).toEqual({ node_type: "Person" });
+      await post(app, toolCall("list_attribute_keys", { node_type: "Person" }));
+      expect(mockedListAttributeKeys.mock.calls[0]![2]).toEqual({ node_type: "Person" });
     } finally {
       await app.close();
     }
@@ -743,27 +415,24 @@ describe("MCP query transport — service wrapping coverage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// initialize handshake — sanity check.
+// (g) initialize handshake
 // ---------------------------------------------------------------------------
 
 describe("MCP query transport — initialize handshake", () => {
-  it("returns the server info + tools capability and no audit headers", async () => {
-    // BR-23 rule 2: no X-LLM-Run-Id is required or honoured by this transport.
+  it("returns serverInfo + tools capability", async () => {
     const { app } = await buildTransportApp();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp/query",
-        // Intentionally NO x-llm-run-id header — must succeed regardless.
-        payload: { jsonrpc: "2.0", id: 1, method: "initialize" },
-      });
+      const res = await post(
+        app,
+        rpc("initialize", {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "test", version: "0.0.0" },
+        })
+      );
       expect(res.statusCode).toBe(200);
       const body = res.json() as {
-        result: {
-          protocolVersion: string;
-          serverInfo: { name: string };
-          capabilities: { tools: unknown };
-        };
+        result: { protocolVersion: string; serverInfo: { name: string }; capabilities: { tools?: unknown } };
       };
       expect(body.result.serverInfo.name).toBe("remember-bff-query");
       expect(body.result.capabilities.tools).toBeDefined();

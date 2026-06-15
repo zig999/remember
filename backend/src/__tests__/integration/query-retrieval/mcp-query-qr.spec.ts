@@ -292,16 +292,34 @@ interface JsonRpcEnvelope {
   jsonrpc: "2.0";
   id: number | string | null;
   result?: {
-    ok: boolean;
-    result?: unknown;
-    error?: { code: string; message: string; details?: unknown };
-    tools?: unknown[];
+    // MCP tools/call result (2025-06-18): content blocks + optional isError.
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+    // MCP tools/list result.
+    tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
   };
   error?: { code: number; message: string };
 }
 
 interface ErrorEnvelope {
   error: { code: string; message: string; details?: unknown };
+}
+
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
+
+/** Parse the JSON payload a successful MCP tools/call carries in its text block. */
+function mcpOkPayload(body: JsonRpcEnvelope): unknown {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "null");
+}
+
+/** Parse the structured { code, message, details } an isError MCP result carries. */
+function mcpErrPayload(body: JsonRpcEnvelope): {
+  code: string;
+  message: string;
+  details?: unknown;
+} {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "{}");
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +345,7 @@ describe("MCP query transport (QR) — tools/list (BR-25)", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/query",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcList(),
       });
       expect(res.statusCode).toBe(200);
@@ -372,14 +390,14 @@ describe("MCP query transport (QR) — search REST↔MCP parity (BR-25)", () => 
       const mcp = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/query",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("search", { query: "Iniciativa Lunar" }),
       });
       expect(mcp.statusCode).toBe(200);
       const mcpBody = mcp.json() as JsonRpcEnvelope;
-      expect(mcpBody.result?.ok).toBe(true);
-      // BR-25: byte-for-byte identical after stripping the MCP envelope.
-      expect(mcpBody.result?.result).toEqual(restBody);
+      expect(mcpBody.result?.isError).toBeFalsy();
+      // BR-25: byte-for-byte identical after stripping the MCP result envelope.
+      expect(mcpOkPayload(mcpBody)).toEqual(restBody);
 
       // Read-only invariant.
       expect(store.insertCount).toBe(0);
@@ -408,13 +426,13 @@ describe("MCP query transport (QR) — search REST↔MCP parity (BR-25)", () => 
       const mcp = await app.inject({
         method: "POST",
         url: "/api/v1/mcp/query",
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
         payload: rpcCall("search", { query: "o a de" }),
       });
       expect(mcp.statusCode).toBe(200);
       const mcpBody = mcp.json() as JsonRpcEnvelope;
-      expect(mcpBody.result?.ok).toBe(false);
-      expect(mcpBody.result?.error?.code).toBe(restErr.code);
+      expect(mcpBody.result?.isError).toBe(true);
+      expect(mcpErrPayload(mcpBody).code).toBe(restErr.code);
 
       expect(store.insertCount).toBe(0);
     } finally {
@@ -450,13 +468,13 @@ describe(
         const mcp = await app.inject({
           method: "POST",
           url: "/api/v1/mcp/query",
-          headers: { authorization: `Bearer ${token}` },
+          headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
           payload: rpcCall("get_provenance_link", { link_id: unknownId }),
         });
         expect(mcp.statusCode).toBe(200);
         const mcpBody = mcp.json() as JsonRpcEnvelope;
-        expect(mcpBody.result?.ok).toBe(false);
-        expect(mcpBody.result?.error?.code).toBe(restErr.code);
+        expect(mcpBody.result?.isError).toBe(true);
+        expect(mcpErrPayload(mcpBody).code).toBe(restErr.code);
 
         expect(store.insertCount).toBe(0);
       } finally {
@@ -494,18 +512,18 @@ describe(
         const mcp = await app.inject({
           method: "POST",
           url: "/api/v1/mcp/query",
-          headers: { authorization: `Bearer ${token}` },
+          headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
           payload: rpcCall("get_provenance_fragment", { fragment_id: fid }),
         });
         expect(mcp.statusCode).toBe(200);
         const mcpBody = mcp.json() as JsonRpcEnvelope;
-        expect(mcpBody.result?.ok).toBe(false);
-        expect(mcpBody.result?.error?.code).toBe(restErr.code);
+        expect(mcpBody.result?.isError).toBe(true);
+        const errPayload = mcpErrPayload(mcpBody);
+        expect(errPayload.code).toBe(restErr.code);
         // Detail surface parity — `status: "rejected"` is part of the
         // shared error-envelope (TC-01); both transports MUST carry it.
         expect(
-          (mcpBody.result?.error?.details as { status?: string } | undefined)
-            ?.status
+          (errPayload.details as { status?: string } | undefined)?.status
         ).toBe("rejected");
 
         expect(store.insertCount).toBe(0);

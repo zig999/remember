@@ -38,16 +38,14 @@ import {
   registerComplianceToolset,
 } from "./modules/compliance-audit/index.js";
 import {
+  QUERY_TOOL_NAMES,
   registerKnowledgeGraphRoutes,
   registerQueryMcpTransport,
   registerQueryToolset,
   type CatalogSnapshot,
-  type QueryMcpToolDescriptor,
 } from "./modules/knowledge-graph/index.js";
 import {
   QUERY_RETRIEVAL_TOOL_NAMES,
-  QueryRetrievalToolDescriptions,
-  QueryRetrievalToolInputJsonSchemas,
   registerQueryRetrievalRoutes,
   registerQueryRetrievalToolset,
 } from "./modules/query-retrieval/index.js";
@@ -176,22 +174,14 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // `registerQueryToolset` call below); the four query-retrieval tools
       // (`search`, `get_provenance_link|attribute|fragment`) are co-tenants
       // of the same registry — TC-03 / query-retrieval.back.md BR-23. The
-      // descriptors are handed to the transport here so its tools/list +
-      // closed-whitelist gate can advertise / admit them without creating a
-      // reverse dependency from knowledge-graph into query-retrieval.
-      const queryRetrievalToolDescriptors: QueryMcpToolDescriptor[] =
-        QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({
-          name,
-          description: QueryRetrievalToolDescriptions[name],
-          inputSchema: QueryRetrievalToolInputJsonSchemas[
-            name
-          ] as unknown as Record<string, unknown>,
-        }));
+      // transport reads these 13 descriptors from the shared registry `mcp` at
+      // request time and registers them on a fresh per-request SDK server; the
+      // closed tool set is structural (only these names are registered).
       await registerQueryMcpTransport(scoped, {
         pool,
         logger,
         mcp,
-        extraTools: queryRetrievalToolDescriptors,
+        toolNames: [...QUERY_TOOL_NAMES, ...QUERY_RETRIEVAL_TOOL_NAMES],
       });
       // Curation module (TC-07) — POST verbs over the layered validation
       // pipeline. Mounted at /api/v1/curation/* (siblings of /api/v1/ingest).
