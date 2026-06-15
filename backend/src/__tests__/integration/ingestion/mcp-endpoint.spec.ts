@@ -1,17 +1,21 @@
-// TC-014 — Integration test for POST /api/v1/mcp.
+// TC-MCI-001 — Integration tests for POST /api/v1/mcp/ingest.
 //
-// Acceptance criteria addressed:
+// Acceptance criteria addressed (v1.2.4):
 //   - "MCP endpoint returns 401 when JWT is missing or invalid"
 //   - "auth guard on MCP endpoint must use requireNeonAuth (same JWKS as REST)"
 //   - "MCP endpoint is mounted under the auth-protected scope" (smoke test
 //      with a valid JWT)
+//   - "tools/list always returns all 4 propose_* tools (no per-session gating)"
+//   - "Missing/invalid `llm_run_id` arg returns isError: true + STRUCTURAL_INVALID"
+//   - "Valid `llm_run_id` pointing to a non-running run returns isError: true
+//      + STRUCTURAL_INVALID"
 //
 // Strategy: build the full Fastify app via `buildApp` with the same fake
 // pool + in-memory JWKS pattern used by the existing app.spec.ts. The
-// catalog snapshot is built in-memory so the transport's `if catalog`
-// gate is satisfied (otherwise the transport route is not mounted).
+// ingestion catalog snapshot is built in-memory so the transport's `if
+// ingestionCatalog` gate is satisfied (otherwise the route is not mounted).
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import pino from "pino";
 import {
   exportJWK,
@@ -25,21 +29,12 @@ import type { Env } from "../../../config/env.js";
 import { buildMcpServer } from "../../../mcp/server.js";
 import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/ingestion/catalog/catalog.js";
-import { LLM_RUN_HEADER } from "../../../modules/ingestion/mcp/transport.js";
+import { INGEST_TOOL_NAMES } from "../../../modules/ingestion/index.js";
 
 const RUN_ID = "44444444-4444-4444-4444-444444444444";
 
-function fakePool(): import("pg").Pool {
-  return {
-    connect: async () =>
-      ({
-        query: async () => ({ rows: [{ ok: 1 }], rowCount: 1 } as never),
-        release: () => undefined,
-      }) as never,
-    on: () => undefined,
-    end: async () => undefined,
-  } as unknown as import("pg").Pool;
-}
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
 
 const envFixture: Env = Object.freeze({
   NODE_ENV: "test",
@@ -100,14 +95,115 @@ function buildIngestionCatalog() {
   });
 }
 
-describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
+/**
+ * Default fake pool that:
+ *   - Returns an empty rowset for any `SELECT` (so `findLlmRunById` reports
+ *     "no such run" -> assertRunIsRunning throws STRUCTURAL_INVALID).
+ *   - Accepts BEGIN / COMMIT / ROLLBACK / INSERT (the audit-row standalone TX
+ *     swallows FK failures, but a no-op is fine for these wiring tests).
+ *   - Treats `INSERT INTO tool_call` as a normal write so the standalone audit
+ *     attempt does not surface a different error code.
+ */
+function buildFakePool(): import("pg").Pool {
+  return {
+    connect: async () => ({
+      query: async (...args: unknown[]) => {
+        const sql = String(args[0]).replace(/\s+/g, " ").trim();
+        const upper = sql.toUpperCase();
+        if (upper === "BEGIN" || upper === "COMMIT" || upper === "ROLLBACK") {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.startsWith("INSERT INTO tool_call")) {
+          return { rows: [{ id: "tc-fake" }], rowCount: 1 };
+        }
+        // Default: no rows (SELECT findLlmRunById sees no row).
+        return { rows: [], rowCount: 0 };
+      },
+      release: () => undefined,
+    }),
+    on: () => undefined,
+    end: async () => undefined,
+  } as unknown as import("pg").Pool;
+}
+
+/**
+ * Fake pool variant where `findLlmRunById` returns a `completed` (not
+ * `running`) llm_run row — `assertRunIsRunning` throws STRUCTURAL_INVALID
+ * with status='completed' details.
+ */
+function buildFakePoolWithCompletedRun(): import("pg").Pool {
+  return {
+    connect: async () => ({
+      query: async (...args: unknown[]) => {
+        const sql = String(args[0]).replace(/\s+/g, " ").trim();
+        const upper = sql.toUpperCase();
+        if (upper === "BEGIN" || upper === "COMMIT" || upper === "ROLLBACK") {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.startsWith("INSERT INTO tool_call")) {
+          return { rows: [{ id: "tc-fake" }], rowCount: 1 };
+        }
+        // Detect the findLlmRunById SQL (`FROM llm_run WHERE id = $1`).
+        if (
+          sql.includes("FROM llm_run") &&
+          sql.includes("WHERE id = $1")
+        ) {
+          return {
+            rows: [
+              {
+                id: RUN_ID,
+                model: "claude-stub",
+                prompt_version: "v1",
+                started_at: new Date("2026-06-15T00:00:00Z"),
+                finished_at: new Date("2026-06-15T00:01:00Z"),
+                status: "completed",
+                attempts: 1,
+                input_raw_information_id: "11111111-1111-4111-8111-111111111111",
+                idempotency_key: "k",
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+      release: () => undefined,
+    }),
+    on: () => undefined,
+    end: async () => undefined,
+  } as unknown as import("pg").Pool;
+}
+
+function rpc(method: string, params?: unknown): unknown {
+  return { jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) };
+}
+function toolCall(name: string, args: Record<string, unknown> = {}): unknown {
+  return rpc("tools/call", { name, arguments: args });
+}
+
+interface JsonRpcEnvelope {
+  jsonrpc: "2.0";
+  id: number | string | null;
+  result?: {
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+    tools?: Array<{ name: string; description: string; inputSchema?: unknown }>;
+    protocolVersion?: string;
+    serverInfo?: { name?: string };
+  };
+  error?: { code: number | string; message: string };
+}
+
+function mcpErrPayload(body: JsonRpcEnvelope): { code: string; message: string; details?: unknown } {
+  return JSON.parse(body.result?.content?.[0]?.text ?? "{}");
+}
+
+describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () => {
   let fixture: AuthFixture;
 
   beforeAll(async () => {
     fixture = await buildAuthFixture();
   });
-
-  afterAll(() => undefined);
 
   it("returns 401 AUTH_UNAUTHORIZED when no Authorization header is sent", async () => {
     // Validation criterion: "MCP endpoint returns 401 when JWT is missing".
@@ -116,7 +212,7 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
-      pool: fakePool(),
+      pool: buildFakePool(),
       auth: buildNeonAuth(envFixture, async () =>
         ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
       ),
@@ -126,8 +222,8 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
     try {
       const res = await app.inject({
         method: "POST",
-        url: "/api/v1/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "initialize" },
+        url: "/api/v1/mcp/ingest",
+        payload: rpc("initialize"),
       });
       expect(res.statusCode).toBe(401);
       const body = res.json() as { error?: { code?: string } };
@@ -138,11 +234,10 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
   });
 
   it("returns 401 AUTH_TOKEN_INVALID when a malformed JWT is sent", async () => {
-    // Validation criterion: "MCP endpoint returns 401 when JWT is invalid".
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
-      pool: fakePool(),
+      pool: buildFakePool(),
       auth: buildNeonAuth(envFixture, async () =>
         ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
       ),
@@ -152,9 +247,9 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
     try {
       const res = await app.inject({
         method: "POST",
-        url: "/api/v1/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "initialize" },
-        headers: { authorization: "Bearer not.a.jwt" },
+        url: "/api/v1/mcp/ingest",
+        payload: rpc("initialize"),
+        headers: { authorization: "Bearer not.a.jwt", accept: MCP_ACCEPT },
       });
       expect(res.statusCode).toBe(401);
       const body = res.json() as { error?: { code?: string } };
@@ -164,13 +259,13 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
     }
   });
 
-  it("returns 200 + JSON-RPC initialize result when a valid JWT is sent", async () => {
-    // Auth happy path: with a valid JWT the transport's `initialize`
+  it("returns 200 + serverInfo when a valid JWT is sent (initialize handshake)", async () => {
+    // Auth happy path: with a valid JWT the SDK kernel's `initialize`
     // dispatch runs through, confirming the route is mounted and reachable.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
-      pool: fakePool(),
+      pool: buildFakePool(),
       auth: buildNeonAuth(envFixture, async () =>
         ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
       ),
@@ -181,27 +276,29 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
       const token = await signJwt(fixture.privateKey, 60);
       const res = await app.inject({
         method: "POST",
-        url: "/api/v1/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "initialize" },
-        headers: { authorization: `Bearer ${token}` },
+        url: "/api/v1/mcp/ingest",
+        payload: rpc("initialize", {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "t", version: "0" },
+        }),
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { result?: { protocolVersion?: string } };
-      expect(body.result?.protocolVersion).toBe("2024-11-05");
+      const body = res.json() as JsonRpcEnvelope;
+      expect(body.result?.serverInfo?.name).toBe("remember-bff-ingest");
     } finally {
       await app.close();
     }
   });
 
-  it("returns 200 + empty tools list when a valid JWT is sent but X-LLM-Run-Id header is missing (BR-21)", async () => {
-    // Composed behaviour: auth passes, then the transport's BR-21 check
-    // surfaces zero tools. The endpoint stays HTTP 200 (envelope semantics);
-    // the LLM client sees an empty `tools` array and knows the ingest
-    // toolset is not yet available.
+  it("tools/list always returns the four propose_* tools (no per-session gating)", async () => {
+    // BR-21 (revised, v1.2.4): the per-session factory is RETIRED — tools are
+    // always listed regardless of any header / argument state. NO X-LLM-Run-Id.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
-      pool: fakePool(),
+      pool: buildFakePool(),
       auth: buildNeonAuth(envFixture, async () =>
         ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
       ),
@@ -212,54 +309,161 @@ describe("POST /api/v1/mcp — auth + transport mount (TC-014)", () => {
       const token = await signJwt(fixture.privateKey, 60);
       const res = await app.inject({
         method: "POST",
-        url: "/api/v1/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
-        headers: { authorization: `Bearer ${token}` },
+        url: "/api/v1/mcp/ingest",
+        payload: rpc("tools/list"),
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { result?: { tools?: unknown[] } };
-      expect(body.result?.tools).toEqual([]);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("returns 200 + four tools when both a valid JWT and X-LLM-Run-Id are sent", async () => {
-    // End-to-end auth + session smoke test: with both credentials the
-    // transport must surface the four ingest tools, each carrying the
-    // JSON Schema derived from the canonical Zod source (BR-24).
-    const app = await buildApp({
-      env: envFixture,
-      logger: silentLogger,
-      pool: fakePool(),
-      auth: buildNeonAuth(envFixture, async () =>
-        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
-      ),
-      mcp: buildMcpServer(silentLogger),
-      ingestionCatalog: buildIngestionCatalog(),
-    });
-    try {
-      const token = await signJwt(fixture.privateKey, 60);
-      const res = await app.inject({
-        method: "POST",
-        url: "/api/v1/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
-        headers: {
-          authorization: `Bearer ${token}`,
-          [LLM_RUN_HEADER]: RUN_ID,
-        },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result?: { tools: Array<{ name: string; inputSchema: unknown }> };
-      };
+      const body = res.json() as JsonRpcEnvelope;
       const names = (body.result?.tools ?? []).map((t) => t.name).sort();
-      expect(names).toEqual([
-        "propose_attribute",
-        "propose_fragment",
-        "propose_link",
-        "propose_node",
-      ]);
+      expect(names).toEqual([...INGEST_TOOL_NAMES].sort());
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("is NOT mounted when ingestionCatalog is absent", async () => {
+    // Same guard as the curation REST mirror: the transport requires the
+    // ingestion catalog snapshot (the propose-{node,link,attribute} handlers
+    // depend on it). With the catalog absent, Fastify returns 404 even with
+    // a valid token.
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: buildFakePool(),
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      // ingestionCatalog deliberately omitted
+    });
+    try {
+      const token = await signJwt(fixture.privateKey, 60);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/mcp/ingest",
+        payload: rpc("tools/list"),
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
+      });
+      expect(res.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("POST /api/v1/mcp/ingest — Option B run-id binding (TC-MCI-001)", () => {
+  let fixture: AuthFixture;
+
+  beforeAll(async () => {
+    fixture = await buildAuthFixture();
+  });
+
+  it("tools/call without `llm_run_id` in args returns isError + STRUCTURAL_INVALID", async () => {
+    // BR-21 (revised) Option B: `llm_run_id` is required on every MCP call as
+    // a tool argument. Omitting it triggers the MCP-facing Zod schema's
+    // `z.string().min(1)` rejection -> STRUCTURAL_INVALID envelope wrapped
+    // as MCP `isError: true`.
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: buildFakePool(),
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      ingestionCatalog: buildIngestionCatalog(),
+    });
+    try {
+      const token = await signJwt(fixture.privateKey, 60);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/mcp/ingest",
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
+        payload: toolCall("propose_fragment", {
+          // llm_run_id missing
+          text: "anything",
+          confidence: 0.9,
+          chunk_ids: ["66666666-6666-4666-8666-666666666666"],
+        }),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as JsonRpcEnvelope;
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("tools/call with `llm_run_id` pointing to an unknown run returns isError + STRUCTURAL_INVALID", async () => {
+    // BR-21 (revised): `assertRunIsRunning` throws STRUCTURAL_INVALID when
+    // the id does not resolve to any `llm_run` row. The default fake pool
+    // returns no rows, so this exercises the "unknown run" branch.
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: buildFakePool(),
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      ingestionCatalog: buildIngestionCatalog(),
+    });
+    try {
+      const token = await signJwt(fixture.privateKey, 60);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/mcp/ingest",
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
+        payload: toolCall("propose_fragment", {
+          llm_run_id: RUN_ID,
+          text: "anything",
+          confidence: 0.9,
+          chunk_ids: ["66666666-6666-4666-8666-666666666666"],
+        }),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as JsonRpcEnvelope;
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("tools/call with `llm_run_id` for a non-running run returns isError + STRUCTURAL_INVALID", async () => {
+    // BR-21 (revised): `assertRunIsRunning` also throws STRUCTURAL_INVALID
+    // when the row exists but `status !== 'running'`. The dedicated fake pool
+    // returns a `completed` row so we exercise the "row present, wrong
+    // status" branch.
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: buildFakePoolWithCompletedRun(),
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      ingestionCatalog: buildIngestionCatalog(),
+    });
+    try {
+      const token = await signJwt(fixture.privateKey, 60);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/mcp/ingest",
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
+        payload: toolCall("propose_fragment", {
+          llm_run_id: RUN_ID,
+          text: "anything",
+          confidence: 0.9,
+          chunk_ids: ["66666666-6666-4666-8666-666666666666"],
+        }),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as JsonRpcEnvelope;
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
     } finally {
       await app.close();
     }

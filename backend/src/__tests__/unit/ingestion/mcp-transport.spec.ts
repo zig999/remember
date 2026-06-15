@@ -1,366 +1,235 @@
-// TC-014 — MCP-over-HTTP transport: JSON-RPC 2.0 dispatch over a per-request
-// session. These tests exercise the Fastify route with `app.inject()` against
-// a minimal Fastify scope (no auth — the auth path is covered in
-// mcp-endpoint.spec.ts).
+// TC-MCI-001 — Ingest MCP transport on the shared SDK transport kernel.
 //
-// Acceptance criteria addressed:
-//   - "MCP session without ambient llm_run_id returns STRUCTURAL_INVALID
-//      envelope without writing a tool_call row" (tools/list + tools/call)
-//   - "MCP tool propose_fragment input_schema matches the JSON Schema derived
-//      from ProposeFragmentInputSchema" (served via tools/list when run is
-//      registered)
-//   - "Unknown tool name returns NOT_FOUND envelope" (defensive transport
-//      coverage)
-//   - "Invalid JSON-RPC payload returns INVALID_REQUEST error" (JSON-RPC
-//      conformance)
-//   - "Unsupported method returns METHOD_NOT_FOUND error" (JSON-RPC
-//      conformance)
+// What this suite owns (post-SDK migration, v1.2.4):
+//   - `tools/list` always returns the four propose_* tool names with schemas
+//     (no per-session gating — the per-session factory is RETIRED).
+//   - `tools/call` dispatches each name to its handler (args forwarded
+//     verbatim including the `llm_run_id` argument — Option B run binding).
+//   - The closed set is STRUCTURAL: only `toolNames` are registered, so a
+//     curation `merge_nodes` / query `get_node` / unknown name is unreachable
+//     (isError NOT_FOUND).
+//   - No `X-LLM-Run-Id` ambient header is read or required (the previous
+//     `LLM_RUN_HEADER` symbol no longer exists).
+//   - `initialize` handshake advertises serverInfo + tools capability.
 //
-// Strategy: mount the transport on a bare Fastify instance (no auth scope)
-// using a fake pg pool that records DB calls. The ambient run check at the
-// service layer happens *inside* the handler — but we want to assert the
-// transport-level pre-handler behaviour (BR-21 first bullet) which fires
-// BEFORE any DB call, so the pool's `connect()` is wired but only invoked on
-// the "registered + reachable tool" path.
+// JSON-RPC framing, protocol-version negotiation, malformed-request handling,
+// and the qualified-name alias are now the SDK's responsibility, so those
+// hand-rolled-transport assertions were removed.
+//
+// Strategy: stub the 4 handlers via vi.fn on a fresh registry; exercise via
+// app.inject(). No service layer, no pg, no auth.
 
-import { describe, expect, it } from "vitest";
-import Fastify from "fastify";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import Fastify, { type FastifyInstance } from "fastify";
 import pino from "pino";
+import { z } from "zod";
 
+import { buildMcpServer } from "../../../mcp/server.js";
 import {
-  buildSnapshot,
-  type CatalogSnapshot,
-} from "../../../modules/ingestion/catalog/catalog.js";
-import {
+  INGEST_TOOL_NAMES,
   registerIngestMcpTransport,
-  LLM_RUN_HEADER,
-} from "../../../modules/ingestion/mcp/transport.js";
-import { IngestToolInputJsonSchemas } from "../../../modules/ingestion/dto/index.js";
-
-const RUN_ID = "44444444-4444-4444-4444-444444444444";
-
-function buildCatalog(): CatalogSnapshot {
-  return buildSnapshot({
-    nodeTypes: [
-      { id: "00000000-0000-4000-8000-000000000001", name: "Person" },
-      { id: "00000000-0000-4000-8000-000000000002", name: "Project" },
-    ],
-    linkTypes: [
-      {
-        id: "00000000-0000-4000-8000-000000000010",
-        name: "participates_in",
-        is_temporal: true,
-        allows_multiple_current: true,
-        requires_valid_from: true,
-        requires_valid_to_on_change: false,
-      },
-    ],
-    linkTypeRules: [],
-    attributeKeys: [],
-  });
-}
-
-interface FakeDbCalls {
-  toolCallInserts: number;
-  poolConnects: number;
-}
-
-function buildFakePool(calls: FakeDbCalls): import("pg").Pool {
-  return {
-    connect: async () => {
-      calls.poolConnects += 1;
-      return {
-        query: async (...args: unknown[]) => {
-          const sql = String(args[0]).replace(/\s+/g, " ").trim();
-          const upper = sql.toUpperCase();
-          if (upper === "BEGIN" || upper === "COMMIT" || upper === "ROLLBACK") {
-            return { rows: [], rowCount: 0 };
-          }
-          if (sql.startsWith("INSERT INTO tool_call")) {
-            calls.toolCallInserts += 1;
-            return { rows: [{ id: `tc-${calls.toolCallInserts}` }], rowCount: 1 };
-          }
-          // Default — empty rowset. The handler will treat the run as
-          // missing and reject with STRUCTURAL_INVALID; that's fine for the
-          // tests below (we only check the transport-side envelope mapping,
-          // not the handler's deeper logic).
-          return { rows: [], rowCount: 0 };
-        },
-        release: () => undefined,
-      } as unknown as import("pg").PoolClient;
-    },
-  } as unknown as import("pg").Pool;
-}
+} from "../../../modules/ingestion/index.js";
 
 const silentLogger = pino({ level: "silent" });
 
-async function buildTransportApp(calls: FakeDbCalls) {
-  const app = Fastify({ logger: false });
-  await registerIngestMcpTransport(app, {
-    pool: buildFakePool(calls),
-    logger: silentLogger,
-    catalog: buildCatalog(),
-  });
-  return app;
+/** SDK Streamable HTTP requires the client to Accept both JSON and SSE. */
+const MCP_ACCEPT = "application/json, text/event-stream";
+
+const RUN_ID = "44444444-4444-4444-4444-444444444444";
+
+interface Fixture {
+  app: FastifyInstance;
+  handlers: Record<string, ReturnType<typeof vi.fn>>;
 }
 
-describe("Ingest MCP transport (TC-014)", () => {
-  it("rejects a non-JSON-RPC body with INVALID_REQUEST", async () => {
-    // JSON-RPC 2.0 §4: every request MUST have jsonrpc: "2.0" + method.
-    // Failure to surface that as a -32600 error means malformed clients
-    // would get a generic Fastify 500.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: { foo: "bar" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { error?: { code: number } };
-      expect(body.error?.code).toBe(-32600);
-      // No DB touched.
-      expect(calls.poolConnects).toBe(0);
-      expect(calls.toolCallInserts).toBe(0);
-    } finally {
-      await app.close();
-    }
+async function setupTransport(): Promise<Fixture> {
+  const mcp = buildMcpServer(silentLogger);
+  const handlers: Record<string, ReturnType<typeof vi.fn>> = {};
+
+  // Register the four propose_* tools with stub handlers that echo the input.
+  for (const name of INGEST_TOOL_NAMES) {
+    const fn = vi.fn(async (input: unknown) => ({
+      ok: true as const,
+      result: { tool: name, args: input },
+    }));
+    handlers[name] = fn;
+    mcp.registerTool("ingest", {
+      name,
+      description: `stub ${name}`,
+      inputSchema: z.unknown(),
+      handler: fn,
+    });
+  }
+
+  // Foreign tools the closed set MUST NOT expose (registered on other keys).
+  mcp.registerTool("curation", {
+    name: "merge_nodes",
+    description: "curation tool",
+    inputSchema: z.unknown(),
+    handler: vi.fn(async () => ({ ok: true as const, result: {} })),
+  });
+  mcp.registerTool("query", {
+    name: "get_node",
+    description: "query tool",
+    inputSchema: z.unknown(),
+    handler: vi.fn(async () => ({ ok: true as const, result: {} })),
   });
 
-  it("returns METHOD_NOT_FOUND for unsupported JSON-RPC methods", async () => {
-    // Anything outside { initialize, tools/list, tools/call } must surface
-    // a -32601 error rather than silently succeed or 500.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "prompts/list" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { error?: { code: number } };
-      expect(body.error?.code).toBe(-32601);
-      expect(calls.poolConnects).toBe(0);
-    } finally {
-      await app.close();
-    }
+  const app = Fastify({ logger: false });
+  await registerIngestMcpTransport(app, {
+    logger: silentLogger,
+    mcp,
+    toolNames: [...INGEST_TOOL_NAMES],
   });
+  await app.ready();
+  return { app, handlers };
+}
 
-  it("initialize returns server capabilities", async () => {
-    // MCP `initialize` is a handshake — the transport must advertise the
-    // protocol version and capability set (tools, in our case) so MCP
-    // clients can negotiate the session.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "initialize" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { result?: Record<string, unknown> };
-      expect(body.result?.protocolVersion).toBe("2024-11-05");
-      expect(body.result?.serverInfo).toEqual({
-        name: "remember-bff-ingest",
-        version: "0.1.0",
-      });
-      expect((body.result?.capabilities as Record<string, unknown>).tools).toBeDefined();
-    } finally {
-      await app.close();
-    }
+// ---- MCP call helpers ----
+
+function rpc(method: string, params?: unknown): object {
+  return { jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) };
+}
+function toolCall(name: string, args: Record<string, unknown> = {}): object {
+  return rpc("tools/call", { name, arguments: args });
+}
+async function post(app: FastifyInstance, body: object) {
+  return app.inject({
+    method: "POST",
+    url: "/mcp/ingest",
+    headers: { accept: MCP_ACCEPT },
+    payload: body,
   });
+}
+interface ToolResult {
+  content?: Array<{ type: string; text: string }>;
+  isError?: boolean;
+  tools?: Array<{ name: string; description: string; inputSchema?: unknown }>;
+}
+function result(res: { json: () => unknown }): ToolResult {
+  return (res.json() as { result: ToolResult }).result;
+}
 
-  it("tools/list returns empty list when no ambient llm_run_id is sent (BR-21)", async () => {
-    // BR-21 first bullet: the transport must NOT expose `propose_*` until a
-    // run is bound. The session factory returns `tools_registered: false`
-    // and the transport relays that as an empty `tools` array. No DB call.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { result?: { tools?: unknown[] } };
-      expect(body.result?.tools).toEqual([]);
-      expect(calls.poolConnects).toBe(0);
-      expect(calls.toolCallInserts).toBe(0);
-    } finally {
-      await app.close();
-    }
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
-  it("tools/list with ambient run id exposes all four propose-* tools with correct JSON Schemas (BR-24)", async () => {
-    // BR-24: the JSON Schema each tool publishes over MCP must be the very
-    // object derived from the Zod DTO at module init. A snapshot equality
-    // against `IngestToolInputJsonSchemas` would catch drift if the
-    // transport ever re-derived or hard-coded the schemas.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
+describe("ingest transport — initialize", () => {
+  it("advertises serverInfo + tools capability", async () => {
+    const { app } = await setupTransport();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
-        headers: { [LLM_RUN_HEADER]: RUN_ID },
-      });
+      const res = await post(
+        app,
+        rpc("initialize", {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "t", version: "0" },
+        })
+      );
       expect(res.statusCode).toBe(200);
       const body = res.json() as {
-        result?: { tools: Array<{ name: string; inputSchema: unknown }> };
+        result: { serverInfo?: { name: string }; capabilities?: { tools?: unknown } };
       };
-      const tools = body.result?.tools ?? [];
-      const byName = Object.fromEntries(tools.map((t) => [t.name, t.inputSchema]));
-      expect(Object.keys(byName).sort()).toEqual([
-        "propose_attribute",
-        "propose_fragment",
-        "propose_link",
-        "propose_node",
-      ]);
-      expect(byName.propose_fragment).toEqual(IngestToolInputJsonSchemas.propose_fragment);
-      expect(byName.propose_node).toEqual(IngestToolInputJsonSchemas.propose_node);
-      expect(byName.propose_link).toEqual(IngestToolInputJsonSchemas.propose_link);
-      expect(byName.propose_attribute).toEqual(IngestToolInputJsonSchemas.propose_attribute);
+      expect(body.result.serverInfo?.name).toBe("remember-bff-ingest");
+      expect(body.result.capabilities?.tools).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("ingest transport — tools/list (always lists all 4 tools, no gating)", () => {
+  it("returns exactly the 4 propose_* names with schemas (no X-LLM-Run-Id needed)", async () => {
+    // BR-21 (revised, v1.2.4): the per-session factory is retired — tools are
+    // always listed by `tools/list`, regardless of any header / argument
+    // state. The closed whitelist mirrors INGEST_TOOL_NAMES.
+    const { app } = await setupTransport();
+    try {
+      const res = await post(app, rpc("tools/list"));
+      expect(res.statusCode).toBe(200);
+      const tools = result(res).tools ?? [];
+      expect(tools.map((t) => t.name).sort()).toEqual([...INGEST_TOOL_NAMES].sort());
+      for (const t of tools) {
+        expect(t.inputSchema).toBeTypeOf("object");
+        expect(t.description.length).toBeGreaterThan(0);
+      }
     } finally {
       await app.close();
     }
   });
 
-  it("tools/call without ambient run id returns STRUCTURAL_INVALID envelope and writes no tool_call row (BR-21 + BR-23 exception)", async () => {
-    // BR-23 exception: the transport's "no ambient run" reject path is the
-    // ONLY route through the system that does NOT persist a `tool_call`
-    // audit row. This test pins that behaviour: a propose-* invocation
-    // without the X-LLM-Run-Id header must short-circuit before any DB
-    // connection is opened.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
+  it("does NOT read any X-LLM-Run-Id header (no gating on request headers)", async () => {
+    // The X-LLM-Run-Id ambient header is RETIRED in v1.2.4. Sending it has
+    // no effect on dispatch; tools/list remains the full closed whitelist.
+    const { app } = await setupTransport();
     try {
       const res = await app.inject({
         method: "POST",
-        url: "/mcp",
-        payload: {
-          jsonrpc: "2.0",
-          id: 7,
-          method: "tools/call",
-          params: {
-            name: "propose_fragment",
-            arguments: {
-              text: "anything",
-              confidence: 0.9,
-              chunk_ids: ["66666666-6666-4666-8666-666666666666"],
-            },
-          },
-        },
+        url: "/mcp/ingest",
+        headers: { accept: MCP_ACCEPT, "x-llm-run-id": "ignored" },
+        payload: rpc("tools/list"),
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result?: { ok: boolean; error?: { code: string } };
-      };
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("STRUCTURAL_INVALID");
-      expect(calls.poolConnects).toBe(0);
-      expect(calls.toolCallInserts).toBe(0);
+      const tools = result(res).tools ?? [];
+      expect(tools.map((t) => t.name).sort()).toEqual([...INGEST_TOOL_NAMES].sort());
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("ingest transport — tools/call dispatch", () => {
+  for (const name of INGEST_TOOL_NAMES) {
+    it(`dispatches \`${name}\` to its handler with the args forwarded verbatim`, async () => {
+      // Option B run binding: `llm_run_id` is passed as a tool argument, not
+      // as a header. The SDK kernel does not unwrap it — the handler sees the
+      // full arguments object (the per-tool registrar splits it inside the
+      // handler).
+      const { app, handlers } = await setupTransport();
+      try {
+        const args = { llm_run_id: RUN_ID, payload: "x" };
+        const res = await post(app, toolCall(name, args));
+        expect(res.statusCode).toBe(200);
+        expect(result(res).isError).toBeFalsy();
+        expect(handlers[name]).toHaveBeenCalledTimes(1);
+        expect(handlers[name]).toHaveBeenCalledWith(args);
+      } finally {
+        await app.close();
+      }
+    });
+  }
+});
+
+describe("ingest transport — closed tool set (structural)", () => {
+  it("a curation `merge_nodes` on the shared registry is unreachable (isError)", async () => {
+    // The curation tool IS registered on the shared McpServer (under the
+    // `curation` toolset key); the closed whitelist must refuse it.
+    const { app, handlers } = await setupTransport();
+    try {
+      const res = await post(app, toolCall("merge_nodes", {}));
+      expect(res.statusCode).toBe(200);
+      expect(result(res).isError).toBe(true);
+      for (const fn of Object.values(handlers)) expect(fn).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
   });
 
-  it("tools/call with ambient run id but unknown tool name returns NOT_FOUND envelope", async () => {
-    // Unknown tool names must surface as a NOT_FOUND envelope inside the
-    // JSON-RPC `result` field — consistent with the project's MCP envelope
-    // convention (HTTP 200, transport `error` field reserved for JSON-RPC).
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
+  it("a query `get_node` on the shared registry is unreachable (isError)", async () => {
+    const { app } = await setupTransport();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: {
-          jsonrpc: "2.0",
-          id: 9,
-          method: "tools/call",
-          params: { name: "propose_unicorn", arguments: {} },
-        },
-        headers: { [LLM_RUN_HEADER]: RUN_ID },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result?: { ok: boolean; error?: { code: string } };
-      };
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("NOT_FOUND");
-      // No business handler reached -> no DB call.
-      expect(calls.poolConnects).toBe(0);
+      const res = await post(app, toolCall("get_node", {}));
+      expect(result(res).isError).toBe(true);
     } finally {
       await app.close();
     }
   });
 
-  it("tools/call accepts a fully-qualified tool name (`ingest.propose_fragment`)", async () => {
-    // MCP clients sometimes pass the fully-qualified tool name. The
-    // transport strips the `ingest.` prefix so we never refuse a legitimate
-    // call. We assert the dispatch reaches the handler (pool.connect is
-    // called) — the handler will then reject the run since our fake pool
-    // returns no llm_run row, but that's downstream of the transport.
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
+  it("an unknown tool name is unreachable (isError)", async () => {
+    const { app } = await setupTransport();
     try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: {
-          jsonrpc: "2.0",
-          id: 11,
-          method: "tools/call",
-          params: {
-            name: "ingest.propose_fragment",
-            arguments: {
-              text: "any",
-              confidence: 0.9,
-              chunk_ids: ["66666666-6666-4666-8666-666666666666"],
-            },
-          },
-        },
-        headers: { [LLM_RUN_HEADER]: RUN_ID },
-      });
-      expect(res.statusCode).toBe(200);
-      // Pool was reached -> the transport correctly resolved the qualified
-      // name to the registered tool.
-      expect(calls.poolConnects).toBeGreaterThan(0);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("tools/call with malformed params (no `name` field) returns STRUCTURAL_INVALID envelope", async () => {
-    // Defensive: a malformed `tools/call` payload must produce a
-    // well-formed envelope, not a 500 or a JSON-RPC INVALID_PARAMS leak
-    // (we keep INVALID_PARAMS reserved for the wire-protocol layer; the
-    // missing `name` is a semantic problem the envelope describes).
-    const calls: FakeDbCalls = { toolCallInserts: 0, poolConnects: 0 };
-    const app = await buildTransportApp(calls);
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/mcp",
-        payload: {
-          jsonrpc: "2.0",
-          id: 13,
-          method: "tools/call",
-          params: { arguments: { foo: 1 } }, // no `name`
-        },
-        headers: { [LLM_RUN_HEADER]: RUN_ID },
-      });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as {
-        result?: { ok: boolean; error?: { code: string } };
-      };
-      expect(body.result?.ok).toBe(false);
-      expect(body.result?.error?.code).toBe("STRUCTURAL_INVALID");
+      const res = await post(app, toolCall("does_not_exist", {}));
+      expect(result(res).isError).toBe(true);
     } finally {
       await app.close();
     }
