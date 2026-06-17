@@ -45,12 +45,12 @@ import pino, { type Logger, type LoggerOptions } from "pino";
 
 import { buildPool, pingDatabase } from "./config/db.js";
 import { EnvValidationError, loadEnv, type Env } from "./config/env.js";
+import { buildConfiguredMcpServer } from "./mcp/sdk-http-transport.js";
+import { buildMcpServer } from "./mcp/server.js";
 import {
-  buildConfiguredMcpServer,
-  type McpEnvelope,
-  type McpHttpTool,
-} from "./mcp/sdk-http-transport.js";
-import { buildMcpServer, type McpServer } from "./mcp/server.js";
+  resolveStdioTools,
+  type ToolCoordinate,
+} from "./mcp/stdio-tools.js";
 import {
   INGEST_TOOL_NAMES,
   loadCatalog as loadIngestionCatalog,
@@ -121,35 +121,6 @@ function buildStderrLogger(env: Pick<Env, "LOG_LEVEL" | "NODE_ENV">): Logger {
     },
   };
   return pino(options, process.stderr);
-}
-
-/**
- * Resolve the 18-tool closed set by name from the shared in-process MCP
- * registry. The toolset registrars (called from `main()` below) have
- * populated the registry by the time this function runs.
- *
- * The shape lift (registry McpTool -> McpHttpTool) mirrors the three HTTP
- * transports (modules/{knowledge-graph,ingestion,curation}/mcp/*transport.ts):
- * a tool absent from the registry is silently dropped. With the carve-out
- * that all three registrars run before this resolver, none should be missing
- * — but the filter keeps the contract honest if a future refactor forgets to
- * register one (the missing tool simply won't be advertised).
- */
-function resolveTools(
-  registry: McpServer,
-  toolNames: ReadonlyArray<{ toolset: "ingest" | "query"; name: string }>
-): McpHttpTool[] {
-  return toolNames
-    .map((entry) => registry.getTool(entry.toolset, entry.name))
-    .filter((t): t is NonNullable<typeof t> => t !== undefined)
-    .map(
-      (t): McpHttpTool => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema,
-        handler: t.handler as (input: unknown) => Promise<McpEnvelope>,
-      })
-    );
 }
 
 async function main(): Promise<void> {
@@ -243,13 +214,13 @@ async function main(): Promise<void> {
   // Step 6 — closed tool set (18 tools = 9 KG + 4 QR + 4 propose_* + ingest_document).
   // Order is purely cosmetic (tools/list sorts by registry insertion); we
   // group by toolset for readability when inspecting the descriptor list.
-  const toolNameEntries: ReadonlyArray<{ toolset: "ingest" | "query"; name: string }> = [
+  const toolCoordinates: readonly ToolCoordinate[] = [
     ...QUERY_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
     ...QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
     ...INGEST_TOOL_NAMES.map((name) => ({ toolset: "ingest" as const, name })),
-    { toolset: "ingest", name: "ingest_document" },
+    { toolset: "ingest" as const, name: "ingest_document" },
   ];
-  const tools = resolveTools(registry, toolNameEntries);
+  const tools = resolveStdioTools(registry, toolCoordinates);
   logger.info({ tool_count: tools.length }, "tools_resolved");
 
   // Step 7 — low-level SDK Server with ListTools + CallTool handlers wired
