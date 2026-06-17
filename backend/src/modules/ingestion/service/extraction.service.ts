@@ -66,12 +66,8 @@ import {
 } from "../repository/llm-run.repository.js";
 import { findChunksByRawInformationId, findRawInformationById } from "../repository/ingestion.repository.js";
 
-import {
-  MAX_TOKENS,
-  system as buildSystem,
-  user as buildUser,
-  type DocumentMetadata,
-} from "../prompts/extraction.v1.js";
+import { type DocumentMetadata } from "../prompts/extraction.v1.js";
+import { selectPromptModule, type PromptModule } from "../prompts/index.js";
 import { ResourceNotFoundError } from "./ingestion.service.js";
 import {
   aggregateToolCallOutcomes,
@@ -410,6 +406,20 @@ export async function runLlmExtraction(
   };
 
   try {
+    // Prompt selection (BR-26 step 2) — dispatch on the run's prompt_version.
+    // Inside the run-scoped try so an unknown version flips the run to `failed`
+    // and surfaces 500 (never silently runs a prompt the audit trail doesn't
+    // record). selectPromptModule throws UnknownPromptVersionError on a miss.
+    const prompt = selectPromptModule(run.prompt_version);
+    logger.info(
+      {
+        llm_run_id: llmRunId,
+        prompt_version: run.prompt_version,
+        prompt_module: prompt.version,
+      },
+      "extraction_prompt_selected"
+    );
+
     for (const chunk of chunks) {
       const outcome = await runChunkLoop({
         anthropic,
@@ -421,6 +431,7 @@ export async function runLlmExtraction(
         chunkId: chunk.id,
         prevTail,
         dispatchDeps,
+        prompt,
         logger,
         llmRunId,
       });
@@ -496,6 +507,7 @@ interface ChunkLoopInput {
   readonly chunkId: string;
   readonly prevTail: string;
   readonly dispatchDeps: DispatchDeps;
+  readonly prompt: PromptModule;
   readonly logger: Logger;
   readonly llmRunId: string;
 }
@@ -506,8 +518,8 @@ type ChunkLoopOutcome =
   | { kind: "fatal_burst" };
 
 async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
-  const systemText = buildSystem(input.catalog);
-  const userBlocks = buildUser({
+  const systemText = input.prompt.system(input.catalog);
+  const userBlocks = input.prompt.user({
     metadata: input.metadata,
     chunkText: input.chunkText,
     prevTail: input.prevTail,
@@ -531,7 +543,7 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
       system: systemText,
       tools: input.tools as Anthropic.Messages.Tool[],
       thinking: { type: "adaptive" },
-      max_tokens: MAX_TOKENS,
+      max_tokens: input.prompt.MAX_TOKENS,
       messages,
     });
     const response = await stream.finalMessage();

@@ -45,7 +45,9 @@ const ENV_FILE = process.env.BACKEND_ENV_FILE ?? resolve(BACKEND_DIR, ".env");
 
 const OPERATOR_ID = "e2e-operator";
 const MODEL = process.env.E2E_MODEL ?? "claude-opus-4-8";
-const PROMPT_VERSION = process.env.E2E_PROMPT_VERSION ?? "extraction.v1";
+// "v2" is the recommended version (Frente 2): the prompt registry dispatches it
+// to the Event-dating prompt. ("extraction.v1" / unknown strings fall back to v1.)
+const PROMPT_VERSION = process.env.E2E_PROMPT_VERSION ?? "v2";
 const RUN_TIMEOUT_MS = Number(process.env.E2E_RUN_TIMEOUT_MS ?? 600_000);
 
 // A distinctive term from the test document, used to prove lexical retrieval
