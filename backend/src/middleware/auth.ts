@@ -19,6 +19,8 @@
 // off here to preserve the existing verification contract; enable it via the
 // `jwtVerify` options when the deployment's issuer/aud are pinned.
 
+import { timingSafeEqual } from "node:crypto";
+
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   createRemoteJWKSet,
@@ -94,7 +96,8 @@ export function buildJwksUrl(neonAuthUrl: string): URL {
  * resolver; production callers pass nothing and get the real one.
  */
 export function buildNeonAuth(
-  env: Pick<Env, "NEON_AUTH_URL" | "NEON_AUTH_JWKS_TTL_S">,
+  env: Pick<Env, "NEON_AUTH_URL" | "NEON_AUTH_JWKS_TTL_S"> &
+    Partial<Pick<Env, "NODE_ENV" | "LOCAL_OPERATOR_TOKEN">>,
   getKey?: JWTVerifyGetKey
 ): NeonAuth {
   const jwks: JWTVerifyGetKey =
@@ -103,6 +106,17 @@ export function buildNeonAuth(
       cacheMaxAge: env.NEON_AUTH_JWKS_TTL_S * 1000,
       cooldownDuration: 30_000,
     });
+
+  // DEV-ONLY local operator bypass (see config/env.ts LOCAL_OPERATOR_TOKEN).
+  // Resolved once at build time: enabled only when running in development AND a
+  // token is configured. In any other mode this is `null` and the bypass branch
+  // below is dead — production never trusts a static bearer.
+  const localOperatorToken: string | null =
+    env.NODE_ENV === "development" &&
+    typeof env.LOCAL_OPERATOR_TOKEN === "string" &&
+    env.LOCAL_OPERATOR_TOKEN.length > 0
+      ? env.LOCAL_OPERATOR_TOKEN
+      : null;
 
   return {
     preHandler: async (request) => {
@@ -113,6 +127,19 @@ export function buildNeonAuth(
           "AUTH_UNAUTHORIZED",
           "Missing or malformed Authorization header (expected `Bearer <jwt>`)."
         );
+      }
+
+      // DEV-ONLY bypass: a bearer equal (constant-time) to the configured local
+      // operator token is accepted as the owner WITHOUT JWKS verification — the
+      // convenience path for local MCP clients (e.g. Claude Desktop via
+      // mcp-remote) that cannot run the Neon Auth OAuth flow. A non-matching
+      // token simply falls through to real JWKS verification below.
+      if (localOperatorToken !== null && constantTimeEqual(token, localOperatorToken)) {
+        request.user = {
+          id: "local-operator",
+          claims: Object.freeze({ sub: "local-operator", local_operator: true }),
+        };
+        return;
       }
 
       let payload: JWTPayload;
@@ -150,6 +177,18 @@ export function extractBearer(header: string | undefined): string | null {
   const match = /^Bearer\s+(\S+)\s*$/i.exec(header);
   if (match === null) return null;
   return match[1] ?? null;
+}
+
+/**
+ * Constant-time string comparison for the DEV-ONLY local operator token. Avoids
+ * leaking length/prefix information through timing; returns false on any length
+ * mismatch (timingSafeEqual requires equal-length buffers).
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 /**

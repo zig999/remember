@@ -292,9 +292,11 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
     }
   });
 
-  it("tools/list always returns the four propose_* tools (no per-session gating)", async () => {
+  it("tools/list returns the four propose_* tools plus ingest_document (no per-session gating)", async () => {
     // BR-21 (revised, v1.2.4): the per-session factory is RETIRED — tools are
     // always listed regardless of any header / argument state. NO X-LLM-Run-Id.
+    // TC-MCI-002: the high-level `ingest_document` tool is advertised alongside
+    // the four low-level `propose_*` writers.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
@@ -316,7 +318,39 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       const names = (body.result?.tools ?? []).map((t) => t.name).sort();
-      expect(names).toEqual([...INGEST_TOOL_NAMES].sort());
+      expect(names).toEqual([...INGEST_TOOL_NAMES, "ingest_document"].sort());
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("ingest_document with invalid args → isError + STRUCTURAL_INVALID (dispatch + envelope round-trip)", async () => {
+    // Wire-level coverage for the new tool: a `tools/call` with `content`
+    // missing fails Zod validation in the registrar BEFORE any DB write or LLM
+    // call, so it is safe against the fake pool. Exercises dispatch + the
+    // MCP `content`/`isError` rendering for `ingest_document`.
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: buildFakePool(),
+      auth: buildNeonAuth(envFixture, async () =>
+        ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      ingestionCatalog: buildIngestionCatalog(),
+    });
+    try {
+      const token = await signJwt(fixture.privateKey, 60);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/mcp/ingest",
+        payload: toolCall("ingest_document", { source_type: "outro" }), // no `content`
+        headers: { authorization: `Bearer ${token}`, accept: MCP_ACCEPT },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as JsonRpcEnvelope;
+      expect(body.result?.isError).toBe(true);
+      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
     } finally {
       await app.close();
     }

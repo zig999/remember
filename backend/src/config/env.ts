@@ -49,6 +49,18 @@ const envSchema = z.object({
     .refine((v) => /^https?:\/\//.test(v), "NEON_AUTH_URL must be a URL."),
   NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
 
+  // DEV-ONLY local operator token — convenience auth for local MCP clients
+  // (e.g. Claude Desktop via `mcp-remote`) that cannot run the Neon Auth OAuth
+  // flow. When set AND `NODE_ENV=development`, a request carrying
+  // `Authorization: Bearer <LOCAL_OPERATOR_TOKEN>` is accepted as the single
+  // owner WITHOUT JWKS verification (see middleware/auth.ts). Ignored entirely
+  // outside development, so it can never weaken a production deployment. Min
+  // length 16 so it is not trivially guessable. Optional: absent => disabled.
+  LOCAL_OPERATOR_TOKEN: z
+    .string()
+    .min(16, "LOCAL_OPERATOR_TOKEN must be at least 16 characters.")
+    .optional(),
+
   // Anthropic SDK (BR-29). The orchestrator (TC-12 / BR-26) is the sole LLM
   // caller of the BFF. Missing key at boot is a fatal config error; absence
   // here causes the process to refuse to start (acceptance criterion of
@@ -72,6 +84,28 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (!parsed.success) {
     throw new EnvValidationError(parsed.error);
   }
+
+  // Fail-closed guard for the DEV-only auth bypass (see LOCAL_OPERATOR_TOKEN /
+  // middleware/auth.ts). The static bearer must NEVER be honored outside
+  // development. Because `NODE_ENV` defaults to "development", a production box
+  // that *forgets* to set `NODE_ENV` would parse as development and silently
+  // enable the bypass — so we check the RAW source: an absent or non-development
+  // `NODE_ENV` with a token present refuses startup rather than fail open.
+  if (
+    parsed.data.LOCAL_OPERATOR_TOKEN !== undefined &&
+    source.NODE_ENV !== "development"
+  ) {
+    throw new EnvValidationError([
+      {
+        path: "LOCAL_OPERATOR_TOKEN",
+        message:
+          "is set but NODE_ENV is not explicitly 'development'. The local-operator " +
+          "auth bypass is forbidden outside development; refusing to start. Unset " +
+          "LOCAL_OPERATOR_TOKEN in this environment, or set NODE_ENV=development.",
+      },
+    ]);
+  }
+
   return Object.freeze(parsed.data);
 }
 
@@ -84,11 +118,15 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
 export class EnvValidationError extends Error {
   public readonly issues: Array<{ path: string; message: string }>;
 
-  constructor(zodError: z.ZodError) {
-    const issues = zodError.issues.map((i) => ({
-      path: i.path.join(".") || "(root)",
-      message: i.message,
-    }));
+  constructor(
+    errorOrIssues: z.ZodError | Array<{ path: string; message: string }>
+  ) {
+    const issues = Array.isArray(errorOrIssues)
+      ? errorOrIssues
+      : errorOrIssues.issues.map((i) => ({
+          path: i.path.join(".") || "(root)",
+          message: i.message,
+        }));
     const lines = issues.map((i) => `  - ${i.path}: ${i.message}`).join("\n");
     super(
       `Invalid backend environment configuration.\n` +

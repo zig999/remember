@@ -157,7 +157,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       await registerIngestMcpTransport(scoped, {
         logger,
         mcp,
-        toolNames: [...INGEST_TOOL_NAMES],
+        toolNames: [...INGEST_TOOL_NAMES, "ingest_document"],
       });
     }
 
@@ -277,6 +277,9 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       pool,
       logger,
       catalog: ingestionCatalog,
+      // `ingest_document` drives the server-side extraction orchestrator, which
+      // is the sole LLM caller of the BFF (BR-29) — it needs the Anthropic key.
+      env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
     });
   }
 

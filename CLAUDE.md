@@ -73,6 +73,23 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 > Reconciliado na fonte normativa pela **Emenda v7.2** e na back-spec `ingestion.back.md`
 > (BR-21/23/24/28).
 
+> **Acesso via Claude Desktop (2026-06-17) — `ingest_document` + token local.** Para consumir o BFF
+> a partir do Claude Desktop (Windows) via `mcp-remote`, duas adições:
+> 1. **Tool MCP `ingest_document`** (toolset `ingest`): ingestão **one-shot** — recebe o documento
+>    inteiro, cria `RawInformation`+chunks+`LLMRun` e dispara a extração **server-side** (o LLM que
+>    extrai é o do servidor, chave Anthropic do BFF — o cliente só entrega o conteúdo). Idempotente
+>    (`content_hash` → `already_ingested`). Distinta das 4 `propose_*` (que operam dentro de um run).
+>    Síncrona/LLM-bound. Reconciliada pela **Emenda v7.4** + back-spec `ingestion.back.md` **BR-30**.
+> 2. **Carve-out de auth dev-only `LOCAL_OPERATOR_TOKEN`:** `requireNeonAuth` aceita um bearer
+>    estático (== env `LOCAL_OPERATOR_TOKEN`, ≥16 chars, comparação constant-time) como dono,
+>    pulando o JWKS — **só** quando `NODE_ENV=development`. Em produção o JWT continua sendo a única
+>    porta (contrato do §2.5 intocado). **Fail-closed:** o `loadEnv` recusa subir se o token estiver
+>    setado com `NODE_ENV` não explicitamente `development` (checa o source cru, pois o default é
+>    `development`). Registrado em `knowledge-graph.back.md` **BR-01** (v1.3.0).
+>    Resolve a expiração (~1h) do JWT do Neon Auth, que o `mcp-remote` não renova. Rode o BFF com
+>    `npm run dev`. Config do cliente: `mcp-remote` apontando para `/api/v1/mcp/{query,ingest}` com
+>    `--header "Authorization:${AUTH}"` (`AUTH="Bearer <token>"`), `--transport http-only`.
+
 #### Core concepts
 
 - **RawInformation / RawChunk** — camada de origem, a verdade bruta. Nunca é alterada nem

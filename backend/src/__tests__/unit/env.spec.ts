@@ -105,6 +105,42 @@ describe("loadEnv", () => {
     expect(err.message).toMatch(/DATABASE_URL/);
     expect(err.message).toMatch(/NEON_AUTH_URL/);
   });
+
+  // --- LOCAL_OPERATOR_TOKEN fail-closed guard (A1) -----------------------
+  // The dev-only static-bearer bypass must NEVER be enableable outside an
+  // EXPLICIT development environment. Because NODE_ENV defaults to
+  // "development", the guard checks the RAW source — so a prod box that forgets
+  // NODE_ENV but carries the token refuses to start rather than fail open.
+  const TOKEN = "x".repeat(24); // >= 16
+
+  it("accepts LOCAL_OPERATOR_TOKEN only with explicit NODE_ENV=development", () => {
+    const env = loadEnv({
+      ...baseEnv,
+      NODE_ENV: "development",
+      LOCAL_OPERATOR_TOKEN: TOKEN,
+    });
+    expect(env.LOCAL_OPERATOR_TOKEN).toBe(TOKEN);
+  });
+
+  it("refuses to start when LOCAL_OPERATOR_TOKEN is set with NODE_ENV != development", () => {
+    expect(() =>
+      loadEnv({ ...baseEnv, NODE_ENV: "production", LOCAL_OPERATOR_TOKEN: TOKEN })
+    ).toThrowError(EnvValidationError);
+  });
+
+  it("refuses to start when LOCAL_OPERATOR_TOKEN is set but NODE_ENV is absent (default-development is NOT trusted)", () => {
+    const { NODE_ENV: _unused, ...rest } = baseEnv;
+    void _unused;
+    expect(() =>
+      loadEnv({ ...rest, LOCAL_OPERATOR_TOKEN: TOKEN })
+    ).toThrowError(EnvValidationError);
+  });
+
+  it("rejects a LOCAL_OPERATOR_TOKEN shorter than 16 chars", () => {
+    expect(() =>
+      loadEnv({ ...baseEnv, NODE_ENV: "development", LOCAL_OPERATOR_TOKEN: "short" })
+    ).toThrowError(EnvValidationError);
+  });
 });
 
 function grabError(fn: () => unknown): unknown {

@@ -138,4 +138,11 @@ export const IngestToolDescriptions = {
     "literal as its own node. The node must exist; cite at least one fragment_id. " +
     "key must be a catalog AttributeKey for that node type, and value must match the " +
     "key's value type.",
+  ingest_document:
+    "Ingest a whole document into the knowledge base in one step: the server stores " +
+    "the raw text, splits it into chunks, and runs structured extraction (entities, " +
+    "relations, attributes) with full provenance, then returns a summary of what was " +
+    "consolidated. Use this to ADD knowledge from a source; use the query tools to read " +
+    "it back. Extraction runs server-side and can take from seconds to a few minutes for " +
+    "long documents. Re-sending the same content is a no-op (returns the existing run).",
 } as const;

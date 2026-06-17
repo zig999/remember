@@ -208,6 +208,64 @@ describe("buildNeonAuth.preHandler", () => {
   });
 });
 
+describe("buildNeonAuth — DEV-ONLY local operator token", () => {
+  // WHY these tests matter: the bypass is a static credential. The business
+  // requirement is that it works ONLY in development AND only for the exact
+  // configured token, and that it NEVER consults (let alone trusts) JWKS on the
+  // bypass path. A regression that fired the bypass in production, or skipped
+  // JWKS for a wrong token, would be a real auth hole — these tests fail loudly
+  // if the gate (NODE_ENV) or the constant-time match is weakened.
+  const LOCAL_TOKEN = "local-dev-operator-token-abc123"; // >= 16 chars
+
+  const devEnv = {
+    ...envFixture,
+    NODE_ENV: "development" as const,
+    LOCAL_OPERATOR_TOKEN: LOCAL_TOKEN,
+  };
+
+  const throwingJwks = async () => {
+    throw new Error("JWKS must not be consulted on the local-operator path");
+  };
+
+  it("accepts the configured token as `local-operator` WITHOUT touching JWKS", async () => {
+    const auth = buildNeonAuth(devEnv, throwingJwks);
+    const req = fakeRequest(`Bearer ${LOCAL_TOKEN}`);
+    await auth.preHandler(req, {} as never);
+    expect(req.user).toMatchObject({ id: "local-operator" });
+  });
+
+  it("does NOT bypass for a non-matching token (falls through to JWKS)", async () => {
+    // A wrong token must be verified as a real JWT — here the stub rejects it.
+    const auth = buildNeonAuth(devEnv, throwingJwks);
+    const req = fakeRequest("Bearer some-other-token-value-999");
+    await expect(auth.preHandler(req, {} as never)).rejects.toMatchObject({
+      name: "AuthError",
+    });
+    expect(req.user).toBeUndefined();
+  });
+
+  it("is DISABLED outside development even with a matching token", async () => {
+    // Same token, but NODE_ENV=production -> bypass must not engage; the token
+    // is treated as an opaque JWT and fails verification.
+    const prodEnv = { ...devEnv, NODE_ENV: "production" as const };
+    const auth = buildNeonAuth(prodEnv, throwingJwks);
+    const req = fakeRequest(`Bearer ${LOCAL_TOKEN}`);
+    await expect(auth.preHandler(req, {} as never)).rejects.toMatchObject({
+      name: "AuthError",
+    });
+    expect(req.user).toBeUndefined();
+  });
+
+  it("is DISABLED when no LOCAL_OPERATOR_TOKEN is configured", async () => {
+    // Default envFixture has neither NODE_ENV nor the token -> classic behavior.
+    const auth = buildNeonAuth(envFixture, throwingJwks);
+    const req = fakeRequest(`Bearer ${LOCAL_TOKEN}`);
+    await expect(auth.preHandler(req, {} as never)).rejects.toMatchObject({
+      name: "AuthError",
+    });
+  });
+});
+
 describe("AuthError", () => {
   it("carries statusCode=401 and a typed code", () => {
     const err = new AuthError("AUTH_TOKEN_EXPIRED", "expired");

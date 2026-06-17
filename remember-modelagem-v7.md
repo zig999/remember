@@ -1141,7 +1141,7 @@ erros** — voltam em `result.outcome`.
 >
 > | Toolset | Rota MCP | REST equivalente | Modo |
 > |---|---|---|---|
-> | `ingest` (14.1) | `POST /api/v1/mcp/ingest` | `POST /api/v1/ingest/llm-runs/:id/propose-*` | escrita; dual; `llm_run_id` por argumento (v7.2) |
+> | `ingest` (14.1) | `POST /api/v1/mcp/ingest` | `POST /api/v1/ingest/llm-runs/:id/propose-*` · `POST .../llm-runs/:id/run` | escrita; dual; 4 `propose_*` (`llm_run_id` por argumento, v7.2) + `ingest_document` one-shot (v7.4) |
 > | `query` (14.3) | `POST /api/v1/mcp/query` | `GET /api/v1/...` | somente leitura; dual |
 > | `curation` (14.4) | `POST /api/v1/mcp/curation` | `POST /api/v1/curation/...` | escrita auditada; dual |
 >
@@ -1159,7 +1159,21 @@ erros** — voltam em `result.outcome`.
 > `VALIDATION_INVALID_FORMAT`, além dos códigos canônicos. O conjunto canônico é a **base**; o
 > conjunto estendido adiciona os códigos específicos do domínio.
 
-### 14.1 Toolset `ingest` (disponível apenas dentro de um `LLMRun`; o run é contexto ambiente)
+### 14.1 Toolset `ingest` (escrita; dual MCP+REST)
+
+O toolset tem dois níveis:
+
+- **`propose_*` (4 ferramentas)** — `propose_fragment`, `propose_node`, `propose_link`,
+  `propose_attribute`. Operam **dentro de um `LLMRun` ativo** (o run é contexto; `llm_run_id` por
+  **argumento de ferramenta** — Emenda v7.2). São chamadas pelo orquestrador interno (seção 9.4) ou
+  por um cliente externo que já tenha um run em `running` (BR-21 da `ingestion.back.md`).
+- **`ingest_document` (1 ferramenta — Emenda v7.4)** — entrada **one-shot** para um cliente MCP
+  externo (ex.: Claude Desktop): recebe o documento inteiro, **cria** o `RawInformation` + chunks +
+  `LLMRun` e **dispara a extração server-side** (o mesmo orquestrador interno da seção 9.4),
+  devolvendo o resumo do run. Quem extrai é o LLM do **servidor** (chave Anthropic do BFF — A28 /
+  BR-29 da `ingestion.back.md`); o cliente apenas entrega o conteúdo, de modo que a regra
+  inegociável (a LLM nunca toca no banco — seção 2) é preservada. **Idempotente**: reenviar o mesmo
+  conteúdo é no-op (devolve o run existente sem re-extrair; `content_hash` UNIQUE — seção 8).
 
 **`propose_fragment`** — registra uma afirmação atômica como evidência.
 
@@ -1201,6 +1215,20 @@ in:  { node_id: uuid, key: string, value: string,
        valid_from?: date, valid_from_basis?: "stated" | "document",
        change_hint?: "none" | "succession" | "correction" }
 out: { attribute_id: uuid, outcome: (idem propose_link), superseded_attribute_id?: uuid }
+```
+
+**`ingest_document`** (Emenda v7.4) — ingestão one-shot: cria o run e dispara a extração
+server-side. Não recebe `llm_run_id` (ele é **criado** aqui).
+
+```
+in:  { content: string (texto do documento, 1–10 MiB),
+       source_type: "pdf"|"email"|"ata"|"chat"|"artigo"|"transcricao"|"outro",
+       metadata?: object (livre; `document_date` ISO-8601 justifica validade temporal, §6.5),
+       model?: string (modelo Anthropic da extração; default recomendado do servidor),
+       prompt_version?: string (default do servidor) }
+out: { outcome: "ingested" | "already_ingested",
+       raw_information_id: uuid, llm_run_id: uuid, chunk_count: number,
+       run?: LlmRunSummary }    // `run` presente quando outcome = "ingested"
 ```
 
 ### 14.2 Schema JSON normativo (exemplo completo — `propose_link`; os demais seguem o padrão)
@@ -1635,7 +1663,7 @@ configuração, não de arquitetura.
 | A25 | **Eixo de transação — consulta (c)** | Colunas `recorded_at`/`superseded_at` **mantidas**; `superseded_at` usado (correção, linhagem, versão corrente); **consulta (c)** (system-time travel) **diferida** — dados preservados via `recorded_at`, caminho não construído/testado/mantido até necessidade real (seção 5.3, 20.2) |
 | A26 | **Filas de curadoria** | **Duas** filas dedicadas: `entity_match`, `disputed`. `uncertain` e `low_confidence` são **flags de exibição**, sem fila; promoção a fila dedicada é aditiva e diferida até o volume justificar (seção 10, 20.2) |
 | A27 | **Frontend / SPA** | React 19 + TypeScript (strict) + Vite 6; Tailwind v4 (CSS-first via `@theme`) + shadcn/ui (Radix); TanStack Router/Query v5/Table; Zustand v5; React Hook Form v7 + Zod v4; Framer Motion, sonner, lucide-react; testes Vitest + Playwright + MSW. Consome o BFF **só por REST** (seção 2.4) |
-| A28 | **BFF — framework e transporte** | Node.js 20 LTS + TypeScript (strict) + Fastify; REST documentado por `@fastify/swagger` (SPA) e ferramentas MCP (LLM) sobre **uma** camada de serviço/validação. Três transportes MCP disjuntos: `POST /api/v1/mcp/ingest` (`ingest`, **dual MCP+REST**, `llm_run_id` por argumento de ferramenta); `POST /api/v1/mcp/query` (`query`, **dual MCP+REST**, somente leitura); `POST /api/v1/mcp/curation` (`curation`, **dual MCP+REST**, escrita auditada, 8 ferramentas: 7 owned by `curation` + `compliance_delete` owned by `compliance-audit`). Os três são montados pelo **kernel SDK único** `mountMcpEndpoint` (`@modelcontextprotocol/sdk`, low-level `Server`, Streamable HTTP stateless, **MCP 2025-06-18** `content`/`isError`); conjunto de ferramentas fechado por construção (cada endpoint registra só as suas). Ver Emenda v7.2. Logs `pino`; validação de DTO/env com Zod v4 (seção 2, 14) |
+| A28 | **BFF — framework e transporte** | Node.js 20 LTS + TypeScript (strict) + Fastify; REST documentado por `@fastify/swagger` (SPA) e ferramentas MCP (LLM) sobre **uma** camada de serviço/validação. Três transportes MCP disjuntos: `POST /api/v1/mcp/ingest` (`ingest`, **dual MCP+REST**, `llm_run_id` por argumento de ferramenta; inclui a ferramenta `ingest_document` one-shot que cria o run e dispara a extração — Emenda v7.4); `POST /api/v1/mcp/query` (`query`, **dual MCP+REST**, somente leitura); `POST /api/v1/mcp/curation` (`curation`, **dual MCP+REST**, escrita auditada, 8 ferramentas: 7 owned by `curation` + `compliance_delete` owned by `compliance-audit`). Os três são montados pelo **kernel SDK único** `mountMcpEndpoint` (`@modelcontextprotocol/sdk`, low-level `Server`, Streamable HTTP stateless, **MCP 2025-06-18** `content`/`isError`); conjunto de ferramentas fechado por construção (cada endpoint registra só as suas). Ver Emenda v7.2. Logs `pino`; validação de DTO/env com Zod v4 (seção 2, 14) |
 | A29 | **Autenticação e fronteira de acesso** | **Supabase Auth** — JWT validado no middleware do BFF; **service key só no BFF**; **RLS desligado** (autorização centralizada no BFF); há superfície de rede, fechada por autenticação (seção 2.5) |
 
 ## Apêndice B — Changelog v6 → v7
@@ -1702,3 +1730,20 @@ configuração, não de arquitetura.
 | **Sucessão fecha o eixo de validade.** A versão antiga recebe `valid_to = data_da_mudança` e `status = superseded`, mas **`superseded_at` permanece NULL** — permanece visível à consulta (b) em `[valid_from, valid_to)` (satisfaz C7) e fora da visão atual (a) (tem `valid_to`). A correção (§6.5-B) segue **inalterada** (eixo de transação, `valid_to` intocado). | 5.3, 5.6, 6.5-A, C4, C7 |
 | **Exceção intra-day.** Quando `valid_from ≥ data_da_mudança` (sucessão no mesmo dia, granularidade de dia da seção 5.1), um `valid_to` colapsaria o intervalo `[D, D)` (viola o CHECK `valid_from < valid_to`); só nesse caso a linha antiga é encerrada no eixo de **transação** (`superseded_at = now()`, `valid_to` intocado), como na correção. C7 é inalcançável para sucessão sub-dia (limitação documentada); a linhagem `supersedes_*` ainda ordena as versões. | 5.1, 6.5-A |
 | **Realização.** Uma única função `closeVigentForSuccession` (`backend/src/modules/ingestion/service/graph-consolidation.service.ts`), compartilhada por link e atributo: `superseded_at` passa a ser condicional (`CASE`: intra-day → `now()`; normal → permanece NULL). Sem migração de schema (dup-guard, CHECKs e `is_current`/`effective_status` preservados). Verificado: suíte 667/667 + `tsc` limpo; cenários A (normal, C7 verde) e B (intra-day, eixo de transação) verdes contra Postgres real. | 6.5-A |
+
+## Apêndice C — Emenda v7.4 (2026-06-17): ferramenta `ingest_document` (ingestão one-shot via MCP)
+
+> Emenda aditiva à v7. Adiciona **uma** ferramenta ao toolset `ingest` para que um cliente MCP
+> externo (ex.: Claude Desktop) ingira um documento inteiro numa única chamada. **Não altera** o
+> modelo de dados, o schema, os cenários de aceitação, nem as validações de negócio (seção 13): a
+> nova ferramenta **compõe** duas capacidades já existentes — intake (UC-01) + extração (UC-12) —
+> sobre o mesmo orquestrador e a mesma camada de serviço. Fora do escopo: o carve-out de
+> autenticação `LOCAL_OPERATOR_TOKEN` (dev-only), registrado na back-spec `knowledge-graph.back.md`
+> (BR-01) e no CLAUDE.md — **não** altera o contrato de produção do §2.5 (JWT continua obrigatório
+> em produção).
+
+| Mudança | Seções afetadas |
+|---|---|
+| **`ingest_document` adicionada ao toolset `ingest`** (§14.1): ferramenta one-shot que recebe `{ content, source_type, metadata?, model?, prompt_version? }`, **cria** `RawInformation` + chunks + `LLMRun` (UC-01) e **dispara a extração server-side** (o orquestrador interno, UC-12 / BR-26), devolvendo `{ outcome: "ingested" \| "already_ingested", raw_information_id, llm_run_id, chunk_count, run? }`. Quem extrai é o LLM do **servidor** (chave Anthropic do BFF — A28 / BR-29); o cliente só entrega o conteúdo, preservando a regra inegociável (seção 2). Idempotente via `content_hash` UNIQUE (seção 8): conteúdo já ingerido → `already_ingested`, sem re-extração. Distinta das 4 `propose_*` (que operam **dentro** de um run — BR-21): é uma ferramenta de **ciclo-de-vida**, sem `llm_run_id` de entrada. | 14, A28 |
+| **§14.1 reescrito em dois níveis** (`propose_*` × `ingest_document`); tabela de topologia do §14 e A28 atualizadas para listar a nova ferramenta. | 2, 14, A28 |
+| **Back-spec correspondente**: `domains/ingestion/back/ingestion.back.md` v1.2.5 — novo **BR-30** (`ingest_document`: composição UC-01+UC-12, idempotência `noop_existing`, defaults de `model`/`prompt_version`, mapeamento de erro provider/extraction → envelope `ok:false`); nota na UC-12 da `ingestion.spec.md`. Síncrono e LLM-bound (mesma nota de latência da UC-12: a conexão HTTP fica aberta durante toda a extração — minutos para documentos longos). | 14 |

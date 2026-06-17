@@ -38,9 +38,14 @@ import { proposeAttributeHandler } from "./propose-attribute.handler.js";
 import { proposeFragmentHandler } from "./propose-fragment.handler.js";
 import { proposeLinkHandler } from "./propose-link.handler.js";
 import { proposeNodeHandler } from "./propose-node.handler.js";
+import {
+  ingestDocumentHandler,
+  type IngestDocumentDeps,
+} from "./ingest-document.handler.js";
 import { ValidationFailure } from "../validation/errors.js";
 import {
   INGEST_TOOL_NAMES,
+  IngestDocumentMcpInputSchema,
   ProposeAttributeMcpInputSchema,
   ProposeFragmentMcpInputSchema,
   ProposeLinkMcpInputSchema,
@@ -55,14 +60,22 @@ import {
 
 export { INGEST_TOOL_NAMES, type IngestMcpToolName };
 
-/** Dependencies required to register the four ingest MCP tools. */
+/** Dependencies required to register the ingest MCP tools. */
 export interface IngestToolsetDeps {
   readonly mcp: McpServer;
   readonly pool: Pool;
   readonly logger: Logger;
   readonly catalog: CatalogSnapshot;
+  /**
+   * Anthropic secret — consumed by the high-level `ingest_document` tool, which
+   * drives the server-side extraction orchestrator. The four `propose_*` tools
+   * do not need it (they are called BY an LLM, not the other way around).
+   */
+  readonly env: { readonly ANTHROPIC_API_KEY: string };
   /** Clock source — defaults to `() => new Date()`. Tests inject deterministic clocks. */
   readonly now?: () => Date;
+  /** Test seam — forwarded to the `ingest_document` orchestrator. Production omits it. */
+  readonly anthropicFactory?: IngestDocumentDeps["anthropicFactory"];
 }
 
 // --------------------------------------------------------------------------
@@ -195,11 +208,51 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
+  // ----- ingest_document (TC-MCI-002) — one-shot, run-creating ingestion -----
+  // Distinct from the four `propose_*` writers: this tool CREATES the run and
+  // drives server-side extraction, so it takes no `llm_run_id`. A Zod failure
+  // happens before any run exists, so there is no `tool_call` row to audit
+  // against — we return STRUCTURAL_INVALID directly (the orchestrator it
+  // triggers writes its own per-proposal audit rows).
+  mcp.registerTool("ingest", {
+    name: "ingest_document",
+    description: IngestToolDescriptions.ingest_document,
+    inputSchema: IngestDocumentMcpInputSchema as unknown as z.ZodTypeAny,
+    handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+      const parsed = IngestDocumentMcpInputSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: {
+            code: "STRUCTURAL_INVALID",
+            message: "ingest_document arguments failed validation.",
+            details: {
+              issues: parsed.error.issues.map((i) => ({
+                path: i.path.map((seg) => String(seg)).join("."),
+                message: i.message,
+              })),
+            },
+          },
+        };
+      }
+      return await ingestDocumentHandler(parsed.data, {
+        pool,
+        logger,
+        catalog,
+        anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
+        now,
+        ...(deps.anthropicFactory !== undefined
+          ? { anthropicFactory: deps.anthropicFactory }
+          : {}),
+      });
+    },
+  });
+
   logger.info(
     {
       component: "mcp.ingest",
-      tools_registered: INGEST_TOOL_NAMES.length,
-      tool_names: INGEST_TOOL_NAMES,
+      tools_registered: INGEST_TOOL_NAMES.length + 1,
+      tool_names: [...INGEST_TOOL_NAMES, "ingest_document"],
     },
     "ingest_toolset_registered"
   );

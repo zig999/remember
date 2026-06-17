@@ -23,6 +23,7 @@ import {
   ProposeLinkInputSchema,
   ProposeNodeInputSchema,
 } from "../dto/index.js";
+import { SourceTypeSchema } from "../dto/source-type.js";
 
 const LlmRunIdField = {
   llm_run_id: z
@@ -66,3 +67,47 @@ export const INGEST_TOOL_NAMES = [
   "propose_attribute",
 ] as const;
 export type IngestMcpToolName = (typeof INGEST_TOOL_NAMES)[number];
+
+// --------------------------------------------------------------------------
+// `ingest_document` — high-level one-shot ingestion tool (TC-MCI-002). Unlike
+// the four `propose_*` writers (which the in-process orchestrator drives with
+// chunk ids + a `running` run), this tool lets an EXTERNAL MCP client (e.g.
+// Claude Desktop) hand over a whole document; the server persists + chunks it,
+// runs server-side extraction, and returns a run summary. It does NOT take an
+// `llm_run_id` (it CREATES the run) and is NOT part of INGEST_TOOL_NAMES (that
+// enum is the per-proposal `tool_call` audit surface).
+// --------------------------------------------------------------------------
+
+export const IngestDocumentMcpInputSchema = z.object({
+  content: z
+    .string()
+    .min(1, "content must not be empty")
+    .max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+    .describe(
+      "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction, and persists the knowledge graph with provenance. No base64/binary."
+    ),
+  source_type: SourceTypeSchema.describe(
+    "What kind of source this is. One of: pdf, email, ata, chat, artigo, transcricao, outro."
+  ),
+  metadata: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Optional free-form metadata (e.g. title, author, url). Set `document_date` (ISO-8601) when the document states its own date — it justifies temporal validity during extraction."
+    ),
+  model: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional Anthropic model id the SERVER uses to extract. Defaults server-side; override to trade cost for quality."
+    ),
+  prompt_version: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional extraction prompt version. Defaults to the current server default."
+    ),
+});
+export type IngestDocumentMcpInput = z.infer<typeof IngestDocumentMcpInputSchema>;
