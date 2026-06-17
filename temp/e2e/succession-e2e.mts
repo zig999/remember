@@ -20,6 +20,10 @@
  *   Scenario B (intra-day, T1 == T2):
  *     old row → superseded_at SET, valid_to NULL (transaction-axis fallback)
  *     GET (current) → NEW value
+ *   Scenario C (LINK succession, functional reports_to, T1 < T2):
+ *     old link → superseded_at NULL, valid_to = T2 (validity-axis close)
+ *     traverse(out) ?as_of=<inside [T1,T2)> → OLD link (→M1)         ← C7 (link)
+ *     traverse(out) current / ?as_of=<after> → NEW link (→M2)
  *
  * History: this file began as a PROBE that confirmed the pre-fix C7 violation
  * (see temp/plano-item5-eixo-temporal.md §2.9). After Opção A it asserts the
@@ -228,6 +232,9 @@ async function main(): Promise<void> {
   );
   const { proposeAttributeHandler } = await import(
     "../../backend/src/modules/ingestion/mcp/propose-attribute.handler.ts"
+  );
+  const { proposeLinkHandler } = await import(
+    "../../backend/src/modules/ingestion/mcp/propose-link.handler.ts"
   );
   const { closeLlmRun } = await import(
     "../../backend/src/modules/ingestion/service/llm-run.service.ts"
@@ -495,6 +502,142 @@ async function main(): Promise<void> {
     const bCur = await http(baseUrl, "GET", `/api/v1/nodes/${B.taskId}`);
     assert(statusOf(bCur.body)?.value === NEW_VALUE, `B: current view status === '${NEW_VALUE}'`);
 
+    // ======================================================================
+    // Scenario C — LINK succession (functional reports_to) read by as_of.
+    // Mirror of Scenario A on the LINK branch (closeVigentForSuccession is shared
+    // by link + attribute). Person P reports_to M1 over [T1,T2), then succeeds to
+    // M2 over [T2,∞). The C7 fix must make as_of inside [T1,T2) return the OLD
+    // manager (M1) — i.e. the old link is visible to valid-time travel.
+    // reports_to is functional (allows_multiple_current=false, §15.2).
+    // ======================================================================
+    log("");
+    log("[C] link succession (functional reports_to) — C7 by as_of, LINK branch");
+    const node = async (name: string, label: string) =>
+      unwrap<{ node_id: string }>(
+        await proposeNodeHandler({ node_type: "Person", name }, nodeDeps),
+        `C propose_node(${label})`
+      ).node_id;
+    // Independent tokens + distinct base names so the 3 Persons don't trigram-merge.
+    const pId = await node(`Carlos Pereira ${token()}`, "P");
+    const m1Id = await node(`Diana Souza ${token()}`, "M1");
+    const m2Id = await node(`Eduardo Lima ${token()}`, "M2");
+
+    const cf1 = unwrap<{ fragment_id: string }>(
+      await proposeFragmentHandler(
+        { text: `C: em ${A_T1} Carlos reportava a Diana.`, confidence: 0.95, chunk_ids: [chunkId] },
+        fragDeps
+      ),
+      "C propose_fragment(old)"
+    );
+    const cf2 = unwrap<{ fragment_id: string }>(
+      await proposeFragmentHandler(
+        { text: `C: em ${A_T2} Carlos passou a reportar a Eduardo.`, confidence: 0.95, chunk_ids: [chunkId] },
+        fragDeps
+      ),
+      "C propose_fragment(new)"
+    );
+
+    const cl1 = unwrap<{ link_id: string | null; outcome: string }>(
+      await proposeLinkHandler(
+        {
+          source_node_id: pId, link_type: "reports_to", target_node_id: m1Id,
+          confidence: 0.95, fragment_ids: [cf1.fragment_id],
+          valid_from: A_T1, valid_from_basis: "stated", change_hint: "none",
+        },
+        wDeps
+      ),
+      "C propose_link(reports_to M1)"
+    );
+    assert(cl1.outcome === "accepted", "C: L1 (reports_to M1) outcome === 'accepted'");
+    const cl2 = unwrap<{ link_id: string | null; outcome: string; superseded_link_id?: string }>(
+      await proposeLinkHandler(
+        {
+          source_node_id: pId, link_type: "reports_to", target_node_id: m2Id,
+          confidence: 0.95, fragment_ids: [cf2.fragment_id],
+          valid_from: A_T2, valid_from_basis: "stated", change_hint: "succession",
+        },
+        wDeps
+      ),
+      "C propose_link(reports_to M2)"
+    );
+    assert(cl2.outcome === "superseded_previous", "C: L2 (succession) outcome === 'superseded_previous'");
+    const L1 = cl1.link_id;
+    const L2 = cl2.link_id;
+
+    // DB evidence for the (P, reports_to) links.
+    const lc = await pool.connect();
+    let linkRows: any[];
+    try {
+      const r = await lc.query(
+        `SELECT kl.id, kl.target_node_id,
+                to_char(kl.valid_from,'YYYY-MM-DD') AS valid_from,
+                to_char(kl.valid_to,  'YYYY-MM-DD') AS valid_to,
+                kl.superseded_at, kl.status, kl.supersedes_link_id
+           FROM knowledge_link kl
+           JOIN link_type lt ON lt.id = kl.link_type_id
+          WHERE kl.source_node_id = $1 AND lt.name = 'reports_to'
+          ORDER BY kl.recorded_at ASC`,
+        [pId]
+      );
+      linkRows = r.rows;
+    } finally {
+      lc.release();
+    }
+    for (const row of linkRows) {
+      log(
+        `      • →${String(row.target_node_id).slice(0, 8)} valid=[${row.valid_from}, ${row.valid_to ?? "∞"}) ` +
+          `superseded_at=${row.superseded_at ? "SET" : "null"} status=${row.status} ` +
+          `supersedes=${row.supersedes_link_id ? "→" + String(row.supersedes_link_id).slice(0, 8) : "—"}`
+      );
+    }
+    const cOld = linkRows.find((r) => r.target_node_id === m1Id);
+    const cNew = linkRows.find((r) => r.target_node_id === m2Id);
+    assert(linkRows.length === 2, "C: exactly 2 reports_to links");
+    assert(
+      cOld && cOld.superseded_at === null && cOld.status === "superseded" && cOld.valid_to === A_T2,
+      `C: old link closed on VALIDITY axis only — superseded_at NULL, valid_to=${A_T2}, status='superseded'`
+    );
+    assert(
+      cNew && cNew.superseded_at === null && cNew.valid_to === null && cNew.status === "active",
+      "C: new link is current — superseded_at null, valid_to null, status='active'"
+    );
+    assert(cNew && cOld && cNew.supersedes_link_id === cOld.id, "C: new link chains to old via supersedes_link_id");
+
+    // Traverse (out from P, depth 1) at three points in time.
+    const trav = async (asOf?: string) =>
+      http(
+        baseUrl,
+        "GET",
+        `/api/v1/nodes/${pId}/traverse?direction=out&depth=1${asOf ? `&as_of=${asOf}` : ""}`
+      );
+    const linkIdsOf = (res: HttpResult) => (res.body?.links ?? []).map((l: any) => l.id);
+
+    const cCur = linkIdsOf(await trav());
+    assert(
+      cCur.includes(L2) && !cCur.includes(L1),
+      "C: current traverse → new link (→M2), old excluded"
+    );
+    const cAfter = linkIdsOf(await trav(A_AS_OF_AFTER));
+    assert(
+      cAfter.includes(L2) && !cAfter.includes(L1),
+      `C: as_of=${A_AS_OF_AFTER} traverse → new link (→M2)`
+    );
+
+    // THE C7-link assertion — as_of inside [T1,T2) must return the OLD link.
+    const cMid = linkIdsOf(await trav(A_AS_OF_MID));
+    log(
+      `      → C7(link): as_of=${A_AS_OF_MID} link ids = ${JSON.stringify(cMid.map((x: string) => x?.slice(0, 8)))}`
+    );
+    assert(
+      cMid.includes(L1) && !cMid.includes(L2),
+      `C: C7 SATISFIED (link) — as_of inside [T1,T2) returns the OLD link (→M1)`
+    );
+
+    // Link lineage chain.
+    const cHist = await http(baseUrl, "GET", `/api/v1/links/${L2}/history`);
+    const cVers: any[] = cHist.body?.versions ?? [];
+    assert(cHist.status === 200 && cVers.length === 2, "C: link history has 2 versions (chained)");
+
     // Close the run so it is not left 'running'.
     const closeClient = await pool.connect();
     try {
@@ -512,10 +655,11 @@ async function main(): Promise<void> {
   log("─────────────────────────────────────────────────────────────────────");
   if (failures.length === 0) {
     log("✓ SUCCESSION E2E PASSED — Emenda v7.3 behavior verified vs real Postgres:");
-    log("  • normal succession closes the validity axis only (superseded_at NULL)");
-    log("  • C7 holds — as_of inside the old window returns the old value");
-    log("  • current view / as_of-after return the new value; history chains both");
-    log("  • intra-day succession still closes on the transaction axis (exception)");
+    log("  • [attr] normal succession closes the validity axis only (superseded_at NULL)");
+    log("  • [attr] C7 holds — as_of inside the old window returns the old value");
+    log("  • [attr] current / as_of-after return the new value; history chains both");
+    log("  • [attr] intra-day succession still closes on the transaction axis (exception)");
+    log("  • [link] reports_to succession: as_of inside [T1,T2) returns the OLD link (C7, link branch)");
     process.exitCode = 0;
   } else {
     log(`✗ SUCCESSION E2E FAILED — ${failures.length} assertion(s):`);
