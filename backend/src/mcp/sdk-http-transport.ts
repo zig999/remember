@@ -79,6 +79,62 @@ function toCallToolResult(env: McpEnvelope): CallToolResult {
   };
 }
 
+/** Inputs for {@link buildConfiguredMcpServer}: the server identity advertised
+ *  in `initialize` plus the closed set of tools to register. */
+export interface BuildConfiguredMcpServerOptions {
+  readonly serverName: string;
+  readonly serverVersion: string;
+  readonly tools: readonly McpHttpTool[];
+}
+
+/**
+ * Build a low-level `@modelcontextprotocol/sdk` `Server` with `ListTools` /
+ * `CallTool` handlers wired to the supplied closed tool set, ready to be
+ * `.connect()`-ed to any transport (HTTP via `StreamableHTTPServerTransport`
+ * inside {@link mountMcpEndpoint}; stdio via `StdioServerTransport` in the
+ * forthcoming `backend/src/mcp-stdio.ts` entry point).
+ *
+ * Behaviour is identical to the inline construction this builder replaces:
+ *  - `tools/list` advertises each tool's name, description, and the JSON Schema
+ *    derived once from its Zod source (`z.toJSONSchema`, BR-25 / BR-31).
+ *  - `tools/call` looks the name up in the closed set; unknown names yield a
+ *    `NOT_FOUND` isError result mapped via {@link toMcpToolResult}.
+ *  - Arguments are forwarded RAW to the handler — no SDK validation interposed,
+ *    so the handler's layered Zod validation remains authoritative.
+ */
+export function buildConfiguredMcpServer(opts: BuildConfiguredMcpServerOptions): Server {
+  const advertised = opts.tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: z.toJSONSchema(t.inputSchema, JSON_SCHEMA_OPTS) as unknown as Record<
+      string,
+      unknown
+    >,
+  }));
+  const handlers = new Map(opts.tools.map((t) => [t.name, t.handler]));
+
+  const server = new Server(
+    { name: opts.serverName, version: opts.serverVersion },
+    { capabilities: { tools: {} } }
+  );
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: advertised }));
+  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const handler = handlers.get(req.params.name);
+    if (handler === undefined) {
+      return toCallToolResult({
+        ok: false,
+        error: {
+          code: "NOT_FOUND",
+          message: `Tool '${req.params.name}' is not available on this endpoint.`,
+        },
+      });
+    }
+    const env = await handler(req.params.arguments ?? {});
+    return toCallToolResult(env);
+  });
+  return server;
+}
+
 /**
  * Mount one MCP-over-HTTP endpoint on the calling Fastify scope. Auth is the
  * parent scope's responsibility (requireNeonAuth preHandler). The closed tool
@@ -89,49 +145,22 @@ export function mountMcpEndpoint(
   scope: FastifyInstance,
   opts: McpHttpEndpointOptions
 ): void {
-  let cache: {
-    advertised: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
-    handlers: Map<string, McpHttpTool["handler"]>;
-  } | null = null;
-
-  const build = () => {
-    if (cache !== null) return cache;
-    const tools = opts.getTools();
-    cache = {
-      advertised: tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: z.toJSONSchema(t.inputSchema, JSON_SCHEMA_OPTS) as unknown as Record<
-          string,
-          unknown
-        >,
-      })),
-      handlers: new Map(tools.map((t) => [t.name, t.handler])),
-    };
-    return cache;
+  // Toolsets register after the route mounts in app.ts, so the closed set is
+  // resolved lazily on the first request and memoized; subsequent requests
+  // re-use the same `tools` reference (the JSON-Schema derivation inside the
+  // builder is cheap and deterministic, but we still hand the same array in
+  // every time to keep allocations identical to the pre-extraction path).
+  let cachedTools: readonly McpHttpTool[] | null = null;
+  const resolveTools = (): readonly McpHttpTool[] => {
+    if (cachedTools === null) cachedTools = opts.getTools();
+    return cachedTools;
   };
 
   scope.post(opts.path, async (request: FastifyRequest, reply: FastifyReply) => {
-    const { advertised, handlers } = build();
-
-    const server = new Server(
-      { name: opts.serverName, version: opts.serverVersion },
-      { capabilities: { tools: {} } }
-    );
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: advertised }));
-    server.setRequestHandler(CallToolRequestSchema, async (req) => {
-      const handler = handlers.get(req.params.name);
-      if (handler === undefined) {
-        return toCallToolResult({
-          ok: false,
-          error: {
-            code: "NOT_FOUND",
-            message: `Tool '${req.params.name}' is not available on this endpoint.`,
-          },
-        });
-      }
-      const env = await handler(req.params.arguments ?? {});
-      return toCallToolResult(env);
+    const server = buildConfiguredMcpServer({
+      serverName: opts.serverName,
+      serverVersion: opts.serverVersion,
+      tools: resolveTools(),
     });
 
     const transport = new StreamableHTTPServerTransport({
