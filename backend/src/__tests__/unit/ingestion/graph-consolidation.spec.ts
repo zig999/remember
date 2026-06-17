@@ -771,6 +771,12 @@ describe("TC-011 — consolidateLink — superseded_previous (succession)", () =
     expect(state.updates[0]!.sql).toContain("valid_to");
     expect(state.updates[0]!.sql).toContain("superseded_at");
     expect(state.updates[0]!.sql).toContain("'superseded'");
+    // Emenda v7.3: succession closes the VALIDITY axis only — the close must
+    // guard superseded_at conditionally (intra-day fallback), never set it
+    // unconditionally. `ELSE superseded_at` proves the normal branch leaves it
+    // NULL so the old version stays visible to as_of (C7). A regression to a
+    // blind `superseded_at = now()` drops this token and silently re-breaks C7.
+    expect(state.updates[0]!.sql).toContain("ELSE superseded_at");
     // One INSERT for the new row, chained.
     expect(state.inserts.knowledge_link.length).toBe(1);
     expect(state.inserts.knowledge_link[0]!.supersedes_link_id).toBe(
@@ -822,6 +828,10 @@ describe("TC-011 — consolidateLink — superseded_previous (succession)", () =
     expect(close.sql).toContain("valid_from >=");
     expect(close.sql).toContain("THEN valid_to");
     expect(close.sql).toContain("superseded_at");
+    // Emenda v7.3: the intra-day branch is the ONLY succession case that closes
+    // on the transaction axis (validity can't represent the sub-day boundary) —
+    // `THEN now()` in the superseded_at CASE proves that fallback is wired.
+    expect(close.sql).toContain("THEN now()");
     // closeDate is still bound as $2 (the CASE decides whether to apply it).
     expect(close.bindings[1]).toBe("2026-06-01");
   });

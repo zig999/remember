@@ -476,9 +476,12 @@ WHERE superseded_at IS NULL
   AND (valid_to   IS NULL OR valid_to   >  D)
 ```
 
-O filtro `superseded_at IS NULL` em (a)/(b) seleciona a **versão de transação corrente** — exclui
-o que foi encerrado por sucessão (6.5-A) ou correção (6.5-B). Correção, portanto, **funciona
-plenamente** com (a)/(b): a versão errada some da visão atual sem que o mundo tenha mudado.
+O filtro `superseded_at IS NULL` em (a)/(b) exclui o que foi encerrado no **eixo de transação** —
+correção (6.5-B) e o caso intra-day de sucessão. A **sucessão normal (6.5-A)** é encerrada no
+**eixo de validade** (`valid_to`) e **permanece visível** à consulta (b) na sua janela `[valid_from,
+valid_to)` — é o que torna **C7** satisfatível; a visão atual (a) ainda a exclui (tem `valid_to`).
+Correção, portanto, **funciona plenamente** com (a)/(b): a versão errada some da visão atual sem
+que o mundo tenha mudado. (Ver Emenda v7.3.)
 
 **Consulta (c) — DIFERIDA (dados preservados, caminho não construído):**
 
@@ -617,8 +620,14 @@ A cadeia completa (`deadline 30/06 → 15/07 → 01/08`) é reconstruível naveg
 2. **Tipo funcional com alvo/valor diferente?** → decide entre os fluxos A, B, C:
 
 **A — Sucessão (mudança no mundo):**
-1. Encerra o antigo: `valid_to = data_da_mudança` (se `requires_valid_to_on_change`),
-   `superseded_at = now()`, `status = superseded`.
+1. Encerra o antigo **no eixo de validade**: `valid_to = data_da_mudança`,
+   `status = superseded`. **`superseded_at` permanece NULL** — a versão antiga
+   continua válida (e visível à consulta (b)) na janela `[valid_from, valid_to)`;
+   ela só deixou de valer no MUNDO, não deixou de ser a crença do sistema sobre o
+   passado. EXCEÇÃO (granularidade de dia, seção 5.1): se `valid_from ≥
+   data_da_mudança` (sucessão no mesmo dia), `valid_to` colapsaria o intervalo —
+   então encerra-se no eixo de TRANSAÇÃO (`superseded_at = now()`, `valid_to`
+   intocado), como na correção. (Ver Emenda v7.3.)
 2. Cria o novo: `valid_from = data_da_mudança`, status pela faixa de confiança.
 3. Linhagem: `novo.supersedes_* = antigo.id`.
 4. Proveniência do novo (fragmento real).
@@ -657,7 +666,8 @@ fontes. (Esta promoção automática é o principal caminho de saída de `uncert
 
 ```
 NodeAttribute (antigo): node=Apollo  key=deadline  value=2026-06-30
-  valid_from=2026-01-10  valid_to=2026-06-10  superseded_at=2026-06-10T14:02Z  status=superseded
+  valid_from=2026-01-10  valid_to=2026-06-10  superseded_at=null              status=superseded
+  (Emenda v7.3 — sucessão encerra só o eixo de validade; superseded_at fica NULL)
 NodeAttribute (novo):   node=Apollo  key=deadline  value=2026-07-15
   valid_from=2026-06-10  valid_to=null         superseded_at=null              status=active
   supersedes_attribute_id=<antigo>  valid_from_source=document
@@ -1433,8 +1443,9 @@ Apollo"; Então **nenhum** link novo: o `participates_in` existente ganha segund
 
 **C4 — Sucessão funcional.** Dado C1; Quando ata datada 2026-06-20 diz "go-live adiado para
 01/08/2026"; Então o atributo antigo fica `superseded` (`valid_to = 2026-06-20`,
-`superseded_at = now`), o novo fica `active` (`valid_from = 2026-06-20`, `value = 2026-08-01`,
-`valid_from_source = document`), com `supersedes_attribute_id` ligando os dois.
+**`superseded_at` permanece NULL** — encerramento no eixo de validade, Emenda v7.3), o novo fica
+`active` (`valid_from = 2026-06-20`, `value = 2026-08-01`, `valid_from_source = document`), com
+`supersedes_attribute_id` ligando os dois.
 
 **C5 — Conflito.** Dado C1; Quando fonte independente do **mesmo período** afirma go-live em
 20/07; Então ambos os atributos ficam `disputed`, nada é descartado, e a fila `disputed` os
@@ -1446,7 +1457,9 @@ intocado**, e o novo carrega `value = 2026-07-16` com o **mesmo `valid_from`** o
 eixo de transação construído nesta versão — independe da consulta (c).)
 
 **C7 — Point-in-time (valid-time).** Dado C4; Quando consulto `deadline` com `as_of = 2026-06-15`;
-Então a resposta é 15/07/2026 (consulta (b)). *(A reconstrução "o que o sistema sabia em T"
+Então a resposta é 15/07/2026 (consulta (b)) — **satisfeito pela Emenda v7.3** (a sucessão encerra a
+versão antiga só no eixo de validade, mantendo-a visível à consulta (b); verificado por teste
+determinístico em `temp/e2e/succession-e2e.mts`). *(A reconstrução "o que o sistema sabia em T"
 — consulta (c) — é diferida (seção 5.3, A25); `recorded_at` é gravado, mas não há cenário/teste
 de (c) nesta versão. O cenário será adicionado quando (c) for construída.)*
 
@@ -1672,3 +1685,20 @@ configuração, não de arquitetura.
 | **`ingest` reposicionado.** Rota movida de `POST /api/v1/mcp` para **`POST /api/v1/mcp/ingest`** (simétrico a `query`/`curation`). O `llm_run_id` deixa de ser **header ambiente** (`X-LLM-Run-Id`) e passa a ser **argumento de ferramenta** no schema MCP de cada `propose_*` (Opção B); o modelo per-session (`session-factory.ts`) é **aposentado** (endpoint stateless single-shape). O `ingest` é reconhecido como **dual** (espelhos REST `propose-*`), revogando o rótulo "exclusivo MCP / MCP-only" do §2/§14/A28. | 2, 14, A28 |
 | **BR-21/23/24/28 reconciliadas** na back-spec `domains/ingestion/back/ingestion.back.md` (v1.2.4): tools sempre listadas; chamada sem `llm_run_id` válido (apontando a um `LLMRun` `running`) → `STRUCTURAL_INVALID` `isError`; um `tool_call` é gravado em todo caminho alcançável (a exceção "pré-handler sem run" foi retirada). | 14 |
 | **Sequência da migração** (fases 1-4, todas em `main`): unificação dos mappers de erro + `toMcpToolResult`; `query`, `curation` e `ingest` migrados ao kernel. Suíte verde; `@modelcontextprotocol/sdk` adicionado ao `backend`. CLAUDE.md atualizado em paralelo. | 2, 14, A28 |
+
+## Apêndice C — Emenda v7.3 (2026-06-16): sucessão encerra só o eixo de validade
+
+> Emenda aditiva à v7. Corrige uma **inconsistência interna** entre C4, a consulta (b) (seção 5.3)
+> e C7: a sucessão funcional (§6.5-A) gravava `superseded_at = now()` na versão antiga, mas a
+> consulta (b) filtra `superseded_at IS NULL` — então a versão antiga, verdadeira na sua janela,
+> ficava **invisível** à viagem no tempo de validade, tornando **C7 inalcançável**. Confirmado por
+> teste determinístico contra Postgres real (`temp/e2e/succession-e2e.mts`). **Não altera** o
+> schema, o catálogo, nem as outras validações (seção 13) — apenas a semântica de **escrita** da
+> sucessão e o texto que a descrevia. Restaura a distinção da seção 5.6 (conflito ≠ mudança ≠
+> correção): **sucessão = eixo de validade; correção = eixo de transação**.
+
+| Mudança | Seções afetadas |
+|---|---|
+| **Sucessão fecha o eixo de validade.** A versão antiga recebe `valid_to = data_da_mudança` e `status = superseded`, mas **`superseded_at` permanece NULL** — permanece visível à consulta (b) em `[valid_from, valid_to)` (satisfaz C7) e fora da visão atual (a) (tem `valid_to`). A correção (§6.5-B) segue **inalterada** (eixo de transação, `valid_to` intocado). | 5.3, 5.6, 6.5-A, C4, C7 |
+| **Exceção intra-day.** Quando `valid_from ≥ data_da_mudança` (sucessão no mesmo dia, granularidade de dia da seção 5.1), um `valid_to` colapsaria o intervalo `[D, D)` (viola o CHECK `valid_from < valid_to`); só nesse caso a linha antiga é encerrada no eixo de **transação** (`superseded_at = now()`, `valid_to` intocado), como na correção. C7 é inalcançável para sucessão sub-dia (limitação documentada); a linhagem `supersedes_*` ainda ordena as versões. | 5.1, 6.5-A |
+| **Realização.** Uma única função `closeVigentForSuccession` (`backend/src/modules/ingestion/service/graph-consolidation.service.ts`), compartilhada por link e atributo: `superseded_at` passa a ser condicional (`CASE`: intra-day → `now()`; normal → permanece NULL). Sem migração de schema (dup-guard, CHECKs e `is_current`/`effective_status` preservados). Verificado: suíte 667/667 + `tsc` limpo; cenários A (normal, C7 verde) e B (intra-day, eixo de transação) verdes contra Postgres real. | 6.5-A |

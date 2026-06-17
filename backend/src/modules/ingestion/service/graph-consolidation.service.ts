@@ -264,21 +264,28 @@ async function promoteFragmentsToAccepted(
 }
 
 /**
- * Close a vigent row for a §6.5-A succession.
+ * Close a vigent row for a §6.5-A succession (Emenda v7.3 — validity-axis close).
  *
- * Normally sets `valid_to = closeDate` (the new version's `valid_from`, or
- * `today` when the new row has no declared `valid_from`) and supersedes on the
- * transaction axis. BUT validity is day-granular (`date`, §5.1) and the
- * `valid_from < valid_to` invariant is strict (CHECK + temporal.ts): when the
- * vigent row's own `valid_from` is on/after `closeDate` — an intra-day (same
- * effective date) succession — setting `valid_to = closeDate` would produce a
- * degenerate `[valid_from, valid_to)` interval and fail the CHECK. In that case
- * we close on the TRANSACTION axis ONLY (`superseded_at` / `status`), leaving
- * `valid_to` untouched — identical to the Correction branch (§6.5-B). The
- * supersedes_* lineage + the `timestamptz` transaction axis still order the
- * versions; only the sub-day validity boundary (which `date` cannot represent)
- * is dropped. The CASE is evaluated in SQL so the comparison uses the row's own
- * `valid_from` and the DB clock — no TS/SQL clock skew.
+ * Succession means the fact changed in the WORLD: the old version was TRUE for
+ * `[valid_from, closeDate)` and remains the system's current belief about that
+ * past window. So succession closes the **validity axis only** — set
+ * `valid_to = closeDate` (the new version's `valid_from`, or `today` when the
+ * new row has none) and LEAVE `superseded_at = NULL`. This keeps the old version
+ * visible to valid-time travel (query (b), `temporal-filter.ts`) within its
+ * window — which is what makes acceptance scenario C7 pass. The current view
+ * (a) still excludes it because `valid_to` is set. This is the §5.6 distinction:
+ * succession = validity axis; correction (§6.5-B) = transaction axis.
+ *
+ * EXCEPTION — intra-day collapse: validity is day-granular (`date`, §5.1) and
+ * `valid_from < valid_to` is strict (CHECK + temporal.ts). When the vigent row's
+ * own `valid_from` is on/after `closeDate` (a same-effective-date succession),
+ * setting `valid_to = closeDate` would produce a degenerate `[D, D)` interval and
+ * fail the CHECK. `date` cannot represent that sub-day boundary, so for that row
+ * ONLY we fall back to the TRANSACTION axis (`superseded_at = now()`, `valid_to`
+ * untouched) — the same mechanism correction uses. C7 is unreachable for sub-day
+ * successions (documented day-granularity limitation); the `supersedes_*` lineage
+ * still orders the versions. Both CASEs key off the row's own `valid_from` vs the
+ * DB clock in SQL — no TS/SQL clock skew.
  *
  * `table` is a fixed literal (never input) — safe to interpolate.
  */
@@ -297,7 +304,11 @@ async function closeVigentForSuccession(
                            THEN valid_to
                          ELSE ${closeExpr}
                        END,
-            superseded_at = now(),
+            superseded_at = CASE
+                              WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr}
+                                THEN now()
+                              ELSE superseded_at
+                            END,
             status        = 'superseded'::assertion_status
       WHERE id = $1`,
     params
