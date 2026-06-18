@@ -200,13 +200,28 @@ specs_dir: docs/specs
 stack:
   frontend: React 19, TypeScript (strict), Vite 6, Tailwind CSS v4 (CSS-first via @theme),
     shadcn/ui (Radix UI), TanStack Router / Query v5 / Table, Zustand v5,
-    React Hook Form v7 + Zod v4, Framer Motion, sonner, lucide-react, Vitest, Playwright, MSW
+    React Hook Form v7 + Zod v4, Framer Motion, sonner, lucide-react, Vitest, Playwright, MSW,
+    Storybook 9 (@storybook/react-vite; addon-a11y + addon-vitest)
   backend: Node.js 20 LTS, TypeScript (strict), Fastify + @fastify/swagger,
     PostgreSQL 17 via Neon (managed Postgres, driver pg raw), Neon Auth (Stack Auth), Zod v4, pino, Vitest
+# Sem npm workspaces: cada app é um pacote autônomo; os comandos rodam DENTRO de cada diretório.
+apps:
+  frontend:
+    path: frontend/         # ainda não criado — pacote autônomo (sem workspace raiz)
+    dev: npm run dev        # rodar dentro de frontend/ (Vite)
+    build: npm run build
+  backend:
+    path: backend/
+    dev: npm run dev        # rodar dentro de backend/ (tsx watch)
+    build: npm run build
 
 # --- Backend config (u-be-developer, u-be-qa-docs, u-be-standards) ---
 validation_library: zod
 folder_structure: modules        # monólito modular em backend/src/modules/
+
+# --- Frontend config (u-fe-developer, u-fe-qa-docs) ---
+i18n: false                      # app single-owner, somente pt-BR — strings diretas no código
+accessibility: wcag-2.2-aa       # QA verifica conformidade WCAG 2.2 AA (labels, aria, contraste, foco)
 
 # --- QA feature flags ---
 observability_required: true   # §16 — logs estruturados (JSON) + métricas por run são requisito da spec
@@ -228,6 +243,22 @@ design_system:
 
 ---
 
+## Commands
+
+Sem workspaces na raiz — rodar **dentro** de `backend/` ou `frontend/` (o `frontend/` ainda não existe).
+
+| Task      | Command                          | Onde         |
+|-----------|----------------------------------|--------------|
+| dev (fe)  | `npm run dev`                    | `frontend/`  |
+| dev (be)  | `npm run dev`                    | `backend/`   |
+| build     | `npm run build`                  | cada app     |
+| test      | `npm run test` (`vitest run`)    | cada app     |
+| typecheck | `npm run typecheck` (`tsc --noEmit`) | cada app |
+| storybook | `npm run storybook` (dev em `:6006`) | `frontend/` |
+| build-sb  | `npm run build-storybook`        | `frontend/`  |
+
+---
+
 ## Directory Structure
 
 ```
@@ -242,6 +273,9 @@ migrations/
                                   #   +Document, +concerns/delivered_to/sponsors (+6 regras),
                                   #   +6 AttributeKeys -> totais 9/13/28/16. Exige RESTART do BFF.
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
+docs/specs/                       # Specs SDD (specs_dir)
+  front/                          #   front.md (global), features/*.feature.spec.md,
+                                  #   components/*.component.spec.md, _flows/*.flow.md, design-system/
 .claude/                          # Motor de orquestração (skills, hooks, scripts, agents, lib)
 
 .orch/                    # Orchestration engine state — NOT committed (add to .gitignore)
@@ -340,10 +374,11 @@ Orchestrators refuse to spawn if `nesting_depth >= 3`. If this error appears, th
   `{ "ok": false, "error": { "code", "message", "details" } }`. Renderização por transporte: REST
   devolve esse envelope direto (com HTTP status); **MCP** o renderiza no formato **MCP 2025-06-18**
   (`content`/`isError`) via `backend/src/mcp/sdk-http-transport.ts` + `shared/error-mapping.ts`.
-  Códigos de erro:
-  `STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`,
-  `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`. Resultados de negócio (consolidado, disputado,
-  em revisão…) **não são erros** — voltam em `result.outcome`.
+  Códigos de erro seguem o padrão namespaced `DOMINIO_MOTIVO` (`STRUCTURAL_INVALID`, `AUTH_*`,
+  `RESOURCE_*`, `SYSTEM_*`, `BUSINESS_*`, `VALIDATION_*`). **Registro canônico e mapeamento de
+  transporte: `backend/src/shared/error-mapping.ts` + `*/service/errors.ts` e
+  `modules/ingestion/validation/errors.ts` (fonte da verdade — não enumerar aqui).** Resultados de
+  negócio (consolidado, disputado, em revisão…) **não são erros** — voltam em `result.outcome`.
 - Primary database: PostgreSQL 17 via **Neon** (Postgres gerenciado) — **store único**; nenhum outro
   serviço de busca/armazenamento (§2.2). (Desvio do v7, que registra Supabase Cloud.)
 - Acesso a dados: driver **`pg` raw, queries parametrizadas** + migrações SQL puras versionadas
@@ -418,13 +453,33 @@ Required protocol:
 
 ## Stack — Frontend
 
-React 19 + TypeScript (strict), Vite 6. Estado cliente: **Zustand v5**. Animação: **Framer
-Motion**; notificações: **sonner**; ícones: **lucide-react**.
+- **Build/runtime:** Vite 6, React 19, TypeScript (strict)
+- **Estilo/UI:** Tailwind CSS v4 (config CSS-first via `@theme`, sem `tailwind.config.ts`),
+  shadcn/ui (Radix UI)
+- **Estado:** Zustand v5 (client state) + TanStack Query v5 (server state)
+- **Routing/tabelas:** TanStack Router + TanStack Table
+- **Forms/validação:** React Hook Form v7 + Zod v4 (`zodResolver`)
+- **Outros:** Framer Motion (animação), sonner (toasts), lucide-react (ícones)
+- **Design system:** Storybook 9 (`@storybook/react-vite`) — ambiente do design system. Scripts
+  `storybook` (dev em `:6006`) e `build-storybook`. Config em `.storybook/` (`main.ts`,
+  `preview.tsx`, `vitest.setup.ts`). Addons: `addon-a11y` (acessibilidade) e `addon-vitest` (roda as
+  *stories* como testes de componente no browser, via `@vitest/browser` + Playwright).
+  `eslint-plugin-storybook` no lint. Há *stories* para os componentes em `components/ui/` (button,
+  input, dialog, table, form, select, …).
+- **Testes:** Vitest (unit), Playwright (E2E), MSW (mock de rede). Stories como testes de componente
+  via `addon-vitest` (browser mode).
 
 ### Fixed stack contract
 
 - Stack: **Vite + React 19 + TypeScript (strict) + Tailwind v4 + shadcn/ui + TanStack Query/Router/Table + React Hook Form + Zod**.
 - Do not swap any item without explicit instruction. These rules are imperative defaults; "on demand" means only when the Task Contract asks for it.
+
+### Styling — Tailwind v4
+
+- CSS-first config via `@theme` in `theme.css` — **never create `tailwind.config.ts`**.
+- Entry uses `@import "tailwindcss"` — **not** the v3 syntax (`@tailwind base/components/utilities`).
+- No `content` array (v4 auto-detects). Gradients use `bg-linear-to-*` (v4 rename of v3
+  `bg-gradient-to-*`). **No arbitrary values** (`w-[347px]`) — use tokens.
 
 ### Data layer — TanStack Query
 
@@ -451,12 +506,22 @@ Every component exported from the shared UI layer:
 - Uses CVA (`class-variance-authority`) **only when there are 2+ visual variants** — no variants → no CVA.
 - Files per component: `component.tsx`, `component.types.ts`, `index.ts`. (Stack exception to the generic no-barrel rule: a per-component `index.ts` re-exporting that single component's public surface is allowed; project-wide `export *` barrels remain forbidden.)
 
+### Component library — shadcn/ui
+
+- Files under `components/ui/` are **owned code** — do not regenerate them via the CLI.
+- Extend by **composition**; install new primitives with `npx shadcn@latest add <component>`.
+
 ### Forms — React Hook Form + Zod
 
 - Stack: React Hook Form + Zod, **schema-first**: `schema → z.infer → form`. Always use `zodResolver`.
+- Wrap shadcn/ui inputs with `Controller`. Load server data with `form.reset(data)`. Read errors
+  from `formState.errors`.
+- Zod v4: `z.email()` / `z.url()` / `z.uuid()` are **top-level** (not `z.string().email()`); use
+  `.error()` for custom messages.
 - Validate client-side (Zod) **and** assume server-side validation — never trust the client alone.
 - Visible loading and error states; friendly messages.
-- Accessibility: associated `label`; `aria-invalid` on invalid fields; error linked via `aria-describedby` (see `u-fe-standards §4`).
+- Accessibility: **WCAG 2.2 AA** — associated `label`; `aria-invalid` on invalid fields; error linked
+  via `aria-describedby` (see `u-fe-standards §4`).
 
 ### Tables — TanStack Table
 
@@ -531,6 +596,13 @@ registra Supabase Auth.)
 
 ## Performance Budgets
 
+### Frontend
+
+- LCP: < 2,5 s
+- INP (ex-FID): < 100 ms
+- Bundle inicial (gzipped): < 300 kb
+- Lighthouse (gate de CI): ≥ 85 performance, ≥ 90 accessibility
+
 ### Backend
 
 Latência-alvo p95 (§16 — "tetos de sanidade"; à escala real, premissa de centenas de documentos,
@@ -546,6 +618,9 @@ a latência fica na casa de poucos ms):
 ## Conventions
 
 - Language: TypeScript **strict mode** (ambas as camadas).
+- Frontend folder: `frontend/src/features/{feature}/` (feature-based), com `api/` (hooks TanStack
+  Query), `components/`, `hooks/`, `types.ts`. Nunca importar de uma feature irmã — só de `shared/`
+  ou da própria feature.
 - Backend folder: `backend/src/modules/` (monólito modular).
 - Naming: entidades em PascalCase, campos em snake_case; **todo campo FK tem índice** (§3).
 - `norm(x) = lower(unaccent(espaços_colapsados(trim(x))))` — a **única** política de
@@ -581,6 +656,19 @@ a latência fica na casa de poucos ms):
 - Nunca descartar dados silenciosamente — incerteza é registrada, nunca escondida (§1).
 - Nunca aceitar link/atributo sem `Provenance` real (anti-alucinação, §13).
 
+### Frontend
+
+<!-- Regras canônicas detalhadas em "Stack — Frontend" → "Stack-specific forbidden patterns".
+     Consolidadas aqui para descoberta. -->
+
+- Nunca chamar `fetch`/`axios` dentro de componente nem usar `useEffect` para buscar dados — sempre
+  um hook TanStack Query em `features/<x>/api/`.
+- Nunca usar `forwardRef` — `ref` é prop normal (React 19).
+- Nunca escrever media query CSS custom — só breakpoints Tailwind / container queries.
+- Nunca concatenar `className` por string — usar `cn()` (`tailwind-merge` + `clsx`).
+- Nunca usar valores crus — só tokens semânticos (cor, espaçamento, etc.).
+- Nunca duplicar chave de query ou literal de token — reusar a key factory / token centralizado.
+
 ---
 
 ## Known Gotchas
@@ -603,6 +691,12 @@ a latência fica na casa de poucos ms):
   transacional por decisão (A11/A19), e multi-valor sobrepõe legitimamente.
 - `node_attribute.value_type` é denormalizado de `attribute_key` via FK composta — necessário
   porque coluna gerada não pode consultar outra tabela.
+- **Frontend / build toolchain:** `vitest` está **pinado em v4** e há um **override de Vite** por
+  causa do `addon-vitest` (Storybook) — não bumpar `vitest`/`vite` sem revalidar o browser mode do
+  addon-vitest, sob risco de quebrar as stories-como-teste.
+- **Tailwind v4 / dois namespaces de border:** `--color-border-*` (cor) vs. `--border-*` (largura)
+  são namespaces distintos — **misturá-los faz a borda sumir silenciosamente** (cai em branco/zero,
+  sem erro). Conferir qual namespace o token usa antes de aplicar.
 
 ---
 
