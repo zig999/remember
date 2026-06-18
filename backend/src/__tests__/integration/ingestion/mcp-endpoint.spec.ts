@@ -292,7 +292,7 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
     }
   });
 
-  it("tools/list returns the four propose_* tools plus ingest_document (no per-session gating)", async () => {
+  it("tools/list returns the four propose_* tools plus ingest_document and the three read-only ops tools (no per-session gating)", async () => {
     // BR-21 (revised, v1.2.4): the per-session factory is RETIRED — tools are
     // always listed regardless of any header / argument state. NO X-LLM-Run-Id.
     // TC-MCI-002: the high-level `ingest_document` tool is advertised alongside
@@ -318,7 +318,15 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       const names = (body.result?.tools ?? []).map((t) => t.name).sort();
-      expect(names).toEqual([...INGEST_TOOL_NAMES, "ingest_document"].sort());
+      expect(names).toEqual(
+        [
+          ...INGEST_TOOL_NAMES,
+          "ingest_document",
+          "health",
+          "get_ingestion_status",
+          "list_recent_ingestions",
+        ].sort()
+      );
     } finally {
       await app.close();
     }

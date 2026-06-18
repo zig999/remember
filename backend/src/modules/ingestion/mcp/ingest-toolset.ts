@@ -25,14 +25,25 @@
 // Idempotency: `McpServer.registerTool` rejects duplicates by design; calling
 // this registrar twice in the same process throws. The boot wires it once.
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import { IngestToolDescriptions } from "../dto/index.js";
 import type { IngestToolName } from "../dto/llm-run.dto.js";
 import type { McpServer } from "../../../mcp/server.js";
+import {
+  internalError,
+  isPgUnavailable,
+  serviceUnavailableError,
+} from "../../../shared/error-mapping.js";
+import { collectHealth } from "../../../shared/health.js";
+import {
+  getLlmRunById,
+  listRecentIngestions,
+} from "../service/llm-run.service.js";
+import { ResourceNotFoundError } from "../service/ingestion.service.js";
 import { runIngestHandler } from "./handler-base.js";
 import { proposeAttributeHandler } from "./propose-attribute.handler.js";
 import { proposeFragmentHandler } from "./propose-fragment.handler.js";
@@ -44,8 +55,11 @@ import {
 } from "./ingest-document.handler.js";
 import { ValidationFailure } from "../validation/errors.js";
 import {
+  GetIngestionStatusMcpInputSchema,
+  HealthMcpInputSchema,
   INGEST_TOOL_NAMES,
   IngestDocumentMcpInputSchema,
+  ListRecentIngestionsMcpInputSchema,
   ProposeAttributeMcpInputSchema,
   ProposeFragmentMcpInputSchema,
   ProposeLinkMcpInputSchema,
@@ -248,14 +262,135 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
+  // ----- health — liveness + DB ping (read-only, no args) -----
+  // Always succeeds at the MCP level: a DB failure surfaces inside `result`
+  // (`{ ok: false, database: "unreachable" }`) rather than as an error
+  // envelope, so the caller can always tell the BFF is answering.
+  mcp.registerTool("ingest", {
+    name: "health",
+    description: IngestToolDescriptions.health,
+    inputSchema: HealthMcpInputSchema as unknown as z.ZodTypeAny,
+    handler: async (): Promise<McpEnvelopeJson> => {
+      const report = await collectHealth(pool);
+      return { ok: true, result: report };
+    },
+  });
+
+  // ----- get_ingestion_status — poll one run by id (read-only) -----
+  mcp.registerTool("ingest", {
+    name: "get_ingestion_status",
+    description: IngestToolDescriptions.get_ingestion_status,
+    inputSchema: GetIngestionStatusMcpInputSchema as unknown as z.ZodTypeAny,
+    handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+      try {
+        const { llm_run_id } = GetIngestionStatusMcpInputSchema.parse(rawInput);
+        const result = await withReadOnly(pool, (client) =>
+          getLlmRunById(client, llm_run_id)
+        );
+        return { ok: true, result };
+      } catch (err) {
+        return mapReadError(err);
+      }
+    },
+  });
+
+  // ----- list_recent_ingestions — discover a run after a timeout (read-only) -----
+  mcp.registerTool("ingest", {
+    name: "list_recent_ingestions",
+    description: IngestToolDescriptions.list_recent_ingestions,
+    inputSchema: ListRecentIngestionsMcpInputSchema as unknown as z.ZodTypeAny,
+    handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+      try {
+        const { limit } = ListRecentIngestionsMcpInputSchema.parse(rawInput);
+        const items = await withReadOnly(pool, (client) =>
+          listRecentIngestions(client, limit)
+        );
+        return { ok: true, result: { items } };
+      } catch (err) {
+        return mapReadError(err);
+      }
+    },
+  });
+
+  const READ_ONLY_TOOL_NAMES = [
+    "health",
+    "get_ingestion_status",
+    "list_recent_ingestions",
+  ] as const;
+
   logger.info(
     {
       component: "mcp.ingest",
-      tools_registered: INGEST_TOOL_NAMES.length + 1,
-      tool_names: [...INGEST_TOOL_NAMES, "ingest_document"],
+      tools_registered: INGEST_TOOL_NAMES.length + 1 + READ_ONLY_TOOL_NAMES.length,
+      tool_names: [
+        ...INGEST_TOOL_NAMES,
+        "ingest_document",
+        ...READ_ONLY_TOOL_NAMES,
+      ],
     },
     "ingest_toolset_registered"
   );
+}
+
+// --------------------------------------------------------------------------
+// Read-only helpers for the three operational tools above. Mirrors the
+// `withReadOnly` + envelope pattern of `query-retrieval/mcp/query-toolset.ts`,
+// duplicated rather than imported to keep the ingest toolset independent of the
+// query-retrieval module (Rule 3 surgical). The error mapper handles the
+// ingestion-domain `ResourceNotFoundError` (the KG mapper recognises a
+// DIFFERENT class) plus Zod / pg-unavailable / unknown terminals.
+// --------------------------------------------------------------------------
+
+async function withReadOnly<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    const result = await fn(client);
+    await client.query("ROLLBACK");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Swallow rollback failure — surface the original error.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function mapReadError(err: unknown): McpEnvelopeJson {
+  if (err instanceof ZodError) {
+    return {
+      ok: false,
+      error: {
+        code: "VALIDATION_INVALID_FORMAT",
+        message: "Request payload failed validation.",
+        details: err.issues.map((i) => ({
+          path: i.path.map((seg) => String(seg)).join("."),
+          message: i.message,
+        })),
+      },
+    };
+  }
+  if (err instanceof ResourceNotFoundError) {
+    return {
+      ok: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        details: { entity: err.entity, id: err.entityId },
+      },
+    };
+  }
+  if (isPgUnavailable(err)) {
+    return serviceUnavailableError().envelope;
+  }
+  return internalError().envelope;
 }
 
 // --------------------------------------------------------------------------

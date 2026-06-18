@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 
 import type {
   LlmRunResponse,
+  LlmRunStatus,
   ListToolCallsResponse,
   ToolCallResponse,
 } from "../dto/llm-run.dto.js";
@@ -23,6 +24,7 @@ import {
   closeLlmRunRow,
   countToolCalls,
   findLlmRunById,
+  findRecentIngestions,
   findToolCallsByRun,
   retryLlmRunRow,
   type ToolCallRow,
@@ -85,6 +87,50 @@ export async function getLlmRunById(
   }
   const summary = await aggregateToolCallOutcomes(client, llmRunId);
   return toLlmRunResponse(row, summary);
+}
+
+/**
+ * One item of the read-only "recent ingestions" listing surfaced by the
+ * `list_recent_ingestions` MCP tool. Dates are ISO-8601 strings (wire form).
+ */
+export interface RecentIngestionItem {
+  readonly raw_information_id: string;
+  readonly source_type: string;
+  readonly raw_status: string;
+  readonly received_at: string;
+  readonly content_preview: string;
+  readonly llm_run_id: string | null;
+  readonly run_status: LlmRunStatus | null;
+  readonly started_at: string | null;
+  readonly finished_at: string | null;
+  readonly prompt_version: string | null;
+  readonly model: string | null;
+}
+
+/**
+ * Read the most recent ingestions (newest first). Powers the
+ * `list_recent_ingestions` MCP tool — the operator's way to find a run after a
+ * client-side timeout (the server keeps extracting after the socket drops, so
+ * the run id is recoverable here). Read-only; the caller owns the transaction.
+ */
+export async function listRecentIngestions(
+  client: PoolClient,
+  limit: number
+): Promise<RecentIngestionItem[]> {
+  const rows = await findRecentIngestions(client, limit);
+  return rows.map((r) => ({
+    raw_information_id: r.raw_information_id,
+    source_type: r.source_type,
+    raw_status: r.raw_status,
+    received_at: r.received_at.toISOString(),
+    content_preview: r.content_preview,
+    llm_run_id: r.llm_run_id,
+    run_status: r.run_status,
+    started_at: r.started_at === null ? null : r.started_at.toISOString(),
+    finished_at: r.finished_at === null ? null : r.finished_at.toISOString(),
+    prompt_version: r.prompt_version,
+    model: r.model,
+  }));
 }
 
 /** UC-05: GET /llm-runs/{id}/tool-calls. */

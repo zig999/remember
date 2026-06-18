@@ -15,8 +15,8 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Logger } from "pino";
 import type { Pool } from "pg";
 
-import { pingDatabase } from "./config/db.js";
 import type { Env } from "./config/env.js";
+import { collectHealth } from "./shared/health.js";
 import { buildErrorHandler } from "./middleware/error-handler.js";
 import type { NeonAuth } from "./middleware/auth.js";
 import type { McpServer } from "./mcp/server.js";
@@ -154,10 +154,22 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     // if it is absent the transport is skipped (same condition as the
     // curation REST mirror).
     if (ingestionCatalog !== undefined) {
+      // Plus three read-only operational tools co-tenanted on the `ingest`
+      // toolset (additive, no contract change): `health` (liveness + DB ping),
+      // `get_ingestion_status` (poll a run by id) and `list_recent_ingestions`
+      // (discover a run after a client-side timeout — the server keeps
+      // extracting after the socket drops). They let an MCP client confirm the
+      // BFF is up and recover the run id/state without re-sending the document.
       await registerIngestMcpTransport(scoped, {
         logger,
         mcp,
-        toolNames: [...INGEST_TOOL_NAMES, "ingest_document"],
+        toolNames: [
+          ...INGEST_TOOL_NAMES,
+          "ingest_document",
+          "health",
+          "get_ingestion_status",
+          "list_recent_ingestions",
+        ],
       });
     }
 
@@ -284,32 +296,4 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   }
 
   return app;
-}
-
-/** Health-check result shape returned by GET /health. */
-export interface HealthReport {
-  ok: boolean;
-  service: "remember-bff";
-  database: "ok" | "unreachable";
-  checked_at: string;
-}
-
-async function collectHealth(pool: Pool): Promise<HealthReport> {
-  const checkedAt = new Date().toISOString();
-  try {
-    await pingDatabase(pool);
-    return {
-      ok: true,
-      service: "remember-bff",
-      database: "ok",
-      checked_at: checkedAt,
-    };
-  } catch {
-    return {
-      ok: false,
-      service: "remember-bff",
-      database: "unreachable",
-      checked_at: checkedAt,
-    };
-  }
 }

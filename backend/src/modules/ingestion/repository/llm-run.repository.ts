@@ -14,6 +14,7 @@ import type { Pool, PoolClient } from "pg";
 
 import type {
   IngestToolName,
+  LlmRunStatus,
   LlmRunSummary,
   ValidationOutcome,
 } from "../dto/llm-run.dto.js";
@@ -31,6 +32,63 @@ export interface ToolCallRow {
   readonly result: Record<string, unknown> | null;
   readonly validation_outcome: ValidationOutcome;
   readonly created_at: Date;
+}
+
+/**
+ * One row of the "recent ingestions" read — a `raw_information` row joined to
+ * its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears
+ * with null run fields). `content_preview` is the first 80 code points of the
+ * raw text — enough for an operator to recognise a document after a client
+ * timeout without shipping the whole content back.
+ */
+export interface RecentIngestionRow {
+  readonly raw_information_id: string;
+  readonly source_type: string;
+  readonly raw_status: string;
+  readonly received_at: Date;
+  readonly content_preview: string;
+  readonly llm_run_id: string | null;
+  readonly run_status: LlmRunStatus | null;
+  readonly started_at: Date | null;
+  readonly finished_at: Date | null;
+  readonly prompt_version: string | null;
+  readonly model: string | null;
+}
+
+/**
+ * Most recent ingestions, newest first. Read-only; the caller wraps this in a
+ * `BEGIN READ ONLY` transaction. `limit` is validated (1..50) at the toolset
+ * boundary before it reaches here.
+ */
+export async function findRecentIngestions(
+  client: PoolClient,
+  limit: number
+): Promise<RecentIngestionRow[]> {
+  const result = await client.query<RecentIngestionRow>(
+    `SELECT ri.id            AS raw_information_id,
+            ri.source_type   AS source_type,
+            ri.status        AS raw_status,
+            ri.received_at   AS received_at,
+            left(ri.content, 80) AS content_preview,
+            lr.id            AS llm_run_id,
+            lr.status        AS run_status,
+            lr.started_at    AS started_at,
+            lr.finished_at   AS finished_at,
+            lr.prompt_version AS prompt_version,
+            lr.model         AS model
+       FROM raw_information ri
+       LEFT JOIN LATERAL (
+         SELECT id, status, started_at, finished_at, prompt_version, model
+           FROM llm_run
+          WHERE input_raw_information_id = ri.id
+          ORDER BY started_at DESC
+          LIMIT 1
+       ) lr ON true
+      ORDER BY ri.received_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
 }
 
 /** Look up a single `llm_run` row by id. */

@@ -144,5 +144,22 @@ export const IngestToolDescriptions = {
     "relations, attributes) with full provenance, then returns a summary of what was " +
     "consolidated. Use this to ADD knowledge from a source; use the query tools to read " +
     "it back. Extraction runs server-side and can take from seconds to a few minutes for " +
-    "long documents. Re-sending the same content is a no-op (returns the existing run).",
+    "long documents. Re-sending the same content is a no-op (returns the existing run). " +
+    "If your client times out before this returns, the server keeps extracting — do NOT " +
+    "re-send; use `list_recent_ingestions` to find the run, then `get_ingestion_status`.",
+  health:
+    "Check that the BFF is running and its database is reachable. Returns service " +
+    "status, database connectivity, and a timestamp. Call this first to confirm the " +
+    "server is up before ingesting or querying. Read-only; takes no arguments.",
+  get_ingestion_status:
+    "Look up one ingestion run by its `llm_run_id` (returned by `ingest_document`). " +
+    "Returns the run status (running | completed | failed), per-outcome counts " +
+    "(accepted, consolidated, rejected, …), and timestamps. Use it to poll whether a " +
+    "long server-side extraction has finished. Read-only.",
+  list_recent_ingestions:
+    "List the most recent ingestions (newest first) with run status, source type, " +
+    "timestamps and a short content preview. Use this to recover a run after an " +
+    "`ingest_document` call timed out on your client (the server keeps extracting): " +
+    "match your document by preview/source_type, then read its run_status here or via " +
+    "`get_ingestion_status`. `limit` 1..50 (default 10). Read-only.",
 } as const;

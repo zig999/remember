@@ -111,3 +111,44 @@ export const IngestDocumentMcpInputSchema = z.object({
     ),
 });
 export type IngestDocumentMcpInput = z.infer<typeof IngestDocumentMcpInputSchema>;
+
+// --------------------------------------------------------------------------
+// Read-only operational tools (additive, no contract change to the writers):
+//   - `health`                 — liveness + DB-reachability probe (no args).
+//   - `get_ingestion_status`   — poll one run by id.
+//   - `list_recent_ingestions` — discover a run after a client-side timeout.
+// They take no `llm_run_id` proposal binding and write no `tool_call` audit
+// row; they are NOT part of INGEST_TOOL_NAMES (that enum is the per-proposal
+// audit surface). Their names are added to the transport whitelist in app.ts.
+// --------------------------------------------------------------------------
+
+/** `health` — no input. An empty object keeps `tools/list` schema well-formed. */
+export const HealthMcpInputSchema = z.object({});
+export type HealthMcpInput = z.infer<typeof HealthMcpInputSchema>;
+
+/** `get_ingestion_status` — a single LLMRun id (as returned by `ingest_document`). */
+export const GetIngestionStatusMcpInputSchema = z.object({
+  llm_run_id: z
+    .string()
+    .uuid()
+    .describe(
+      "The LLMRun id to inspect — the `llm_run_id` returned by `ingest_document` (or found via `list_recent_ingestions`). Returns its status (running | completed | failed), per-outcome counts, and timestamps."
+    ),
+});
+export type GetIngestionStatusMcpInput = z.infer<
+  typeof GetIngestionStatusMcpInputSchema
+>;
+
+/** `list_recent_ingestions` — optional page size (1..50, default 10). */
+export const ListRecentIngestionsMcpInputSchema = z.object({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(10)
+    .describe("How many recent ingestions to return, newest first. 1..50, default 10."),
+});
+export type ListRecentIngestionsMcpInput = z.infer<
+  typeof ListRecentIngestionsMcpInputSchema
+>;
