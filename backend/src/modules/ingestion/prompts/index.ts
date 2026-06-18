@@ -20,6 +20,7 @@ import type { CatalogSnapshot } from "../catalog/catalog.js";
 import type { UserPromptArgs } from "./extraction.v1.js";
 import * as v1 from "./extraction.v1.js";
 import * as v2 from "./extraction.v2.js";
+import * as v3 from "./extraction.v3.js";
 
 /** The slice of a prompt module the extraction orchestrator consumes. */
 export interface PromptModule {
@@ -43,12 +44,20 @@ const V2: PromptModule = {
   user: v2.user,
 };
 
+const V3: PromptModule = {
+  version: v3.PROMPT_VERSION,
+  MAX_TOKENS: v3.MAX_TOKENS,
+  system: v3.system,
+  user: v3.user,
+};
+
 /** Recommended version for NEW runs — callers SHOULD send this at intake. */
-export const DEFAULT_PROMPT_VERSION: string = v2.PROMPT_VERSION;
+export const DEFAULT_PROMPT_VERSION: string = v3.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, PromptModule>> = {
   [v1.PROMPT_VERSION]: V1,
   [v2.PROMPT_VERSION]: V2,
+  [v3.PROMPT_VERSION]: V3,
 };
 
 /** Thrown when `prompt_version` names no registered module (BR-26 step 2). */

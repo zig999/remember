@@ -37,18 +37,18 @@ export type { DocumentMetadata, UserPromptArgs };
  */
 export const EVENT_DATING_DIRECTIVE = [
   "",
-  "## Events — sempre date o acontecimento",
-  "- Ao criar um `Event` (reunião, go-live, workshop…), proponha SEMPRE o seu",
-  "  `event_date` quando o documento indicar a data do acontecimento (e `end_date`",
-  "  quando houver término distinto). Justifique com `valid_from_basis`; NUNCA",
-  "  invente uma data.",
-  "- DISTINÇÃO crucial: `event_date` é o VALOR — a data em que o evento ocorre.",
-  "  `valid_from` é quando essa data passou a valer/ser conhecida (tipicamente a",
-  "  data do documento). Ex.: um go-live em 2026-08-01 anunciado numa ata de",
+  "## Events — always date the occurrence",
+  "- When you create an `Event` (meeting, go-live, workshop…), ALWAYS propose its",
+  "  `event_date` when the document states the date of the occurrence (and",
+  "  `end_date` when there is a distinct end). Justify it with `valid_from_basis`;",
+  "  NEVER invent a date.",
+  "- CRUCIAL distinction: `event_date` is the VALUE — the date the event happens.",
+  "  `valid_from` is when that date started to hold / became known (typically the",
+  "  document date). E.g. a go-live on 2026-08-01 announced in minutes dated",
   "  2026-06-20 → `event_date`=\"2026-08-01\" (value), `valid_from`=\"2026-06-20\"",
-  "  com `valid_from_basis`=\"document\".",
-  "- Remarcação de um evento é `change_hint:\"succession\"` sobre `event_date` — a",
-  "  mesma mecânica de qualquer atributo funcional (a data antiga vira histórico).",
+  "  with `valid_from_basis`=\"document\".",
+  "- Rescheduling an event is `change_hint:\"succession\"` on `event_date` — the",
+  "  same mechanics as any functional attribute (the old date becomes history).",
 ].join("\n");
 
 /** v1 SYSTEM prompt + the Event-dating directive (BR-26). */

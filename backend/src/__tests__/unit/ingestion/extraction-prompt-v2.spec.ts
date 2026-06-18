@@ -63,23 +63,26 @@ describe("extraction v2 prompt (Frente 2 / BR-26)", () => {
 
   it("v2 directive: propose event_date, distinguish it from valid_from, never invent", () => {
     const s = systemV2(snap());
-    expect(s).toContain("## Events — sempre date o acontecimento");
+    expect(s).toContain("## Events — always date the occurrence");
     expect(s).toContain("event_date");
     expect(s).toContain("end_date");
     // The actual gap: value (event_date) vs when-it-became-known (valid_from).
-    expect(s).toContain("`valid_from` é quando essa data passou a valer");
+    expect(s).toContain("`valid_from` is when that date started to hold");
     // Postponement is a succession on event_date (ties to Emenda v7.3).
     expect(s).toContain('change_hint:"succession"');
-    // Dates are never invented (consistency with §6.5 / A14). "NUNCA" and
-    // "invente uma data" wrap across lines in the directive — assert both.
-    expect(s).toContain("NUNCA");
-    expect(s).toContain("invente uma data");
+    // Dates are never invented (consistency with §6.5 / A14).
+    expect(s).toContain("NEVER invent a date");
   });
 });
 
 describe("prompt registry — selectPromptModule (BR-26)", () => {
-  it("recommends v2 for new runs", () => {
-    expect(DEFAULT_PROMPT_VERSION).toBe("v2");
+  it("the recommended default always resolves to a registered module (v2 no longer the default)", () => {
+    // v2 was the default at its introduction; later versions moved it on.
+    // The stable invariant: whatever DEFAULT points at must be dispatchable.
+    expect(selectPromptModule(DEFAULT_PROMPT_VERSION).version).toBe(
+      DEFAULT_PROMPT_VERSION
+    );
+    expect(DEFAULT_PROMPT_VERSION).not.toBe("v1");
   });
 
   it("dispatches 'v1' → v1 module", () => {
@@ -94,7 +97,7 @@ describe("prompt registry — selectPromptModule (BR-26)", () => {
     expect(() => selectPromptModule("extraction.v1")).toThrow(
       UnknownPromptVersionError
     );
-    expect(() => selectPromptModule("v3")).toThrow(/Unknown prompt_version/);
+    expect(() => selectPromptModule("v99")).toThrow(/Unknown prompt_version/);
   });
 
   it("the registry actually differentiates — v2 system is v1 + directive, not identical", () => {
