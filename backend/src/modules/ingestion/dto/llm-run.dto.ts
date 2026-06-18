@@ -33,7 +33,12 @@ export const IngestToolNameSchema = z.enum([
 ]);
 export type IngestToolName = z.infer<typeof IngestToolNameSchema>;
 
-/** Per-outcome counters for `LlmRun`. All 8 fields always present (BR-12). */
+/**
+ * Counters for `LlmRun`. The 8 outcome buckets are aggregated from
+ * `tool_call.validation_outcome`; `orphaned_fragments` is a separate
+ * fragment-level recall signal (see field doc). All fields always present
+ * (BR-12).
+ */
 export const LlmRunSummarySchema = z.object({
   accepted: z.number().int().nonnegative(),
   consolidated: z.number().int().nonnegative(),
@@ -43,6 +48,16 @@ export const LlmRunSummarySchema = z.object({
   disputed: z.number().int().nonnegative(),
   rejected: z.number().int().nonnegative(),
   error: z.number().int().nonnegative(),
+  /**
+   * Fragments proposed by this run that carry NO provenance row — i.e. the
+   * LLM extracted them but never cited them in any consolidated link/attribute.
+   * Such fragments stay `status='proposed'` and are excluded from the partial
+   * FTS index (`WHERE status='accepted'`), so they are unsearchable: a silent
+   * recall gap. Defined identically to the retry orphan-cleanup (BR-10). For a
+   * still-running run this is a live snapshot (a fragment may yet be cited), so
+   * it is only conclusive once the run reaches a terminal status.
+   */
+  orphaned_fragments: z.number().int().nonnegative(),
 });
 export type LlmRunSummary = z.infer<typeof LlmRunSummarySchema>;
 

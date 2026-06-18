@@ -995,9 +995,10 @@ components:
     LlmRunSummary:
       type: object
       description: |
-        Per-outcome counters aggregated from this run's `ToolCall` rows
-        (§9.1 step 6). Computed at read time; never persisted.
-      required: [accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error]
+        Run metrics. The 8 outcome counters are aggregated from this run's
+        `ToolCall` rows (§9.1 step 6); `orphaned_fragments` is a fragment-level
+        recall signal. Computed at read time; never persisted.
+      required: [accepted, consolidated, superseded_previous, needs_review, uncertain, disputed, rejected, error, orphaned_fragments]
       properties:
         accepted:             { type: integer, minimum: 0, example: 5 }
         consolidated:         { type: integer, minimum: 0, example: 2 }
@@ -1007,6 +1008,17 @@ components:
         disputed:             { type: integer, minimum: 0, example: 0 }
         rejected:             { type: integer, minimum: 0, example: 0 }
         error:                { type: integer, minimum: 0, example: 0 }
+        orphaned_fragments:
+          type: integer
+          minimum: 0
+          example: 0
+          description: |
+            Fragments proposed by this run with NO provenance row — extracted
+            but never cited in a consolidated link/attribute. They stay
+            `proposed`, are excluded from the partial FTS index
+            (`WHERE status='accepted'`) and are therefore unsearchable: a silent
+            recall gap. Same definition as the retry orphan-cleanup. Conclusive
+            only once the run reaches a terminal status.
 
     LlmRun:
       type: object

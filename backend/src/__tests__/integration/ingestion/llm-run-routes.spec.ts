@@ -63,6 +63,24 @@ function seedRun(store: FakeStore, status: "running" | "failed" | "completed"): 
   return id;
 }
 
+/**
+ * Seed an `information_fragment` row. An orphan (counted by
+ * `summary.orphaned_fragments`) is `status='proposed'` with `cited=false`
+ * (no provenance row). `cited=true` registers a provenance row, so a proposed
+ * fragment becomes non-orphan.
+ */
+function seedFragment(
+  store: FakeStore,
+  llmRunId: string,
+  status: "proposed" | "accepted" | "rejected",
+  opts: { cited: boolean } = { cited: false }
+): string {
+  const id = nextUuid(store, "f0f0f0f0");
+  store.fragments.set(id, { id, llm_run_id: llmRunId, status });
+  if (opts.cited) store.provenance_fragment_ids.add(id);
+  return id;
+}
+
 function buildFakeClient(store: FakeStore): import("pg").PoolClient {
   return {
     query: async (...args: unknown[]) => {
@@ -104,6 +122,22 @@ function buildFakeClient(store: FakeStore): import("pg").PoolClient {
       if (sql.startsWith("SELECT count(*)") && sql.includes("FROM tool_call")) {
         const n = store.tool_calls.filter((tc) => tc.llm_run_id === String(params[0])).length;
         return { rows: [{ n: String(n) }], rowCount: 1 };
+      }
+      // count(*) orphaned fragments (proposed of this run with no provenance)
+      if (sql.startsWith("SELECT count(*)") && sql.includes("FROM information_fragment")) {
+        const target = String(params[0]);
+        let n = 0;
+        for (const f of store.fragments.values()) {
+          if (
+            f.llm_run_id === target &&
+            f.status === "proposed" &&
+            !store.provenance_fragment_ids.has(f.id as string)
+          ) {
+            n += 1;
+          }
+        }
+        // query casts count(*)::int -> pg returns a number, not a string.
+        return { rows: [{ n }], rowCount: 1 };
       }
       // listing tool_call
       if (
@@ -325,6 +359,55 @@ describe("GET /api/v1/ingest/llm-runs/:id", () => {
       expect(summary.accepted).toBe(1);
       expect(summary.rejected).toBe(1);
       expect(summary.consolidated).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("counts only proposed, uncited fragments of this run in summary.orphaned_fragments", async () => {
+    const store = emptyStore();
+    const runId = seedRun(store, "completed");
+    // orphan: proposed + no provenance -> COUNTED
+    seedFragment(store, runId, "proposed", { cited: false });
+    // proposed but cited (has provenance) -> NOT an orphan (it got promoted/used)
+    seedFragment(store, runId, "proposed", { cited: true });
+    // accepted -> NOT an orphan
+    seedFragment(store, runId, "accepted", { cited: true });
+    // proposed+uncited but belongs to ANOTHER run -> must not leak across runs
+    const otherRun = seedRun(store, "completed");
+    seedFragment(store, otherRun, "proposed", { cited: false });
+
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/ingest/llm-runs/${runId}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const summary = (res.json() as Record<string, unknown>).summary as Record<string, number>;
+      expect(summary.orphaned_fragments).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("reports orphaned_fragments=0 when every proposed fragment is cited", async () => {
+    const store = emptyStore();
+    const runId = seedRun(store, "completed");
+    seedFragment(store, runId, "proposed", { cited: true });
+    seedFragment(store, runId, "accepted", { cited: true });
+
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/ingest/llm-runs/${runId}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const summary = (res.json() as Record<string, unknown>).summary as Record<string, number>;
+      expect(summary.orphaned_fragments).toBe(0);
     } finally {
       await app.close();
     }

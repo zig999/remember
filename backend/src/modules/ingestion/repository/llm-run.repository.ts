@@ -108,8 +108,12 @@ export async function findLlmRunById(
 }
 
 /**
- * Aggregate `tool_call.validation_outcome` for one run. Returns a fully-formed
- * `LlmRunSummary` — every field present, missing buckets default to 0 (BR-12).
+ * Aggregate run metrics. Returns a fully-formed `LlmRunSummary` — every field
+ * present, missing buckets default to 0 (BR-12). Two parts:
+ *   - the 8 outcome buckets, grouped from `tool_call.validation_outcome`;
+ *   - `orphaned_fragments`, the count of this run's `proposed` fragments with
+ *     no provenance row (uncited → unsearchable; recall-gap signal). Defined
+ *     identically to the retry orphan-cleanup in `retryLlmRunRow` (BR-10).
  */
 export async function aggregateToolCallOutcomes(
   client: PoolClient,
@@ -134,10 +138,26 @@ export async function aggregateToolCallOutcomes(
     disputed: 0,
     rejected: 0,
     error: 0,
+    orphaned_fragments: 0,
   };
   for (const row of result.rows) {
     summary[row.validation_outcome] = Number.parseInt(row.n, 10);
   }
+
+  // Orphaned-fragment count (recall-gap signal). Same definition as the
+  // retry orphan-cleanup: `proposed` fragments of this run with no provenance.
+  const orphan = await client.query<{ n: number }>(
+    `SELECT count(*)::int AS n
+       FROM information_fragment
+      WHERE llm_run_id = $1
+        AND status = 'proposed'
+        AND id NOT IN (
+          SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL
+        )`,
+    [llmRunId]
+  );
+  summary.orphaned_fragments = orphan.rows[0]?.n ?? 0;
+
   return summary;
 }
 
