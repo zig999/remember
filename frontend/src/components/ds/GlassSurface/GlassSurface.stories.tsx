@@ -277,13 +277,12 @@ export const MotionReducedMotion: Story = {
     </GlassSurface>
   ),
 };
-
-/* ---------- A11y/ContrastSmoke — 3 levels × content text -------------- */
 /**
- * Renders the 3 glass levels side by side, each with `text-content`
- * placeholder text. addon-a11y verifies WCAG 2.2 AA contrast on every
- * combination. The dark-themed slice is the default; the light slice is
- * verified by AmbientLight/PanelLight/ModalLight stories above.
+ * A11y/ContrastSmoke — 3 levels × content text. Renders the 3 glass levels
+ * side by side, each with `text-content` placeholder text. addon-a11y
+ * verifies WCAG 2.2 AA contrast on every combination. The dark-themed slice
+ * is the default; the light slice is verified by AmbientLight/PanelLight/
+ * ModalLight stories above.
  */
 export const A11yContrastSmoke: Story = {
   name: "A11y/ContrastSmoke",

@@ -40,6 +40,14 @@ interface BackdropOptions {
  * Returns a Storybook decorator that wraps the story in a positioned
  * container with a treated tint slice underneath. The story content stacks
  * over the slice on `z-base`.
+ *
+ * Implementation note: theme-dependent backdrop colors and the radial
+ * gradient are written to scoped CSS rules via an inline `<style>` tag (one
+ * per theme/padding combination) instead of using inline `style={{}}` on
+ * the wrapper div. This honors the no-inline-CSS rule from u-fe-standards
+ * while preserving the BR-15 fallback (these values intentionally live
+ * outside the token system because addon-vitest runs hermetically and the
+ * CSS-variable layer may not be loaded at decorator-render time).
  */
 export function withAmbientBackdrop(opts: BackdropOptions = {}): Decorator {
   const theme = opts.theme ?? "dark";
@@ -47,32 +55,30 @@ export function withAmbientBackdrop(opts: BackdropOptions = {}): Decorator {
   const paddingClass =
     padding === "sm" ? "p-md" : padding === "lg" ? "p-2xl" : "p-xl";
 
+  // Scoped class — distinct per theme so the `<style>` rules below stay
+  // hermetic and addon-a11y still sees a single, deterministic backdrop.
+  const scopeClass = `sb-ambient-backdrop-${theme}`;
+
   // Solid tint slice — matches --color-primary in each theme so the glass
-  // surface still composites visibly (BR-15 fallback).
+  // surface still composites visibly (BR-15 fallback). Two-stop gradient
+  // adds enough variation that the blur effect of the glass surface is
+  // visible (a perfectly flat colour leaves backdrop-filter imperceptible).
   const slice = theme === "light" ? "oklch(94% 0.006 250)" : "oklch(15% 0.012 250)";
+  const gradient =
+    theme === "light"
+      ? "radial-gradient(circle at 30% 30%, oklch(96% 0.01 240), oklch(90% 0.012 260))"
+      : "radial-gradient(circle at 30% 30%, oklch(22% 0.018 240), oklch(12% 0.012 260))";
+
+  const css = `.${scopeClass}{min-height:320px;background-color:${slice};background-image:${gradient};}`;
 
   const Decorated: Decorator = (Story): ReactElement => {
     return (
       <div
         data-theme={theme}
         data-backdrop="ambient"
-        className={`relative isolate ${paddingClass}`}
-        style={{
-          minHeight: "320px",
-          // Apply the canonical treatment chain from tokens.md §10.1 to the
-          // wrapper background. With a flat slice, the brightness/saturate
-          // pieces are visual identity ops, but keeping the chain in place
-          // preserves the same render path the real image will use.
-          backgroundColor: slice,
-          backgroundImage:
-            // Two-stop gradient adds enough variation that the blur effect
-            // of the glass surface is visible at all (a perfectly flat
-            // colour leaves backdrop-filter: blur(...) imperceptible).
-            theme === "light"
-              ? "radial-gradient(circle at 30% 30%, oklch(96% 0.01 240), oklch(90% 0.012 260))"
-              : "radial-gradient(circle at 30% 30%, oklch(22% 0.018 240), oklch(12% 0.012 260))",
-        }}
+        className={`relative isolate ${paddingClass} ${scopeClass}`}
       >
+        <style>{css}</style>
         <Story />
       </div>
     );

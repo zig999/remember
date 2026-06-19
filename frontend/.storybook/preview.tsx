@@ -46,7 +46,7 @@ const preview: Preview = {
       const reduce =
         ctx.parameters?.reducedMotion === "reduce" ? "reduce" : "no-preference";
       return (
-        <div data-reduced-motion={reduce} style={{ minHeight: "100%" }}>
+        <div data-reduced-motion={reduce} className="min-h-full">
           {reduce === "reduce" ? (
             <style>{`
               [data-reduced-motion="reduce"] *,
