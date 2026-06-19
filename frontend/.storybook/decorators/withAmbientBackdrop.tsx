@@ -16,11 +16,14 @@
  *    landscape image is not available (e.g. CI, hermetic tests), a solid
  *    color slice in the same hue family is acceptable.
  *
- * Per BR-15 we use a tint slice instead of a real image: CI does not ship
- * the landscape asset, and addon-vitest runs hermetically. The slice colour
- * matches the dark/light primary surface so the contrast smoke test in
- * `A11y/ContrastSmoke` keeps its semantic value (the glass tint must still
- * read as a frosted layer over a darker/lighter base).
+ * Dark theme renders the real cityscape backdrop
+ * (`/backdrop/cityscape-dusk.png`, committed under `public/`) so the glass
+ * blur/refraction is actually visible. A gradient tint slice is layered UNDER
+ * the photo as the BR-15 fallback — shown if the asset is missing (e.g. a
+ * hermetic CI). Light theme has no photo asset yet, so it uses the gradient
+ * slice alone. The slice colour matches the dark/light primary surface so the
+ * contrast smoke test in `A11y/ContrastSmoke` keeps its semantic value (the
+ * glass tint must still read as a frosted layer over a darker/lighter base).
  *
  * The decorator can be configured via the `theme` arg to set
  * `data-theme="light"` on the wrapper so the [data-theme="light"]
@@ -69,7 +72,13 @@ export function withAmbientBackdrop(opts: BackdropOptions = {}): Decorator {
       ? "radial-gradient(circle at 30% 30%, oklch(96% 0.01 240), oklch(90% 0.012 260))"
       : "radial-gradient(circle at 30% 30%, oklch(22% 0.018 240), oklch(12% 0.012 260))";
 
-  const css = `.${scopeClass}{min-height:320px;background-color:${slice};background-image:${gradient};}`;
+  // Dark theme stacks the real photo ON TOP of the gradient (first layer wins);
+  // if the photo 404s the gradient shows through (BR-15 fallback). Light theme
+  // has no photo asset, so it uses the gradient slice alone.
+  const darkPhoto = "url('/backdrop/cityscape-dusk.png')";
+  const bgImage = theme === "light" ? gradient : `${darkPhoto}, ${gradient}`;
+
+  const css = `.${scopeClass}{min-height:320px;background-color:${slice};background-image:${bgImage};background-size:cover;background-position:center;}`;
 
   const Decorated: Decorator = (Story): ReactElement => {
     return (

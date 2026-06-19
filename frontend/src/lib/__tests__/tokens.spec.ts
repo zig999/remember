@@ -91,11 +91,11 @@ describe("tokens.ts — confidence-state catalog (tokens.md §6.1)", () => {
   it("matches the YAML manifest dark values (tokens.md §13)", () => {
     // Spot-check the centerpiece values — diverging from these breaks every
     // confidence badge and graph node accent across the app.
-    expect(state.accepted).toBe("oklch(70% 0.16 150)");
-    expect(state.uncertain).toBe("oklch(75% 0.15 75)");
-    expect(state.disputed).toBe("oklch(68% 0.17 45)");
-    expect(state.superseded).toBe("oklch(45% 0.01 250)");
-    expect(state["low-confidence"]).toBe("oklch(55% 0.02 250)");
+    expect(state.accepted).toBe("oklch(72% 0.160 155)");
+    expect(state.uncertain).toBe("oklch(76% 0.150 82)");
+    expect(state.disputed).toBe("oklch(70% 0.180 45)");
+    expect(state.superseded).toBe("oklch(46% 0.018 260)");
+    expect(state["low-confidence"]).toBe("oklch(58% 0.025 260)");
   });
 });
 
@@ -148,18 +148,33 @@ describe("tokens.ts — spacing follows the 4-pt grid (tokens.md §4)", () => {
   });
 });
 
-describe("tokens.ts — typography scale (1.25× Major Third — tokens.md §5)", () => {
-  it("declares 8 named tokens covering 6 distinct sizes (12, 14, 16, 20, 24, 30)", () => {
-    expect(Object.keys(text)).toHaveLength(8);
-    const sizes = new Set(Object.values(text).map((v) => Number(v.replace("px", ""))));
-    expect(sizes).toEqual(new Set([12, 14, 16, 20, 24, 30]));
+describe("tokens.ts — typography scale (\"Terminal Native\" — tokens.md §5)", () => {
+  it("declares the 9 named tokens in scale order", () => {
+    expect(Object.keys(text)).toEqual([
+      "display",
+      "heading",
+      "subheading",
+      "body-lg",
+      "body-sm",
+      "label",
+      "badge",
+      "caption",
+      "code",
+    ]);
   });
 
-  it("forbids the canonical-forbidden sizes (13, 15, 17, 18, 22 px)", () => {
-    const sizes = new Set(Object.values(text));
-    for (const f of ["13px", "15px", "17px", "18px", "22px"]) {
-      expect(sizes.has(f)).toBe(false);
-    }
+  it("sizes are rem against the 13px base — body-lg is the 1rem anchor", () => {
+    // rem (not px): the 13px <html> base is what makes 1rem ≈ 13px. A px value
+    // here would silently decouple the scale from the base.
+    for (const v of Object.values(text)) expect(v).toMatch(/^\d+(\.\d+)?rem$/);
+    expect(text["body-lg"]).toBe("1rem");
+  });
+
+  it("display is the largest step and caption the smallest", () => {
+    const rem = (v: string) => Number(v.replace("rem", ""));
+    const sizes = Object.values(text).map(rem);
+    expect(rem(text.display)).toBe(Math.max(...sizes));
+    expect(rem(text.caption)).toBe(Math.min(...sizes));
   });
 });
 
@@ -234,6 +249,13 @@ describe("tokens.ts — surface / content / backdrop spot checks (tokens.md §13
     expect(color.primary).toBe("oklch(15% 0.012 250)");
     expect(color.content).toBe("oklch(97% 0.008 250)");
     expect(color.muted).toBe("oklch(65% 0.012 250)");
+  });
+
+  it("declares content-inverse (text on saturated fills) and overlay (modal veil)", () => {
+    // These two are consumed by the components/ui/ layer (Button fg, Dialog veil).
+    // Missing tokens fall back to currentColor / transparent and break silently.
+    expect(color["content-inverse"]).toBe("oklch(98% 0.005 250)");
+    expect(color.overlay).toBe("oklch(12% 0.012 250 / 0.60)");
   });
 
   it("declares the 3 backdrop scalars used by the ambient backdrop filter", () => {

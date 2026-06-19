@@ -3,9 +3,11 @@
  * "movimento com significado" (front.md §9, tokens.md §11.2).
  *
  * Components MUST import these — they MUST NOT invent their own variants
- * (front.back.md BR-10). Every duration / easing is referenced as a CSS
- * variable from `tokens.md §11.1` — bare ms numbers are forbidden in this
- * module.
+ * (front.back.md BR-10). Durations/easings are NUMERIC constants (seconds +
+ * cubic-bezier tuples) that MIRROR the canonical tokens in `tokens.md §11.1`.
+ * They are NOT CSS `var(--…)` strings: Framer Motion drives animation in JS
+ * (WAAPI) and a `var()` string makes `duration` non-numeric, which throws
+ * "duration must be non-negative" in the browser (jsdom does not catch it).
  *
  * Reduced-motion contract (front.md §9.1, BR-10):
  *  - Each export is a *factory* that takes a `reducedMotion` boolean.
@@ -28,22 +30,29 @@
 
 import type { Variants } from "framer-motion";
 
-/* ---------- token aliases (CSS variables — no bare ms) ---------- */
+/* ---------- token-mirrored motion constants ----------
+ * Framer Motion drives animation in JS (WAAPI), which requires a NUMERIC
+ * `duration` (seconds) and a cubic-bezier tuple for `ease`. It cannot consume
+ * CSS `var(--…)` strings here (those only work for CSS transitions/animations,
+ * e.g. the `uncertain-border-pulse` @keyframes in theme.css). These values
+ * MIRROR the canonical tokens in `tokens.md §11.1` — keep them in sync if the
+ * tokens change. `backgroundColor` keeps a CSS var: Framer resolves color
+ * variables, and the value must follow the [data-theme] cascade. */
 
 const VAR = {
-  durationFast: "var(--duration-fast)",
-  durationModerate: "var(--duration-moderate)",
-  durationEntrance: "var(--duration-entrance)",
-  durationInstant: "var(--duration-instant)",
-  durationPulse: "var(--duration-pulse)",
-  easeOut: "var(--ease-out)",
-  easeIn: "var(--ease-in)",
-  easeInOut: "var(--ease-in-out)",
-  easeOutQuint: "var(--ease-out-quint)",
-  easeOutExpo: "var(--ease-out-expo)",
+  durationFast: 0.2, //     --duration-fast (200ms)
+  durationModerate: 0.3, // --duration-moderate (300ms)
+  durationEntrance: 0.5, // --duration-entrance (500ms)
+  durationInstant: 0.1, //  --duration-instant (100ms)
+  durationPulse: 2.4, //    --duration-pulse (2400ms)
+  easeOut: [0.25, 1, 0.5, 1] as [number, number, number, number], //      --ease-out
+  easeIn: [0.7, 0, 0.84, 0] as [number, number, number, number], //       --ease-in
+  easeInOut: [0.65, 0, 0.35, 1] as [number, number, number, number], //   --ease-in-out
+  easeOutQuint: [0.22, 1, 0.36, 1] as [number, number, number, number], // --ease-out-quint
+  easeOutExpo: [0.16, 1, 0.3, 1] as [number, number, number, number], //  --ease-out-expo
   colorAccepted: "var(--color-state-accepted)",
   colorUncertain: "var(--color-state-uncertain)",
-} as const;
+};
 
 /* ---------- merge target coordinate type ---------- */
 

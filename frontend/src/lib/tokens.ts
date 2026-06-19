@@ -29,47 +29,51 @@ export const color = Object.freeze({
   surface: "oklch(20% 0.014 250)",
   elevated: "oklch(24% 0.016 250)",
   content: "oklch(97% 0.008 250)",
+  "content-inverse": "oklch(98% 0.005 250)", // text on saturated fills (action/accent/danger)
   body: "oklch(85% 0.010 250)",
   muted: "oklch(65% 0.012 250)",
-  action: "oklch(68% 0.16 240)",
-  "action-hover": "oklch(72% 0.17 240)",
-  "action-active": "oklch(63% 0.15 240)",
-  data: "oklch(72% 0.14 200)",
-  warning: "oklch(72% 0.15 75)",
-  danger: "oklch(60% 0.20 25)",
+  action: "oklch(68% 0.160 265)", // PRIMARY ≈ #6793fa
+  "action-hover": "oklch(74% 0.130 265)",
+  "action-active": "oklch(60% 0.180 265)",
+  accent: "oklch(66.1% 0.259 313)", // ACCENT ≈ #c84dff
+
+  data: "oklch(76% 0.125 210)",
+  warning: "oklch(78% 0.140 82)",
+  danger: "oklch(64% 0.220 20)",
+  overlay: "oklch(12% 0.012 250 / 0.60)", // generic modal/dialog veil
 } as const);
 export type ColorToken = keyof typeof color;
 
 /* ---------- color: confidence states (5 + 5 fg) ---------- */
 export const state = Object.freeze({
-  accepted: "oklch(70% 0.16 150)",
-  uncertain: "oklch(75% 0.15 75)",
-  "low-confidence": "oklch(55% 0.02 250)",
-  disputed: "oklch(68% 0.17 45)",
-  superseded: "oklch(45% 0.01 250)",
+  accepted: "oklch(72% 0.160 155)",
+  uncertain: "oklch(76% 0.150 82)",
+  "low-confidence": "oklch(58% 0.025 260)",
+  disputed: "oklch(70% 0.180 45)",
+  superseded: "oklch(46% 0.018 260)",
 } as const);
 export type StateToken = keyof typeof state;
 
 export const stateFg = Object.freeze({
-  accepted: "oklch(96% 0.05 150)",
-  uncertain: "oklch(96% 0.05 75)",
-  "low-confidence": "oklch(96% 0.005 250)",
-  disputed: "oklch(96% 0.05 45)",
-  superseded: "oklch(96% 0.005 250)",
+  accepted: "oklch(96% 0.035 155)",
+  uncertain: "oklch(96% 0.035 82)",
+  "low-confidence": "oklch(96% 0.008 260)",
+  disputed: "oklch(96% 0.020 45)",
+  superseded: "oklch(96% 0.008 260)",
 } as const);
 
 /* ---------- color: NodeType catalog (10) ---------- */
 export const nodeType = Object.freeze({
-  person: "oklch(75% 0.14 280)",
-  organization: "oklch(68% 0.13 220)",
-  project: "oklch(72% 0.15 175)",
-  event: "oklch(73% 0.16 50)",
-  role: "oklch(70% 0.14 320)",
-  category: "oklch(70% 0.10 110)",
-  concept: "oklch(75% 0.10 95)",
-  location: "oklch(70% 0.12 145)",
-  document: "oklch(70% 0.05 245)",
-  task: "oklch(72% 0.16 25)",
+  person: "oklch(74% 0.150 300)",
+  organization: "oklch(68% 0.130 250)",
+  project: "oklch(74% 0.120 190)",
+  event: "oklch(72% 0.170 35)",
+  role: "oklch(72% 0.180 325)",
+  category: "oklch(70% 0.100 130)",
+  concept: "oklch(76% 0.130 88)",
+  location: "oklch(72% 0.120 155)",
+  document: "oklch(70% 0.040 260)",
+  task: "oklch(70% 0.170 22)",
 } as const);
 export type NodeTypeToken = keyof typeof nodeType;
 
@@ -95,12 +99,12 @@ export type LinkTypeToken = keyof typeof linkType;
 export const borderColor = Object.freeze({
   border: "oklch(35% 0.012 250)",
   glass: "oklch(95% 0.005 250 / 0.18)",
-  focus: "oklch(68% 0.16 240)",
-  error: "oklch(60% 0.20 25)",
-  accepted: "oklch(70% 0.16 150)",
-  uncertain: "oklch(75% 0.15 75)",
-  disputed: "oklch(68% 0.17 45)",
-  superseded: "oklch(45% 0.01 250)",
+  focus: "oklch(68% 0.160 265)",
+  error: "oklch(64% 0.220 20)",
+  accepted: "oklch(72% 0.160 155)",
+  uncertain: "oklch(76% 0.150 82)",
+  disputed: "oklch(70% 0.180 45)",
+  superseded: "oklch(46% 0.018 260)",
 } as const);
 export type BorderColorToken = keyof typeof borderColor;
 
@@ -124,22 +128,23 @@ export const spacing = Object.freeze({
 } as const);
 export type SpacingToken = keyof typeof spacing;
 
-/* ---------- font ---------- */
+/* ---------- font: "Terminal Native" — Grotesk titles, Mono body ---------- */
 export const font = Object.freeze({
-  sans: '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  mono: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace',
+  sans: '"Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  mono: '"Space Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace',
 } as const);
 
-/* ---------- text: 1.25× Major Third scale (8 tokens / 6 sizes) ---------- */
+/* ---------- text: "Terminal Native" scale (9 tokens; rem against 13px base) ---------- */
 export const text = Object.freeze({
-  display: "30px",
-  heading: "24px",
-  subheading: "20px",
-  "body-lg": "16px",
-  "body-sm": "14px",
-  label: "14px",
-  caption: "12px",
-  code: "14px",
+  display: "2.77rem", // ~36px
+  heading: "1.385rem", // ~18px
+  subheading: "1.077rem", // ~14px
+  "body-lg": "1rem", // ~13px (the base)
+  "body-sm": "0.923rem", // ~12px
+  label: "0.923rem", // ~12px
+  badge: "0.923rem", // ~12px
+  caption: "0.846rem", // ~11px
+  code: "0.923rem", // ~12px
 } as const);
 export type TextToken = keyof typeof text;
 

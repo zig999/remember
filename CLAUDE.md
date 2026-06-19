@@ -200,7 +200,8 @@ specs_dir: docs/specs
 stack:
   frontend: React 19, TypeScript (strict), Vite 6, Tailwind CSS v4 (CSS-first via @theme),
     shadcn/ui (Radix UI), TanStack Router / Query v5 / Table, Zustand v5,
-    React Hook Form v7 + Zod v4, Framer Motion, sonner, lucide-react, Vitest, Playwright, MSW,
+    React Hook Form v7 + Zod v4, Framer Motion, sonner, lucide-react,
+    React Flow (@xyflow/react) + d3-force (visualização do grafo), Vitest, Playwright, MSW,
     Storybook 9 (@storybook/react-vite; addon-a11y + addon-vitest)
   backend: Node.js 20 LTS, TypeScript (strict), Fastify + @fastify/swagger,
     PostgreSQL 17 via Neon (managed Postgres, driver pg raw), Neon Auth (Stack Auth), Zod v4, pino, Vitest
@@ -460,6 +461,16 @@ Required protocol:
 - **Routing/tabelas:** TanStack Router + TanStack Table
 - **Forms/validação:** React Hook Form v7 + Zod v4 (`zodResolver`)
 - **Outros:** Framer Motion (animação), sonner (toasts), lucide-react (ícones)
+- **Visualização de grafo:** **React Flow (`@xyflow/react` v12, MIT)** como renderizador +
+  **`d3-force`** para layout. É o explorador do grafo de conhecimento (componente central da SPA).
+  Escolhido por renderizar **cada nó/aresta como componente React** — permite codificar tipo (cor +
+  ícone lucide), estado de confiança (tokens semânticos), arestas temporais/estáveis (sólida/
+  tracejada) e micro-interações via Tailwind + shadcn/ui + Framer Motion, fiéis ao design system.
+  `d3-force` posiciona o subgrafo **com os nós existentes fixados (pin)**, já que o grafo cresce por
+  expansão progressiva (`traverse` no backend) e não deve "saltar" a cada clique. Dados via hook
+  TanStack Query; estado da visão (nós expandidos, posições, filtros, `as_of`) em Zustand. Adequado
+  ao regime do projeto (centenas de documentos, dezenas de nós visíveis por vez); para grafos de
+  milhares+ de nós simultâneos — não-objetivo atual — seria preciso renderer WebGL (Cytoscape/Sigma).
 - **Design system:** Storybook 9 (`@storybook/react-vite`) — ambiente do design system. Scripts
   `storybook` (dev em `:6006`) e `build-storybook`. Config em `.storybook/` (`main.ts`,
   `preview.tsx`, `vitest.setup.ts`). Addons: `addon-a11y` (acessibilidade) e `addon-vitest` (roda as
@@ -697,6 +708,16 @@ a latência fica na casa de poucos ms):
 - **Tailwind v4 / dois namespaces de border:** `--color-border-*` (cor) vs. `--border-*` (largura)
   são namespaces distintos — **misturá-los faz a borda sumir silenciosamente** (cai em branco/zero,
   sem erro). Conferir qual namespace o token usa antes de aplicar.
+- **Tailwind v4 / `max-w-sm` × spacing tokens nomeados (RESOLVIDO):** os spacing tokens nomeados
+  (`--spacing-{xs,sm,md,lg,xl,2xl}`) **sombreiam** a escala container dentro de `max-w-*`/`min-w-*`
+  (spacing ganha — confirmado: mesmo com `--container-md` definido, `max-w-md` resolvia para
+  `var(--spacing-md)`=12px). Fix em `theme.css`: (1) escala `--container-3xs..7xl` no `@theme`
+  (também habilita variantes de container-query `@sm:`/`@md:`); (2) regras **não-layered** de
+  `.max-w-*`/`.min-w-*` (t-shirt) apontando para `var(--container-*)` — não-layered vence qualquer
+  `@layer utilities`, então sobrepõe a versão baseada em spacing. Resultado: `max-w-sm`=24rem
+  (rem×13px). **NÃO use `@utility` para isso** (ele só faz merge na mesma regra e a declaração de
+  spacing do Tailwind ainda vem por último). `w-*` numérico (`max-w-96`) e padding/gap nomeados
+  (`p-md`) não são afetados.
 
 ---
 

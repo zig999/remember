@@ -25,7 +25,7 @@
 |---|---|---|
 | `color.*` | Theme background / surface / content; confidence-state colors (5); node-type colors (10); link/edge stylings (13); border-color namespace | §3, §6, §7 |
 | `spacing.*` | 4-pt grid (`4 / 8 / 12 / 16 / 24 / 32`) | §4 |
-| `text.*` | Typographic scale (1.25× Major Third, 8 tokens / 6 sizes) | §5 |
+| `text.*` | Typographic scale ("Terminal Native", 9 tokens, rem @ 13px base) | §5 |
 | `radius.*` | iOS-flavored soft corners (5-step scale) | §8 |
 | `shadow.*` | Layered elevation (4-step scale, very subtle) | §8 |
 | `surface.glass.*` | Frosted-glass surface — background tint + border + blur per theme + level | §9 |
@@ -59,18 +59,20 @@
 
   /* Text hierarchy (opacity-based — see §5.3)                                                  */
   --color-content:           oklch(97% 0.008 250);   /* ≈ #f3f4f7 — titles, labels, primary text */
+  --color-content-inverse:   oklch(98% 0.005 250);   /* ≈ #f8f9fb — text on saturated fills (action/accent/danger) */
   --color-body:              oklch(85% 0.010 250);   /* ≈ #d2d6dd — paragraphs, descriptions    */
   --color-muted:             oklch(65% 0.012 250);   /* ≈ #969aa6 — placeholders, metadata      */
 
   /* Primary action / focus                                                                     */
-  --color-action:            oklch(68% 0.16 240);    /* ≈ #4f8fe0 — CTA, focused element        */
-  --color-action-hover:      oklch(72% 0.17 240);
-  --color-action-active:     oklch(63% 0.15 240);
+  --color-action:            oklch(68% 0.160 265);   /* ≈ #6793fa — PRIMARY (CTA, focused)       */
+  --color-action-hover:      oklch(74% 0.130 265);   /* ≈ #82a8fd */
+  --color-action-active:     oklch(60% 0.180 265);   /* ≈ #4a78ea */
+  --color-accent:            oklch(66.1% 0.259 313); /* ≈ #c84dff — ACCENT (vivid violet highlight) */
 
   /* Generic semantic accents                                                                   */
-  --color-data:              oklch(72% 0.14 200);    /* ≈ #4fb6c8 — metric/data highlight       */
-  --color-warning:           oklch(72% 0.15 75);     /* ≈ #d09b3d — attention (uncertain base)  */
-  --color-danger:            oklch(60% 0.20 25);     /* ≈ #c54040 — error / destructive         */
+  --color-data:              oklch(76% 0.125 210);   /* ≈ #27c6dd — metric/data highlight       */
+  --color-warning:           oklch(78% 0.140 82);    /* ≈ #e4ad3c — attention (uncertain base)  */
+  --color-danger:            oklch(64% 0.220 20);    /* ≈ #f53a51 — error / destructive         */
 
   /* ---------- Confidence-state colors (5 — the centerpiece) -----------------------------------
      Spec normative source: remember-modelagem-v7.md §3.5, §6.6.
@@ -81,33 +83,33 @@
        conflict at same period → disputed (curation queue)
        replaced by a newer version → superseded
      -------------------------------------------------------------------------------------------- */
-  --color-state-accepted:        oklch(70% 0.16 150);   /* ≈ #4cb86b — green                       */
-  --color-state-uncertain:       oklch(75% 0.15 75);    /* ≈ #d6a647 — amber                       */
-  --color-state-low-confidence:  oklch(55% 0.02 250);   /* ≈ #7a808b — neutral grey (discreet)     */
-  --color-state-disputed:        oklch(68% 0.17 45);    /* ≈ #d68241 — orange (distinct from amber)*/
-  --color-state-superseded:      oklch(45% 0.01 250);   /* ≈ #62666e — muted grey                  */
+  --color-state-accepted:        oklch(72% 0.160 155);  /* ≈ #35c177 — green                       */
+  --color-state-uncertain:       oklch(76% 0.150 82);   /* ≈ #e0a61e — amber                       */
+  --color-state-low-confidence:  oklch(58% 0.025 260);  /* ≈ #727b8a — neutral grey (discreet)     */
+  --color-state-disputed:        oklch(70% 0.180 45);   /* ≈ #f6722b — orange (distinct from amber)*/
+  --color-state-superseded:      oklch(46% 0.018 260);  /* ≈ #525862 — muted grey                  */
 
   /* Same family — foreground == text on tinted background (AA over the bg token above)         */
-  --color-state-accepted-fg:        oklch(96% 0.05 150);
-  --color-state-uncertain-fg:       oklch(96% 0.05 75);
-  --color-state-low-confidence-fg:  oklch(96% 0.005 250);
-  --color-state-disputed-fg:        oklch(96% 0.05 45);
-  --color-state-superseded-fg:      oklch(96% 0.005 250);
+  --color-state-accepted-fg:        oklch(96% 0.035 155);
+  --color-state-uncertain-fg:       oklch(96% 0.035 82);
+  --color-state-low-confidence-fg:  oklch(96% 0.008 260);
+  --color-state-disputed-fg:        oklch(96% 0.020 45);
+  --color-state-superseded-fg:      oklch(96% 0.008 260);
 
   /* ---------- NodeType colors (10 — normative catalog) ----------------------------------------
      Source: remember-modelagem-v7.md §15.1 + 0001_seed.sql (Document is seeded in 0001_seed).
      Mapping name → lucide-react icon is canonical (consumed by graph node component).
      -------------------------------------------------------------------------------------------- */
-  --color-node-person:        oklch(75% 0.14 280);   /* ≈ #a48fd6 — violet      | lucide: user           */
-  --color-node-organization:  oklch(68% 0.13 220);   /* ≈ #5d92c8 — steel-blue  | lucide: building-2     */
-  --color-node-project:       oklch(72% 0.15 175);   /* ≈ #3ec0a8 — teal        | lucide: rocket         */
-  --color-node-event:         oklch(73% 0.16 50);    /* ≈ #db9148 — coral       | lucide: calendar-clock */
-  --color-node-role:          oklch(70% 0.14 320);   /* ≈ #c089c5 — magenta     | lucide: id-badge       */
-  --color-node-category:      oklch(70% 0.10 110);   /* ≈ #9bb56b — olive       | lucide: tag            */
-  --color-node-concept:       oklch(75% 0.10 95);    /* ≈ #b8b06b — mustard     | lucide: lightbulb      */
-  --color-node-location:      oklch(70% 0.12 145);   /* ≈ #65b78a — sage-green  | lucide: map-pin        */
-  --color-node-document:      oklch(70% 0.05 245);   /* ≈ #87959c — slate-blue  | lucide: file-text      */
-  --color-node-task:          oklch(72% 0.16 25);    /* ≈ #db7866 — terracotta  | lucide: square-check   */
+  --color-node-person:        oklch(74% 0.150 300);  /* ≈ #ba93fb — violet      | lucide: user           */
+  --color-node-organization:  oklch(68% 0.130 250);  /* ≈ #549de5 — blue        | lucide: building-2     */
+  --color-node-project:       oklch(74% 0.120 190);  /* ≈ #2ac3bb — teal        | lucide: rocket         */
+  --color-node-event:         oklch(72% 0.170 35);   /* ≈ #fc7756 — coral       | lucide: calendar-clock */
+  --color-node-role:          oklch(72% 0.180 325);  /* ≈ #db78e2 — magenta     | lucide: id-badge       */
+  --color-node-category:      oklch(70% 0.100 130);  /* ≈ #8aab67 — olive       | lucide: tag            */
+  --color-node-concept:       oklch(76% 0.130 88);   /* ≈ #d3ac41 — mustard     | lucide: lightbulb      */
+  --color-node-location:      oklch(72% 0.120 155);  /* ≈ #60bb83 — sage-green  | lucide: map-pin        */
+  --color-node-document:      oklch(70% 0.040 260);  /* ≈ #909fb8 — slate-blue  | lucide: file-text      */
+  --color-node-task:          oklch(70% 0.170 22);   /* ≈ #f66c6d — terracotta  | lucide: square-check   */
 
   /* ---------- LinkType colors (13 — normative catalog) ----------------------------------------
      Source: remember-modelagem-v7.md §15.2 + 0001_seed.sql.
@@ -130,18 +132,24 @@
   /* ---------- Border (color + width — TWO namespaces, do not mix) -----------------------------*/
   --color-border:            oklch(35% 0.012 250);     /* default separator / card border         */
   --color-border-glass:      oklch(95% 0.005 250 / 0.18); /* 18% white — top-edge of glass tile   */
-  --color-border-focus:      oklch(68% 0.16 240);      /* same hue as --color-action               */
-  --color-border-error:      oklch(60% 0.20 25);
-  --color-border-accepted:   oklch(70% 0.16 150);
-  --color-border-uncertain:  oklch(75% 0.15 75);
-  --color-border-disputed:   oklch(68% 0.17 45);
-  --color-border-superseded: oklch(45% 0.01 250);
+  --color-border-focus:      oklch(68% 0.160 265);     /* ≈ #6793fa — same hue as --color-action   */
+  --color-border-error:      oklch(64% 0.220 20);   /* mirrors --color-danger */
+  --color-border-accepted:   oklch(72% 0.160 155);  /* mirrors --color-state-accepted */
+  --color-border-uncertain:  oklch(76% 0.150 82);   /* mirrors --color-state-uncertain */
+  --color-border-disputed:   oklch(70% 0.180 45);   /* mirrors --color-state-disputed */
+  --color-border-superseded: oklch(46% 0.018 260);  /* mirrors --color-state-superseded */
 
   /* Border WIDTH namespace — distinct from color! */
   --border-thin:    1px;
   --border-DEFAULT: 1px;   /* class: border */
   --border-2:       2px;
   --border-thick:   3px;
+
+  /* ---------- Container scale — width t-shirt sizes (see §4.1) -------------------------------*/
+  --container-3xs: 16rem;  --container-2xs: 18rem;  --container-xs: 20rem;
+  --container-sm:  24rem;  --container-md:  28rem;  --container-lg: 32rem;
+  --container-xl:  36rem;  --container-2xl: 42rem;  --container-3xl: 48rem;
+  --container-4xl: 56rem;  --container-5xl: 64rem;  --container-6xl: 72rem;  --container-7xl: 80rem;
 
   /* ---------- Spacing — 4-pt grid -----------------------------------------------------------*/
   --spacing-xs:  4px;
@@ -151,19 +159,22 @@
   --spacing-xl:  24px;
   --spacing-2xl: 32px;
 
-  /* ---------- Typography — 1.25× Major Third scale (8 tokens; 6 sizes) ----------------------*/
-  --text-display:    30px;
-  --text-heading:    24px;
-  --text-subheading: 20px;
-  --text-body-lg:    16px;
-  --text-body-sm:    14px;
-  --text-label:      14px;
-  --text-caption:    12px;
-  --text-code:       14px;
+  /* ---------- Typography — "Terminal Native" (rem @ 13px <html> base) -----------------------*/
+  --text-display:    2.77rem;  /* ~36px */  --text-display--font-weight: 700;  --text-display--letter-spacing: -0.02em;
+  --text-heading:    1.385rem; /* ~18px */  --text-heading--font-weight: 600;  --text-heading--letter-spacing: -0.02em;
+  --text-subheading: 1.077rem; /* ~14px */  --text-subheading--font-weight: 500;
+  --text-body-lg:    1rem;     /* ~13px */  --text-body-lg--font-weight: 400;
+  --text-body-sm:    0.923rem; /* ~12px */  --text-body-sm--font-weight: 400;
+  --text-label:      0.923rem; /* ~12px */  --text-label--font-weight: 500;
+  --text-badge:      0.923rem; /* ~12px */  --text-badge--font-weight: 700;
+  --text-caption:    0.846rem; /* ~11px */  --text-caption--font-weight: 400;
+  --text-code:       0.923rem; /* ~12px */  --text-code--font-weight: 400;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.02em;
 
-  /* Font family (consumed via Tailwind utilities)                                              */
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  /* Font families — Space Grotesk = titles only; Space Mono = body / UI / everything else      */
+  --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
   /* ---------- iOS-flavored corners & elevation ---------------------------------------------*/
   --radius-sm:    6px;
@@ -192,6 +203,9 @@
   --backdrop-blur:        12px;
 
   --graph-depth-overlay:  oklch(12% 0.012 250 / 0.92);
+
+  /* Generic modal/dialog veil (distinct from the Graph-scoped --graph-depth-overlay).         */
+  --color-overlay:        oklch(12% 0.012 250 / 0.60);
 
   /* ---------- Motion -----------------------------------------------------------------------*/
   --duration-instant:   100ms;
@@ -227,12 +241,14 @@
   --color-elevated:          oklch(99% 0.003 250);
 
   --color-content:           oklch(20% 0.014 250);
+  --color-content-inverse:   oklch(98% 0.005 250);   /* white text still reads on the darker light-theme action/danger fills */
   --color-body:              oklch(35% 0.012 250);
   --color-muted:             oklch(55% 0.010 250);
 
-  --color-action:            oklch(50% 0.18 240);
-  --color-action-hover:      oklch(45% 0.19 240);
-  --color-action-active:     oklch(40% 0.18 240);
+  --color-action:            oklch(50% 0.18 265);   /* primary, light-tuned (same hue 265)      */
+  --color-action-hover:      oklch(45% 0.19 265);
+  --color-action-active:     oklch(40% 0.18 265);
+  --color-accent:            oklch(55% 0.250 313); /* ≈ #a224d5 — accent, darker for light glass */
 
   --color-data:              oklch(55% 0.15 200);
   --color-warning:           oklch(58% 0.15 75);
@@ -278,7 +294,7 @@
 
   --color-border:            oklch(80% 0.010 250);
   --color-border-glass:      oklch(20% 0.005 250 / 0.14);
-  --color-border-focus:      oklch(50% 0.18 240);
+  --color-border-focus:      oklch(50% 0.18 265);
   /* Confidence-state borders mirror the light state colors above (W-DS-1):
      without these, the borders would inherit dark-calibrated values on light glass. */
   --color-border-error:      oklch(50% 0.20 25);
@@ -296,6 +312,9 @@
   --backdrop-blur:        14px;
 
   --graph-depth-overlay:  oklch(98% 0.005 250 / 0.88);
+
+  /* Modal veil stays a dark scrim on light theme so modal content lifts off the page. */
+  --color-overlay:        oklch(20% 0.014 250 / 0.40);
 
   --shadow-sm: 0 1px 2px 0 rgba(20, 24, 32, 0.10);
   --shadow-md: 0 4px 12px -2px rgba(20, 24, 32, 0.14), 0 2px 4px -2px rgba(20, 24, 32, 0.08);
@@ -326,6 +345,7 @@
 | `--color-action` | `bg-action` / `text-action` | The primary action color (CTA + focus accent) | Primary button, focus ring base hue | KPI, neutral data |
 | `--color-action-hover` | `bg-action-hover` | Hover state of the primary action | — | — |
 | `--color-action-active` | `bg-action-active` | Pressed state | — | — |
+| `--color-accent` | `bg-accent` / `text-accent` | Vivid violet accent / highlight (≈ #c84dff) — secondary brand color | Accent highlights, gradient CTA end-stop | Large fills, body text |
 | `--color-data` | `text-data` / `bg-data` | Informational data highlight | Metric callouts, neutral charts | Buttons, alerts |
 | `--color-warning` | `text-warning` / `bg-warning` | Attention | Warning banners | Positive data, primary action |
 | `--color-danger` | `text-danger` / `bg-danger` | Error / destructive | Validation errors, destructive confirm | Mild alerts |
@@ -361,24 +381,46 @@
 > **Forbidden Tailwind classes:** `p-5`, `p-7`, `p-9`, `p-11` (map to 20/28/36/44 px — outside the grid).
 > **Forbidden:** arbitrary values such as `p-[13px]` or `gap-[7px]`.
 
+### 4.1 Container scale (width t-shirt sizes)
+
+`max-w-*` / `min-w-*` t-shirt sizes resolve against the `--container-*` scale (rem-based, 1rem = 13px
+base): `max-w-sm` = 24rem, `max-w-md` = 28rem, … `max-w-7xl` = 80rem (full scale `3xs`→`7xl`).
+Use these for content/panel widths (form column, card, dialog, dropdown).
+
+> **Why it needs an explicit override (load-bearing):** the named `--spacing-*` tokens **shadow** the
+> container scale *inside* the `max-w-*`/`min-w-*` utilities — Tailwind v4 lets spacing win, so
+> `max-w-sm` would otherwise resolve to `var(--spacing-sm)` = 8px and silently collapse the layout.
+> `theme.css` fixes this with **unlayered** `.max-w-*`/`.min-w-*` rules pointing at `var(--container-*)`
+> (an unlayered declaration outranks anything in `@layer utilities`). Do **not** use `@utility` for
+> this — it merges into the same rule and Tailwind's spacing declaration still wins. The `--container-*`
+> scale also feeds Tailwind container-query variants (`@sm:`, `@md:`). Numeric widths (`max-w-96`) and
+> named padding/gap (`p-md`) are unaffected.
+
 ---
 
-## 5. Typographic scale (iOS-clean)
+## 5. Typographic scale ("Terminal Native")
 
-> **Mandatory — 1.25× Major Third ratio:** required scale 12 → 14 → 16 → 20 → 24 → 30 px.
-> **Forbidden sizes:** 13, 15, 17, 18, 22 px.
-> **Component limit:** maximum 3 distinct font sizes per component.
+> **Two families:** Space Grotesk (display + headings only) · Space Mono (body, UI, labels,
+> badges, code — **the body font**). Loaded via Google Fonts in `index.html`.
+> **Non-standard base:** `html { font-size: 13px }` — so `1rem ≈ 13px` and the scale is in `rem`
+> (spacing stays in absolute px and is unaffected). Global `letter-spacing: 0`; titles get
+> `-0.02em` via `--tracking-display` / `--tracking-heading`, applied automatically to `h1`, `h2`,
+> `[data-typo]`. Smoothing: antialiased + grayscale.
+> **Weight + tracking** are baked into each `text-*` utility via Tailwind v4 modifiers
+> (`--text-*--font-weight` / `--text-*--letter-spacing`); **family** is applied by element
+> (body = mono; `h1`/`h2`/`[data-typo]` = sans).
 
-| Token | Tailwind class | px | Default color | Usage |
-|---|---|---|---|---|
-| `--text-display` | `text-display` | 30 | `text-content` | Hero, highlighted metric |
-| `--text-heading` | `text-heading` | 24 | `text-content` | Page / section title |
-| `--text-subheading` | `text-subheading` | 20 | `text-content` | Subtitle, group label |
-| `--text-body-lg` | `text-body-lg` | 16 | `text-body` | Primary body, descriptions |
-| `--text-body-sm` | `text-body-sm` | 14 | `text-body` | Form labels, secondary body |
-| `--text-label` | `text-label` | 14 | `text-content` | Field labels, table headers |
-| `--text-caption` | `text-caption` | 12 | `text-muted` | Helper, caption, metadata, badge label |
-| `--text-code` | `text-code` | 14 | `text-body` (mono) | Technical values, snippets |
+| Token | Tailwind class | Size (≈px) | Weight | Family | Default color | Usage |
+|---|---|---|---|---|---|---|
+| `--text-display` | `text-display` | 2.77rem (~36) | 700 | Grotesk | `text-content` | Page / hero titles |
+| `--text-heading` | `text-heading` | 1.385rem (~18) | 600 | Grotesk | `text-content` | Section titles, card headers |
+| `--text-subheading` | `text-subheading` | 1.077rem (~14) | 500 | Mono | `text-content` | Subtitles, group labels, sidebar sections |
+| `--text-body-lg` | `text-body-lg` | 1rem (~13) | 400 | Mono | `text-body` | Primary body, descriptions |
+| `--text-body-sm` | `text-body-sm` | 0.923rem (~12) | 400 | Mono | `text-body` | Secondary text, metadata |
+| `--text-label` | `text-label` | 0.923rem (~12) | 500 | Mono | `text-content` | Form labels, table headers |
+| `--text-badge` | `text-badge` | 0.923rem (~12) | 700 | Mono | `text-content` | Pills, chips, status badges |
+| `--text-caption` | `text-caption` | 0.846rem (~11) | 400 | Mono | `text-muted` | Hints, timestamps, versions |
+| `--text-code` | `text-code` | 0.923rem (~12) | 400 | Mono | `text-body` | UUIDs, technical values, snippets |
 
 ### 5.1 Line-height by context
 
@@ -662,34 +704,37 @@ color:
   surface:                "oklch(20% 0.014 250)"
   elevated:               "oklch(24% 0.016 250)"
   content:                "oklch(97% 0.008 250)"
+  content-inverse:        "oklch(98% 0.005 250)"   # text on saturated fills (action/accent/danger)
   body:                   "oklch(85% 0.010 250)"
   muted:                  "oklch(65% 0.012 250)"
-  action:                 "oklch(68% 0.16 240)"
-  action-hover:           "oklch(72% 0.17 240)"
-  action-active:          "oklch(63% 0.15 240)"
-  data:                   "oklch(72% 0.14 200)"
-  warning:                "oklch(72% 0.15 75)"
-  danger:                 "oklch(60% 0.20 25)"
-  state-accepted:         "oklch(70% 0.16 150)"
-  state-uncertain:        "oklch(75% 0.15 75)"
-  state-low-confidence:   "oklch(55% 0.02 250)"
-  state-disputed:         "oklch(68% 0.17 45)"
-  state-superseded:       "oklch(45% 0.01 250)"
-  state-accepted-fg:        "oklch(96% 0.05 150)"
-  state-uncertain-fg:       "oklch(96% 0.05 75)"
-  state-low-confidence-fg:  "oklch(96% 0.005 250)"
-  state-disputed-fg:        "oklch(96% 0.05 45)"
-  state-superseded-fg:      "oklch(96% 0.005 250)"
-  node-person:            "oklch(75% 0.14 280)"
-  node-organization:      "oklch(68% 0.13 220)"
-  node-project:           "oklch(72% 0.15 175)"
-  node-event:             "oklch(73% 0.16 50)"
-  node-role:              "oklch(70% 0.14 320)"
-  node-category:          "oklch(70% 0.10 110)"
-  node-concept:           "oklch(75% 0.10 95)"
-  node-location:          "oklch(70% 0.12 145)"
-  node-document:          "oklch(70% 0.05 245)"
-  node-task:              "oklch(72% 0.16 25)"
+  action:                 "oklch(68% 0.160 265)"   # PRIMARY ≈ #6793fa
+  action-hover:           "oklch(74% 0.130 265)"
+  action-active:          "oklch(60% 0.180 265)"
+  accent:                 "oklch(66.1% 0.259 313)" # ACCENT ≈ #c84dff
+  data:                   "oklch(76% 0.125 210)"
+  warning:                "oklch(78% 0.140 82)"
+  danger:                 "oklch(64% 0.220 20)"
+  overlay:                "oklch(12% 0.012 250 / 0.60)"  # generic modal/dialog veil
+  state-accepted:         "oklch(72% 0.160 155)"
+  state-uncertain:        "oklch(76% 0.150 82)"
+  state-low-confidence:   "oklch(58% 0.025 260)"
+  state-disputed:         "oklch(70% 0.180 45)"
+  state-superseded:       "oklch(46% 0.018 260)"
+  state-accepted-fg:        "oklch(96% 0.035 155)"
+  state-uncertain-fg:       "oklch(96% 0.035 82)"
+  state-low-confidence-fg:  "oklch(96% 0.008 260)"
+  state-disputed-fg:        "oklch(96% 0.020 45)"
+  state-superseded-fg:      "oklch(96% 0.008 260)"
+  node-person:            "oklch(74% 0.150 300)"
+  node-organization:      "oklch(68% 0.130 250)"
+  node-project:           "oklch(74% 0.120 190)"
+  node-event:             "oklch(72% 0.170 35)"
+  node-role:              "oklch(72% 0.180 325)"
+  node-category:          "oklch(70% 0.100 130)"
+  node-concept:           "oklch(76% 0.130 88)"
+  node-location:          "oklch(72% 0.120 155)"
+  node-document:          "oklch(70% 0.040 260)"
+  node-task:              "oklch(70% 0.170 22)"
   link-participates-in:        "oklch(70% 0.14 200)"
   link-member-of:              "oklch(68% 0.14 220)"
   link-holds-role:             "oklch(70% 0.14 280)"
@@ -705,12 +750,12 @@ color:
   link-sponsors:               "oklch(72% 0.13 220)"
   border:                "oklch(35% 0.012 250)"
   border-glass:          "oklch(95% 0.005 250 / 0.18)"
-  border-focus:          "oklch(68% 0.16 240)"
-  border-error:          "oklch(60% 0.20 25)"
-  border-accepted:       "oklch(70% 0.16 150)"
-  border-uncertain:      "oklch(75% 0.15 75)"
-  border-disputed:       "oklch(68% 0.17 45)"
-  border-superseded:     "oklch(45% 0.01 250)"
+  border-focus:          "oklch(68% 0.160 265)"
+  border-error:          "oklch(64% 0.220 20)"
+  border-accepted:       "oklch(72% 0.160 155)"
+  border-uncertain:      "oklch(76% 0.150 82)"
+  border-disputed:       "oklch(70% 0.180 45)"
+  border-superseded:     "oklch(46% 0.018 260)"
 border:        # WIDTH namespace — distinct from color!
   thin:    "1px"
   DEFAULT: "1px"
@@ -723,18 +768,33 @@ spacing:
   lg:   "16px"
   xl:   "24px"
   "2xl": "32px"
+container:               # §4.1 — width t-shirt sizes (max-w-*/min-w-*), rem against 13px base
+  "3xs": "16rem"
+  "2xs": "18rem"
+  xs:    "20rem"
+  sm:    "24rem"
+  md:    "28rem"
+  lg:    "32rem"
+  xl:    "36rem"
+  "2xl": "42rem"
+  "3xl": "48rem"
+  "4xl": "56rem"
+  "5xl": "64rem"
+  "6xl": "72rem"
+  "7xl": "80rem"
 font:
-  sans: '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-  mono: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace'
-text:
-  display:    "30px"
-  heading:    "24px"
-  subheading: "20px"
-  body-lg:    "16px"
-  body-sm:    "14px"
-  label:      "14px"
-  caption:    "12px"
-  code:       "14px"
+  sans: '"Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  mono: '"Space Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace'
+text:                  # "Terminal Native" — rem against the 13px <html> base
+  display:    "2.77rem"
+  heading:    "1.385rem"
+  subheading: "1.077rem"
+  body-lg:    "1rem"
+  body-sm:    "0.923rem"
+  label:      "0.923rem"
+  badge:      "0.923rem"
+  caption:    "0.846rem"
+  code:       "0.923rem"
 radius:
   sm:    "6px"
   md:    "10px"

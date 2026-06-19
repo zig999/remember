@@ -9,10 +9,13 @@
  *    component runs with `undefined` and Framer Motion logs a warning then
  *    no-ops. The visible state change is gone, but the test suite would
  *    pass. These tests pin the contract.
- *  - The "no bare ms in variants" rule (BR-10, tokens.md §11.3) is the
- *    only thing that prevents the design-system tokens from being bypassed
- *    by a quick local edit. We assert the variants reference CSS variables
- *    by name.
+ *  - Framer Motion drives animation in JS (WAAPI), which requires a NUMERIC
+ *    `duration` (seconds) and a cubic-bezier tuple for `ease`. A CSS
+ *    `var(--…)` string makes `duration` non-numeric and throws
+ *    "duration must be non-negative" in a real browser — a path jsdom does
+ *    NOT exercise. So these tests assert every `duration` is a finite number
+ *    >= 0 and every `ease` is a 4-number tuple, mirroring `tokens.md §11.1`.
+ *    That is the regression guard that the prior (var-string) tests lacked.
  *  - The reduced-motion gate is the WCAG 2.2 AA gate — when reducedMotion
  *    is true, every variant MUST collapse to a zero-duration transition.
  */
@@ -27,34 +30,47 @@ import {
   transitionGlassModal,
 } from "../motion";
 
+/* ---------- canonical token mirror (tokens.md §11.1, in seconds) ---------- */
+
+const D = {
+  fast: 0.2,
+  moderate: 0.3,
+  entrance: 0.5,
+  instant: 0.1,
+  pulse: 2.4,
+} as const;
+const E = {
+  out: [0.25, 1, 0.5, 1],
+  in: [0.7, 0, 0.84, 0],
+  inOut: [0.65, 0, 0.35, 1],
+  outQuint: [0.22, 1, 0.36, 1],
+  outExpo: [0.16, 1, 0.3, 1],
+} as const;
+
 /* ---------- helpers ---------- */
 
-function flattenStrings(value: unknown, acc: string[] = []): string[] {
-  if (typeof value === "string") {
-    acc.push(value);
-  } else if (Array.isArray(value)) {
-    for (const v of value) flattenStrings(v, acc);
-  } else if (value && typeof value === "object") {
-    for (const v of Object.values(value)) flattenStrings(v, acc);
-  }
-  return acc;
-}
-
-function assertNoBareMs(variantTree: unknown): void {
-  // No string ending in "ms" and no plain number passed as a duration.
-  const strings = flattenStrings(variantTree);
-  for (const s of strings) {
-    expect(s, `bare ms found: ${s}`).not.toMatch(/^\d+ms$/);
-    expect(s, `bare ms found: ${s}`).not.toMatch(/\b\d+ms\b/);
-  }
-  // Walk for numeric `duration` keys (the format Framer Motion would accept).
+/**
+ * Walk the whole variant tree and assert every `duration` / `ease` is in the
+ * shape Framer Motion's WAAPI path accepts. This is the guard that fails fast
+ * in jsdom for the bug that otherwise only throws in a real browser:
+ *  - `duration` MUST be a finite number >= 0 (never a string like
+ *    "var(--duration-pulse)" or "200ms", never NaN).
+ *  - `ease`, when present, MUST be a 4-number cubic-bezier tuple (never a
+ *    CSS var string).
+ */
+function assertFramerNumeric(variantTree: unknown): void {
   function walk(o: unknown): void {
     if (!o || typeof o !== "object") return;
     for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-      if (k === "duration" && typeof v === "number") {
-        // A numeric duration is allowed ONLY when it equals 0 (the
-        // reduced-motion collapse path explicitly uses { duration: 0 }).
-        expect(v).toBe(0);
+      if (k === "duration") {
+        expect(typeof v, `duration must be a number, got ${typeof v}: ${String(v)}`).toBe("number");
+        expect(Number.isFinite(v as number)).toBe(true);
+        expect(v as number).toBeGreaterThanOrEqual(0);
+      } else if (k === "ease") {
+        expect(Array.isArray(v), `ease must be a bezier tuple, got ${String(v)}`).toBe(true);
+        const arr = v as unknown[];
+        expect(arr).toHaveLength(4);
+        for (const n of arr) expect(typeof n).toBe("number");
       } else {
         walk(v);
       }
@@ -100,12 +116,12 @@ describe("pulseUncertain()", () => {
     expect(visible.opacity).toEqual([1, 0.55, 1]);
   });
 
-  it("references CSS variables for duration and easing — never bare ms", () => {
+  it("uses a numeric duration + bezier ease mirroring tokens (Framer-safe)", () => {
     const v = pulseUncertain(false);
     const transition = (v.visible as Record<string, unknown>).transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-pulse)");
-    expect(transition.ease).toBe("var(--ease-in-out)");
-    assertNoBareMs(v);
+    expect(transition.duration).toBe(D.pulse);
+    expect(transition.ease).toEqual(E.inOut);
+    assertFramerNumeric(v);
   });
 
   it("collapses to a static visible state under reduced motion", () => {
@@ -125,9 +141,9 @@ describe("transitionPromote()", () => {
     expect(to.backgroundColor).toBe("var(--color-state-accepted)");
     expect(to.scale).toEqual([1, 1.06, 1]);
     const transition = to.transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-moderate)");
-    expect(transition.ease).toBe("var(--ease-out-quint)");
-    assertNoBareMs(v);
+    expect(transition.duration).toBe(D.moderate);
+    expect(transition.ease).toEqual(E.outQuint);
+    assertFramerNumeric(v);
   });
 
   it("collapses under reduced motion (no animation, final color visible)", () => {
@@ -141,15 +157,15 @@ describe("transitionPromote()", () => {
 /* ---------- transitionSupersede ---------- */
 
 describe("transitionSupersede()", () => {
-  it("animates opacity 1→0.45 and y 0→4 with --duration-entrance + ease-in", () => {
+  it("animates opacity 1→0.45 and y 0→4 with entrance duration + ease-in", () => {
     const v = transitionSupersede(false);
     const to = v.to as Record<string, unknown>;
     expect(to.opacity).toBe(0.45);
     expect(to.y).toBe(4);
     const transition = to.transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-entrance)");
-    expect(transition.ease).toBe("var(--ease-in)");
-    assertNoBareMs(v);
+    expect(transition.duration).toBe(D.entrance);
+    expect(transition.ease).toEqual(E.in);
+    assertFramerNumeric(v);
   });
 
   it("collapses under reduced motion", () => {
@@ -175,8 +191,8 @@ describe("transitionMerge()", () => {
     expect(to.y).toBe(-40);
     expect(to.opacity).toBe(0);
     const transition = to.transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-entrance)");
-    expect(transition.ease).toBe("var(--ease-out-expo)");
+    expect(transition.duration).toBe(D.entrance);
+    expect(transition.ease).toEqual(E.outExpo);
   });
 
   it("target plays the absorb halo scale 1→1.08→1", () => {
@@ -191,30 +207,30 @@ describe("transitionMerge()", () => {
     expect(((target.to as Record<string, unknown>).transition as { duration?: unknown }).duration).toBe(0);
   });
 
-  it("variants reference only CSS variables (no bare ms)", () => {
+  it("durations/easings are Framer-safe (numeric seconds + bezier tuple)", () => {
     const v = transitionMerge(false, { x: 1, y: 2 });
-    assertNoBareMs(v);
+    assertFramerNumeric(v);
   });
 });
 
 /* ---------- transitionGlassPanel ---------- */
 
 describe("transitionGlassPanel()", () => {
-  it("enter: opacity 0→1 + y 8→0 at duration-fast / ease-out", () => {
+  it("enter: opacity 0→1 + y 8→0 at fast / ease-out; exit at instant / ease-in", () => {
     const v = transitionGlassPanel(false);
     const visible = v.visible as Record<string, unknown>;
     expect(visible.opacity).toBe(1);
     expect(visible.y).toBe(0);
     const transition = visible.transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-fast)");
-    expect(transition.ease).toBe("var(--ease-out)");
-    // exit uses --duration-instant + --ease-in
+    expect(transition.duration).toBe(D.fast);
+    expect(transition.ease).toEqual(E.out);
+    // exit uses instant duration + ease-in
     const exit = v.exit as Record<string, unknown>;
     expect(exit.y).toBe(8);
     const exitTransition = exit.transition as Record<string, unknown>;
-    expect(exitTransition.duration).toBe("var(--duration-instant)");
-    expect(exitTransition.ease).toBe("var(--ease-in)");
-    assertNoBareMs(v);
+    expect(exitTransition.duration).toBe(D.instant);
+    expect(exitTransition.ease).toEqual(E.in);
+    assertFramerNumeric(v);
   });
 
   it("collapses under reduced motion (visible stays at final state, duration: 0)", () => {
@@ -229,19 +245,19 @@ describe("transitionGlassPanel()", () => {
 /* ---------- transitionGlassModal ---------- */
 
 describe("transitionGlassModal()", () => {
-  it("enter: opacity 0→1 + scale 0.96→1 at duration-moderate / ease-out-quint", () => {
+  it("enter: opacity 0→1 + scale 0.96→1 at moderate / ease-out-quint", () => {
     const v = transitionGlassModal(false);
     const hidden = v.hidden as Record<string, unknown>;
     expect(hidden.scale).toBe(0.96);
     const visible = v.visible as Record<string, unknown>;
     expect(visible.scale).toBe(1);
     const transition = visible.transition as Record<string, unknown>;
-    expect(transition.duration).toBe("var(--duration-moderate)");
-    expect(transition.ease).toBe("var(--ease-out-quint)");
+    expect(transition.duration).toBe(D.moderate);
+    expect(transition.ease).toEqual(E.outQuint);
     // exit reverses scale to 0.96
     const exit = v.exit as Record<string, unknown>;
     expect(exit.scale).toBe(0.96);
-    assertNoBareMs(v);
+    assertFramerNumeric(v);
   });
 
   it("collapses under reduced motion", () => {
