@@ -68,6 +68,11 @@ const ICON_PX: Readonly<Record<StateBadgeSize, number>> = Object.freeze({
 
 /* ---------- CVA factory (size × state — independent axes, §5) ---------- */
 /**
+ * CVA factory for StateBadge class variants.
+ *
+ * Generates the Tailwind utility class string for a given confidence state
+ * and size. Two independent axes (size × state) — see spec §5.
+ *
  * Border pair rule (CLAUDE.md "Known Gotchas" + spec §12):
  *   ALWAYS declare both `border` (width) and `border-border-<state>` (colour);
  *   the `low-confidence` state intentionally uses neutral `border-border`
@@ -77,6 +82,11 @@ const ICON_PX: Readonly<Record<StateBadgeSize, number>> = Object.freeze({
  *   - layout: `inline-flex items-center` (icon + label side-by-side)
  *   - radius: `rounded-pill` (both sizes)
  *   - reset:  `select-none whitespace-nowrap` (badge never wraps; not selectable)
+ *
+ * @param props - CVA variant props.
+ * @param props.state - Confidence state: `'accepted' | 'uncertain' | 'low-confidence' | 'disputed' | 'superseded'`. Defaults to `'accepted'`.
+ * @param props.size - Visual size variant: `'sm'` (caption-level) | `'md'` (body-sm-level). Defaults to `'sm'`.
+ * @returns Resolved Tailwind utility class string (`string`) — pass through `cn()` to merge with consumer `className`.
  */
 export const stateBadgeVariants = cva(
   "inline-flex items-center rounded-pill border select-none whitespace-nowrap",
