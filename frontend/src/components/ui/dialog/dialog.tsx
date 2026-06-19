@@ -41,7 +41,8 @@ export function DialogContent({
       <DialogPrimitive.Content
         className={cn(
           // enter/exit motion (front.md §9): backdrop fades; panel pops (scale+overshoot)
-          // or slides up, per `enter`. The keyframes carry translate(-50%,-50%) (centring).
+          // or slides up, per `enter`. Centring is `-translate-x/y-1/2` (Tailwind
+          // `translate` property); the keyframes only animate `transform`.
           "fixed left-1/2 top-1/2 z-modal w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-surface p-xl text-body shadow-lg",
           ENTER_MOTION[enter],
           className,

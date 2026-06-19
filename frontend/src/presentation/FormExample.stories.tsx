@@ -16,6 +16,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AppShell } from "@/shell/AppShell";
+import { withRouter } from "../../.storybook/decorators/withRouter";
+import { withQueryClient, seedShellHealthy } from "../../.storybook/decorators/withQueryClient";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import {
   CardHeader,
@@ -175,6 +177,7 @@ const meta: Meta = {
     layout: "fullscreen",
     a11y: { element: "#storybook-root" },
   },
+  decorators: [withRouter(), withQueryClient(seedShellHealthy)],
 };
 export default meta;
 type Story = StoryObj;

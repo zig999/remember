@@ -8,6 +8,8 @@
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { AppShell } from "@/shell/AppShell";
+import { withRouter } from "../../.storybook/decorators/withRouter";
+import { withQueryClient, seedShellHealthy } from "../../.storybook/decorators/withQueryClient";
 
 const meta: Meta<typeof AppShell> = {
   title: "Presentation/AppShell",
@@ -16,6 +18,7 @@ const meta: Meta<typeof AppShell> = {
     layout: "fullscreen",
     a11y: { element: "#storybook-root" },
   },
+  decorators: [withRouter(), withQueryClient(seedShellHealthy)],
 };
 export default meta;
 type Story = StoryObj<typeof AppShell>;

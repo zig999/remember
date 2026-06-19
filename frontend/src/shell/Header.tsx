@@ -1,34 +1,129 @@
 /**
- * Header — fixed top region (z-frame). Foundation: placeholder.
+ * Header — fixed top region (z-frame): brand + primary navigation + actions.
  *
- * Spec references:
- *  - front.md §2 (region rules — fixed, thin, never scrolls)
- *  - front.md §2.2 (Layer scale: z-frame == 40)
- *  - front.md §12 (header content is OUT OF SCOPE this wave)
+ * Spec: front.md §2 (fixed/thin), §2.2 (z-frame), frontend-analise-funcional.md §2
+ * (brand · nav between the 5 areas, active highlighted · ⌘K · ⚙ settings).
  *
- * Foundation contract: render an empty GlassSurface level="ambient" frame
- * the height of one row (`h-12` ≈ 48 px) so the workspace can compute its
- * available space. Navigation tabs, ⌘K trigger, settings ship in later waves
- * per front.md §12 and front.back.md §8.
+ * Navigation uses TanStack Router <Link>; active state is derived from the
+ * current pathname (so the highlight is controlled via cn(), not concatenated).
+ * Theme toggle writes the `theme` store (the only data-theme surface, BR-14);
+ * ⌘K toggles the command-palette store (the palette UI is wired in a later step).
  */
-
+import { Link, useLocation } from "@tanstack/react-router";
+import {
+  Diamond,
+  Network,
+  Search,
+  Upload,
+  Scale,
+  History,
+  Command as CommandIcon,
+  Settings,
+} from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import { useThemeStore } from "@/state/theme";
+import { useCommandPaletteStore } from "@/state/command-palette";
 
 export interface HeaderProps {
   className?: string;
 }
 
+const NAV = [
+  { to: "/graph", label: "Grafo", icon: Network },
+  { to: "/search", label: "Buscar", icon: Search },
+  { to: "/ingest", label: "Ingerir", icon: Upload },
+  { to: "/curation", label: "Curar", icon: Scale },
+  { to: "/history", label: "Histórico", icon: History },
+] as const;
+
 export function Header({ className }: HeaderProps) {
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.set);
+  const togglePalette = useCommandPaletteStore((s) => s.toggle);
+
   return (
     <GlassSurface
       level="ambient"
       role="banner"
       aria-label="Cabeçalho"
       className={cn(
-        "fixed inset-x-0 top-0 z-frame flex h-12 items-center px-lg",
+        "fixed inset-x-0 top-0 z-frame flex h-12 items-center gap-lg px-lg",
         className,
       )}
-    />
+    >
+      {/* Brand */}
+      <div className="flex shrink-0 items-center gap-xs">
+        <Diamond className="size-4 text-action" aria-hidden="true" />
+        <span className="font-sans text-subheading font-bold tracking-tight text-content">
+          Remember
+        </span>
+      </div>
+
+      {/* Primary navigation */}
+      <nav aria-label="Áreas" className="flex items-center gap-xs">
+        {NAV.map((item) => {
+          const active =
+            pathname === item.to || pathname.startsWith(`${item.to}/`);
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex items-center gap-xs rounded-md px-md py-1 text-body-sm font-semibold transition-colors",
+                active
+                  ? "bg-surface text-content"
+                  : "text-muted hover:text-content",
+              )}
+            >
+              <item.icon className="size-4" aria-hidden="true" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Actions */}
+      <div className="ml-auto flex shrink-0 items-center gap-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={togglePalette}
+          aria-label="Abrir paleta de comandos (⌘K)"
+          className="gap-xs text-muted"
+        >
+          <CommandIcon className="size-4" aria-hidden="true" />
+          <kbd className="text-caption">⌘K</kbd>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Configurações">
+              <Settings className="size-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuLabel>Configurações</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={theme === "light"}
+              onCheckedChange={(c) => setTheme(c ? "light" : "dark")}
+            >
+              Tema claro
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </GlassSurface>
   );
 }

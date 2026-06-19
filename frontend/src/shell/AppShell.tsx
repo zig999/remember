@@ -22,6 +22,8 @@ import type { ReactNode } from "react";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
+import { CommandPalette } from "./CommandPalette";
+import { useHealth, useCurationCount, useActiveRun } from "./api/use-shell-status";
 import { cn } from "@/lib/cn";
 
 export interface AppShellProps {
@@ -32,6 +34,12 @@ export interface AppShellProps {
 }
 
 export function AppShell({ children, className }: AppShellProps) {
+  // Live footer status (frontend-analise-funcional.md §2). These read from the
+  // QueryClient (real BFF in-app; seeded cache in Storybook).
+  const health = useHealth();
+  const curationPending = useCurationCount();
+  const activeRun = useActiveRun();
+
   return (
     <>
       <AmbientBackdrop />
@@ -47,7 +55,12 @@ export function AppShell({ children, className }: AppShellProps) {
       >
         {children}
       </main>
-      <Footer />
+      <Footer
+        health={health}
+        curationPending={curationPending}
+        activeRun={activeRun}
+      />
+      <CommandPalette />
     </>
   );
 }

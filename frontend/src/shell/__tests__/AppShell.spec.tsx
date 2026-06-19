@@ -1,11 +1,44 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
+
+// The Header uses TanStack Router's <Link>/useLocation, which need a
+// RouterProvider. This is a focused shell-markup test, so we stub those two
+// (anchor + fixed pathname) rather than mounting a full router.
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) =>
+      opts?.select ? opts.select({ pathname: "/graph" }) : { pathname: "/graph" },
+    useNavigate: () => () => undefined,
+    Link: ({
+      to,
+      children,
+      ...props
+    }: { to: string; children?: ReactNode } & Record<string, unknown>) => (
+      <a href={to} {...props}>
+        {children}
+      </a>
+    ),
+  };
+});
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { AppShell } from "../AppShell";
+
+// AppShell wires the footer status hooks (useQuery), so it needs a
+// QueryClientProvider. Renders pending state in SSR (no queryFn runs).
+function renderShell(node: ReactElement): string {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderToString(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+}
 
 describe("AppShell", () => {
   it("renders the 3-region layout: header (z-frame fixed), workspace (z-base scrollable), footer (z-frame fixed), and AmbientBackdrop (z-backdrop)", () => {
-    const html = renderToString(
+    const html = renderShell(
       <AppShell>
         <div data-testid="content">hello</div>
       </AppShell>,
@@ -38,7 +71,7 @@ describe("AppShell", () => {
   });
 
   it("header and footer use the canonical GlassSurface ambient composition", () => {
-    const html = renderToString(<AppShell>x</AppShell>);
+    const html = renderShell(<AppShell>x</AppShell>);
     // GlassSurface level="ambient" composes the canonical class list per
     // GlassSurface.component.spec.md §6.1.
     expect(html).toContain("bg-surface-glass-ambient");
