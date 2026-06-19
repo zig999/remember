@@ -56,6 +56,7 @@
   --color-primary:           oklch(15% 0.012 250);   /* ≈ #0e131a — root background under glass */
   --color-surface:           oklch(20% 0.014 250);   /* ≈ #161c25 — base workspace surface      */
   --color-elevated:          oklch(24% 0.016 250);   /* ≈ #1c2330 — elevated panels, dropdowns  */
+  --color-input:             oklch(15% 0.012 250 / 0.55); /* translucent field — inputs on glass (a touch darker than panel) */
 
   /* Text hierarchy (opacity-based — see §5.3)                                                  */
   --color-content:           oklch(97% 0.008 250);   /* ≈ #f3f4f7 — titles, labels, primary text */
@@ -219,6 +220,7 @@
   --ease-in-out:     cubic-bezier(0.65, 0, 0.35, 1);
   --ease-out-quint:  cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back:       cubic-bezier(0.34, 1.56, 0.64, 1); /* overshoot (y>1; §9.1 v1.1.0) */
 
   /* ---------- Z-index scale ----------------------------------------------------------------*/
   --z-backdrop:  -1;
@@ -239,6 +241,7 @@
   --color-primary:           oklch(98% 0.005 250);
   --color-surface:           oklch(94% 0.006 250);
   --color-elevated:          oklch(99% 0.003 250);
+  --color-input:             oklch(88% 0.006 250 / 0.55); /* translucent field — a touch darker than the light glass panel */
 
   --color-content:           oklch(20% 0.014 250);
   --color-content-inverse:   oklch(98% 0.005 250);   /* white text still reads on the darker light-theme action/danger fills */
@@ -651,6 +654,7 @@ This realizes `layout.md §5`'s "fundo profundo" rule: in the Graph the canvas c
 | `--ease-in-out` | `ease-in-out` | `cubic-bezier(0.65, 0, 0.35, 1)` | State toggles |
 | `--ease-out-quint` | `ease-out-quint` | `cubic-bezier(0.22, 1, 0.36, 1)` | Dramatic entrance |
 | `--ease-out-expo` | `ease-out-expo` | `cubic-bezier(0.16, 1, 0.3, 1)` | Snappy, high-impact |
+| `--ease-back` | `ease-back` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | Overshoot/pop (check-in, pop-in, switch thumb) — y>1 allowed since v1.1.0 |
 
 ### 11.2 Semantic motion variants (Framer Motion)
 
@@ -706,6 +710,7 @@ color:
   primary:                "oklch(15% 0.012 250)"
   surface:                "oklch(20% 0.014 250)"
   elevated:               "oklch(24% 0.016 250)"
+  input:                  "oklch(15% 0.012 250 / 0.55)"  # translucent field surface (inputs on glass)
   content:                "oklch(97% 0.008 250)"
   content-inverse:        "oklch(98% 0.005 250)"   # text on saturated fills (action/accent/danger)
   body:                   "oklch(85% 0.010 250)"
@@ -835,6 +840,7 @@ ease:
   in-out:     "cubic-bezier(0.65, 0, 0.35, 1)"
   out-quint:  "cubic-bezier(0.22, 1, 0.36, 1)"
   out-expo:   "cubic-bezier(0.16, 1, 0.3, 1)"
+  back:       "cubic-bezier(0.34, 1.56, 0.64, 1)"   # overshoot — y>1 allowed (§9.1 v1.1.0)
 z:
   backdrop: "-1"
   base:     "0"

@@ -28,6 +28,7 @@ export const color = Object.freeze({
   primary: "oklch(15% 0.012 250)",
   surface: "oklch(20% 0.014 250)",
   elevated: "oklch(24% 0.016 250)",
+  input: "oklch(15% 0.012 250 / 0.55)", // translucent field surface (inputs on glass)
   content: "oklch(97% 0.008 250)",
   "content-inverse": "oklch(98% 0.005 250)", // text on saturated fills (action/accent/danger)
   body: "oklch(85% 0.010 250)",
@@ -212,6 +213,7 @@ export const ease = Object.freeze({
   "in-out": "cubic-bezier(0.65, 0, 0.35, 1)",
   "out-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
   "out-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
+  back: "cubic-bezier(0.34, 1.56, 0.64, 1)", // overshoot (y>1 allowed, front.md §9.1 v1.1.0)
 } as const);
 export type EaseToken = keyof typeof ease;
 

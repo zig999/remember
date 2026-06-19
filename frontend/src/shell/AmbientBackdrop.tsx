@@ -24,9 +24,11 @@
 
 import { useEffect, useState } from "react";
 
-/** Per-theme asset map (placeholder names per front.md §8.2). */
+/** Per-theme asset map. Dark uses the committed landscape photo
+ * (`public/backdrop/cityscape-dusk.png`, from `images/background.png`); the
+ * light asset is still a placeholder pending a real image (front.md §8.2). */
 const BACKDROP_BY_THEME: Record<string, string> = {
-  dark: "/backdrop/dusk.jpg",
+  dark: "/backdrop/cityscape-dusk.png",
   light: "/backdrop/dawn.jpg",
 };
 

@@ -19,7 +19,7 @@ const ROWS = [
 ];
 
 const meta: Meta<typeof Table> = {
-  title: "DS/Table",
+  title: "Components/Table",
   component: Table,
   parameters: { a11y: { element: "#storybook-root" } },
 };
@@ -44,6 +44,38 @@ export const Default: Story = {
               <TableCell>{r.doc}</TableCell>
               <TableCell>{r.frags}</TableCell>
               <TableCell>{r.estado}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ),
+};
+
+/**
+ * New-row flash (front.md §9, #12) — a freshly-arrived row briefly flashes its
+ * background (accepted-green → transparent) via the `animate-row-flash` token.
+ * Rows also lift to `bg-primary` on hover (baked into TableRow).
+ */
+export const NewRowFlash: Story = {
+  render: () => (
+    <div className="p-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Documento</TableHead>
+            <TableHead>Fragmentos</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow className="animate-row-flash">
+            <TableCell>Nova ata (recém-ingerida)</TableCell>
+            <TableCell>5</TableCell>
+          </TableRow>
+          {ROWS.map((r) => (
+            <TableRow key={r.doc}>
+              <TableCell>{r.doc}</TableCell>
+              <TableCell>{r.frags}</TableCell>
             </TableRow>
           ))}
         </TableBody>

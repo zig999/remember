@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Textarea } from "./textarea";
 
 const meta: Meta<typeof Textarea> = {
-  title: "DS/Textarea",
+  title: "Components/Textarea",
   component: Textarea,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { placeholder: "Cole o conteúdo bruto aqui…", invalid: false, disabled: false },

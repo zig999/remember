@@ -22,6 +22,9 @@ const config: StorybookConfig = {
   stories: [
     "../src/**/*.stories.@(ts|tsx)",
   ],
+  // Serve the app's public/ assets (e.g. the ambient backdrop photo at
+  // /backdrop/cityscape-dusk.png) so shell stories render the real image.
+  staticDirs: ["../public"],
   addons: [
     "@storybook/addon-a11y",
     "@storybook/addon-vitest",

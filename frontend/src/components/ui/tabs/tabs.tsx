@@ -30,19 +30,26 @@ export function TabsList({ className, ...props }: TabsListProps) {
   );
 }
 
-export function TabsTrigger({ className, ...props }: TabsTriggerProps) {
+export function TabsTrigger({ className, children, ...props }: TabsTriggerProps) {
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "relative -mb-px inline-flex items-center justify-center border-b-2 border-transparent px-1 pb-md pt-1 text-body-sm font-semibold text-muted transition-colors",
-        "hover:text-content",
-        "data-[state=active]:border-action data-[state=active]:text-content",
+        // `group` drives the underline; the underline is a child span that grows
+        // in from center when this tab becomes active (front.md §9).
+        "group relative -mb-px inline-flex items-center justify-center px-1 pb-md pt-1 text-body-sm font-semibold text-muted transition-colors",
+        "hover:text-content data-[state=active]:text-content",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         "disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 -bottom-px h-0.5 origin-center scale-x-0 rounded-pill bg-action transition-transform duration-200 ease-out group-data-[state=active]:scale-x-100"
+      />
+    </TabsPrimitive.Trigger>
   );
 }
 
@@ -50,7 +57,8 @@ export function TabsContent({ className, ...props }: TabsContentProps) {
   return (
     <TabsPrimitive.Content
       className={cn(
-        "rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+        // content fades/rises in when its tab activates (Radix mounts it on activate)
+        "rounded-md data-[state=active]:animate-content-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         className,
       )}
       {...props}

@@ -50,6 +50,7 @@ const VAR = {
   easeInOut: [0.65, 0, 0.35, 1] as [number, number, number, number], //   --ease-in-out
   easeOutQuint: [0.22, 1, 0.36, 1] as [number, number, number, number], // --ease-out-quint
   easeOutExpo: [0.16, 1, 0.3, 1] as [number, number, number, number], //  --ease-out-expo
+  easeBack: [0.34, 1.56, 0.64, 1] as [number, number, number, number], // --ease-back (overshoot; y>1 now allowed, front.md §9.1 v1.1.0)
   colorAccepted: "var(--color-state-accepted)",
   colorUncertain: "var(--color-state-uncertain)",
 };
@@ -256,12 +257,172 @@ export function transitionGlassModal(reducedMotion: boolean): Variants {
   };
 }
 
+/* ============================================================
+   Decorative / interaction motions (added 2026-06-19 — front.md §9 v1.1.0).
+   Motion may now be decorative; these power the modern/technological feel of
+   the components/ui primitives. Same contract: components consume these (no
+   inline variants), and each still accepts `reducedMotion` (now optional but
+   kept so callers MAY honour useReducedMotion()).
+   ============================================================ */
+
+/** Prop bag for an interactive element: tap press-in + optional hover lift. */
+export function pressable(
+  reducedMotion: boolean,
+  opts?: { lift?: boolean },
+): Record<string, unknown> {
+  if (reducedMotion) return {};
+  const bag: Record<string, unknown> = {
+    whileTap: { scale: 0.96 },
+    transition: { duration: VAR.durationFast, ease: VAR.easeOut },
+  };
+  if (opts?.lift) bag.whileHover = { y: -2 };
+  return bag;
+}
+
+/** Prop bag: hover lift + shadow (clickable cards / surfaces). */
+export function hoverLift(reducedMotion: boolean): Record<string, unknown> {
+  if (reducedMotion) return {};
+  return {
+    whileHover: { y: -3, boxShadow: "0 12px 32px -8px rgba(0,0,0,0.5)" },
+    transition: { duration: VAR.durationFast, ease: VAR.easeOut },
+  };
+}
+
+/** Mount entrance: scale 0.8 → 1 + fade, with a slight overshoot. */
+export function popIn(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 1, scale: 1, transition: { duration: 0 } },
+      visible: { opacity: 1, scale: 1, transition: { duration: 0 } },
+    };
+  }
+  return {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: { duration: VAR.durationFast, ease: VAR.easeBack },
+    },
+  };
+}
+
+/** One-shot pulse for a value that just changed (e.g. a count badge). */
+export function countPulse(reducedMotion: boolean): Variants {
+  return {
+    rest: { scale: 1 },
+    pulse: reducedMotion
+      ? { scale: 1, transition: { duration: 0 } }
+      : { scale: [1, 1.22, 1], transition: { duration: VAR.durationModerate, ease: VAR.easeBack } },
+  };
+}
+
+/** Stagger orchestrator — apply to a list container; children use `listItem`. */
+export function staggerContainer(reducedMotion: boolean): Variants {
+  return {
+    hidden: {},
+    visible: {
+      transition: reducedMotion ? { duration: 0 } : { staggerChildren: 0.06 },
+    },
+  };
+}
+
+/** List item revealed by `staggerContainer`: rise + fade. */
+export function listItem(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 1, y: 0, transition: { duration: 0 } },
+      visible: { opacity: 1, y: 0, transition: { duration: 0 } },
+    };
+  }
+  return {
+    hidden: { opacity: 0, y: 10 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: VAR.durationModerate, ease: VAR.easeOut },
+    },
+  };
+}
+
+/** Validation error shake (x oscillation). Trigger by switching `still`→`shake`. */
+export function errorShake(reducedMotion: boolean): Variants {
+  return {
+    still: { x: 0 },
+    shake: reducedMotion
+      ? { x: 0, transition: { duration: 0 } }
+      : { x: [0, -4, 4, -3, 3, 0], transition: { duration: VAR.durationModerate, ease: VAR.easeInOut } },
+  };
+}
+
+/** Checkbox check / radio dot entrance: scale 0 → 1 with overshoot. */
+export function checkIn(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 1, scale: 1, transition: { duration: 0 } },
+      visible: { opacity: 1, scale: 1, transition: { duration: 0 } },
+    };
+  }
+  return {
+    hidden: { opacity: 0, scale: 0 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: { duration: VAR.durationFast, ease: VAR.easeBack },
+    },
+  };
+}
+
+/** Dropdown / popover enter/exit (scale from the trigger edge + fade). */
+export function transitionPopover(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 1, scale: 1, y: 0, transition: { duration: 0 } },
+      visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0 } },
+      exit: { opacity: 0, transition: { duration: 0 } },
+    };
+  }
+  return {
+    hidden: { opacity: 0, scale: 0.96, y: -4 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: { duration: VAR.durationFast, ease: VAR.easeOutQuint },
+    },
+    exit: {
+      opacity: 0,
+      scale: 0.96,
+      transition: { duration: VAR.durationInstant, ease: VAR.easeIn },
+    },
+  };
+}
+
+/** Form validation message reveal: fade + small rise. */
+export function messageReveal(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 1, y: 0, transition: { duration: 0 } },
+      visible: { opacity: 1, y: 0, transition: { duration: 0 } },
+    };
+  }
+  return {
+    hidden: { opacity: 0, y: -4 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: VAR.durationFast, ease: VAR.easeOut },
+    },
+  };
+}
+
 /* ---------- canonical-name index ---------- */
 
 /**
- * The six canonical motion variants, keyed by their `tokens.md §11.2` name.
- * Components SHOULD import the named factory directly; this index exists so
- * the unit test can enumerate the contract.
+ * The canonical motion variants/factories. Components SHOULD import the named
+ * factory directly; this index exists so the unit test can enumerate the
+ * contract. The original six are under `pulse` / `transition`; decorative and
+ * interaction motions (v1.1.0) are grouped under `interaction` / `entrance` /
+ * `feedback`.
  */
 export const motion = {
   pulse: {
@@ -273,5 +434,21 @@ export const motion = {
     merge: transitionMerge,
     "glass-panel": transitionGlassPanel,
     "glass-modal": transitionGlassModal,
+    popover: transitionPopover,
+  },
+  interaction: {
+    pressable,
+    "hover-lift": hoverLift,
+  },
+  entrance: {
+    "pop-in": popIn,
+    "stagger-container": staggerContainer,
+    "list-item": listItem,
+    message: messageReveal,
+  },
+  feedback: {
+    "count-pulse": countPulse,
+    "error-shake": errorShake,
+    "check-in": checkIn,
   },
 } as const;

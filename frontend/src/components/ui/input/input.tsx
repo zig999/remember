@@ -13,10 +13,12 @@ export function Input({ className, invalid, ref, ...props }: InputProps) {
       ref={ref}
       aria-invalid={invalid || undefined}
       className={cn(
-        "h-9 w-full rounded-md border bg-surface px-md text-label text-content transition-colors placeholder:text-muted",
+        // `transition` sweeps the focus ring/border in; `animate-shake` fires on
+        // the render where the field becomes invalid (front.md §9).
+        "h-9 w-full rounded-md border bg-input px-md text-label text-content transition placeholder:text-muted",
         "focus-visible:border-border-focus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        invalid ? "border-border-error" : "border-border",
+        invalid ? "border-border-error aria-[invalid=true]:animate-shake" : "border-border",
         className,
       )}
       {...props}

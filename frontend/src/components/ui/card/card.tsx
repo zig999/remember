@@ -18,7 +18,7 @@ export function Card({ className, ref, ...props }: CardProps) {
   return (
     <div
       ref={ref}
-      className={cn("rounded-lg bg-surface text-body shadow-sm", className)}
+      className={cn("rounded-lg bg-surface text-body shadow-sm transition-shadow duration-200 ease-out hover:shadow-md", className)}
       {...props}
     />
   );
@@ -55,7 +55,7 @@ export function CardDescription({
   return (
     <p
       ref={ref}
-      className={cn("text-body-sm text-muted", className)}
+      className={cn("text-body-sm text-body", className)}
       {...props}
     />
   );

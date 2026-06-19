@@ -20,7 +20,7 @@ export function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {
   return (
     <RadioGroupPrimitive.Item
       className={cn(
-        "aspect-square size-5 shrink-0 rounded-pill border border-border bg-surface transition-colors",
+        "aspect-square size-5 shrink-0 rounded-pill border border-border bg-input transition-colors",
         "data-[state=checked]:border-action",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         "disabled:cursor-not-allowed disabled:opacity-50",
@@ -29,7 +29,8 @@ export function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {
       {...props}
     >
       <RadioGroupPrimitive.Indicator className="flex h-full w-full items-center justify-center">
-        <Circle className="size-2.5 fill-action text-action" aria-hidden="true" />
+        {/* Indicator mounts on select -> check-pop runs once (front.md §9). */}
+        <Circle className="size-2.5 animate-check-pop fill-action text-action" aria-hidden="true" />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   );

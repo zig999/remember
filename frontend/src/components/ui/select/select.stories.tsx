@@ -11,7 +11,7 @@ import {
 } from "./select";
 
 const meta: Meta<typeof Select> = {
-  title: "DS/Select",
+  title: "Components/Select",
   component: Select,
   parameters: { a11y: { element: "#storybook-root" } },
 };

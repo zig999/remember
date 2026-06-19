@@ -92,7 +92,7 @@ export function FormLabel({ className, ...props }: ComponentProps<typeof Label>)
   return (
     <Label
       htmlFor={formItemId}
-      className={cn(error && "text-danger", className)}
+      className={cn("transition-colors", error && "text-danger", className)}
       {...props}
     />
   );
@@ -117,7 +117,7 @@ export function FormDescription({ className, ...props }: ComponentProps<"p">) {
   return (
     <p
       id={formDescriptionId}
-      className={cn("text-body-sm text-muted", className)}
+      className={cn("text-body-sm text-body", className)}
       {...props}
     />
   );
@@ -134,7 +134,8 @@ export function FormMessage({
   return (
     <p
       id={formMessageId}
-      className={cn("text-body-sm font-medium text-danger", className)}
+      // reveals (fade + small rise) when the error appears (front.md §9)
+      className={cn("animate-message-in text-body-sm font-medium text-danger", className)}
       {...props}
     >
       {body}

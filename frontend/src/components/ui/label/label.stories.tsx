@@ -6,7 +6,7 @@ import { Label } from "./label";
 import { Input } from "../input";
 
 const meta: Meta<typeof Label> = {
-  title: "DS/Label",
+  title: "Components/Label",
   component: Label,
   parameters: { a11y: { element: "#storybook-root" } },
 };

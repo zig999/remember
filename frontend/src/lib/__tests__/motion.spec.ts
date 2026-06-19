@@ -28,6 +28,16 @@ import {
   transitionMerge,
   transitionGlassPanel,
   transitionGlassModal,
+  pressable,
+  hoverLift,
+  popIn,
+  countPulse,
+  staggerContainer,
+  listItem,
+  errorShake,
+  checkIn,
+  transitionPopover,
+  messageReveal,
 } from "../motion";
 
 /* ---------- canonical token mirror (tokens.md §11.1, in seconds) ---------- */
@@ -263,5 +273,71 @@ describe("transitionGlassModal()", () => {
   it("collapses under reduced motion", () => {
     const v = transitionGlassModal(true);
     expect(((v.visible as Record<string, unknown>).transition as { duration?: unknown }).duration).toBe(0);
+  });
+});
+
+/* ---------- decorative / interaction motions (v1.1.0) ---------- */
+
+describe("decorative motion factories (front.md §9 v1.1.0)", () => {
+  it("are all reachable from the canonical index under their new groups", () => {
+    expect(motion.transition.popover).toBe(transitionPopover);
+    expect(motion.interaction.pressable).toBe(pressable);
+    expect(motion.interaction["hover-lift"]).toBe(hoverLift);
+    expect(motion.entrance["pop-in"]).toBe(popIn);
+    expect(motion.entrance["stagger-container"]).toBe(staggerContainer);
+    expect(motion.entrance["list-item"]).toBe(listItem);
+    expect(motion.entrance.message).toBe(messageReveal);
+    expect(motion.feedback["count-pulse"]).toBe(countPulse);
+    expect(motion.feedback["error-shake"]).toBe(errorShake);
+    expect(motion.feedback["check-in"]).toBe(checkIn);
+  });
+
+  it("the original six remain reachable (no regression)", () => {
+    expect(motion.pulse.uncertain).toBe(pulseUncertain);
+    expect(motion.transition.promote).toBe(transitionPromote);
+    expect(motion.transition.supersede).toBe(transitionSupersede);
+    expect(motion.transition.merge).toBe(transitionMerge);
+    expect(motion.transition["glass-panel"]).toBe(transitionGlassPanel);
+    expect(motion.transition["glass-modal"]).toBe(transitionGlassModal);
+  });
+
+  it("interaction prop bags are empty under reduced motion, populated otherwise", () => {
+    expect(pressable(true)).toEqual({});
+    expect(hoverLift(true)).toEqual({});
+    const p = pressable(false, { lift: true });
+    expect(p.whileTap).toEqual({ scale: 0.96 });
+    expect(p.whileHover).toEqual({ y: -2 });
+    assertFramerNumeric(p);
+    assertFramerNumeric(hoverLift(false));
+  });
+
+  it("variant factories are Framer-numeric-safe and collapse under reduced motion", () => {
+    const variantFactories = [popIn, countPulse, staggerContainer, listItem, errorShake, checkIn, transitionPopover, messageReveal];
+    for (const f of variantFactories) {
+      assertFramerNumeric(f(false));
+      // every reduced-motion variant tree must only carry duration: 0
+      const reduced = f(true);
+      assertFramerNumeric(reduced);
+      let sawDuration = false;
+      JSON.stringify(reduced, (k, val) => {
+        if (k === "duration") {
+          sawDuration = true;
+          expect(val).toBe(0);
+        }
+        return val;
+      });
+      expect(sawDuration).toBe(true);
+    }
+  });
+
+  it("popIn / checkIn use an overshoot ease (y control point > 1 now allowed)", () => {
+    const ease = ((popIn(false).visible as Record<string, unknown>).transition as { ease: number[] }).ease;
+    expect(ease).toEqual([0.34, 1.56, 0.64, 1]);
+    expect(ease[1]).toBeGreaterThan(1); // overshoot — was forbidden pre-v1.1.0
+  });
+
+  it("staggerContainer orchestrates children with a positive stagger when motion is on", () => {
+    const t = (staggerContainer(false).visible as Record<string, unknown>).transition as { staggerChildren?: number };
+    expect(t.staggerChildren).toBeGreaterThan(0);
   });
 });

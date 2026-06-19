@@ -60,7 +60,7 @@ function DemoForm() {
 }
 
 const meta: Meta<typeof DemoForm> = {
-  title: "DS/Form",
+  title: "Components/Form",
   component: DemoForm,
   parameters: { a11y: { element: "#storybook-root" } },
 };

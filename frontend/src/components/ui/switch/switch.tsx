@@ -21,7 +21,8 @@ export function Switch({ className, ...props }: SwitchProps) {
     >
       <SwitchPrimitive.Thumb
         className={cn(
-          "pointer-events-none block size-4 rounded-pill bg-surface shadow-sm transition-transform",
+          // overshoot ease (ease-back) gives the thumb a snappy, mechanical feel (front.md §9)
+          "pointer-events-none block size-4 rounded-pill bg-surface shadow-sm transition-transform duration-200 ease-back",
           "data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
         )}
       />

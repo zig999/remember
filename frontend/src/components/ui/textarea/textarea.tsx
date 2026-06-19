@@ -11,10 +11,10 @@ export function Textarea({ className, invalid, ref, ...props }: TextareaProps) {
       ref={ref}
       aria-invalid={invalid || undefined}
       className={cn(
-        "min-h-20 w-full rounded-md border bg-surface px-md py-2 text-label text-content transition-colors placeholder:text-muted",
+        "min-h-20 w-full rounded-md border bg-input px-md py-2 text-label text-content transition placeholder:text-muted",
         "focus-visible:border-border-focus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        invalid ? "border-border-error" : "border-border",
+        invalid ? "border-border-error aria-[invalid=true]:animate-shake" : "border-border",
         className,
       )}
       {...props}

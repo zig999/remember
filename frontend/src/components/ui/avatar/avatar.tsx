@@ -27,7 +27,8 @@ export function swatch(name: string): string {
 }
 
 export const avatarVariants = cva(
-  "inline-flex shrink-0 select-none items-center justify-center rounded-full font-bold uppercase tracking-tight text-content-inverse",
+  // `transition` + hover scale gives a subtle tactile lift (front.md §9)
+  "inline-flex shrink-0 select-none items-center justify-center rounded-full font-bold uppercase tracking-tight text-content-inverse transition duration-200 ease-out hover:scale-105",
   {
     variants: {
       size: {

@@ -20,7 +20,7 @@ const VARIANTS: ButtonVariant[] = [
 const SIZES: ButtonSize[] = ["sm", "md", "lg", "icon"];
 
 const meta: Meta<typeof Button> = {
-  title: "DS/Button",
+  title: "Components/Button",
   component: Button,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { children: "Botão", variant: "default", size: "md", loading: false },

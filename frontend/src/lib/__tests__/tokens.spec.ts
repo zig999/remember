@@ -208,7 +208,7 @@ describe("tokens.ts — motion (tokens.md §11)", () => {
   });
 
   it("declares 5 named easings — valid cubic-beziers (bounce/elastic now ALLOWED, front.md §9.1 v1.1.0)", () => {
-    expect(Object.keys(ease)).toEqual(["out", "in", "in-out", "out-quint", "out-expo"]);
+    expect(Object.keys(ease)).toEqual(["out", "in", "in-out", "out-quint", "out-expo", "back"]);
     // Structural/validity check: every easing is a cubic-bezier with 4 numbers, and the
     // x control points (indices 0, 2) stay within [0, 1] as CSS requires. The y control
     // points (indices 1, 3) are intentionally UNBOUNDED now — the anti-bounce restriction

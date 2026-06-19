@@ -16,16 +16,19 @@ import { cn } from "@/lib/cn";
 import type { ButtonProps } from "./button.types";
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-sm whitespace-nowrap rounded-pill font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-primary disabled:pointer-events-none disabled:opacity-50",
+  // Motion (front.md §9): `transition` animates color + transform + box-shadow
+  // (the focus ring sweeps in); `active:scale-95` is the press feedback.
+  "inline-flex items-center justify-center gap-sm whitespace-nowrap rounded-pill font-bold transition duration-150 ease-out active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-primary disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
+        // filled CTAs also lift on hover
         default:
-          "bg-action text-content-inverse hover:bg-action-hover active:bg-action-active",
+          "bg-action text-content-inverse hover:bg-action-hover active:bg-action-active hover:-translate-y-0.5 hover:shadow-md",
         secondary:
-          "bg-accent text-content-inverse hover:opacity-90 active:opacity-80",
+          "bg-accent text-content-inverse hover:opacity-90 active:opacity-80 hover:-translate-y-0.5 hover:shadow-md",
         destructive:
-          "bg-danger text-content-inverse hover:opacity-90 active:opacity-80",
+          "bg-danger text-content-inverse hover:opacity-90 active:opacity-80 hover:-translate-y-0.5 hover:shadow-md",
         outline:
           "border-2 border-border bg-transparent text-content hover:bg-surface",
         ghost: "bg-transparent text-content hover:bg-surface",

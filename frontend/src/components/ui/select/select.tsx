@@ -27,7 +27,8 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "flex h-9 w-full items-center justify-between gap-sm rounded-md border border-border bg-surface px-md text-label text-content",
+        // `group` lets the chevron rotate from the trigger's data-state
+        "group flex h-9 w-full items-center justify-between gap-sm rounded-md border border-border bg-input px-md text-label text-content transition",
         "data-[placeholder]:text-muted",
         "focus-visible:border-border-focus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         "disabled:cursor-not-allowed disabled:opacity-50",
@@ -37,7 +38,10 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 opacity-60" aria-hidden="true" />
+        <ChevronDown
+          className="size-4 opacity-60 transition-transform duration-200 group-data-[state=open]:rotate-180"
+          aria-hidden="true"
+        />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -55,6 +59,8 @@ export function SelectContent({
         position={position}
         className={cn(
           "relative z-popover max-h-96 min-w-(--radix-select-trigger-width) overflow-hidden rounded-md border border-border bg-elevated text-body shadow-md",
+          // open/close motion (front.md §9): scale-from-edge + fade, gated on data-state
+          "data-[state=open]:animate-popover-in data-[state=closed]:animate-popover-out",
           position === "popper" &&
             "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1",
           className,

@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Input } from "./input";
 
 const meta: Meta<typeof Input> = {
-  title: "DS/Input",
+  title: "Components/Input",
   component: Input,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { placeholder: "Digite algo…", invalid: false, disabled: false },

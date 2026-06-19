@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 
 const meta: Meta<typeof Tabs> = {
-  title: "DS/Tabs",
+  title: "Components/Tabs",
   component: Tabs,
   parameters: { a11y: { element: "#storybook-root" } },
 };

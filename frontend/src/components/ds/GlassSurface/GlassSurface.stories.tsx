@@ -25,7 +25,7 @@ import { GlassSurface } from "./GlassSurface";
 import { withAmbientBackdrop } from "../../../../.storybook/decorators/withAmbientBackdrop";
 
 const meta: Meta<typeof GlassSurface> = {
-  title: "DS/GlassSurface",
+  title: "Components/GlassSurface",
   component: GlassSurface,
   parameters: {
     a11y: { element: "#storybook-root" },

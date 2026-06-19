@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from "./radio-group";
 import { Label } from "../label";
 
 const meta: Meta<typeof RadioGroup> = {
-  title: "DS/RadioGroup",
+  title: "Components/RadioGroup",
   component: RadioGroup,
   parameters: { a11y: { element: "#storybook-root" } },
 };

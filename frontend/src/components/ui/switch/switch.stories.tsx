@@ -6,7 +6,7 @@ import { Switch } from "./switch";
 import { Label } from "../label";
 
 const meta: Meta<typeof Switch> = {
-  title: "DS/Switch",
+  title: "Components/Switch",
   component: Switch,
   parameters: { a11y: { element: "#storybook-root" } },
 };

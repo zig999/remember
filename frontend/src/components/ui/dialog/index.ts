@@ -13,6 +13,7 @@ export {
 } from "./dialog";
 export type {
   DialogContentProps,
+  DialogEnter,
   DialogTitleProps,
   DialogDescriptionProps,
   DialogHeaderProps,

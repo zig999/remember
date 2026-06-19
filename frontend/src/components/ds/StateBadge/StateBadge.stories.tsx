@@ -30,7 +30,7 @@ const ALL_STATES: ConfidenceState[] = [
 ];
 
 const meta: Meta<typeof StateBadge> = {
-  title: "DS/StateBadge",
+  title: "Components/StateBadge",
   component: StateBadge,
   parameters: {
     a11y: { element: "#storybook-root" },

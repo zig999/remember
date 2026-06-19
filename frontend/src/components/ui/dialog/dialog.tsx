@@ -11,6 +11,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type {
   DialogContentProps,
+  DialogEnter,
   DialogTitleProps,
   DialogDescriptionProps,
   DialogHeaderProps,
@@ -21,17 +22,28 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
+/** enter -> (open/close keyframe classes). Keyframes carry the centring transform. */
+const ENTER_MOTION: Record<DialogEnter, string> = {
+  pop: "data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out",
+  slide:
+    "data-[state=open]:animate-modal-slide-in data-[state=closed]:animate-modal-slide-out",
+};
+
 export function DialogContent({
   className,
   children,
+  enter = "pop",
   ...props
 }: DialogContentProps) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-overlay" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-overlay data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out" />
       <DialogPrimitive.Content
         className={cn(
+          // enter/exit motion (front.md §9): backdrop fades; panel pops (scale+overshoot)
+          // or slides up, per `enter`. The keyframes carry translate(-50%,-50%) (centring).
           "fixed left-1/2 top-1/2 z-modal w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-surface p-xl text-body shadow-lg",
+          ENTER_MOTION[enter],
           className,
         )}
         {...props}
