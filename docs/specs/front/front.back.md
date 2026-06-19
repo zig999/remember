@@ -27,7 +27,7 @@
 | Architecture pattern | Feature-folder monorepo single-app (`features/<area>/{api,components,hooks,types.ts}`) | Cross-feature import forbidden — enforced by `eslint-plugin-import` `no-restricted-paths` |
 | Graph renderer | React Flow `@xyflow/react` v12 (MIT) | Pinned by `front.md §1.1`; v11 → v12 is a package-name rename |
 | Graph layout | `d3-force` | Existing nodes pinned with `fx`/`fy` |
-| Animation | Framer Motion (`framer-motion`) | All variants live in `lib/motion.ts`; `prefers-reduced-motion` gate is mandatory |
+| Animation | Framer Motion (`framer-motion`) | All variants live in `lib/motion.ts` (mandatory — no inline); `prefers-reduced-motion` gate optional (relaxed 2026-06-19); decorative motion allowed |
 | Notifications | `sonner` | Single `<Toaster>` mounted in `__root` |
 | Icons | `lucide-react` | Only icon set in the repo |
 | Testing (unit) | Vitest v4 + `@vitest/browser` | Pinned by `front.md §1.1` — version coupled to Storybook `addon-vitest` |
@@ -232,10 +232,10 @@ The URL is the canonical place for view state per `front.md §3.2`. The implemen
 **Description:** `index.html` runs a small inline script before the React bundle parses, reading `localStorage.getItem("remember.theme")` and setting `<html data-theme="…">`. The script MUST be safe against `localStorage` access errors (private mode, quota) — falling back to `prefers-color-scheme` then to `"dark"`. The Zustand store rehydrates from the same key on mount; the inline script and the store MUST agree.
 **Error returned:** N/A — failure falls back to default theme silently (deviation from "fail loud" is justified: a wrong theme is preferable to a broken boot).
 
-### BR-10 -- Reduced-motion gate on every animation
-**Related spec section:** `front.md §9.1`, `§10`
+### BR-10 -- Components consume only `lib/motion.ts` variants
+**Related spec section:** `front.md §9.2`, `§9.1`
 **Where to validate:** `lib/motion.ts` shared variants
-**Description:** Every Framer Motion variant exported from `lib/motion.ts` is wrapped in a `prefers-reduced-motion` gate. Under reduced motion, state changes are still **legible** (color/shape change instantly) but no animation runs. Components MUST consume only the variants from `lib/motion.ts` — inline `animate={…}` definitions are forbidden.
+**Description:** All motion (semantic or decorative) is defined as canonical factories in `lib/motion.ts`; components MUST consume those variants — inline `animate={…}` / ad-hoc timing-curve definitions are forbidden. **This is the one mandatory motion rule.** The reduced-motion gate is **removed as a rule** (2026-06-19, front.md §9.1): factories MAY still accept a `reducedMotion` flag (existing ones do), but it is optional/ad hoc — not required. Anti-bounce/elastic restrictions are removed.
 **Error returned:** N/A.
 
 ### BR-11 -- Semantic tokens only (no raw values)

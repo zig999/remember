@@ -402,9 +402,19 @@ Tailwind v4 separates **border color** (`--color-border-*`) from **border width*
 
 ---
 
-## 9. Motion Semantics — "movimento com significado"
+## 9. Motion
 
-Motion in Remember is **never decorative**. Every transition explains a state change (`frontend-analise-funcional.md §9`). The foundation pins **four** semantic motion behaviours that StateBadge, GlassSurface and the graph nodes will all consume.
+> **Policy change (2026-06-19, owner-directed, v1.1.0):** motion **may be decorative**. The earlier
+> rule ("motion is never decorative; every transition explains a state change") is **revoked** —
+> decorative motion that reinforces the modern / technological aesthetic (entrances, hovers, press
+> feedback, sliding indicators, staggered reveals, glows, etc.) is **allowed and encouraged**.
+> The one rule that **remains mandatory** is §9.2: every component consumes motion variants from
+> `lib/motion.ts` — no component inlines its own.
+
+Motion now serves two purposes: **semantic** (explains a state change) and **decorative** (gives the
+UI a modern, technological feel). The four behaviours below are the canonical **semantic** motions
+that StateBadge, GlassSurface and the graph nodes consume; decorative motions are added the same way —
+as new canonical factories in `lib/motion.ts`.
 
 | Behaviour | Where it appears | Token reference (see `tokens.md §11`) |
 |---|---|---|
@@ -413,13 +423,21 @@ Motion in Remember is **never decorative**. Every transition explains a state ch
 | **Supersession** | When a fact is replaced by a newer version, the old node fades to `superseded` grey and **slides** out of the active layer. Tells the eye "this is no longer current — but still here for history". | `motion.transition.supersede` |
 | **Entity merge** | When the operator merges two entities, the two nodes **collapse** into one position (target absorbs source) and the source's edges re-anchor on the target. Tells the eye "these were the same". | `motion.transition.merge` |
 
-### 9.1 Mandatory accessibility gate
+### 9.1 Reduced motion — rule removed
 
-All four behaviours are wrapped in `@media (prefers-reduced-motion: no-preference)`. With reduced motion, the state change is still **legible** — color and shape change instantly, with no animation. Motion is opt-in.
+The `prefers-reduced-motion` gate is **no longer a project rule** (removed 2026-06-19, owner-directed).
+Motion — semantic or decorative — runs unconditionally; gating a specific behaviour is purely an
+author's choice, with no requirement either way. Anti-bounce/elastic easing restrictions are likewise
+**removed** (overshoot/spring/bounce curves are permitted). Existing gated behaviours (StateBadge
+pulse, GlassSurface) may keep or drop their gates at will. This supersedes the prior WCAG-driven
+default (see §10).
 
-### 9.2 Implementation note
+### 9.2 Implementation note (the one mandatory rule)
 
-These behaviours are realized with **Framer Motion** via shared variants exported from `lib/motion.ts`. The component specs (StateBadge, GlassSurface) declare which variants they consume; no component invents its own timing curves — only the tokens from `tokens.md §11` are referenced.
+All motion is realized with **Framer Motion** via shared variants exported from `lib/motion.ts`. **This
+is the rule that stays mandatory:** every component consumes motion variants from `lib/motion.ts` — no
+component inlines its own `animate={…}` / timing curves (`front.back.md` BR-10). New motions (semantic
+or decorative) are added as new canonical factories there, not inline.
 
 ---
 
@@ -435,7 +453,7 @@ These behaviours are realized with **Framer Motion** via shared variants exporte
 | Target size (SC 2.5.8) | ≥ 24×24 px CSS minimum. Project floor stricter: ≥ 32 px any context. |
 | ARIA | Semantic roles (`role="dialog"`, `role="status"` for the ingest progress card, `aria-live="polite"` for footer counters). |
 | Forms | Invalid inputs set `aria-invalid="true"` and link the error via `aria-describedby`. |
-| Reduced motion | All animation gated by `prefers-reduced-motion`; defaults to no motion. |
+| Reduced motion | **Not a project rule** (removed 2026-06-19 — see §9.1). `prefers-reduced-motion` gating is optional/ad hoc; no requirement. Motion may run unconditionally. |
 | Images | Decorative images get `alt=""`. The ambient backdrop is decorative (`alt=""`, `role="presentation"`). |
 
 ---
@@ -492,3 +510,4 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 | 1.0.0 | 2026-06-18 | Front Spec Agent | initial | Initial foundation: 3-region shell + z-1 backdrop + layer system + fixed stack + graph viz decision + theming model. Out-of-scope: the five functional areas. | -- |
 | 1.0.1 | 2026-06-19 | Front Spec Agent | patch | Cross-domain review: added §3.3 (app bootstrapping loading state — no spinner during boot; frame appears first; env-invalid fallback). | sdd_front |
 | 1.0.2 | 2026-06-19 | u-fe-developer (TC-03 r1) | patch | §5 — added `SYSTEM_ABORTED` row (silent routing) to the error-code table. Reconciles the implicit divergence flagged by QA on TC-03: TanStack Query cancels in-flight requests on component unmount; without explicit handling, every navigation-while-loading produces a spurious toast. Code already lives in `lib/error-routing.ts`. | qa_tc_003 |
+| 1.1.0 | 2026-06-19 | owner-directed | minor | §9 — motion policy: **decorative motion now allowed** (revokes "motion is never decorative"); §9.1 reduced-motion gate **removed as a rule** (was mandatory) and **anti-bounce/elastic restriction removed**; §10 reduced-motion row updated. The **one mandatory rule kept**: components consume canonical variants from `lib/motion.ts` (no inline). Mirrored in `tokens.md §11` + `front.back.md` BR-10. Trade-off vs WCAG 2.2 AA acknowledged (gating now ad hoc, not required). | owner |

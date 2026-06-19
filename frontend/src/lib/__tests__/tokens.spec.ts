@@ -207,9 +207,12 @@ describe("tokens.ts — motion (tokens.md §11)", () => {
     }
   });
 
-  it("declares 5 named easings — bounce/elastic forbidden (y outside [0,1])", () => {
+  it("declares 5 named easings — valid cubic-beziers (bounce/elastic now ALLOWED, front.md §9.1 v1.1.0)", () => {
     expect(Object.keys(ease)).toEqual(["out", "in", "in-out", "out-quint", "out-expo"]);
-    // Quick structural check: every easing is a cubic-bezier with 4 numbers.
+    // Structural/validity check: every easing is a cubic-bezier with 4 numbers, and the
+    // x control points (indices 0, 2) stay within [0, 1] as CSS requires. The y control
+    // points (indices 1, 3) are intentionally UNBOUNDED now — the anti-bounce restriction
+    // was dropped (motion may be decorative; overshoot/bounce curves are permitted).
     for (const curve of Object.values(ease)) {
       expect(curve.startsWith("cubic-bezier(")).toBe(true);
       const nums = curve
@@ -218,11 +221,11 @@ describe("tokens.ts — motion (tokens.md §11)", () => {
         .split(",")
         .map((s) => Number(s.trim()));
       expect(nums).toHaveLength(4);
-      // y1 (index 1) and y2 (index 3) must remain within [0, 1] (anti-bounce).
-      expect(nums[1]).toBeGreaterThanOrEqual(0);
-      expect(nums[1]).toBeLessThanOrEqual(1);
-      expect(nums[3]).toBeGreaterThanOrEqual(0);
-      expect(nums[3]).toBeLessThanOrEqual(1);
+      // x control points must remain within [0, 1] (CSS cubic-bezier validity).
+      expect(nums[0]).toBeGreaterThanOrEqual(0);
+      expect(nums[0]).toBeLessThanOrEqual(1);
+      expect(nums[2]).toBeGreaterThanOrEqual(0);
+      expect(nums[2]).toBeLessThanOrEqual(1);
     }
   });
 });

@@ -667,15 +667,18 @@ All six variants are exported from `frontend/src/lib/motion.ts`. Components do *
 |  | Glass panel enter/exit (floating panels, popovers, provenance drawer) | enter:  AND ; exit:  AND  | enter:  (200 ms) ; exit:  (100 ms)  | once (enter on mount, exit on unmount) |
 |  | Glass modal enter/exit (modals, command palette) | enter:  AND ; exit:  AND  | enter:  (300 ms) ; exit:  (100 ms)  | once (enter on mount, exit on unmount) |
 
-### 11.3 Mandatory motion rules
+### 11.3 Motion rules
 
-- Every animation MUST be wrapped in `@media (prefers-reduced-motion: no-preference)`. The default (no `@media`) produces **no motion** — the state still changes, instantly.
-- Animate **only `transform` and `opacity`**. Never `width`, `height`, `padding`, `margin` — those use `grid-template-rows: 0fr → 1fr`.
-- Maximum **2 CSS properties** animated simultaneously on the same element.
-- Maximum **500 ms** in functional UI flows (the uncertain pulse loop is exempt — it is ambient).
-- Bounce / elastic easings (`cubic-bezier` with y outside `[0, 1]`) are prohibited.
-- `transition: all` is prohibited — name properties explicitly.
-- Forbidden durations: `150ms`, `250ms`, `350ms`, `400ms` (anything outside 100/200/300/500/2400).
+> **Relaxed 2026-06-19 (owner-directed, front.md §9 v1.1.0):** decorative motion is now allowed; the
+> reduced-motion gate is **removed as a rule** and the **anti-bounce/elastic restriction is removed**.
+> The one rule that stays mandatory: components consume variants from `lib/motion.ts` (§11.2) — no
+> inline variants.
+
+- **Reduced-motion gate REMOVED as a rule.** `@media (prefers-reduced-motion: no-preference)` / `useReducedMotion()` is optional/ad hoc per behaviour — not required either way. Motion may run unconditionally. Existing gated behaviours may keep or drop their gates.
+- **Bounce / elastic easings are ALLOWED** (`cubic-bezier` with y outside `[0, 1]`, spring/overshoot curves) — useful for the modern/technological feel.
+- Animate **preferably `transform` and `opacity`** (best perf). Avoid animating `width` / `height` / `padding` / `margin` where a transform works — but this is now guidance, not a hard ban.
+- `transition: all` is still discouraged — name properties explicitly.
+- Durations/easings SHOULD come from §11.1 tokens; new factories may introduce additional curves (including bounce) in `lib/motion.ts` as needed.
 
 ---
 
@@ -867,3 +870,4 @@ z:
 | 1.0.0 | 2026-06-18 | Spec Writer | initial | Foundation tokens: 5 confidence states, 10 NodeType colors + lucide icons, 13 LinkType colors with temporal/stable stroke distinction, glass surface (3 levels) + treated ambient backdrop + graph-depth overlay, dark default + light override, 4 semantic motion variants (uncertain pulse / promote / supersede / merge), Tailwind v4 two-namespace border rules, z-index scale. | -- |
 | 1.0.1 | 2026-06-19 | Front Spec Agent | patch | Cross-domain review: added 2 GlassSurface enter/exit motion variants (`motion.transition.glass-panel` / `motion.transition.glass-modal`) to §11.2. Updated introductory count from "four" to "six". These were defined in `GlassSurface.component.spec.md §7` but absent from the canonical token catalog. | sdd_front |
 | 1.0.2 | 2026-06-19 | Owner review | patch | Resolved review warnings: added the 5 confidence-state border-color tokens (`error`/`accepted`/`uncertain`/`disputed`/`superseded`) to the `[data-theme="light"]` override so they no longer inherit dark-calibrated values (W-DS-1); corrected catalog provenance comments (§6.3, §7, NodeType/LinkType source comments) to cite `0001_seed.sql` instead of the consolidated-away `0002_catalog_tier1.sql` (W-DS-2). | -- |
+| 1.1.0 | 2026-06-19 | owner-directed | minor | Added `--color-content-inverse` + `--color-overlay` (§3) and the `--container-*` scale (§4.1, with the unlayered `max-w-*`/`min-w-*` override fixing the spacing-collision). §11.3 motion rules **relaxed** (front.md §9 v1.1.0): decorative motion allowed; reduced-motion gate **removed as a rule**; anti-bounce/elastic restriction removed; transform/opacity-only and max-2-props downgraded to guidance. One rule kept: components consume `lib/motion.ts` variants. | owner |
