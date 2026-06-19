@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remember</title>
+    <!--
+      BR-09: theme hydration before React mount (no FOUC).
+      Reads localStorage('remember.theme') -> falls back to prefers-color-scheme -> falls back to 'dark'.
+      Wrapped in try/catch to survive localStorage access errors (private mode, quota).
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = null;
+          try {
+            var raw = window.localStorage.getItem("remember.theme");
+            if (raw) {
+              // Zustand persist envelope: { state: { theme, version }, version }
+              try {
+                var parsed = JSON.parse(raw);
+                if (parsed && parsed.state && (parsed.state.theme === "dark" || parsed.state.theme === "light")) {
+                  stored = parsed.state.theme;
+                }
+              } catch (e) {
+                if (raw === "dark" || raw === "light") stored = raw;
+              }
+            }
+          } catch (e) {
+            // localStorage unavailable — fall through
+          }
+          var theme = stored;
+          if (!theme) {
+            try {
+              theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+            } catch (e) {
+              theme = "dark";
+            }
+          }
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {
+          // Last-resort default
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <!--
+      BR-15: backdrop image is preloaded lazily (after critical render), via requestIdleCallback / setTimeout(0),
+      so it never counts against the LCP budget. The asset is theme-specific.
+    -->
+    <script>
+      (function () {
+        function preloadBackdrop() {
+          try {
+            var theme = document.documentElement.getAttribute("data-theme") || "dark";
+            var href = theme === "light" ? "/backdrop/dawn.jpg" : "/backdrop/dusk.jpg";
+            var link = document.createElement("link");
+            link.rel = "preload";
+            link.as = "image";
+            link.href = href;
+            document.head.appendChild(link);
+          } catch (e) {
+            // graceful — AmbientBackdrop falls back to a flat color via --surface-base
+          }
+        }
+        if (typeof window.requestIdleCallback === "function") {
+          window.requestIdleCallback(preloadBackdrop);
+        } else {
+          setTimeout(preloadBackdrop, 0);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
