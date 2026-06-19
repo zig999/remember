@@ -1,46 +1,296 @@
-/*
- * Remember — design tokens (Tailwind v4 CSS-first)
- * Source of truth: docs/specs/front/design-system/tokens.md (later wave).
- * This wave (TC-01 / foundation) only seeds enough tokens to let the app boot.
- * Detailed semantic tokens land in the design-system wave.
- */
+/* ============================================================
+   Remember design tokens — Tailwind v4 @theme (CSS-first).
+   Canonical source: docs/specs/front/design-system/tokens.md §2 (v1.0.2).
+   Default theme = dark. Light overrides live in [data-theme="light"].
+   OKLCH is the source of truth. Hex shown for tooling reference only.
+
+   Two distinct border namespaces (tokens.md §7.2 / front.md §8.3):
+     --color-border-* (color)   -> classes: border-border, border-state-accepted, ...
+     --border-*       (width)   -> classes: border, border-2, border-thick
+   Mixing them makes borders silently disappear — always declare both halves.
+   ============================================================ */
 
 @import "tailwindcss";
 
 @theme {
-  /* z-index scale — front.md §2.2 (canonical) */
-  --z-backdrop: -1;
-  --z-base: 0;
-  --z-panel: 10;
-  --z-drawer: 20;
-  --z-popover: 30;
-  --z-frame: 40;
-  --z-modal: 50;
-  --z-toast: 60;
+  /* ---------- Colors ---------- */
 
-  /* Surface — minimal seed (full palette in design-system wave) */
-  --color-surface-base: oklch(15% 0.02 260);
-  --color-surface-glass: oklch(20% 0.02 260 / 60%);
-  --color-content: oklch(96% 0.01 260);
-  --color-content-muted: oklch(70% 0.02 260);
+  /* Application surfaces — DARK defaults                                                       */
+  --color-primary:           oklch(15% 0.012 250);   /* ≈ #0e131a — root background under glass */
+  --color-surface:           oklch(20% 0.014 250);   /* ≈ #161c25 — base workspace surface      */
+  --color-elevated:          oklch(24% 0.016 250);   /* ≈ #1c2330 — elevated panels, dropdowns  */
 
-  /* Border — two namespaces (front.md §8.3) */
-  --color-border: oklch(30% 0.02 260);
-  --color-border-glass: oklch(40% 0.02 260 / 50%);
-  --color-border-focus: oklch(70% 0.15 260);
+  /* Text hierarchy (opacity-based — see tokens.md §5.3)                                        */
+  --color-content:           oklch(97% 0.008 250);   /* ≈ #f3f4f7 — titles, labels, primary text */
+  --color-body:              oklch(85% 0.010 250);   /* ≈ #d2d6dd — paragraphs, descriptions    */
+  --color-muted:             oklch(65% 0.012 250);   /* ≈ #969aa6 — placeholders, metadata      */
+
+  /* Primary action / focus                                                                     */
+  --color-action:            oklch(68% 0.16 240);    /* ≈ #4f8fe0 — CTA, focused element        */
+  --color-action-hover:      oklch(72% 0.17 240);
+  --color-action-active:     oklch(63% 0.15 240);
+
+  /* Generic semantic accents                                                                   */
+  --color-data:              oklch(72% 0.14 200);    /* ≈ #4fb6c8 — metric/data highlight       */
+  --color-warning:           oklch(72% 0.15 75);     /* ≈ #d09b3d — attention (uncertain base)  */
+  --color-danger:            oklch(60% 0.20 25);     /* ≈ #c54040 — error / destructive         */
+
+  /* ---------- Confidence-state colors (5 — the centerpiece) -----------------------------------
+     Spec normative source: remember-modelagem-v7.md §3.5, §6.6.
+     Threshold mapping (BFF):
+       confidence >= 0.75  -> accepted
+       0.40 <= x < 0.75    -> uncertain     (sinalizado; promovido por corroboração)
+       confidence < 0.40   -> low-confidence (NÃO consolida — show only in diagnostic UIs)
+       conflict at same period -> disputed (curation queue)
+       replaced by a newer version -> superseded
+     -------------------------------------------------------------------------------------------- */
+  --color-state-accepted:        oklch(70% 0.16 150);   /* ≈ #4cb86b — green                       */
+  --color-state-uncertain:       oklch(75% 0.15 75);    /* ≈ #d6a647 — amber                       */
+  --color-state-low-confidence:  oklch(55% 0.02 250);   /* ≈ #7a808b — neutral grey (discreet)     */
+  --color-state-disputed:        oklch(68% 0.17 45);    /* ≈ #d68241 — orange (distinct from amber)*/
+  --color-state-superseded:      oklch(45% 0.01 250);   /* ≈ #62666e — muted grey                  */
+
+  /* Same family — foreground == text on tinted background (AA over the bg token above)         */
+  --color-state-accepted-fg:        oklch(96% 0.05 150);
+  --color-state-uncertain-fg:       oklch(96% 0.05 75);
+  --color-state-low-confidence-fg:  oklch(96% 0.005 250);
+  --color-state-disputed-fg:        oklch(96% 0.05 45);
+  --color-state-superseded-fg:      oklch(96% 0.005 250);
+
+  /* ---------- NodeType colors (10 — normative catalog) ----------------------------------------
+     Source: remember-modelagem-v7.md §15.1 + 0001_seed.sql (includes Document, Tier-1).
+     Mapping name -> lucide-react icon is canonical (consumed by graph node component).
+     -------------------------------------------------------------------------------------------- */
+  --color-node-person:        oklch(75% 0.14 280);   /* violet      | lucide: user           */
+  --color-node-organization:  oklch(68% 0.13 220);   /* steel-blue  | lucide: building-2     */
+  --color-node-project:       oklch(72% 0.15 175);   /* teal        | lucide: rocket         */
+  --color-node-event:         oklch(73% 0.16 50);    /* coral       | lucide: calendar-clock */
+  --color-node-role:          oklch(70% 0.14 320);   /* magenta     | lucide: id-badge       */
+  --color-node-category:      oklch(70% 0.10 110);   /* olive       | lucide: tag            */
+  --color-node-concept:       oklch(75% 0.10 95);    /* mustard     | lucide: lightbulb      */
+  --color-node-location:      oklch(70% 0.12 145);   /* sage-green  | lucide: map-pin        */
+  --color-node-document:      oklch(70% 0.05 245);   /* slate-blue  | lucide: file-text      */
+  --color-node-task:          oklch(72% 0.16 25);    /* terracotta  | lucide: square-check   */
+
+  /* ---------- LinkType colors (13 — normative catalog) ----------------------------------------
+     Source: remember-modelagem-v7.md §15.2 + 0001_seed.sql.
+     Stroke style is decided in tokens.md §7 (temporal = solid, stable = dashed).
+     -------------------------------------------------------------------------------------------- */
+  --color-link-participates-in:        oklch(70% 0.14 200);   /* temporal */
+  --color-link-member-of:              oklch(68% 0.14 220);   /* temporal */
+  --color-link-holds-role:             oklch(70% 0.14 280);   /* temporal */
+  --color-link-responsible-for:        oklch(70% 0.16 25);    /* temporal */
+  --color-link-reports-to:             oklch(70% 0.14 240);   /* temporal */
+  --color-link-part-of:                oklch(65% 0.05 250);   /* stable   */
+  --color-link-located-in:             oklch(68% 0.12 145);   /* stable   */
+  --color-link-organizes:              oklch(72% 0.13 175);   /* temporal */
+  --color-link-belongs-to-category:    oklch(70% 0.10 110);   /* stable   */
+  --color-link-related-to:             oklch(60% 0.02 250);   /* stable   */
+  --color-link-concerns:               oklch(72% 0.10 95);    /* stable   */
+  --color-link-delivered-to:           oklch(72% 0.15 50);    /* temporal */
+  --color-link-sponsors:               oklch(72% 0.13 220);   /* temporal */
+
+  /* ---------- Border (color + width — TWO namespaces, do not mix) -----------------------------*/
+  --color-border:            oklch(35% 0.012 250);     /* default separator / card border         */
+  --color-border-glass:      oklch(95% 0.005 250 / 0.18); /* 18% white — top-edge of glass tile   */
+  --color-border-focus:      oklch(68% 0.16 240);      /* same hue as --color-action               */
+  --color-border-error:      oklch(60% 0.20 25);
+  --color-border-accepted:   oklch(70% 0.16 150);
+  --color-border-uncertain:  oklch(75% 0.15 75);
+  --color-border-disputed:   oklch(68% 0.17 45);
+  --color-border-superseded: oklch(45% 0.01 250);
+
+  /* Border WIDTH namespace — distinct from color! */
+  --border-thin:    1px;
+  --border-DEFAULT: 1px;   /* class: border */
+  --border-2:       2px;
+  --border-thick:   3px;
+
+  /* ---------- Spacing — 4-pt grid -----------------------------------------------------------*/
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  12px;
+  --spacing-lg:  16px;
+  --spacing-xl:  24px;
+  --spacing-2xl: 32px;
+
+  /* ---------- Typography — 1.25× Major Third scale (8 tokens; 6 sizes) ----------------------*/
+  --text-display:    30px;
+  --text-heading:    24px;
+  --text-subheading: 20px;
+  --text-body-lg:    16px;
+  --text-body-sm:    14px;
+  --text-label:      14px;
+  --text-caption:    12px;
+  --text-code:       14px;
+
+  /* Font family (consumed via Tailwind utilities)                                              */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  /* ---------- iOS-flavored corners & elevation ---------------------------------------------*/
+  --radius-sm:    6px;
+  --radius-md:    10px;
+  --radius-lg:    14px;
+  --radius-xl:    20px;
+  --radius-pill:  9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.25), 0 2px 4px -2px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.35), 0 4px 8px -4px rgba(0, 0, 0, 0.22);
+  --shadow-glass: 0 8px 24px -6px rgba(0, 0, 0, 0.40), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+
+  /* ---------- Glass surface — frosted material ----------------------------------------------*/
+  --surface-glass-ambient:   oklch(22% 0.012 250 / 0.55);
+  --surface-glass-panel:     oklch(22% 0.012 250 / 0.65);
+  --surface-glass-modal:     oklch(22% 0.012 250 / 0.78);
+
+  --blur-glass-sm:  8px;
+  --blur-glass-md:  16px;
+  --blur-glass-lg:  24px;
+
+  /* ---------- Ambient backdrop treatment ---------------------------------------------------*/
+  --backdrop-darken:      0.55;
+  --backdrop-desaturate:  0.30;
+  --backdrop-blur:        12px;
+
+  --graph-depth-overlay:  oklch(12% 0.012 250 / 0.92);
+
+  /* ---------- Motion -----------------------------------------------------------------------*/
+  --duration-instant:   100ms;
+  --duration-fast:      200ms;
+  --duration-moderate:  300ms;
+  --duration-entrance:  500ms;
+  --duration-pulse:    2400ms;
+
+  --ease-out:        cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in:         cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out:     cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-quint:  cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo:   cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---------- Z-index scale ----------------------------------------------------------------*/
+  --z-backdrop:  -1;
+  --z-base:       0;
+  --z-panel:     10;
+  --z-drawer:    20;
+  --z-popover:   30;
+  --z-frame:     40;
+  --z-modal:     50;
+  --z-toast:     60;
 }
 
-/* Light theme overrides — BR-14: data-theme is the only switch surface */
+/* ============================================================
+   LIGHT theme override — same names, recalibrated values.
+   Every color must clear WCAG 2.2 AA over the treated light backdrop.
+   Theme switch is realized solely by data-theme attribute on <html> (BR-14, front.md §8.1).
+   ============================================================ */
 [data-theme="light"] {
-  --color-surface-base: oklch(96% 0.01 80);
-  --color-surface-glass: oklch(98% 0.01 80 / 70%);
-  --color-content: oklch(18% 0.02 260);
-  --color-content-muted: oklch(40% 0.02 260);
-  --color-border: oklch(80% 0.02 260);
-  --color-border-glass: oklch(70% 0.02 260 / 50%);
+  --color-primary:           oklch(98% 0.005 250);
+  --color-surface:           oklch(94% 0.006 250);
+  --color-elevated:          oklch(99% 0.003 250);
+
+  --color-content:           oklch(20% 0.014 250);
+  --color-body:              oklch(35% 0.012 250);
+  --color-muted:             oklch(55% 0.010 250);
+
+  --color-action:            oklch(50% 0.18 240);
+  --color-action-hover:      oklch(45% 0.19 240);
+  --color-action-active:     oklch(40% 0.18 240);
+
+  --color-data:              oklch(55% 0.15 200);
+  --color-warning:           oklch(58% 0.15 75);
+  --color-danger:            oklch(50% 0.20 25);
+
+  --color-state-accepted:        oklch(50% 0.17 150);
+  --color-state-uncertain:       oklch(58% 0.15 75);
+  --color-state-low-confidence:  oklch(60% 0.02 250);
+  --color-state-disputed:        oklch(52% 0.18 45);
+  --color-state-superseded:      oklch(60% 0.01 250);
+
+  --color-state-accepted-fg:        oklch(20% 0.05 150);
+  --color-state-uncertain-fg:       oklch(20% 0.05 75);
+  --color-state-low-confidence-fg:  oklch(20% 0.005 250);
+  --color-state-disputed-fg:        oklch(20% 0.05 45);
+  --color-state-superseded-fg:      oklch(25% 0.005 250);
+
+  /* NodeType / LinkType — re-tuned for light glass (lower lightness, keep hue). */
+  --color-node-person:        oklch(55% 0.16 280);
+  --color-node-organization:  oklch(48% 0.15 220);
+  --color-node-project:       oklch(50% 0.16 175);
+  --color-node-event:         oklch(55% 0.17 50);
+  --color-node-role:          oklch(52% 0.16 320);
+  --color-node-category:      oklch(50% 0.12 110);
+  --color-node-concept:       oklch(55% 0.12 95);
+  --color-node-location:      oklch(50% 0.13 145);
+  --color-node-document:      oklch(50% 0.06 245);
+  --color-node-task:          oklch(55% 0.17 25);
+
+  --color-link-participates-in:     oklch(50% 0.15 200);
+  --color-link-member-of:           oklch(48% 0.15 220);
+  --color-link-holds-role:          oklch(52% 0.16 280);
+  --color-link-responsible-for:     oklch(55% 0.17 25);
+  --color-link-reports-to:          oklch(50% 0.15 240);
+  --color-link-part-of:             oklch(50% 0.05 250);
+  --color-link-located-in:          oklch(50% 0.13 145);
+  --color-link-organizes:           oklch(52% 0.14 175);
+  --color-link-belongs-to-category: oklch(50% 0.12 110);
+  --color-link-related-to:          oklch(55% 0.02 250);
+  --color-link-concerns:            oklch(55% 0.12 95);
+  --color-link-delivered-to:        oklch(55% 0.16 50);
+  --color-link-sponsors:            oklch(52% 0.14 220);
+
+  --color-border:            oklch(80% 0.010 250);
+  --color-border-glass:      oklch(20% 0.005 250 / 0.14);
+  --color-border-focus:      oklch(50% 0.18 240);
+  /* Confidence-state borders mirror the light state colors above (W-DS-1):
+     without these, the borders would inherit dark-calibrated values on light glass. */
+  --color-border-error:      oklch(50% 0.20 25);
+  --color-border-accepted:   oklch(50% 0.17 150);
+  --color-border-uncertain:  oklch(58% 0.15 75);
+  --color-border-disputed:   oklch(52% 0.18 45);
+  --color-border-superseded: oklch(60% 0.01 250);
+
+  --surface-glass-ambient:   oklch(98% 0.005 250 / 0.60);
+  --surface-glass-panel:     oklch(98% 0.005 250 / 0.72);
+  --surface-glass-modal:     oklch(98% 0.005 250 / 0.85);
+
+  --backdrop-darken:      0.18;
+  --backdrop-desaturate:  0.25;
+  --backdrop-blur:        14px;
+
+  --graph-depth-overlay:  oklch(98% 0.005 250 / 0.88);
+
+  --shadow-sm: 0 1px 2px 0 rgba(20, 24, 32, 0.10);
+  --shadow-md: 0 4px 12px -2px rgba(20, 24, 32, 0.14), 0 2px 4px -2px rgba(20, 24, 32, 0.08);
+  --shadow-lg: 0 12px 32px -6px rgba(20, 24, 32, 0.18), 0 4px 8px -4px rgba(20, 24, 32, 0.12);
+  --shadow-glass: 0 8px 24px -6px rgba(20, 24, 32, 0.20), inset 0 1px 0 0 rgba(255, 255, 255, 0.40);
 }
 
-/* Reset — minimal */
+/* ============================================================
+   GlassSurface — accent="uncertain" border pulse.
+   Source: GlassSurface.back.md §7.2.
+   Implemented as a CSS @keyframes (NOT Framer Motion) so the per-theme
+   border color resolves through the [data-theme] cascade. Driven by the
+   data-glass-pulse="uncertain" attribute set by the GlassSurface component.
+   Gated by @media (prefers-reduced-motion: no-preference) — the default
+   (reduced motion preferred) yields no animation, state still updates.
+   ============================================================ */
+@keyframes uncertain-border-pulse {
+  0%, 100% { border-color: var(--color-border-uncertain); }
+  50%      { border-color: color-mix(in oklch, var(--color-border-uncertain) 55%, transparent); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-glass-pulse="uncertain"] {
+    animation: uncertain-border-pulse var(--duration-pulse) var(--ease-in-out) infinite;
+  }
+}
+
+/* ============================================================
+   Minimal reset — root surfaces consume canonical tokens.
+   Body uses --color-primary (root background under glass — tokens.md §3.1).
+   ============================================================ */
 html,
 body,
 #root {
@@ -49,14 +299,8 @@ body,
 }
 
 body {
-  background-color: var(--color-surface-base);
+  background-color: var(--color-primary);
   color: var(--color-content);
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
