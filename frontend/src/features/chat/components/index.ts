@@ -10,3 +10,8 @@ export { ChatWorkspace } from "./ChatWorkspace";
 export { ConversationView } from "./ConversationView";
 export { Composer } from "./Composer";
 export type { ComposerProps } from "./Composer.types";
+export { MessageStream } from "./MessageStream";
+export type { MessageStreamProps } from "./MessageStream";
+export { StreamingCursor } from "./StreamingCursor";
+export type { StreamingCursorProps } from "./StreamingCursor";
+// TC-10 will add ToolCallChip and UsageBadge to this barrel.
