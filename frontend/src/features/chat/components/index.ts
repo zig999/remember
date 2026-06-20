@@ -14,4 +14,7 @@ export { MessageStream } from "./MessageStream";
 export type { MessageStreamProps } from "./MessageStream";
 export { StreamingCursor } from "./StreamingCursor";
 export type { StreamingCursorProps } from "./StreamingCursor";
-// TC-10 will add ToolCallChip and UsageBadge to this barrel.
+export { ToolCallChip } from "./ToolCallChip";
+export type { ToolCallChipProps } from "./ToolCallChip/ToolCallChip.types";
+export { UsageBadge } from "./UsageBadge";
+export type { UsageBadgeProps } from "./UsageBadge/UsageBadge.types";
