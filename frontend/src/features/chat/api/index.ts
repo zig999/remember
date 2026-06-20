@@ -33,6 +33,25 @@ export {
 } from "./use-delete-conversation";
 export { useCancelTurn } from "./use-cancel-turn";
 
+export {
+  useSendMessage,
+  type SendMessageVariables,
+  type SendMessageResult,
+} from "./useSendMessage";
+
+export {
+  streamChat,
+  parseSSEFrame,
+  type ChatSSEFrame,
+  type ChatSSEFrameLLMStart,
+  type ChatSSEFrameTextDelta,
+  type ChatSSEFrameToolStart,
+  type ChatSSEFrameToolResult,
+  type ChatSSEFrameDone,
+  type ChatSSEFrameError,
+  type StreamChatOptions,
+} from "./chat-stream";
+
 // Re-export the surface-side result types so callers can type their
 // `useQuery(...).data`.
 export type {
