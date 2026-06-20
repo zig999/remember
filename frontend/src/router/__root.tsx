@@ -21,9 +21,9 @@
  */
 
 import { createRootRoute, Outlet, redirect } from "@tanstack/react-router";
-import { Toaster } from "sonner";
 import { AppShell } from "@/shell/AppShell";
 import { AppErrorBoundary } from "@/shell/AppErrorBoundary";
+import { AppToaster } from "@/shell/AppToaster";
 import { useAuthStore } from "@/state/auth";
 
 /** Routes that bypass the JWT guard. */
@@ -57,17 +57,11 @@ function RootComponent() {
         </AppErrorBoundary>
       </AppShell>
       {/*
-        BR-12: single <Toaster> mounted at the root. position bottom-right
-        keeps toasts above the footer; the sonner z-class maps to z-toast (60)
-        in our scale (set via the `style` escape hatch only because sonner
-        owns its container z-index internally — no Tailwind utility surface).
+        BR-12: single <Toaster> mounted at the root, styled as a glass panel
+        (see AppToaster — translucent bg + frosted blur + glass border/shadow,
+        z-toast = 60 keeps the stack above the frame).
       */}
-      <Toaster
-        position="bottom-right"
-        richColors
-        closeButton
-        toastOptions={{ classNames: { toast: "z-toast" } }}
-      />
+      <AppToaster />
     </>
   );
 }
