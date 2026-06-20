@@ -99,7 +99,7 @@ describe("router (TC-04 foundation)", () => {
     vi.resetModules();
   });
 
-  it("route tree declares the 8 foundation routes", async () => {
+  it("route tree declares the 9 foundation routes (incl. /chat — TC-01)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
     // Building a router materializes the route id index used below.
@@ -111,6 +111,7 @@ describe("router (TC-04 foundation)", () => {
     // Each declared route id (children of __root) maps to '/path' form.
     expect(ids).toContain("/"); // indexRoute
     expect(ids).toContain("/sign-in");
+    expect(ids).toContain("/chat");
     expect(ids).toContain("/graph");
     expect(ids).toContain("/search");
     expect(ids).toContain("/ingest");
@@ -153,7 +154,7 @@ describe("router (TC-04 foundation)", () => {
       history: createMemoryHistory({ initialEntries: ["/"] }),
     });
     await router.load();
-    // / → /graph (indexRoute) → /sign-in (guard). Final location must be /sign-in.
+    // / → /chat (indexRoute, TC-01) → /sign-in (guard). Final location must be /sign-in.
     expect(router.state.location.pathname).toBe("/sign-in");
   });
 
@@ -173,7 +174,7 @@ describe("router (TC-04 foundation)", () => {
     expect(router.state.location.pathname).toBe("/graph");
   });
 
-  it("authenticated visit to / lands on /graph (indexRoute redirect; guard passes)", async () => {
+  it("authenticated visit to / lands on /chat (TC-01 indexRoute redirect; guard passes)", async () => {
     const { useAuthStore } = await import("../../state/auth");
     const exp = Math.floor(Date.now() / 1000) + 3600;
     useAuthStore.getState().setToken(makeJwt({ sub: "u1", exp }));
@@ -185,7 +186,77 @@ describe("router (TC-04 foundation)", () => {
       history: createMemoryHistory({ initialEntries: ["/"] }),
     });
     await router.load();
-    expect(router.state.location.pathname).toBe("/graph");
+    expect(router.state.location.pathname).toBe("/chat");
+  });
+
+  /**
+   * Read the validated search payload from the matched /chat route. The
+   * route's `validateSearch` is the source of truth for the typed shape
+   * (`router.state.location.search` carries the raw parsed bag, before the
+   * route-level normalizer runs).
+   */
+  interface MatchShape {
+    routeId: string;
+    search: unknown;
+  }
+  function chatMatchSearch(state: unknown): unknown {
+    const s = state as { matches?: MatchShape[] };
+    const match = (s.matches ?? []).find((m) => m.routeId === "/chat");
+    return match?.search;
+  }
+
+  it("authenticated visit to /chat is allowed and exposes empty search (TC-01 UI-01)", async () => {
+    const { useAuthStore } = await import("../../state/auth");
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    useAuthStore.getState().setToken(makeJwt({ sub: "u1", exp }));
+
+    const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
+    const { routeTree } = await import("../routes");
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ["/chat"] }),
+    });
+    await router.load();
+    expect(redirectTarget(router.state)).toBeUndefined();
+    expect(router.state.location.pathname).toBe("/chat");
+    // No conversation present → validateSearch yields {}.
+    expect(chatMatchSearch(router.state)).toEqual({});
+  });
+
+  it("authenticated deep-link /chat?conversation=<uuid> parses conversation id (TC-01 FL-02)", async () => {
+    const { useAuthStore } = await import("../../state/auth");
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    useAuthStore.getState().setToken(makeJwt({ sub: "u1", exp }));
+
+    const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
+    const { routeTree } = await import("../routes");
+    const cid = "11111111-1111-1111-1111-111111111111";
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: [`/chat?conversation=${cid}`] }),
+    });
+    await router.load();
+    expect(redirectTarget(router.state)).toBeUndefined();
+    expect(router.state.location.pathname).toBe("/chat");
+    expect(chatMatchSearch(router.state)).toEqual({ conversation: cid });
+  });
+
+  it("chatRoute.validateSearch normalizes empty/missing conversation to {} (TC-01)", async () => {
+    // Unit-test the validator directly — TanStack Router's URL parser yields
+    // `{conversation: ""}` for `?conversation=`, and `validateSearch` is what
+    // strips that empty value to keep the typed shape clean (string | undefined).
+    const { chatRoute } = await import("../routes");
+    const validate = chatRoute.options.validateSearch as
+      | ((s: Record<string, unknown>) => { conversation?: string })
+      | undefined;
+    expect(validate).toBeTypeOf("function");
+    if (!validate) return;
+    expect(validate({})).toEqual({});
+    expect(validate({ conversation: "" })).toEqual({});
+    expect(validate({ conversation: undefined })).toEqual({});
+    expect(validate({ conversation: "abc-123" })).toEqual({ conversation: "abc-123" });
+    // Non-string values are ignored (defensive — keeps the typed contract).
+    expect(validate({ conversation: 42 })).toEqual({});
   });
 
   it("unknown path: unauthenticated → guard redirects to /sign-in", async () => {
