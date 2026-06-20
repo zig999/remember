@@ -23,8 +23,15 @@
 import { QueryClient, QueryCache, MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { EnvelopeError } from "./http";
-import { routeError, type ErrorAction } from "./error-routing";
+import {
+  routeError,
+  isConversationResourceKey,
+  type ErrorAction,
+  type ErrorRoutingContext,
+} from "./error-routing";
 import { reportError } from "./report-error";
+import { useAuthStore } from "@/state/auth";
+import { router } from "@/router/router";
 
 /* ---------- defaults ---------- */
 
@@ -50,11 +57,27 @@ export function applyErrorAction(action: ErrorAction): void {
       if (action.tone === "danger") toast.error(action.message);
       else toast.warning(action.message);
       return;
+    case "toast-and-navigate":
+      // TC-11: composite action used by the chat conversation 404 path.
+      // The toast informs the operator and the navigation drops the stale
+      // `?conversation=<id>` so the workspace stops querying a ghost id.
+      // Router-driven navigation (not `window.location.assign`) preserves
+      // the React tree and the TanStack Query cache.
+      if (action.tone === "danger") toast.error(action.message);
+      else toast.warning(action.message);
+      void router.navigate({ to: action.to, search: {} as never });
+      return;
     case "redirect":
-      // Use window.location for redirects out of the React tree — the
-      // router's `__root` beforeLoad covers the synchronous boot case;
-      // this branch handles a stale 401 mid-session. We avoid a router
-      // dependency at module load so this file stays a pure utility.
+      // AUTH_* codes: clear the in-memory bearer + sessionStorage before
+      // sending the user to /sign-in so a refresh cannot revive the stale
+      // token (front.back.md §2 + TC-11 routing rules). We assign via
+      // `window.location` to also tear down the React tree — the next
+      // route mount picks up the clean store.
+      try {
+        useAuthStore.getState().clear();
+      } catch {
+        /* SSR / test envs without the store mount — fail soft. */
+      }
       if (typeof window !== "undefined") {
         window.location.assign(action.to);
       }
@@ -86,6 +109,32 @@ export function applyErrorAction(action: ErrorAction): void {
   }
 }
 
+/**
+ * Build the `ErrorRoutingContext` from the failing query (or mutation). Today
+ * the only context bit is whether the failure came from a chat conversation
+ * resource query — used by `routeError` to swap the default inline-empty
+ * surface for a toast + navigate (TC-11).
+ *
+ * Exported so the equivalent mutation path can reuse it.
+ */
+export function contextFromQuery(query: { queryKey: readonly unknown[] } | undefined): ErrorRoutingContext {
+  if (!query) return {};
+  return { isConversationResource: isConversationResourceKey(query.queryKey) };
+}
+
+/**
+ * Mutations don't carry a `queryKey` — but the chat domain uses scoped
+ * mutation keys that mirror `conversationKeys` shape (e.g.
+ * `["conversations", id, "send"]`). When present, we treat them the same
+ * as queries. Otherwise the context is empty and `routeError` falls back
+ * to the default `RESOURCE_NOT_FOUND` → inline-empty action.
+ */
+export function contextFromMutation(mutation: { options?: { mutationKey?: readonly unknown[] } } | undefined): ErrorRoutingContext {
+  const key = mutation?.options?.mutationKey;
+  if (!key) return {};
+  return { isConversationResource: isConversationResourceKey(key) };
+}
+
 /* ---------- single instance ---------- */
 
 /**
@@ -105,9 +154,9 @@ export function createQueryClient(): QueryClient {
       },
     },
     queryCache: new QueryCache({
-      onError: (err) => {
+      onError: (err, query) => {
         if (err instanceof EnvelopeError) {
-          applyErrorAction(routeError(err));
+          applyErrorAction(routeError(err, contextFromQuery(query)));
           return;
         }
         // Non-envelope error — log and toast danger as a safety net.
@@ -116,9 +165,9 @@ export function createQueryClient(): QueryClient {
       },
     }),
     mutationCache: new MutationCache({
-      onError: (err) => {
+      onError: (err, _vars, _ctx, mutation) => {
         if (err instanceof EnvelopeError) {
-          applyErrorAction(routeError(err));
+          applyErrorAction(routeError(err, contextFromMutation(mutation)));
           return;
         }
         reportError(err);

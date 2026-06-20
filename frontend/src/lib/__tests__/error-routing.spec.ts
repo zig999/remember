@@ -10,7 +10,7 @@
  * surfaces in QA. These tests pin every row.
  */
 import { describe, it, expect } from "vitest";
-import { routeError } from "../error-routing";
+import { routeError, isConversationResourceKey } from "../error-routing";
 import { EnvelopeError } from "../http";
 
 function makeError(code: string, message = "msg", details?: unknown): EnvelopeError {
@@ -20,6 +20,23 @@ function makeError(code: string, message = "msg", details?: unknown): EnvelopeEr
 describe("routeError()", () => {
   it("AUTH_UNAUTHORIZED → redirect to /sign-in?reason=session_expired", () => {
     expect(routeError(makeError("AUTH_UNAUTHORIZED"))).toEqual({
+      kind: "redirect",
+      to: "/sign-in?reason=session_expired",
+    });
+  });
+
+  // TC-11: token-loss codes alias to the same redirect — the BFF JWT
+  // middleware emits AUTH_TOKEN_EXPIRED / AUTH_TOKEN_INVALID on stale or
+  // tampered bearers; both must terminate the session loudly.
+  it("AUTH_TOKEN_EXPIRED → redirect to /sign-in?reason=session_expired", () => {
+    expect(routeError(makeError("AUTH_TOKEN_EXPIRED"))).toEqual({
+      kind: "redirect",
+      to: "/sign-in?reason=session_expired",
+    });
+  });
+
+  it("AUTH_TOKEN_INVALID → redirect to /sign-in?reason=session_expired", () => {
+    expect(routeError(makeError("AUTH_TOKEN_INVALID"))).toEqual({
       kind: "redirect",
       to: "/sign-in?reason=session_expired",
     });
@@ -41,10 +58,31 @@ describe("routeError()", () => {
     expect(r).toMatchObject({ kind: "set-error", details: { field: "name" } });
   });
 
-  it("RESOURCE_NOT_FOUND → inline-empty", () => {
+  it("RESOURCE_NOT_FOUND (no context) → inline-empty", () => {
     expect(routeError(makeError("RESOURCE_NOT_FOUND"))).toMatchObject({
       kind: "inline-empty",
     });
+  });
+
+  // TC-11: a missing conversation drops the ?conversation= search param
+  // back to /chat AND tells the operator via a warning toast — otherwise
+  // the workspace re-queries the same ghost id every revalidation.
+  it("RESOURCE_NOT_FOUND with conversation context → toast-and-navigate /chat", () => {
+    expect(
+      routeError(makeError("RESOURCE_NOT_FOUND"), { isConversationResource: true }),
+    ).toEqual({
+      kind: "toast-and-navigate",
+      tone: "warning",
+      message: "Conversa não encontrada.",
+      to: "/chat",
+    });
+  });
+
+  it("RESOURCE_NOT_FOUND with isConversationResource=false → inline-empty (no nav)", () => {
+    // Negative path: an unrelated 404 (e.g. a graph node) must NOT navigate.
+    expect(
+      routeError(makeError("RESOURCE_NOT_FOUND"), { isConversationResource: false }),
+    ).toMatchObject({ kind: "inline-empty" });
   });
 
   it("RESOURCE_GONE → inline-gone with LGPD message", () => {
@@ -94,5 +132,46 @@ describe("routeError()", () => {
       kind: "toast",
       tone: "danger",
     });
+  });
+});
+
+/**
+ * Why these tests exist: `isConversationResourceKey` is the bridge between
+ * the TanStack `queryKey` shape and the routing context. If it mis-classifies,
+ * either a 404 on the conversation LIST will navigate away (bad), or a 404 on
+ * the detail/messages/usage stays inline (the bug TC-11 fixes).
+ */
+describe("isConversationResourceKey()", () => {
+  it("matches the detail key shape ['conversations', id]", () => {
+    expect(isConversationResourceKey(["conversations", "abc-123"])).toBe(true);
+  });
+
+  it("matches the messages key shape ['conversations', id, 'messages']", () => {
+    expect(isConversationResourceKey(["conversations", "abc-123", "messages"])).toBe(true);
+  });
+
+  it("matches the usage key shape ['conversations', id, 'usage']", () => {
+    expect(isConversationResourceKey(["conversations", "abc-123", "usage"])).toBe(true);
+  });
+
+  it("does NOT match the list root ['conversations', 'list', filters]", () => {
+    expect(
+      isConversationResourceKey(["conversations", "list", { includeArchived: false }]),
+    ).toBe(false);
+  });
+
+  it("does NOT match the all root ['conversations']", () => {
+    expect(isConversationResourceKey(["conversations"])).toBe(false);
+  });
+
+  it("does NOT match unrelated namespaces", () => {
+    expect(isConversationResourceKey(["nodes", "abc"])).toBe(false);
+    expect(isConversationResourceKey(["search", "query"])).toBe(false);
+  });
+
+  it("rejects empty id and non-string ids", () => {
+    expect(isConversationResourceKey(["conversations", ""])).toBe(false);
+    expect(isConversationResourceKey(["conversations", 42])).toBe(false);
+    expect(isConversationResourceKey(["conversations", null])).toBe(false);
   });
 });
