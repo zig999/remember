@@ -4,7 +4,7 @@
  * Layout per front.md §3.1:
  *   /            → redirect /chat
  *   /sign-in     → public stub
- *   /chat        → stub (primary view; TC-07 replaces with ChatWorkspace)
+ *   /chat        → ChatWorkspace (TC-07 — 40%/60% container-query split)
  *   /graph       → stub
  *   /search      → stub
  *   /ingest      → stub
@@ -17,6 +17,7 @@
 import { createRoute, redirect } from "@tanstack/react-router";
 import { Route as RootRoute } from "./__root";
 import { StubPage } from "./StubPage";
+import { ChatWorkspace } from "@/features/chat/components/ChatWorkspace";
 
 /**
  * Root index route — redirects to /chat per chat.feature.spec.md UI-01
@@ -35,7 +36,7 @@ export const indexRoute = createRoute({
  *
  * Accepts optional `conversation` search param (chat.flow.md FL-02 deep link
  * `/chat?conversation=<uuid>`). Active conversation id is the URL source of
- * truth; component reads it via `Route.useSearch()` (wired in TC-07).
+ * truth; ChatWorkspace reads it via `chatRoute.useSearch()` (TC-07).
  *
  * `validateSearch` returns `string | undefined`: empty/missing value yields
  * `undefined` so the URL stays clean (`/chat` not `/chat?conversation=`).
@@ -50,7 +51,7 @@ export const chatRoute = createRoute({
     }
     return {};
   },
-  component: () => <StubPage title="Chat" testId="chat-page" />,
+  component: () => <ChatWorkspace />,
 });
 
 export const signInRoute = createRoute({
