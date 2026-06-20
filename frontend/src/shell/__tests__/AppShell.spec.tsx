@@ -8,10 +8,19 @@ import { renderToString } from "react-dom/server";
 // (anchor + fixed pathname) rather than mounting a full router.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  // Stub location: pathname "/graph" + empty search. The Header now reads
+  // `l.search.conversation` to mirror the chat deep-link param (TC-02), so
+  // the stub must include a `search` field — otherwise the `select` callback
+  // would dereference `undefined`. Since this test renders at /graph, the
+  // ConversationMenu code path is intentionally NOT exercised here.
   return {
     ...actual,
-    useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) =>
-      opts?.select ? opts.select({ pathname: "/graph" }) : { pathname: "/graph" },
+    useLocation: (opts?: {
+      select?: (l: { pathname: string; search: Record<string, unknown> }) => unknown;
+    }) =>
+      opts?.select
+        ? opts.select({ pathname: "/graph", search: {} })
+        : { pathname: "/graph", search: {} },
     useNavigate: () => () => undefined,
     Link: ({
       to,
