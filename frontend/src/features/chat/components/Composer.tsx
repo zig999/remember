@@ -61,9 +61,13 @@
  */
 import { useCallback, useEffect, useId, useRef } from "react";
 import type { CSSProperties, FC, KeyboardEvent } from "react";
-import { useForm, type SubmitHandler } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import {
+  useForm,
+  type FieldValues,
+  type Resolver,
+  type SubmitHandler,
+} from "react-hook-form";
+import { z, type ZodType } from "zod";
 import { Send, Square, ArchiveRestore, AlertTriangle } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { Textarea } from "@/components/ui/textarea";
@@ -109,6 +113,42 @@ const composerSchema = z.object({
 });
 
 type ComposerFormValues = z.infer<typeof composerSchema>;
+
+/**
+ * Lightweight `safeParse`-based resolver — avoids the `@hookform/resolvers/zod`
+ * v3 + Zod v4 incompatibility where the resolver inspects a ZodError via the
+ * legacy `.errors` property (Zod v4 renamed it to `.issues`) and silently
+ * re-throws the ZodError as an unhandled rejection on every invalid field.
+ *
+ * `safeParse` never throws — it returns `{ success, data | error }` — so we
+ * can route each issue into RHF's `errors` map ourselves without depending on
+ * the resolver's brittle internal probe. Keep this private to the Composer
+ * (small, single-form scope) so we don't paper over the package mismatch at
+ * the project level — a project-wide fix belongs in a Zod-v4-aware resolver
+ * upgrade, not here.
+ */
+function safeZodResolver<TValues extends FieldValues, TSchema extends ZodType>(
+  schema: TSchema,
+): Resolver<TValues> {
+  return async (values) => {
+    const result = schema.safeParse(values);
+    if (result.success) {
+      return { values: result.data as TValues, errors: {} };
+    }
+    const errors: Record<string, { type: string; message: string }> = {};
+    for (const issue of result.error.issues) {
+      const path = issue.path.join(".");
+      // First-issue-wins, matching the canonical resolver behaviour.
+      if (errors[path] === undefined) {
+        errors[path] = { type: issue.code, message: issue.message };
+      }
+    }
+    return {
+      values: {} as TValues,
+      errors: errors as never,
+    };
+  };
+}
 
 /* ---------- subcomponent: archived banner (UI-08) ---------- */
 
@@ -191,15 +231,24 @@ export const Composer: FC<ComposerProps> = ({
   // Rendered BEFORE useSendMessage / RHF wiring is invoked so the archived
   // case is the simplest possible tree (no form, no mutation observers). The
   // parent owns `onUnarchive`; we just dispatch the click.
+  //
+  // exactOptionalPropertyTypes (tsconfig) forbids passing `undefined` to an
+  // optional prop — we conditionally spread the optional pair instead of
+  // always forwarding them.
   if (isArchived) {
-    return <ArchivedBanner onUnarchive={onUnarchive} className={className} />;
+    return (
+      <ArchivedBanner
+        onUnarchive={onUnarchive}
+        {...(className !== undefined ? { className } : {})}
+      />
+    );
   }
 
   return (
     <ComposerSendBand
       conversationId={conversationId}
-      className={className}
-      style={style}
+      {...(className !== undefined ? { className } : {})}
+      {...(style !== undefined ? { style } : {})}
     />
   );
 };
@@ -224,7 +273,9 @@ const ComposerSendBand: FC<ComposerSendBandProps> = ({
 
   /* --- RHF + Zod form (single field: content) --- */
   const form = useForm<ComposerFormValues>({
-    resolver: zodResolver(composerSchema),
+    resolver: safeZodResolver<ComposerFormValues, typeof composerSchema>(
+      composerSchema,
+    ),
     defaultValues: { content: "" },
     // Live-validate as the user types so the > 32768 char message appears
     // immediately, not on submit (TC-09 "Content > 32768 chars: live error").
