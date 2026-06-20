@@ -68,6 +68,33 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z
     .string()
     .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),
+
+  // Chat surface (modules/chat). All sanity ceilings, not hard product limits;
+  // defaults match chat.back.md §8. All optional — missing values fall back to
+  // the defaults below so a deployment can boot without chat-specific config.
+  //
+  // CHAT_ENABLED: kill-switch (BR-14). When `false`, the chat route short-
+  //   circuits with 503 BUSINESS_CHAT_DISABLED before the SSE is opened.
+  CHAT_ENABLED: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+    .default(true),
+  // CHAT_MODEL: default Anthropic model id (per-request `model` field overrides).
+  CHAT_MODEL: z.string().min(1).default("claude-opus-4-8"),
+  // CHAT_PROMPT_VERSION: prompt module version (BR-18). Unknown value is a boot
+  //   error — see modules/chat/prompts/index.ts (UnknownChatPromptVersionError).
+  CHAT_PROMPT_VERSION: z.string().min(1).default("v1"),
+  // MAX_HISTORY_MESSAGES: upper bound on `messages.length` (BR-01).
+  MAX_HISTORY_MESSAGES: z.coerce.number().int().min(1).default(40),
+  // MAX_ITERATIONS: upper bound on agentic-loop iterations (BR-15).
+  MAX_ITERATIONS: z.coerce.number().int().min(1).default(8),
+  // TURN_TIMEOUT_MS: per-turn wall-clock budget (BR-16).
+  TURN_TIMEOUT_MS: z.coerce.number().int().min(1).default(90_000),
+  // TOOL_TIMEOUT_MS: per-tool-call wall-clock budget (BR-17).
+  TOOL_TIMEOUT_MS: z.coerce.number().int().min(1).default(15_000),
+  // TOOL_RESULT_MAX_CHARS: truncation ceiling for tool results fed back to the
+  //   model (BR-13). Unicode code points, not bytes.
+  TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -141,6 +141,59 @@ describe("loadEnv", () => {
       loadEnv({ ...baseEnv, NODE_ENV: "development", LOCAL_OPERATOR_TOKEN: "short" })
     ).toThrowError(EnvValidationError);
   });
+
+  // --- Chat surface (chat.back.md §8) ------------------------------------
+  // All 8 chat env vars are OPTIONAL with defaults; missing values must boot
+  // the BFF normally with the spec defaults.
+  describe("chat env vars (chat.back.md §8)", () => {
+    it("applies spec defaults when no chat env var is set", () => {
+      const env = loadEnv(baseEnv);
+      expect(env.CHAT_ENABLED).toBe(true);
+      expect(env.CHAT_MODEL).toBe("claude-opus-4-8");
+      expect(env.CHAT_PROMPT_VERSION).toBe("v1");
+      expect(env.MAX_HISTORY_MESSAGES).toBe(40);
+      expect(env.MAX_ITERATIONS).toBe(8);
+      expect(env.TURN_TIMEOUT_MS).toBe(90_000);
+      expect(env.TOOL_TIMEOUT_MS).toBe(15_000);
+      expect(env.TOOL_RESULT_MAX_CHARS).toBe(8000);
+    });
+
+    it("coerces CHAT_ENABLED='false' to the boolean false (BR-14 kill-switch)", () => {
+      const env = loadEnv({ ...baseEnv, CHAT_ENABLED: "false" });
+      expect(env.CHAT_ENABLED).toBe(false);
+    });
+
+    it("coerces CHAT_ENABLED='true' to the boolean true", () => {
+      const env = loadEnv({ ...baseEnv, CHAT_ENABLED: "true" });
+      expect(env.CHAT_ENABLED).toBe(true);
+    });
+
+    it("coerces numeric env strings to integers", () => {
+      const env = loadEnv({
+        ...baseEnv,
+        MAX_HISTORY_MESSAGES: "20",
+        MAX_ITERATIONS: "5",
+        TURN_TIMEOUT_MS: "60000",
+        TOOL_TIMEOUT_MS: "10000",
+        TOOL_RESULT_MAX_CHARS: "4000",
+      });
+      expect(env.MAX_HISTORY_MESSAGES).toBe(20);
+      expect(env.MAX_ITERATIONS).toBe(5);
+      expect(env.TURN_TIMEOUT_MS).toBe(60_000);
+      expect(env.TOOL_TIMEOUT_MS).toBe(10_000);
+      expect(env.TOOL_RESULT_MAX_CHARS).toBe(4000);
+    });
+
+    it("accepts an override for CHAT_MODEL and CHAT_PROMPT_VERSION", () => {
+      const env = loadEnv({
+        ...baseEnv,
+        CHAT_MODEL: "claude-sonnet-x",
+        CHAT_PROMPT_VERSION: "v2",
+      });
+      expect(env.CHAT_MODEL).toBe("claude-sonnet-x");
+      expect(env.CHAT_PROMPT_VERSION).toBe("v2");
+    });
+  });
 });
 
 function grabError(fn: () => unknown): unknown {
