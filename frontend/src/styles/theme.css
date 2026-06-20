@@ -384,6 +384,43 @@
 @keyframes pop-in      { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
 @keyframes content-in  { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
+/* AppToaster entrance — scripted 3-phase motion (see the unlayered
+   [data-sonner-toast] override below for the cascade-layer reasoning):
+     1. drop top→bottom at 20% width (scaleX .2), pinned to the top-right edge;
+     2. bounce when it lands on the resting line;
+     3. unfurl to full width, also with a bounce.
+   Each keyframe composes var(--y) — sonner's live stacking transform — BEFORE the
+   entrance transform. Two reasons: (a) `transform` is animated DIRECTLY (not a
+   static property reading animated vars), so sonner's `transition: transform`
+   can't smear the motion — a running animation suppresses transitions on the same
+   property; (b) var(--y) is re-read each frame, so a toast still mid-drop
+   repositions when newer toasts push it DOWN — no pile-up in quick succession.
+   In `expand` mode var(--y) is pure translateY, so it composes cleanly with our
+   translateY/scaleX. No fill-mode forwards → transform hands back to sonner's
+   `transform: var(--y)` afterwards (stacking/lift/removal keep working). */
+@keyframes toast-drop-in {
+  0%   { opacity: 0; transform: var(--y) translateY(-130%) scaleX(0.2); }
+  8%   { opacity: 1; transform: var(--y) translateY(-130%) scaleX(0.2); }
+  /* 1 — drop, overshooting just past the resting line (still 20% wide). */
+  38%  { transform: var(--y) translateY(4%)   scaleX(0.2); }
+  /* 2 — vertical bounce, then settle. */
+  48%  { transform: var(--y) translateY(-3%)  scaleX(0.2); }
+  56%  { transform: var(--y) translateY(0%)   scaleX(0.2); }
+  /* 3 — unfurl to full width with a bounce (origin-right → overshoots leftward). */
+  80%  { transform: var(--y) translateY(0%)   scaleX(1.05); }
+  90%  { transform: var(--y) translateY(0%)   scaleX(0.985); }
+  96%  { transform: var(--y) translateY(0%)   scaleX(1.008); }
+  100% { transform: var(--y) translateY(0%)   scaleX(1); }
+}
+/* Contents stay hidden through the drop + vertical bounce, then fade in as the
+   pill unfurls — so the 20%-wide phase reads as a clean capsule, never squashed
+   text. */
+@keyframes toast-reveal {
+  0%, 56% { opacity: 0; }
+  82%     { opacity: 1; }
+  100%    { opacity: 1; }
+}
+
 /* ============================================================
    Minimal reset — root surfaces consume canonical tokens.
    Body uses --color-primary (root background under glass — tokens.md §3.1).
@@ -463,6 +500,35 @@ h2,
 .min-w-5xl { min-width: var(--container-5xl); }
 .min-w-6xl { min-width: var(--container-6xl); }
 .min-w-7xl { min-width: var(--container-7xl); }
+
+/* ============================================================
+   AppToaster entrance motion — scripts the 3-phase drop on top of sonner.
+   sonner drives its own entrance via `transform: var(--y)` + a transition,
+   shipped UNLAYERED (`:where(...)`, zero specificity). To run our own keyframes
+   we override that on mount — and, exactly like the surface tokens in
+   AppToaster.tsx, this MUST be unlayered: a `@layer utilities` rule would lose
+   to sonner's unlayered base regardless of specificity. The `[data-mounted]`
+   selector (0,2,0) beats sonner's `:where()` and fires once, when sonner flips
+   the toast to mounted. The entrance animates `transform` directly while each
+   keyframe composes sonner's live var(--y) (see toast-drop-in) — so the motion is
+   crisp (no transition smear) yet an in-flight toast still repositions (no
+   pile-up). `backwards` applies the 0% frame immediately, so there's no
+   full-width flash before the first tick; no `forwards`, so transform reverts to
+   var(--y) after — stacking/lift/removal keep working. No reduced-motion gate
+   needed: sonner's own `@media (prefers-reduced-motion){ [data-sonner-toast]{
+   animation:none!important } }` already suppresses this for those users.
+   transform-origin:right pins the narrow pill to the right margin (so it unfurls
+   right->left); kept stable (not reverted) — safe because <Toaster expand> makes
+   sonner position toasts with pure translateY (no scale), so the origin never
+   touches stacking/removal.
+   ============================================================ */
+[data-sonner-toast][data-mounted='true'] {
+  transform-origin: right center;
+  animation: toast-drop-in 1s var(--ease-out) backwards;
+}
+[data-sonner-toast][data-mounted='true'] > * {
+  animation: toast-reveal 1s var(--ease-out);
+}
 
 /* ============================================================
    Autofill — preserve the translucent field surface.
