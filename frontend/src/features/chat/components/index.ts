@@ -10,3 +10,7 @@ export { ChatWorkspace } from "./ChatWorkspace";
 export { ConversationView } from "./ConversationView";
 export { Composer } from "./Composer";
 export type { ComposerProps } from "./Composer.types";
+export { ToolCallChip } from "./ToolCallChip";
+export type { ToolCallChipProps } from "./ToolCallChip/ToolCallChip.types";
+export { UsageBadge } from "./UsageBadge";
+export type { UsageBadgeProps } from "./UsageBadge/UsageBadge.types";
