@@ -107,8 +107,9 @@ describe("theme.css — @theme block presence and shape (tokens.md §2)", () => 
   });
 
   it("declares the 3 glass-surface levels + 3 blur sizes", () => {
+    // --color-* namespace is required so Tailwind v4 emits the bg-* utilities.
     for (const level of ["ambient", "panel", "modal"]) {
-      expect(css).toMatch(new RegExp(`--surface-glass-${level}\\s*:`));
+      expect(css).toMatch(new RegExp(`--color-surface-glass-${level}\\s*:`));
     }
     for (const size of ["sm", "md", "lg"]) {
       expect(css).toMatch(new RegExp(`--blur-glass-${size}\\s*:`));
@@ -167,7 +168,7 @@ describe("theme.css — [data-theme='light'] override block (BR-14)", () => {
   it("overrides the glass-surface tokens for the light backdrop", () => {
     const lightBlockMatch = css.match(/\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/);
     const light = lightBlockMatch?.[1] ?? "";
-    for (const t of ["--surface-glass-ambient", "--surface-glass-panel", "--surface-glass-modal"]) {
+    for (const t of ["--color-surface-glass-ambient", "--color-surface-glass-panel", "--color-surface-glass-modal"]) {
       expect(light).toMatch(new RegExp(`${t.replace(/-/g, "\\-")}\\s*:`));
     }
   });
