@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useThemeStore } from "@/state/theme";
 import { useCommandPaletteStore } from "@/state/command-palette";
+import { HeaderConversationMenu } from "./HeaderConversationMenu";
 
 export interface HeaderProps {
   className?: string;
@@ -47,7 +48,22 @@ const NAV = [
 ] as const;
 
 export function Header({ className }: HeaderProps) {
-  const pathname = useLocation({ select: (l) => l.pathname });
+  // Select both pathname and the `?conversation` search param in one
+  // subscription. `select` returns a stable shape so the Header only
+  // re-renders when one of these two values changes (not on every router
+  // tick). The narrow cast on `search` is intentional: the router-level
+  // location is untyped (any route can sit here), and only the /chat route
+  // validates the `conversation` key.
+  const { pathname, conversationId } = useLocation({
+    select: (l) => ({
+      pathname: l.pathname,
+      conversationId:
+        typeof (l.search as { conversation?: unknown }).conversation === "string"
+          ? ((l.search as { conversation?: string }).conversation as string)
+          : undefined,
+    }),
+  });
+  const onChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.set);
   const togglePalette = useCommandPaletteStore((s) => s.toggle);
@@ -93,6 +109,15 @@ export function Header({ className }: HeaderProps) {
           );
         })}
       </nav>
+
+      {/* Active-conversation menu — only on /chat (TC-02). The hooks live
+          inside this child so chat-feature traffic stays off other routes. */}
+      {onChatRoute ? (
+        <HeaderConversationMenu
+          activeConversationId={conversationId}
+          className="ml-md"
+        />
+      ) : null}
 
       {/* Actions */}
       <div className="ml-auto flex shrink-0 items-center gap-xs">
