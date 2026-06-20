@@ -1,14 +1,13 @@
 /**
- * AppShell — the 3-region frame + ambient backdrop.
+ * AppShell — the 3-region frame (header / workspace / footer).
  *
  * Spec references:
- *  - front.md §2 (Application shell — 3 fixed regions + z-1 backdrop)
+ *  - front.md §2 (Application shell — 3 fixed regions)
  *  - front.md §2.1 (Region rules — header/footer fixed; workspace scrolls)
- *  - front.md §2.2 (Layer/z-index scale: z-backdrop / z-base / z-frame)
+ *  - front.md §2.2 (Layer/z-index scale: z-base / z-frame)
  *  - front.md §3.3 (No spinner during bootstrapping — frame is the anchor)
  *
  * Region layout (CSS):
- *   - AmbientBackdrop : position fixed, inset-0, z-backdrop (-1)
  *   - Header          : position fixed, top-0,  z-frame    (40)
  *   - Workspace       : flow,           pt-12 pb-8, z-base (0) — only region that scrolls
  *   - Footer          : position fixed, bottom-0, z-frame (40)
@@ -16,10 +15,13 @@
  * The workspace consumes the area between the fixed header and footer via
  * `padding` on the body wrapper — never via `position: absolute` which would
  * conflict with route-level scrolling.
+ *
+ * TC-01 refactor: <AmbientBackdrop/> moved up to the root route (__root.tsx)
+ * so the backdrop is also visible on /sign-in (which renders chrome-free,
+ * outside the AppShell). See temp/login-screen-plan.md §4.
  */
 
 import type { ReactNode } from "react";
-import { AmbientBackdrop } from "./AmbientBackdrop";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { CommandPalette } from "./CommandPalette";
@@ -42,7 +44,6 @@ export function AppShell({ children, className }: AppShellProps) {
 
   return (
     <>
-      <AmbientBackdrop />
       <Header />
       <main
         // Workspace: the only region that scrolls (front.md §2.1).

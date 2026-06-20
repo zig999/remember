@@ -70,8 +70,14 @@ function redirectTarget(state: unknown): RedirectOptions | undefined {
  * call `router.load()` to drive `beforeLoad` chains. Redirects land in
  * `router.state.redirect.options`; the post-redirect path lands in
  * `router.state.location.pathname`.
+ *
+ * Tree under test (post TC-01 refactor):
+ *   RootRoute
+ *   ├── /sign-in            (signInRoute — FL-AUTH-01: redirect /chat if fresh)
+ *   └── "protected"         (protectedLayoutRoute — pathless; BR-04 guard)
+ *       ├── /  /chat  /graph  /search  /ingest  /curation  /history  /not-found
  */
-describe("router (TC-04 foundation)", () => {
+describe("router (TC-01 chrome refactor)", () => {
   beforeEach(() => {
     (globalThis as { sessionStorage?: FakeStorage }).sessionStorage = makeFakeStorage();
     (globalThis as { localStorage?: FakeStorage }).localStorage = makeFakeStorage();
@@ -99,7 +105,7 @@ describe("router (TC-04 foundation)", () => {
     vi.resetModules();
   });
 
-  it("route tree declares the 9 foundation routes (incl. /chat — TC-01)", async () => {
+  it("route tree declares the 9 path routes + the 'protected' pathless layout (TC-01)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
     // Building a router materializes the route id index used below.
@@ -108,19 +114,24 @@ describe("router (TC-04 foundation)", () => {
       history: createMemoryHistory({ initialEntries: ["/sign-in"] }),
     });
     const ids = new Set<string>(Object.keys(router.routesById));
-    // Each declared route id (children of __root) maps to '/path' form.
-    expect(ids).toContain("/"); // indexRoute
+    // /sign-in is a direct child of RootRoute, so its id stays "/sign-in".
     expect(ids).toContain("/sign-in");
-    expect(ids).toContain("/chat");
-    expect(ids).toContain("/graph");
-    expect(ids).toContain("/search");
-    expect(ids).toContain("/ingest");
-    expect(ids).toContain("/curation");
-    expect(ids).toContain("/history");
-    expect(ids).toContain("/not-found");
+    // The pathless layout route surfaces as "/protected" (the leading slash
+    // is how TanStack Router materializes the id-only route).
+    expect(ids).toContain("/protected");
+    // Children of the pathless layout are prefixed with their parent id —
+    // confirming they reparented under protectedLayoutRoute.
+    expect(ids).toContain("/protected/"); // indexRoute
+    expect(ids).toContain("/protected/chat");
+    expect(ids).toContain("/protected/graph");
+    expect(ids).toContain("/protected/search");
+    expect(ids).toContain("/protected/ingest");
+    expect(ids).toContain("/protected/curation");
+    expect(ids).toContain("/protected/history");
+    expect(ids).toContain("/protected/not-found");
   });
 
-  it("unauthenticated visit to /graph redirects to /sign-in?reason=session_expired (BR-04)", async () => {
+  it("unauthenticated visit to /graph redirects to /sign-in?reason=session_expired (BR-04, now in protectedLayoutRoute)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
     const router = createRouter({
@@ -134,7 +145,7 @@ describe("router (TC-04 foundation)", () => {
     expect(router.state.location.pathname).toBe("/sign-in");
   });
 
-  it("unauthenticated visit to /sign-in is allowed (public route — no redirect)", async () => {
+  it("unauthenticated visit to /sign-in is allowed (chrome-free public route — no redirect)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
     const router = createRouter({
@@ -146,6 +157,21 @@ describe("router (TC-04 foundation)", () => {
     expect(router.state.location.pathname).toBe("/sign-in");
   });
 
+  it("authenticated visit to /sign-in redirects to /chat (FL-AUTH-01 bypass)", async () => {
+    const { useAuthStore } = await import("../../state/auth");
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    useAuthStore.getState().setToken(makeJwt({ sub: "u1", exp }));
+
+    const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
+    const { routeTree } = await import("../routes");
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ["/sign-in"] }),
+    });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/chat");
+  });
+
   it("visit to / triggers a redirect chain that ends at /sign-in (unauthenticated)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
@@ -154,7 +180,7 @@ describe("router (TC-04 foundation)", () => {
       history: createMemoryHistory({ initialEntries: ["/"] }),
     });
     await router.load();
-    // / → /chat (indexRoute, TC-01) → /sign-in (guard). Final location must be /sign-in.
+    // / is under protectedLayoutRoute → guard fires first → /sign-in.
     expect(router.state.location.pathname).toBe("/sign-in");
   });
 
@@ -201,7 +227,7 @@ describe("router (TC-04 foundation)", () => {
   }
   function chatMatchSearch(state: unknown): unknown {
     const s = state as { matches?: MatchShape[] };
-    const match = (s.matches ?? []).find((m) => m.routeId === "/chat");
+    const match = (s.matches ?? []).find((m) => m.routeId === "/protected/chat");
     return match?.search;
   }
 
@@ -259,7 +285,7 @@ describe("router (TC-04 foundation)", () => {
     expect(validate({ conversation: 42 })).toEqual({});
   });
 
-  it("unknown path: unauthenticated → guard redirects to /sign-in", async () => {
+  it("unknown path: stays at the requested URL and falls through to __root.notFoundComponent (no guard runs)", async () => {
     const { createMemoryHistory, createRouter } = await import("@tanstack/react-router");
     const { routeTree } = await import("../routes");
     const router = createRouter({
@@ -267,9 +293,11 @@ describe("router (TC-04 foundation)", () => {
       history: createMemoryHistory({ initialEntries: ["/some-random-path"] }),
     });
     await router.load();
-    // The guard runs before notFound resolution, so the unauth case ends at /sign-in.
-    // The authenticated unknown-path case is covered by __root.notFoundComponent
-    // (renders in-frame; verified visually via AppShell.spec.tsx).
-    expect(router.state.location.pathname).toBe("/sign-in");
+    // TC-01 deviation: an unknown path no longer matches the (former) root
+    // guard because the guard now lives in the pathless protectedLayoutRoute.
+    // Unknown paths produce no match → __root.notFoundComponent renders
+    // in-frame (chrome-free, like /sign-in). The URL stays as requested.
+    expect(redirectTarget(router.state)).toBeUndefined();
+    expect(router.state.location.pathname).toBe("/some-random-path");
   });
 });

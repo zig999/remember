@@ -46,16 +46,17 @@ function renderShell(node: ReactElement): string {
 }
 
 describe("AppShell", () => {
-  it("renders the 3-region layout: header (z-frame fixed), workspace (z-base scrollable), footer (z-frame fixed), and AmbientBackdrop (z-backdrop)", () => {
+  it("renders the 3-region layout: header (z-frame fixed), workspace (z-base scrollable), footer (z-frame fixed) — backdrop now lives on __root (TC-01)", () => {
     const html = renderShell(
       <AppShell>
         <div data-testid="content">hello</div>
       </AppShell>,
     );
 
-    // Backdrop region — fixed inset-0 z-backdrop
-    expect(html).toContain('data-testid="ambient-backdrop"');
-    expect(html).toMatch(/class="[^"]*\bz-backdrop\b/);
+    // TC-01: AmbientBackdrop moved up to __root so it is also visible on
+    // /sign-in (which renders chrome-free, outside AppShell). AppShell must
+    // no longer render it.
+    expect(html).not.toContain('data-testid="ambient-backdrop"');
 
     // Header — banner role + fixed top-0 + z-frame
     expect(html).toContain('role="banner"');
