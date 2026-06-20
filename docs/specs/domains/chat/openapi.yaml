@@ -1,0 +1,564 @@
+openapi: "3.0.3"
+info:
+  title: "Remember - Chat (LLM agentic loop) API"
+  version: "1.0.0"
+  description: |
+    Streaming chat endpoint for the SPA. The Owner (single-owner, ADR A20) sends a
+    chat history and the BFF drives an agentic Anthropic tool-use loop whose tools
+    are the 13 read-only `query` toolset entries already exposed by `query-retrieval`
+    and `knowledge-graph` (search, get_provenance_*, get_node, traverse, get_history_*,
+    list_*). Tokens are streamed back to the SPA as Server-Sent Events.
+
+    NORMATIVE DEVIATION: this domain is an ADDITIVE deviation from `remember-modelagem-v7.md`
+    (which does NOT specify a chat surface). The deviation is registered in `chat.spec.md` §1
+    and `back/chat.back.md` §1 for future reconciliation. The inegociable rule of v7 §2 holds:
+    the LLM never reaches the database directly - it only calls the tools served by the BFF,
+    each of which opens its own `BEGIN READ ONLY` transaction.
+
+    Scope (v1, STATELESS):
+      - Single endpoint `POST /api/v1/chat`.
+      - Request body: chat history (1..40 messages, first message MUST be `user`) + optional `model`.
+      - Tools: READ-ONLY only - the 13 tools of the `query` toolset, resolved lazily on first
+        request via `mcp.getTool('query', name)` against the in-process `McpServer` registry.
+      - Streaming via SSE (`text/event-stream`). Event types: `llm_start`, `text_delta`,
+        `tool_start`, `tool_result`, `done`, `error`.
+      - Edge errors raised BEFORE the stream opens (body validation, kill-switch) use the
+        standard REST envelope `{ ok: false, error: { code, message, details? } }` with HTTP
+        status. Errors discovered AFTER the stream opens are emitted as `event: error` frames
+        on the SSE stream and the stream then closes.
+
+    Out of scope (v1 - phase 2):
+      - Conversation persistence (`chat_conversation` / `chat_message` tables, no migration).
+      - Idempotency by header, cost accounting, title/summary jobs.
+      - Write or curation tools (the agentic loop is read-only).
+
+servers:
+  - url: "http://localhost:3000"
+    description: "Local development BFF"
+
+tags:
+  - name: "Chat"
+    description: |
+      Agentic LLM chat over the read-only `query` toolset, streamed via SSE.
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /api/v1/chat:
+    post:
+      tags: ["Chat"]
+      operationId: chatTurn
+      summary: Drive one agentic chat turn and stream tokens back as SSE.
+      description: |
+        Opens a Server-Sent Events stream (`text/event-stream`) and runs an Anthropic
+        agentic tool-use loop server-side. The loop alternates between `messages.stream()`
+        calls and read-only tool invocations from the `query` toolset until the model emits
+        a non-`tool_use` stop reason or until one of the sanity ceilings is reached
+        (`maxIterations`, `turnTimeoutMs`).
+
+        ## Streaming contract
+
+        Each SSE frame uses a named `event:` line and a `data:` line carrying a single JSON
+        object. One event per line, no batching:
+
+        ```
+        event: llm_start
+        data: {"iteration": 1}
+
+        event: text_delta
+        data: {"delta": "Olá, "}
+
+        event: tool_start
+        data: {"tool": "search", "args_summary": "query=\"reuniao apollo\""}
+
+        event: tool_result
+        data: {"tool": "search", "ok": true}
+
+        event: done
+        data: {"stop_reason": "end_turn", "model": "claude-opus-4-8", "tokens_in": 1234, "tokens_out": 567}
+        ```
+
+        Frame schemas (JSON parsed from each `data:` line):
+          - `llm_start`     -> { iteration: int >= 1 }
+          - `text_delta`    -> { delta: string (>= 1 char) }
+          - `tool_start`    -> { tool: string (one of the 13 read-only tool names),
+                                 args_summary: string (short, redacted; never includes raw `value`/`text` columns) }
+          - `tool_result`   -> { tool: string, ok: boolean }
+          - `done`          -> { stop_reason: "end_turn" | "max_tokens" | "stop_sequence"
+                                              | "max_iterations" | "turn_timeout"
+                                              | "cancelled",
+                                 model: string,
+                                 tokens_in: int >= 0,
+                                 tokens_out: int >= 0 }
+          - `error`         -> { code: string (namespaced error code),
+                                 message: string }
+
+        Frame ordering invariants:
+          1. At least one `llm_start` (iteration = 1) before any `text_delta` or `tool_start`.
+          2. Every `tool_start` is followed by exactly one `tool_result` for the same `tool`.
+          3. The stream ALWAYS terminates with EITHER one `done` frame OR one `error` frame,
+             then closes. There is no other final frame.
+          4. After `error`, no further frames are emitted.
+
+        ## Pre-stream errors (no SSE opened yet)
+
+        Errors raised before the `200 OK` response line are returned with the regular REST
+        envelope `{ ok: false, error: { code, message, details? } }` and an HTTP status:
+          - 422 `VALIDATION_INVALID_FORMAT` when the body fails Zod parsing (empty `messages`,
+            more than 40 messages, first message is not `user`, role outside `user|assistant`,
+            `content` not a string, `model` not a string).
+          - 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_EXPIRED` / `AUTH_TOKEN_INVALID` from the
+            `requireNeonAuth` `preHandler` (inherited from the `/api/v1` scope).
+          - 503 `BUSINESS_CHAT_DISABLED` when the kill-switch env var `CHAT_ENABLED=false`
+            shorts the route.
+          - 503 `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` when the Anthropic client fails to
+            initialise (missing `ANTHROPIC_API_KEY`) or the first `messages.stream()` call
+            fails synchronously with a non-retryable provider error.
+
+        ## In-stream errors (stream already opened)
+
+        Errors raised after the SSE has been opened are sent as one `event: error` frame
+        with one of these codes, then the connection closes:
+          - `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` - Anthropic stream aborted with a network /
+            provider-side error mid-turn.
+          - `SYSTEM_INTERNAL_ERROR` - unhandled exception in the agentic loop.
+
+        ## Cancellation
+
+        When the client closes the connection (`req.raw.on('close')`), the BFF calls
+        `stream.abort()` on the in-flight Anthropic stream and emits a final
+        `event: done` frame with `stop_reason: "cancelled"` IF the abort is acknowledged
+        before the socket is fully gone. If the socket is already closed at that point, no
+        further frame is emitted (the client has already disconnected).
+
+        ## Tools (READ-ONLY)
+
+        The agentic loop exposes only the 13 tools of the `query` toolset:
+          - From `knowledge-graph`: `get_node`, `traverse`, `get_history_link`,
+            `get_history_attribute`, `get_history_attribute_key`, `list_nodes`,
+            `list_node_types`, `list_link_types`, `list_attribute_keys`.
+          - From `query-retrieval`: `search`, `get_provenance_link`,
+            `get_provenance_attribute`, `get_provenance_fragment`.
+        The catalog is resolved lazily on the first request via the in-process
+        `McpServer` registry (`mcp.getTool('query', name)`). Each tool invocation opens its
+        own short read-only Postgres transaction inside the same `withReadOnly` helper used
+        by the REST `query-retrieval` routes (v7 §2 inegociable rule).
+
+        Tool-choice policy: `tool_choice: { type: "auto", disable_parallel_tool_use: true }`.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatTurnRequest"
+            examples:
+              firstUserMessage:
+                summary: "First message of a brand-new conversation"
+                value:
+                  messages:
+                    - role: "user"
+                      content: "Quem é o Rodrigo?"
+              multiTurnHistory:
+                summary: "Continuation of a previous turn (client carries history)"
+                value:
+                  messages:
+                    - role: "user"
+                      content: "Quem é o Rodrigo?"
+                    - role: "assistant"
+                      content: "Rodrigo aparece em duas atas como responsável pelo projeto Apollo."
+                    - role: "user"
+                      content: "Quais decisões ele tomou em 2026?"
+              modelOverride:
+                summary: "Explicit model override (default is `claude-opus-4-8` via CHAT_MODEL)"
+                value:
+                  model: "claude-opus-4-8"
+                  messages:
+                    - role: "user"
+                      content: "Liste os documentos de junho de 2026."
+      responses:
+        "200":
+          description: |
+            SSE stream opened. The HTTP status line is `200 OK` and the response body is the
+            Server-Sent Events stream described in the endpoint description. The stream always
+            terminates with one `done` frame or one `error` frame, then closes.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "Always `no-cache, no-transform` (SSE requirement)."
+            Connection:
+              schema: { type: string }
+              description: "Always `keep-alive`."
+            X-Accel-Buffering:
+              schema: { type: string }
+              description: "Always `no` (disables proxy buffering of the event stream)."
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+              examples:
+                happyPath:
+                  summary: "Two-iteration turn with one tool call, then end_turn"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"search","args_summary":"query=\"Rodrigo\""}
+
+                    event: tool_result
+                    data: {"tool":"search","ok":true}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"Rodrigo aparece em duas atas "}
+
+                    event: text_delta
+                    data: {"delta":"como responsável pelo projeto Apollo."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1234,"tokens_out":78}
+                inStreamError:
+                  summary: "Anthropic stream aborted mid-turn"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: error
+                    data: {"code":"BUSINESS_CHAT_PROVIDER_UNAVAILABLE","message":"Anthropic stream aborted: connection reset"}
+                cancelled:
+                  summary: "Client disconnected, server acknowledged the abort"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: text_delta
+                    data: {"delta":"Rodrigo "}
+
+                    event: done
+                    data: {"stop_reason":"cancelled","model":"claude-opus-4-8","tokens_in":0,"tokens_out":1}
+        "422":
+          description: "Request body failed Zod validation (422 Unprocessable Entity)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                emptyMessages:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "messages must contain at least 1 entry"
+                      details:
+                        path: ["messages"]
+                tooManyMessages:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "messages must contain at most 40 entries"
+                      details:
+                        path: ["messages"]
+                        received: 41
+                firstNotUser:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "first message must have role=user"
+                      details:
+                        path: ["messages", 0, "role"]
+                        received: "assistant"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: "Chat surface disabled or upstream provider unavailable."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                killSwitch:
+                  summary: "CHAT_ENABLED=false at boot"
+                  value:
+                    ok: false
+                    error:
+                      code: "BUSINESS_CHAT_DISABLED"
+                      message: "chat surface is disabled by CHAT_ENABLED=false"
+                providerUnavailable:
+                  summary: "Anthropic client failed to initialise"
+                  value:
+                    ok: false
+                    error:
+                      code: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE"
+                      message: "Anthropic client could not be initialised"
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Neon Auth (Stack Auth) JWT validated by the `requireNeonAuth` `preHandler` on the
+        `/api/v1` scope (CLAUDE.md "Authentication"). The chat endpoint inherits this
+        preHandler; no additional auth check is performed in the route itself.
+
+  responses:
+    Unauthorized:
+      description: "Missing or invalid JWT"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            missingToken:
+              value:
+                ok: false
+                error:
+                  code: "AUTH_UNAUTHORIZED"
+                  message: "Authorization header missing"
+            expiredToken:
+              value:
+                ok: false
+                error:
+                  code: "AUTH_TOKEN_EXPIRED"
+                  message: "JWT expired at 2026-06-11T19:00:00Z"
+                  details:
+                    expired_at: "2026-06-11T19:00:00Z"
+            invalidToken:
+              value:
+                ok: false
+                error:
+                  code: "AUTH_TOKEN_INVALID"
+                  message: "JWT signature could not be verified"
+    InternalError:
+      description: "Unexpected internal error"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            internal:
+              value:
+                ok: false
+                error:
+                  code: "SYSTEM_INTERNAL_ERROR"
+                  message: "Unexpected internal error"
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Error envelope - identical shape used everywhere (CLAUDE.md "Architecture").
+    # -------------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+          description: "Always false on the error envelope."
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: "SCREAMING_SNAKE_CASE code from the global error catalog."
+              example: "BUSINESS_CHAT_DISABLED"
+            message:
+              type: string
+              description: "Operator-facing message - never carries stack traces."
+              example: "chat surface is disabled by CHAT_ENABLED=false"
+            details:
+              type: object
+              description: "Optional structured context. Never carries PII or document text."
+              additionalProperties: true
+              example: { path: ["messages"], received: 41 }
+
+    # -------------------------------------------------------------------------
+    # Request body
+    # -------------------------------------------------------------------------
+    ChatRole:
+      type: string
+      enum: [user, assistant]
+      description: |
+        Sender role for a single chat history entry. The agentic-loop server side may
+        synthesise transient `assistant(tool_use)` and `user(tool_result)` turns inside
+        the Anthropic call, but those are NOT part of the public history (v1 stateless;
+        client carries only `user`/`assistant` text turns).
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          $ref: "#/components/schemas/ChatRole"
+        content:
+          type: string
+          minLength: 1
+          description: |
+            Plain-text content for this turn. Document content received from the user is
+            DATA, never instruction (v7 §13).
+          example: "Quem é o Rodrigo?"
+
+    ChatTurnRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 40
+          items: { $ref: "#/components/schemas/ChatMessage" }
+          description: |
+            Conversation history sent by the client (v1 STATELESS - no server-side
+            persistence). Minimum 1, maximum 40 (sanity ceiling - see `back/chat.back.md`
+            BR-06). The first entry MUST have `role=user`; otherwise 422
+            `VALIDATION_INVALID_FORMAT`. Order is significant - oldest first.
+        model:
+          type: string
+          description: |
+            Optional Anthropic model override. When omitted, the env `CHAT_MODEL` is used
+            (default `claude-opus-4-8`). Must be a non-empty string. No allow-list is
+            enforced at the BFF; an unknown model will surface as a provider error
+            (`BUSINESS_CHAT_PROVIDER_UNAVAILABLE`) once the loop starts.
+          example: "claude-opus-4-8"
+
+    # -------------------------------------------------------------------------
+    # SSE event payloads (documentation-only; the on-the-wire format is
+    # `event: <name>\ndata: <JSON>\n\n` blocks, not a JSON document).
+    # -------------------------------------------------------------------------
+    LlmStartEvent:
+      type: object
+      required: [iteration]
+      properties:
+        iteration:
+          type: integer
+          minimum: 1
+          description: "1-based agentic-loop iteration number."
+          example: 1
+
+    TextDeltaEvent:
+      type: object
+      required: [delta]
+      properties:
+        delta:
+          type: string
+          minLength: 1
+          description: "Token (or token group) emitted by the model."
+          example: "Olá, "
+
+    ToolStartEvent:
+      type: object
+      required: [tool, args_summary]
+      properties:
+        tool:
+          type: string
+          description: |
+            Name of the `query`-toolset tool the model decided to call. One of:
+            `search`, `get_provenance_link`, `get_provenance_attribute`,
+            `get_provenance_fragment`, `get_node`, `traverse`, `get_history_link`,
+            `get_history_attribute`, `get_history_attribute_key`, `list_nodes`,
+            `list_node_types`, `list_link_types`, `list_attribute_keys`.
+          enum:
+            - search
+            - get_provenance_link
+            - get_provenance_attribute
+            - get_provenance_fragment
+            - get_node
+            - traverse
+            - get_history_link
+            - get_history_attribute
+            - get_history_attribute_key
+            - list_nodes
+            - list_node_types
+            - list_link_types
+            - list_attribute_keys
+          example: "search"
+        args_summary:
+          type: string
+          description: |
+            Short redacted summary of the tool arguments for the SPA to render in the UI.
+            Never includes raw `value` / `text` columns or full provenance bodies; only
+            IDs and short string keys. Max 200 chars.
+          maxLength: 200
+          example: "query=\"reuniao apollo\""
+
+    ToolResultEvent:
+      type: object
+      required: [tool, ok]
+      properties:
+        tool:
+          type: string
+          description: "Same tool name as the preceding `tool_start`."
+          example: "search"
+        ok:
+          type: boolean
+          description: |
+            True when the tool returned a successful business envelope (`{ ok: true, result }`);
+            false when it returned an error envelope. The tool error itself is NOT propagated
+            on the SSE stream - it is sent back to the model as the `tool_result` block of
+            the next Anthropic turn so the model can react.
+          example: true
+
+    DoneEvent:
+      type: object
+      required: [stop_reason, model, tokens_in, tokens_out]
+      properties:
+        stop_reason:
+          type: string
+          enum:
+            - end_turn
+            - max_tokens
+            - stop_sequence
+            - max_iterations
+            - turn_timeout
+            - cancelled
+          description: |
+            `end_turn`, `max_tokens`, `stop_sequence` are passed through from the Anthropic
+            stream. `max_iterations`, `turn_timeout`, `cancelled` are added by the BFF
+            agentic loop (sanity ceilings + client cancellation).
+          example: "end_turn"
+        model:
+          type: string
+          description: "The model id actually used (after resolving `model` override / env)."
+          example: "claude-opus-4-8"
+        tokens_in:
+          type: integer
+          minimum: 0
+          description: "Sum of `input_tokens` across all iterations of the turn."
+          example: 1234
+        tokens_out:
+          type: integer
+          minimum: 0
+          description: "Sum of `output_tokens` across all iterations of the turn."
+          example: 567
+
+    ErrorEvent:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: |
+            Namespaced error code (`BUSINESS_CHAT_PROVIDER_UNAVAILABLE`, `SYSTEM_INTERNAL_ERROR`).
+            Pre-stream codes (`VALIDATION_*`, `AUTH_*`, `BUSINESS_CHAT_DISABLED`) never appear
+            inside an SSE `error` frame because they short-circuit before the stream opens.
+          example: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE"
+        message:
+          type: string
+          description: "Operator-facing message. Never carries stack traces or upstream provider strings verbatim."
+          example: "Anthropic stream aborted: connection reset"
+
+    SSEStream:
+      type: string
+      description: |
+        Server-Sent Events stream. Each frame is `event: <name>\ndata: <JSON>\n\n`. Possible
+        `<name>` values: `llm_start`, `text_delta`, `tool_start`, `tool_result`, `done`,
+        `error`. The JSON payload schemas are `LlmStartEvent`, `TextDeltaEvent`,
+        `ToolStartEvent`, `ToolResultEvent`, `DoneEvent`, `ErrorEvent` respectively.

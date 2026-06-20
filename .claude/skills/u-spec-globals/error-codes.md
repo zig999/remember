@@ -95,6 +95,14 @@ user-invocable: false
 | `BUSINESS_DATE_UNJUSTIFIED` | 422 | `valid_from` change has no justification (stated/document/received) | `correctItem` changes `valid_from` without `valid_from_source`, OR with `valid_from_source = 'stated'` but no `valid_from_fragment_id`, OR the fragment is not `status = 'accepted'` (BR-15, ADR A14). |
 | `BUSINESS_REASON_REQUIRED` | 422 | Destructive operation called without a non-empty `reason` | `mergeNodes`, `resolveEntityMatch(merge_into)`, `resolveDispute(prefer_one)`, `rejectItem`, or `correctItem` called with `reason` null, empty or whitespace-only (BR-10). |
 
+### Chat
+
+| error.code | HTTP | Description | When it occurs |
+|------------|------|-------------|----------------|
+| `BUSINESS_CHAT_DISABLED` | 503 | Chat surface is disabled by kill-switch | `POST /api/v1/chat` called while `env.CHAT_ENABLED === false`. Returned pre-stream (no SSE opened). `chat.spec.md` BR-14 / UC-06. |
+| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | 503 (pre-stream) or n/a (in-stream `error` frame) | Anthropic provider could not be reached or aborted mid-turn | Pre-stream: Anthropic factory throws (missing `ANTHROPIC_API_KEY`, etc.). In-stream: Anthropic stream emits a non-`AbortError` provider/network error mid-turn. `chat.spec.md` BR-11, BR-21 / UC-01. |
+
+
 ## Deprecated Codes
 
 Removed codes that CANNOT be reused. Keep here to avoid collision.
