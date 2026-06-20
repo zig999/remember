@@ -49,6 +49,7 @@ import {
   registerQueryRetrievalRoutes,
   registerQueryRetrievalToolset,
 } from "./modules/query-retrieval/index.js";
+import { registerChatRoutes } from "./modules/chat/index.js";
 
 export interface AppDependencies {
   readonly env: Env;
@@ -235,6 +236,18 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // Mounted at the root of /api/v1 because the OpenAPI declares
       // /api/v1/search and /api/v1/provenance/* as siblings of /api/v1/nodes.
       await registerQueryRetrievalRoutes(scoped, { pool, logger, catalog });
+
+      // Chat module (chat.back.md TC-04) — POST /api/v1/chat. The handler
+      // consumes the SAME in-process `McpServer` registry the query/curation
+      // transports above resolved their tools from — the `query`-toolset is
+      // populated by `registerQueryToolset` + `registerQueryRetrievalToolset`
+      // BELOW (outside the scope block). The chat registrar performs the
+      // lazy catalog resolution on its OWN clock via `buildChatToolCatalog`
+      // (BR-05): when ALL 13 read-only tool names are present, the route is
+      // mounted; otherwise the registrar logs a single ERROR with the diff
+      // and SKIPS mounting (the scope returns its default 404). Auth is
+      // inherited from the scope-level `requireNeonAuth` preHandler.
+      await registerChatRoutes(scoped, { mcp, logger, env });
     }
   }, { prefix: "/api/v1" });
 
