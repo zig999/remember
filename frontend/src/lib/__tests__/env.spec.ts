@@ -14,6 +14,9 @@ import { getEnv, EnvInvalidError, __resetEnvCacheForTests } from "../env";
 const validSource = {
   VITE_BFF_URL: "https://bff.example.com",
   VITE_NEON_AUTH_URL: "https://auth.example.com",
+  // TC-03: Stack Auth client config — public by design (publishable key).
+  VITE_STACK_PROJECT_ID: "stack-project-id",
+  VITE_STACK_PUBLISHABLE_CLIENT_KEY: "stack-publishable-key",
 } as unknown as ImportMetaEnv;
 
 describe("getEnv()", () => {
@@ -32,6 +35,8 @@ describe("getEnv()", () => {
     const env = getEnv(validSource);
     expect(env.VITE_BFF_URL).toBe("https://bff.example.com");
     expect(env.VITE_NEON_AUTH_URL).toBe("https://auth.example.com");
+    expect(env.VITE_STACK_PROJECT_ID).toBe("stack-project-id");
+    expect(env.VITE_STACK_PUBLISHABLE_CLIENT_KEY).toBe("stack-publishable-key");
     expect(Object.isFrozen(env)).toBe(true);
   });
 
@@ -57,6 +62,34 @@ describe("getEnv()", () => {
 
   it("throws EnvInvalidError when VITE_NEON_AUTH_URL is absent", () => {
     const source = { VITE_BFF_URL: "https://bff.example.com" } as unknown as ImportMetaEnv;
+    expect(() => getEnv(source)).toThrow(EnvInvalidError);
+  });
+
+  it("throws EnvInvalidError when VITE_STACK_PROJECT_ID is absent (TC-03)", () => {
+    const source = {
+      VITE_BFF_URL: "https://bff.example.com",
+      VITE_NEON_AUTH_URL: "https://auth.example.com",
+      VITE_STACK_PUBLISHABLE_CLIENT_KEY: "k",
+    } as unknown as ImportMetaEnv;
+    expect(() => getEnv(source)).toThrow(EnvInvalidError);
+  });
+
+  it("throws EnvInvalidError when VITE_STACK_PUBLISHABLE_CLIENT_KEY is absent (TC-03)", () => {
+    const source = {
+      VITE_BFF_URL: "https://bff.example.com",
+      VITE_NEON_AUTH_URL: "https://auth.example.com",
+      VITE_STACK_PROJECT_ID: "p",
+    } as unknown as ImportMetaEnv;
+    expect(() => getEnv(source)).toThrow(EnvInvalidError);
+  });
+
+  it("throws EnvInvalidError when VITE_STACK_PROJECT_ID is empty string (TC-03)", () => {
+    const source = {
+      VITE_BFF_URL: "https://bff.example.com",
+      VITE_NEON_AUTH_URL: "https://auth.example.com",
+      VITE_STACK_PROJECT_ID: "",
+      VITE_STACK_PUBLISHABLE_CLIENT_KEY: "k",
+    } as unknown as ImportMetaEnv;
     expect(() => getEnv(source)).toThrow(EnvInvalidError);
   });
 

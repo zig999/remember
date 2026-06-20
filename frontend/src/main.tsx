@@ -67,7 +67,8 @@ function EnvErrorFallback() {
     >
       <h1 className="text-heading">Configuração inválida.</h1>
       <p className="text-body text-body">
-        Verifique as variáveis VITE_BFF_URL e VITE_NEON_AUTH_URL e recarregue.
+        Verifique as variáveis VITE_BFF_URL, VITE_NEON_AUTH_URL,
+        VITE_STACK_PROJECT_ID e VITE_STACK_PUBLISHABLE_CLIENT_KEY e recarregue.
       </p>
     </div>
   );

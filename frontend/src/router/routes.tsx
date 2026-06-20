@@ -30,6 +30,7 @@
 import { createRoute, redirect, Outlet } from "@tanstack/react-router";
 import { Route as RootRoute } from "./__root";
 import { StubPage } from "./StubPage";
+import { SignInPage } from "./SignInPage";
 import { ChatWorkspace } from "@/features/chat/components/ChatWorkspace";
 import { AppShell } from "@/shell/AppShell";
 import { useAuthStore } from "@/state/auth";
@@ -128,13 +129,11 @@ export const signInRoute = createRoute({
       throw redirect({ to: "/chat" });
     }
   },
-  component: () => (
-    <StubPage
-      title="Entrar"
-      hint="Tela de autenticação em breve (Neon Auth)."
-      testId="sign-in-page"
-    />
-  ),
+  // TC-03: the real sign-in surface — SignInPanel (CRT animation + glass
+  // surface) hosting the RHF/Zod form wired to the Stack Auth mutation. The
+  // TC-01 stub was a placeholder; the page renders chrome-free under
+  // RootRoute (no AppShell), preserving the "only backdrop + panel" layout.
+  component: () => <SignInPage />,
 });
 
 export const graphRoute = createRoute({

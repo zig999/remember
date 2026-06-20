@@ -19,6 +19,9 @@ import { __resetEnvCacheForTests } from "../env";
 const ENV: ImportMetaEnv = {
   VITE_BFF_URL: "https://bff.example.com",
   VITE_NEON_AUTH_URL: "https://auth.example.com",
+  // TC-03: env shape now requires Stack Auth client config (lib/env.ts).
+  VITE_STACK_PROJECT_ID: "stack-project-id",
+  VITE_STACK_PUBLISHABLE_CLIENT_KEY: "stack-publishable-key",
 } as unknown as ImportMetaEnv;
 
 function jsonResponse(body: unknown, status = 200): Response {
