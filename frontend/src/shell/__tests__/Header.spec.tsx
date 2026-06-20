@@ -2,21 +2,26 @@
  * Header — TC-02 conditional mount of ConversationMenu.
  *
  * Validation criteria (tc-002.md):
- *   - On `/chat` route: ConversationMenu is visible in Header.
- *   - On any other route: ConversationMenu is absent.
+ *   - On `/chat` route: ConversationMenu (via HeaderConversationMenu) is in DOM.
+ *   - On any other route: it is absent.
  *   - The `?conversation=<id>` URL search param flows into the menu's
  *     `activeConversationId` prop.
+ *   - Nested chat paths (e.g. `/chat/foo`) also count.
+ *   - Non-string `?conversation` values are ignored (URL guard).
  *
- * Approach: stub `HeaderConversationMenu` so we don't have to mount the
- * chat data layer / Radix portals — we only need to assert WHEN it is
- * rendered and WHAT props it received. `useLocation` is stubbed per test
- * to flip the route under inspection.
+ * Render pattern: `createRoot` + `act` from `react-dom/client` — matches the
+ * project's existing component-spec style (see ConversationMenu.spec.tsx).
+ * We stub `HeaderConversationMenu` so we don't have to bring the chat data
+ * layer + Radix portals into this Header-focused test; the adapter itself
+ * is covered by HeaderConversationMenu.spec.tsx.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import type { ReactElement, ReactNode } from "react";
 
-// ---- mocks --------------------------------------------------------------
+// ---- mocks ---------------------------------------------------------------
+
 const useLocationMock = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
   useLocation: (opts?: {
@@ -36,10 +41,7 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-const hcmPropsSpy = vi.fn<
-  [{ activeConversationId: string | undefined; className?: string }],
-  void
->();
+const hcmPropsSpy = vi.fn();
 vi.mock("../HeaderConversationMenu", () => ({
   HeaderConversationMenu: (props: {
     activeConversationId: string | undefined;
@@ -55,38 +57,91 @@ vi.mock("../HeaderConversationMenu", () => ({
   },
 }));
 
-// State stores accessed via zustand — stub them since they're not under test.
-vi.mock("@/state/theme", () => ({
+// Stub Zustand stores — selector-style API matching the real ones.
+vi.mock("../../state/theme", () => ({
   useThemeStore: (selector: (s: { theme: string; set: (t: string) => void }) => unknown) =>
     selector({ theme: "dark", set: () => undefined }),
 }));
-vi.mock("@/state/command-palette", () => ({
+vi.mock("../../state/command-palette", () => ({
   useCommandPaletteStore: (
     selector: (s: { toggle: () => void }) => unknown,
   ) => selector({ toggle: () => undefined }),
 }));
 
-const { Header } = await import("../Header");
+// Radix DropdownMenu uses portals + pointer-capture APIs jsdom does not ship.
+// The Header renders the settings dropdown unconditionally — stub the primitives
+// so the test focuses on the conditional mount, not on Radix integration.
+vi.mock("../../components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({
+    children,
+    asChild,
+  }: { children: ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <button type="button">{children}</button>,
+  DropdownMenuContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenuSeparator: () => <hr />,
+  DropdownMenuCheckboxItem: ({
+    children,
+    checked,
+    onCheckedChange,
+  }: {
+    children: ReactNode;
+    checked?: boolean;
+    onCheckedChange?: (v: boolean) => void;
+  }) => (
+    <div
+      role="menuitemcheckbox"
+      aria-checked={checked ? "true" : "false"}
+      onClick={() => onCheckedChange?.(!checked)}
+    >
+      {children}
+    </div>
+  ),
+}));
+
+// ---- SUT (imported after mocks) -----------------------------------------
+import { Header } from "../Header";
+
+// ---- harness -------------------------------------------------------------
+
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
 
 afterEach(() => {
-  cleanup();
+  act(() => root.unmount());
+  container.remove();
   useLocationMock.mockReset();
   hcmPropsSpy.mockReset();
 });
 
+function render(el: ReactElement): void {
+  act(() => root.render(el));
+}
+
+// ---- tests ---------------------------------------------------------------
+
 describe("Header — ConversationMenu conditional mount (TC-02)", () => {
   it("does NOT render ConversationMenu on a non-chat route", () => {
     useLocationMock.mockReturnValue({ pathname: "/graph", search: {} });
-    const { queryByTestId } = render(<Header />);
-    expect(queryByTestId("hcm")).toBeNull();
+    render(<Header />);
+    expect(container.querySelector("[data-testid='hcm']")).toBeNull();
     expect(hcmPropsSpy).not.toHaveBeenCalled();
   });
 
   it("renders ConversationMenu on `/chat` with undefined active id when no search param", () => {
     useLocationMock.mockReturnValue({ pathname: "/chat", search: {} });
-    const { getByTestId } = render(<Header />);
-    expect(getByTestId("hcm")).toBeTruthy();
-    expect(hcmPropsSpy).toHaveBeenCalledTimes(1);
+    render(<Header />);
+    expect(container.querySelector("[data-testid='hcm']")).not.toBeNull();
+    expect(hcmPropsSpy).toHaveBeenCalled();
     expect(hcmPropsSpy.mock.calls[0]?.[0].activeConversationId).toBeUndefined();
   });
 
@@ -95,8 +150,10 @@ describe("Header — ConversationMenu conditional mount (TC-02)", () => {
       pathname: "/chat",
       search: { conversation: "conv-42" },
     });
-    const { getByTestId } = render(<Header />);
-    expect(getByTestId("hcm").getAttribute("data-active-id")).toBe("conv-42");
+    render(<Header />);
+    expect(
+      container.querySelector("[data-testid='hcm']")?.getAttribute("data-active-id"),
+    ).toBe("conv-42");
     expect(hcmPropsSpy.mock.calls[0]?.[0].activeConversationId).toBe("conv-42");
   });
 
@@ -114,7 +171,14 @@ describe("Header — ConversationMenu conditional mount (TC-02)", () => {
       pathname: "/chat/foo",
       search: {},
     });
-    const { getByTestId } = render(<Header />);
-    expect(getByTestId("hcm")).toBeTruthy();
+    render(<Header />);
+    expect(container.querySelector("[data-testid='hcm']")).not.toBeNull();
+  });
+
+  it("keeps the primary NAV tabs visible on /chat (no regression to existing Header structure)", () => {
+    useLocationMock.mockReturnValue({ pathname: "/chat", search: {} });
+    render(<Header />);
+    // 5 areas per NAV in Header.tsx
+    expect(container.querySelectorAll("nav a").length).toBe(5);
   });
 });
