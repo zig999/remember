@@ -34,6 +34,7 @@ import type {
   ChatRunInput,
   ChatRunStats,
   DoneStopReason,
+  ErrorSyntheticStopReason,
 } from "./types.js";
 import type { ResolvedChatToolCatalog } from "./tool-catalog.js";
 import { buildArgsSummary } from "./args-summary.js";
@@ -293,12 +294,26 @@ async function* runTurnGenerator(
   // into the model.
   //
   // BR-22: tool_choice is unconditional `auto` + parallel tool use disabled.
+  //
+  // v2 (BR-31): `input.messages` are already Anthropic-shaped MessageParams
+  // produced by the context-builder — the loop no longer reshapes them.
   const inLoopHistory: Anthropic.Messages.MessageParam[] = ctx.input.messages.map(
     (m) => ({
       role: m.role,
       content: m.content,
     })
   );
+
+  // v2 (chat.back.md §1.2 / BR-29 / BR-32 persistence payload): accumulate
+  // assistant content blocks across iterations. The terminal `done` / `error`
+  // event carries this array so the route handler can persist the assistant
+  // chat_message row (BR-29 step 8). We append:
+  //   - `{ type: "text", text: <delta> }` for each filtered text_delta (BR-08).
+  //   - The raw `tool_use` block emitted by Anthropic on each iteration so
+  //     the persisted assistant row reproduces the agentic conversation faithfully.
+  // The accumulator captures ONLY what the model emitted (post-guard) — never
+  // the raw upstream string of an SDK error.
+  const contentBlocks: unknown[] = [];
 
   // The "currently active" stream — used by the abort handler to call
   // `stream.abort()` so the SDK tears down its socket promptly.
@@ -333,7 +348,8 @@ async function* runTurnGenerator(
           "max_iterations",
           lastModel,
           turnTimer,
-          externalAbortListener
+          externalAbortListener,
+          contentBlocks
         );
         return;
       }
@@ -349,7 +365,8 @@ async function* runTurnGenerator(
           stopReason,
           lastModel,
           turnTimer,
-          externalAbortListener
+          externalAbortListener,
+          contentBlocks
         );
         return;
       }
@@ -361,9 +378,12 @@ async function* runTurnGenerator(
       // Open the Anthropic stream + subscribe to text deltas. We collect
       // deltas into a queue (`deltaQueue`) and yield them as the generator
       // is pulled. Errors and ends are signalled via `streamSettled`.
+      //
+      // v2 (chat.back.md §1.2): `system` comes from the route's context-builder
+      // (ctx.input.system) — the service no longer assembles the prompt itself.
       const stream = ctx.client.messages.stream({
         model: ctx.input.model,
-        system: ctx.promptModule.system(),
+        system: ctx.input.system,
         max_tokens: MAX_TOKENS_PER_ITERATION,
         tools: ctx.tools as Anthropic.Messages.Tool[],
         tool_choice: { type: "auto", disable_parallel_tool_use: true },
@@ -421,6 +441,10 @@ async function* runTurnGenerator(
         }
         const item = queue.shift()!;
         if (item.kind === "delta") {
+          // v2 (BR-29): accumulate the filtered delta as a `text` block on the
+          // assistant content blocks array. The persisted assistant row keeps
+          // the same shape Anthropic itself returns.
+          contentBlocks.push({ type: "text", text: item.delta });
           yield { type: "text_delta", delta: item.delta } as const;
         } else if (item.kind === "end") {
           streamEnded = true;
@@ -456,7 +480,8 @@ async function* runTurnGenerator(
             stopReason,
             lastModel,
             turnTimer,
-            externalAbortListener
+            externalAbortListener,
+            contentBlocks
           );
           return;
         }
@@ -475,7 +500,8 @@ async function* runTurnGenerator(
           "chat provider is temporarily unavailable",
           turnTimer,
           externalAbortListener,
-          "provider_error"
+          "provider_error",
+          contentBlocks
         );
         return;
       }
@@ -488,7 +514,8 @@ async function* runTurnGenerator(
           "chat stream produced no final message",
           turnTimer,
           externalAbortListener,
-          "internal_error"
+          "internal_error",
+          contentBlocks
         );
         return;
       }
@@ -516,6 +543,12 @@ async function* runTurnGenerator(
         // most 1; we still iterate to be safe.
         const toolResultBlocks: Anthropic.Messages.ToolResultBlockParam[] = [];
         for (const block of toolUseBlocks) {
+          // v2 (BR-29): the assistant tool_use block is part of the assistant
+          // content blocks fed back on the next iteration. Persist it as-is
+          // so the chat_message row can be re-replayed against Anthropic if
+          // the conversation is resumed in the future.
+          contentBlocks.push(block);
+
           const toolName = block.name;
           // BR-09: redacted args summary.
           const argsSummary = buildArgsSummary(toolName, block.input);
@@ -526,6 +559,10 @@ async function* runTurnGenerator(
           } as const;
           ctx.accumulator.addTool(toolName);
           ctx.publishStats(ctx.accumulator.snapshot());
+
+          // v2 (BR-32): wall-clock for the tool call. Persisted on the
+          // chat_tool_call row by the route handler.
+          const toolStartedAt = ctx.now();
 
           // BR-10: defensive guard for unknown tool name.
           const tool = ctx.catalog[toolName];
@@ -548,10 +585,26 @@ async function* runTurnGenerator(
             );
           }
 
+          // v2 (BR-32 persistence payload): the FULL envelope (untruncated)
+          // is exposed on the ChatEvent so the route handler can persist it.
+          // The SSE wire frame is a projection of this — the route drops the
+          // persistence-only fields before serialising (BR-09).
+          const durationMs = ctx.now() - toolStartedAt;
+          const isError = !toolEnvelope.ok;
+          const errMsg =
+            toolEnvelope.error?.message !== undefined &&
+            typeof toolEnvelope.error.message === "string"
+              ? toolEnvelope.error.message
+              : null;
           yield {
             type: "tool_result",
             tool: toolName,
             ok: toolEnvelope.ok,
+            arguments: block.input,
+            result: toolEnvelope.ok ? (toolEnvelope.result ?? null) : null,
+            is_error: isError,
+            error_message: errMsg,
+            duration_ms: durationMs,
           } as const;
 
           // BR-13: truncate the JSON-serialised body before feeding back.
@@ -586,7 +639,8 @@ async function* runTurnGenerator(
         mappedStop,
         lastModel,
         turnTimer,
-        externalAbortListener
+        externalAbortListener,
+        contentBlocks
       );
       return;
     }
@@ -606,7 +660,8 @@ async function* runTurnGenerator(
       "chat encountered an internal error",
       turnTimer,
       externalAbortListener,
-      "internal_error"
+      "internal_error",
+      contentBlocks
     );
     return;
   } finally {
@@ -633,7 +688,8 @@ async function* terminate(
   stopReason: DoneStopReason,
   model: string,
   turnTimer: NodeJS.Timeout,
-  externalAbortListener: () => void
+  externalAbortListener: () => void,
+  contentBlocks: readonly unknown[]
 ): AsyncGenerator<ChatEvent, void, void> {
   clearTimeout(turnTimer);
   ctx.input.abortSignal.removeEventListener("abort", externalAbortListener);
@@ -646,6 +702,8 @@ async function* terminate(
     model,
     tokens_in: snapshot.tokens_in,
     tokens_out: snapshot.tokens_out,
+    // v2 (BR-29): the route handler persists this on the assistant chat_message row.
+    content: contentBlocks.slice(),
   } as const;
 }
 
@@ -655,13 +713,25 @@ async function* terminateError(
   message: string,
   turnTimer: NodeJS.Timeout,
   externalAbortListener: () => void,
-  statsStopReason: "provider_error" | "internal_error"
+  syntheticStopReason: ErrorSyntheticStopReason,
+  contentBlocks: readonly unknown[]
 ): AsyncGenerator<ChatEvent, void, void> {
   clearTimeout(turnTimer);
   ctx.input.abortSignal.removeEventListener("abort", externalAbortListener);
-  ctx.accumulator.finalize(statsStopReason);
+  ctx.accumulator.finalize(syntheticStopReason);
   ctx.publishStats(ctx.accumulator.snapshot());
-  yield { type: "error", code, message } as const;
+  const snapshot = ctx.accumulator.snapshot();
+  yield {
+    type: "error",
+    code,
+    message,
+    // v2 (BR-29 error path): the route handler persists the partial content + the
+    // synthetic stop_reason on the assistant chat_message row.
+    content: contentBlocks.slice(),
+    tokens_in: snapshot.tokens_in,
+    tokens_out: snapshot.tokens_out,
+    synthetic_stop_reason: syntheticStopReason,
+  } as const;
 }
 
 // ---------------------------------------------------------------------------

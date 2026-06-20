@@ -272,7 +272,13 @@ function buildInput(overrides: Partial<Parameters<ReturnType<typeof createChatAg
   return {
     abortController: ctrl,
     input: {
-      messages: [{ role: "user" as const, content: "hello" }],
+      // v2 (chat.back.md §1.2): the loop consumes Anthropic-typed messages +
+      // a `system` string. The context builder owns the assembly; the unit
+      // test bypasses it by passing fixtures here directly.
+      system: "test-system-prompt",
+      messages: [
+        { role: "user" as const, content: "hello" },
+      ],
       model: "claude-opus-4-8",
       abortSignal: ctrl.signal,
       ...overrides,
@@ -319,12 +325,19 @@ describe("chat-agent.service.runTurn", () => {
       { type: "text_delta", delta: "Olá" },
       { type: "text_delta", delta: ", mundo" },
     ]);
+    // v2 (BR-29): the `done` event carries the assistant content blocks for
+    // the post-stream persistence step. UC-01 produces two text deltas, so
+    // the accumulator holds two text blocks.
     expect(events[events.length - 1]).toEqual({
       type: "done",
       stop_reason: "end_turn",
       model: "claude-opus-4-8",
       tokens_in: 5,
       tokens_out: 3,
+      content: [
+        { type: "text", text: "Olá" },
+        { type: "text", text: ", mundo" },
+      ],
     });
     // BR-24: exactly one terminal frame.
     expect(events.filter((e) => e.type === "done" || e.type === "error")).toHaveLength(1);

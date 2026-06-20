@@ -237,17 +237,23 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // /api/v1/search and /api/v1/provenance/* as siblings of /api/v1/nodes.
       await registerQueryRetrievalRoutes(scoped, { pool, logger, catalog });
 
-      // Chat module (chat.back.md TC-04) — POST /api/v1/chat. The handler
-      // consumes the SAME in-process `McpServer` registry the query/curation
-      // transports above resolved their tools from — the `query`-toolset is
-      // populated by `registerQueryToolset` + `registerQueryRetrievalToolset`
-      // BELOW (outside the scope block). The chat registrar performs the
-      // lazy catalog resolution on its OWN clock via `buildChatToolCatalog`
-      // (BR-05): when ALL 13 read-only tool names are present, the route is
-      // mounted; otherwise the registrar logs a single ERROR with the diff
-      // and SKIPS mounting (the scope returns its default 404). Auth is
-      // inherited from the scope-level `requireNeonAuth` preHandler.
-      await registerChatRoutes(scoped, { mcp, logger, env });
+      // Chat module (chat.back.md v2.0.0) — 9 stateful conversation endpoints
+      // mounted at /api/v1/conversations/*. The v1 stateless POST /api/v1/chat
+      // is REMOVED — clients migrate to POST /api/v1/conversations/:id/messages
+      // (BR-29). The handler consumes the SAME in-process `McpServer` registry
+      // the query/curation transports above resolved their tools from — the
+      // `query`-toolset is populated by `registerQueryToolset` +
+      // `registerQueryRetrievalToolset` BELOW (outside the scope block). The
+      // chat-agent service is built LAZILY on the first sendMessage request
+      // (BR-05). The other 8 endpoints only touch the DB and ignore the
+      // catalog. Auth is inherited from the scope-level `requireNeonAuth`
+      // preHandler.
+      await scoped.register(
+        async (convScope) => {
+          await registerChatRoutes(convScope, { mcp, logger, env, pool });
+        },
+        { prefix: "/conversations" }
+      );
     }
   }, { prefix: "/api/v1" });
 

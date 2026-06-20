@@ -17,6 +17,7 @@
 // into the chat surface — that lives behind the factory's return type and is
 // the orchestrator's concern, not the type signature exported here.
 
+import type Anthropic from "@anthropic-ai/sdk";
 import type { Logger } from "pino";
 
 import type { McpServer } from "../../../mcp/server.js";
@@ -44,20 +45,58 @@ export type DoneStopReason =
   | "turn_timeout"
   | "cancelled";
 
-/** Discriminated union — every event the agentic loop may emit. */
+/**
+ * Synthetic stop_reason persisted on the assistant row when the SSE
+ * terminated with an `error` frame (chat.back.md §10 / BR-29). Never appears
+ * as a `done.stop_reason` — only on the persisted `chat_message.stop_reason`.
+ */
+export type ErrorSyntheticStopReason = "provider_error" | "internal_error";
+
+/**
+ * Discriminated union — every event the agentic loop may emit.
+ *
+ * v2 (chat.back.md §1.2): the `tool_result`, `done`, and `error` variants
+ * carry the persistence payload (BR-29 / BR-32). The route handler uses
+ * those extra fields to write `chat_tool_call` rows (BR-32) and the
+ * post-stream `chat_message` assistant row (BR-29). The SSE wire frame is a
+ * PROJECTION of these variants — the route handler explicitly drops the
+ * persistence-only fields before serialising (BR-09).
+ */
 export type ChatEvent =
   | { readonly type: "llm_start"; readonly iteration: number }
   | { readonly type: "text_delta"; readonly delta: string }
   | { readonly type: "tool_start"; readonly tool: string; readonly args_summary: string }
-  | { readonly type: "tool_result"; readonly tool: string; readonly ok: boolean }
+  | {
+      readonly type: "tool_result";
+      readonly tool: string;
+      readonly ok: boolean;
+      // v2 additions (BR-32 persistence payload). NOT sent on the SSE wire —
+      // the route handler projects to `{tool, ok}` before framing.
+      readonly arguments: unknown;
+      readonly result: unknown | null;
+      readonly is_error: boolean;
+      readonly error_message: string | null;
+      readonly duration_ms: number;
+    }
   | {
       readonly type: "done";
       readonly stop_reason: DoneStopReason;
       readonly model: string;
       readonly tokens_in: number;
       readonly tokens_out: number;
+      // v2 addition (BR-29 assistant-row payload). NOT sent on the SSE wire.
+      readonly content: ReadonlyArray<unknown>;
     }
-  | { readonly type: "error"; readonly code: string; readonly message: string };
+  | {
+      readonly type: "error";
+      readonly code: string;
+      readonly message: string;
+      // v2 additions (BR-29 error-path assistant row). NOT sent on the SSE wire.
+      readonly content: ReadonlyArray<unknown>;
+      readonly tokens_in: number;
+      readonly tokens_out: number;
+      readonly synthetic_stop_reason: ErrorSyntheticStopReason;
+    };
 
 // ---------------------------------------------------------------------------
 // ChatRunStats — observability payload aggregated across iterations; consumed
@@ -74,21 +113,23 @@ export interface ChatRunStats {
 }
 
 // ---------------------------------------------------------------------------
-// ChatRunInput — what the route handler hands to the agentic loop. The model
-// has already been resolved (request override OR `env.CHAT_MODEL`) and the
-// AbortSignal has already been wired to `req.raw.on('close')` (BR-12).
+// ChatRunInput — what the route handler hands to the agentic loop.
+//
+// v2 (chat.back.md §1.2): the route handler builds `system` + `messages` via
+// `context-builder.buildModelContext` (BR-31) BEFORE handing them over. The
+// loop is therefore decoupled from the prompt registry — it consumes whatever
+// the context builder produced. The legacy `ChatMessage` shape (`{role,
+// content: string}`) is GONE; the loop only sees Anthropic-typed messages.
 // ---------------------------------------------------------------------------
 
-export interface ChatMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string;
-}
-
 export interface ChatRunInput {
-  readonly messages: ReadonlyArray<ChatMessage>;
+  /** From `context-builder.buildModelContext().system`. */
+  readonly system: string;
+  /** From `context-builder.buildModelContext().messages`. */
+  readonly messages: ReadonlyArray<Anthropic.Messages.MessageParam>;
   /** Resolved Anthropic model id (override OR `env.CHAT_MODEL`). */
   readonly model: string;
-  /** Bound to `req.raw.on('close')` in the route handler (BR-12). */
+  /** Bound to `req.raw.on('close')` AND to `cancelTurn` (BR-12, BR-38). */
   readonly abortSignal: AbortSignal;
 }
 
