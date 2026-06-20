@@ -372,6 +372,66 @@ export function checkIn(reducedMotion: boolean): Variants {
   };
 }
 
+/**
+ * CRT power-on entrance (sign-in.feature.spec.md §2 UI-01, login-screen-plan §5).
+ *
+ * Four-phase "ligar TV antiga" entrance for the SignInPanel — the panel is born
+ * as a point, becomes a thin horizontal line, then "opens" vertically into the
+ * full panel; the inner content (heading, fields, button) stagger-reveals on
+ * top (Phase 4 handled by `staggerContainer` + `listItem` on inner content).
+ *
+ *   Phase 1 — Ignition  (~0–45% of 0.54s = ~243ms): point  (scaleX/Y 0.02, opacity 0.7)
+ *   Phase 2 — H-sweep   (~45% of 0.54s):            horizontal line (scaleX 1, scaleY 0.02)
+ *   Phase 3 — V-open    (~45–100%):                 full panel (scaleX/Y 1, opacity 1)
+ *
+ * Implementation notes:
+ *  - Animates ONLY transform (scaleX, scaleY) + opacity — tokens.md §11.3 cap
+ *    (max 2 properties at a time; scaleX+scaleY are a single transform).
+ *  - `transform-origin: center` is the CSS default — the consumer (SignInPanel)
+ *    does not need to override it.
+ *  - Total visible duration: 0.54s = durationEntrance (0.5s) + ~40ms tail, hand-
+ *    picked because the canonical entrance token is 500ms and the CRT needs a
+ *    little extra room for the H-sweep → V-open transition to read.
+ *  - `easeOutExpo` is the "snap" curve the project already uses for entrances.
+ *
+ * Reduced-motion contract (WCAG 2.2 AA, front.md §9.1, BR-10):
+ *  - When `reducedMotion === true`, Phases 1–3 are SKIPPED entirely. The panel
+ *    appears via a 200ms opacity fade only — no scale, no transform. This is
+ *    the WCAG 2.2 AA gate; the visual state change (hidden → visible) remains
+ *    legible without any motion that could trigger vestibular disorders.
+ *  - The fade uses `durationFast` (200ms) + `easeOut` — same shape as
+ *    `transitionGlassPanel` reduced-motion fallback for consistency.
+ */
+export function transitionCrtPowerOn(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      hidden: { opacity: 0 },
+      visible: {
+        opacity: 1,
+        transition: {
+          duration: VAR.durationFast,
+          ease: VAR.easeOut,
+        },
+      },
+    };
+  }
+  return {
+    hidden: { opacity: 0.7, scaleX: 0.02, scaleY: 0.02 },
+    visible: {
+      opacity: 1,
+      // Keyframe arrays: phase boundaries at 0% (ignition point), 45%
+      // (horizontal line — scaleX=1, scaleY still 0.02), 100% (full panel).
+      scaleX: [0.02, 1, 1],
+      scaleY: [0.02, 0.02, 1],
+      transition: {
+        duration: 0.54,
+        times: [0, 0.45, 1],
+        ease: VAR.easeOutExpo,
+      },
+    },
+  };
+}
+
 /** Dropdown / popover enter/exit (scale from the trigger edge + fade). */
 export function transitionPopover(reducedMotion: boolean): Variants {
   if (reducedMotion) {
@@ -445,6 +505,7 @@ export const motion = {
     "stagger-container": staggerContainer,
     "list-item": listItem,
     message: messageReveal,
+    "crt-power-on": transitionCrtPowerOn,
   },
   feedback: {
     "count-pulse": countPulse,
