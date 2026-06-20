@@ -1,90 +1,298 @@
 openapi: "3.0.3"
 info:
-  title: "Remember - Chat (LLM agentic loop) API"
-  version: "1.0.0"
+  title: "Remember - Chat (stateful conversations) API"
+  version: "2.0.0"
   description: |
-    Streaming chat endpoint for the SPA. The Owner (single-owner, ADR A20) sends a
-    chat history and the BFF drives an agentic Anthropic tool-use loop whose tools
-    are the 13 read-only `query` toolset entries already exposed by `query-retrieval`
-    and `knowledge-graph` (search, get_provenance_*, get_node, traverse, get_history_*,
-    list_*). Tokens are streamed back to the SPA as Server-Sent Events.
+    Stateful conversational entry point into the knowledge graph. The Owner
+    (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
+    per turn. The BFF drives an agentic Anthropic tool-use loop whose tools are
+    the 13 read-only `query`-toolset entries already exposed by `query-retrieval`
+    and `knowledge-graph`. The BFF persists every user/assistant message and
+    reconstructs the model context from the database (recent window + rolling
+    summary) — the client never resends the conversation history.
 
-    NORMATIVE DEVIATION: this domain is an ADDITIVE deviation from `remember-modelagem-v7.md`
-    (which does NOT specify a chat surface). The deviation is registered in `chat.spec.md` §1
-    and `back/chat.back.md` §1 for future reconciliation. The inegociable rule of v7 §2 holds:
-    the LLM never reaches the database directly - it only calls the tools served by the BFF,
-    each of which opens its own `BEGIN READ ONLY` transaction.
+    NORMATIVE DEVIATION: this domain is an ADDITIVE deviation from
+    `remember-modelagem-v7.md` (which does NOT specify a chat surface). Registered
+    in `chat.spec.md` §1 and `back/chat.back.md` §1. The inegociable rule of v7
+    §2 holds: the LLM never reaches the database directly — each tool keeps its
+    own `BEGIN READ ONLY` transaction.
 
-    Scope (v1, STATELESS):
-      - Single endpoint `POST /api/v1/chat`.
-      - Request body: chat history (1..40 messages, first message MUST be `user`) + optional `model`.
-      - Tools: READ-ONLY only - the 13 tools of the `query` toolset, resolved lazily on first
-        request via `mcp.getTool('query', name)` against the in-process `McpServer` registry.
-      - Streaming via SSE (`text/event-stream`). Event types: `llm_start`, `text_delta`,
-        `tool_start`, `tool_result`, `done`, `error`.
-      - Edge errors raised BEFORE the stream opens (body validation, kill-switch) use the
-        standard REST envelope `{ ok: false, error: { code, message, details? } }` with HTTP
-        status. Errors discovered AFTER the stream opens are emitted as `event: error` frames
-        on the SSE stream and the stream then closes.
+    ## Scope (v2, STATEFUL — supersedes the v1 stateless `POST /api/v1/chat`)
 
-    Out of scope (v1 - phase 2):
-      - Conversation persistence (`chat_conversation` / `chat_message` tables, no migration).
-      - Idempotency by header, cost accounting, title/summary jobs.
-      - Write or curation tools (the agentic loop is read-only).
+    Conversation CRUD:
+      - `POST /api/v1/conversations`                          (create)
+      - `GET  /api/v1/conversations`                          (list, cursor pagination, include_archived)
+      - `GET  /api/v1/conversations/{id}`                     (read one)
+      - `PATCH /api/v1/conversations/{id}`                    (title / archived_at)
+      - `DELETE /api/v1/conversations/{id}`                   (cascade delete; chat tables are OUTSIDE v7 §11 compliance flow)
+
+    Nested turn (SSE) and message reads:
+      - `POST /api/v1/conversations/{id}/messages`            (TURN — SSE; body `{content, model?}`; header `Idempotency-Key` UUID REQUIRED; replaces the v1 `POST /api/v1/chat`)
+      - `GET  /api/v1/conversations/{id}/messages`            (paginated, chronological)
+      - `GET  /api/v1/conversations/{id}/usage`               (token + tool-call aggregates)
+      - `POST /api/v1/conversations/{id}/cancel`              (cooperative cancel of in-flight turn)
+
+    ## Pre-stream vs in-stream errors
+
+    Edge errors raised BEFORE the SSE opens (body validation, kill-switch,
+    conversation-not-found, archived, idempotency mismatch, turn-in-progress)
+    use the standard REST envelope `{ ok: false, error: { code, message,
+    details? } }` with an HTTP status. Errors discovered AFTER the SSE opens
+    are emitted as `event: error` frames on the SSE stream and the stream then
+    closes.
+
+    ## Idempotency
+
+    `POST /api/v1/conversations/{id}/messages` REQUIRES the header
+    `Idempotency-Key` (RFC 4122 UUID). Two semantics:
+      - Identical key + identical `(content, model)` -> idempotent replay: the
+        BFF re-opens an SSE that replays the previously persisted assistant
+        message; no Anthropic call is made.
+      - Identical key + different `(content, model)` -> 409
+        `BUSINESS_IDEMPOTENCY_MISMATCH`.
+
+    ## Out of scope (v2 — see chat.spec.md §8)
+
+    `cost_usd` / citations; `guardrail_events`; `pending_confirmations` and the
+    write-tool confirmation flow; embeddings-based retrieval; frontend; multi-
+    instance BFF coordination of in-flight turns.
 
 servers:
   - url: "http://localhost:3000"
     description: "Local development BFF"
 
 tags:
-  - name: "Chat"
+  - name: "Conversations"
+    description: "CRUD over the `Conversation` aggregate (single-owner — no user_id column)."
+  - name: "Messages"
     description: |
-      Agentic LLM chat over the read-only `query` toolset, streamed via SSE.
+      Nested resource on a conversation. The `POST` endpoint drives one agentic
+      chat turn and streams tokens back as SSE. The `GET` endpoint lists
+      persisted messages in chronological order.
+  - name: "Conversation Operations"
+    description: |
+      Read-side aggregates and cooperative cancellation for an in-flight turn.
 
 security:
   - bearerAuth: []
 
 paths:
 
-  /api/v1/chat:
+  # =========================================================================
+  # Conversation CRUD
+  # =========================================================================
+  /api/v1/conversations:
     post:
-      tags: ["Chat"]
-      operationId: chatTurn
-      summary: Drive one agentic chat turn and stream tokens back as SSE.
+      tags: ["Conversations"]
+      operationId: createConversation
+      summary: Create a new conversation.
       description: |
-        Opens a Server-Sent Events stream (`text/event-stream`) and runs an Anthropic
-        agentic tool-use loop server-side. The loop alternates between `messages.stream()`
-        calls and read-only tool invocations from the `query` toolset until the model emits
-        a non-`tool_use` stop reason or until one of the sanity ceilings is reached
-        (`maxIterations`, `turnTimeoutMs`).
+        Creates a new `Conversation` row. The Owner is implicit (single-owner —
+        no `user_id` is sent or stored). Body is optional; when omitted, the
+        conversation is created with `title = NULL` and `summary_rolling = NULL`.
+        A title may be set now or later via `updateConversation`; if left NULL
+        and `CHAT_TITLE_ENABLED=true`, a non-blocking title-distillation job
+        will set it after the first assistant turn (chat.spec.md BR-34).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateConversationRequest" }
+            examples:
+              empty:
+                summary: "No title — server distills one after the first turn"
+                value: {}
+              withTitle:
+                summary: "Explicit title"
+                value: { title: "Reuniao Apollo" }
+      responses:
+        "201":
+          description: "Conversation created."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationResponse" }
+              examples:
+                created:
+                  value:
+                    ok: true
+                    result:
+                      id: "11111111-1111-1111-1111-111111111111"
+                      title: "Reuniao Apollo"
+                      archived_at: null
+                      summary_rolling: null
+                      created_at: "2026-06-20T12:00:00Z"
+                      updated_at: "2026-06-20T12:00:00Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+    get:
+      tags: ["Conversations"]
+      operationId: listConversations
+      summary: List conversations (cursor-paginated, newest first).
+      description: |
+        Returns one page of conversations ordered by `(created_at DESC, id DESC)`.
+        `archived_at IS NOT NULL` rows are excluded unless `include_archived=true`
+        (chat.spec.md BR-35).
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: "Page size. Default 20, max 100."
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+          description: |
+            Opaque cursor returned as `next_cursor` from the previous page.
+            Encodes the `(created_at, id)` pair of the previous page's last item.
+        - in: query
+          name: include_archived
+          required: false
+          schema: { type: boolean, default: false }
+          description: "When true, archived conversations are included in the result."
+      responses:
+        "200":
+          description: "One page of conversations."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationListResponse" }
+              examples:
+                firstPage:
+                  value:
+                    ok: true
+                    result:
+                      items:
+                        - id: "11111111-1111-1111-1111-111111111111"
+                          title: "Reuniao Apollo"
+                          archived_at: null
+                          summary_rolling: null
+                          created_at: "2026-06-20T12:00:00Z"
+                          updated_at: "2026-06-20T12:00:00Z"
+                      next_cursor: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+  /api/v1/conversations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: ["Conversations"]
+      operationId: getConversation
+      summary: Read one conversation by id.
+      description: |
+        Returns the `Conversation` row for the given `:id`. Returns 404 when the
+        conversation does not exist. Archived conversations are returned normally
+        (BR-25 restricts WRITES only; reads are unconditional).
+      responses:
+        "200":
+          description: "Conversation loaded."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+    patch:
+      tags: ["Conversations"]
+      operationId: updateConversation
+      summary: Update a conversation's title and/or archive flag.
+      description: |
+        Accepts a partial body with `title?: string|null` and/or
+        `archived_at?: string|null`. At least one MUST be present
+        (chat.spec.md BR-36). `archived_at = null` un-archives the conversation;
+        `archived_at = <iso8601>` archives it. While archived, writes
+        (`sendMessage`, `cancelTurn`) are refused with 409
+        `BUSINESS_CONVERSATION_ARCHIVED` (BR-25).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateConversationRequest" }
+            examples:
+              setTitle:
+                value: { title: "Apollo retro" }
+              archive:
+                value: { archived_at: "2026-06-20T12:00:00Z" }
+              unarchive:
+                value: { archived_at: null }
+              clearTitle:
+                value: { title: null }
+      responses:
+        "200":
+          description: "Updated conversation."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+    delete:
+      tags: ["Conversations"]
+      operationId: deleteConversation
+      summary: Delete a conversation (cascade).
+      description: |
+        Permanently removes the conversation and all of its messages + tool calls
+        via `ON DELETE CASCADE` (chat.spec.md BR-37). Chat tables are OUTSIDE
+        the v7 §11 compliance flow (no tombstone, no `compliance_delete`).
+      responses:
+        "204":
+          description: "Deleted. No body."
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+  # =========================================================================
+  # Nested resource — messages (turn SSE + paginated read)
+  # =========================================================================
+  /api/v1/conversations/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: ["Messages"]
+      operationId: sendMessage
+      summary: Send a user message and stream the assistant turn as SSE.
+      description: |
+        Drives one agentic chat turn on this conversation and streams tokens back
+        as Server-Sent Events. Persistence sequencing (chat.spec.md BR-29):
+
+          1. The BFF inserts the user `chat_message` row BEFORE writing the SSE
+             headers. The question is therefore durable even if the SSE never
+             opens or crashes mid-flight.
+          2. The agentic loop runs server-side; tokens stream over SSE; tool
+             calls are persisted to `chat_tool_call` as they execute (BR-32).
+          3. After the terminal SSE frame is written, the BFF inserts the
+             assistant `chat_message` row with the resolved `stop_reason`,
+             token counts, latency, and the streamed content blocks.
+
+        The client supplies ONLY the new user `content`. The server reconstructs
+        the model context from the database on every turn (BR-31): system prompt
+        + (optional) `summary_rolling` block + the last `CHAT_RECENT_WINDOW`
+        messages. The client MUST NOT resend the history.
+
+        ## Idempotency-Key (REQUIRED, BR-26)
+
+        The header `Idempotency-Key` is mandatory. Value MUST be a valid RFC
+        4122 UUID.
+          - Identical key + identical `(content, model)` -> idempotent replay:
+            the BFF returns a one-shot SSE that replays the previously persisted
+            assistant message (`llm_start{1}` + `text_delta(<full stored text>)`
+            + `done{...stored...}`). No Anthropic call is made (chat.spec.md
+            BR-27, UC-07).
+          - Identical key + different `(content, model)` -> 409
+            `BUSINESS_IDEMPOTENCY_MISMATCH`.
+          - Missing header -> 422 `VALIDATION_REQUIRED_FIELD`.
+          - Non-UUID value -> 422 `VALIDATION_INVALID_FORMAT`.
 
         ## Streaming contract
 
-        Each SSE frame uses a named `event:` line and a `data:` line carrying a single JSON
-        object. One event per line, no batching:
-
-        ```
-        event: llm_start
-        data: {"iteration": 1}
-
-        event: text_delta
-        data: {"delta": "Olá, "}
-
-        event: tool_start
-        data: {"tool": "search", "args_summary": "query=\"reuniao apollo\""}
-
-        event: tool_result
-        data: {"tool": "search", "ok": true}
-
-        event: done
-        data: {"stop_reason": "end_turn", "model": "claude-opus-4-8", "tokens_in": 1234, "tokens_out": 567}
-        ```
-
-        Frame schemas (JSON parsed from each `data:` line):
+        SSE frame schemas (identical to v1; see `chat.spec.md` §5.2):
           - `llm_start`     -> { iteration: int >= 1 }
           - `text_delta`    -> { delta: string (>= 1 char) }
-          - `tool_start`    -> { tool: string (one of the 13 read-only tool names),
-                                 args_summary: string (short, redacted; never includes raw `value`/`text` columns) }
+          - `tool_start`    -> { tool: string (one of the 13), args_summary: string (<= 200 chars, redacted) }
           - `tool_result`   -> { tool: string, ok: boolean }
           - `done`          -> { stop_reason: "end_turn" | "max_tokens" | "stop_sequence"
                                               | "max_iterations" | "turn_timeout"
@@ -92,98 +300,90 @@ paths:
                                  model: string,
                                  tokens_in: int >= 0,
                                  tokens_out: int >= 0 }
-          - `error`         -> { code: string (namespaced error code),
-                                 message: string }
+          - `error`         -> { code: string, message: string }
 
         Frame ordering invariants:
           1. At least one `llm_start` (iteration = 1) before any `text_delta` or `tool_start`.
           2. Every `tool_start` is followed by exactly one `tool_result` for the same `tool`.
-          3. The stream ALWAYS terminates with EITHER one `done` frame OR one `error` frame,
-             then closes. There is no other final frame.
+          3. The stream ALWAYS terminates with EITHER one `done` frame OR one
+             `error` frame, then closes. There is no other final frame
+             (chat.spec.md BR-24).
           4. After `error`, no further frames are emitted.
 
         ## Pre-stream errors (no SSE opened yet)
 
-        Errors raised before the `200 OK` response line are returned with the regular REST
-        envelope `{ ok: false, error: { code, message, details? } }` and an HTTP status:
-          - 422 `VALIDATION_INVALID_FORMAT` when the body fails Zod parsing (empty `messages`,
-            more than 40 messages, first message is not `user`, role outside `user|assistant`,
-            `content` not a string, `model` not a string).
-          - 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_EXPIRED` / `AUTH_TOKEN_INVALID` from the
-            `requireNeonAuth` `preHandler` (inherited from the `/api/v1` scope).
-          - 503 `BUSINESS_CHAT_DISABLED` when the kill-switch env var `CHAT_ENABLED=false`
-            shorts the route.
-          - 503 `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` when the Anthropic client fails to
-            initialise (missing `ANTHROPIC_API_KEY`) or the first `messages.stream()` call
-            fails synchronously with a non-retryable provider error.
+          - 422 `VALIDATION_REQUIRED_FIELD` -- `Idempotency-Key` header missing,
+            or PATCH body empty.
+          - 422 `VALIDATION_INVALID_FORMAT` -- body Zod parse failure, or
+            `Idempotency-Key` not a UUID.
+          - 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_EXPIRED` / `AUTH_TOKEN_INVALID`.
+          - 404 `RESOURCE_NOT_FOUND` -- conversation `:id` does not exist.
+          - 409 `BUSINESS_CONVERSATION_ARCHIVED` -- writes refused on archived
+            conversations (BR-25).
+          - 409 `BUSINESS_TURN_IN_PROGRESS` -- another turn is already running
+            on this conversation (BR-28). Single in-flight turn per conversation
+            (single-process registry; out of scope for multi-instance v1).
+          - 409 `BUSINESS_IDEMPOTENCY_MISMATCH` -- key matches with different
+            body (BR-27).
+          - 503 `BUSINESS_CHAT_DISABLED` -- kill-switch `CHAT_ENABLED=false`.
+          - 503 `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` -- Anthropic factory throws
+            BEFORE the SSE opens.
 
         ## In-stream errors (stream already opened)
 
-        Errors raised after the SSE has been opened are sent as one `event: error` frame
-        with one of these codes, then the connection closes:
-          - `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` - Anthropic stream aborted with a network /
-            provider-side error mid-turn.
-          - `SYSTEM_INTERNAL_ERROR` - unhandled exception in the agentic loop.
+          - `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` -- Anthropic stream aborted
+            with a network / provider-side error mid-turn (BR-11).
+          - `SYSTEM_INTERNAL_ERROR` -- unhandled exception in the agentic loop.
 
         ## Cancellation
 
-        When the client closes the connection (`req.raw.on('close')`), the BFF calls
-        `stream.abort()` on the in-flight Anthropic stream and emits a final
-        `event: done` frame with `stop_reason: "cancelled"` IF the abort is acknowledged
-        before the socket is fully gone. If the socket is already closed at that point, no
-        further frame is emitted (the client has already disconnected).
+        Two paths (chat.spec.md UC-06, BR-12, BR-38):
+          - Client closes the TCP connection -> `req.raw.on('close')` triggers
+            `AbortController.abort()`; if the socket is still writable a final
+            `done{stop_reason:"cancelled"}` is emitted.
+          - Owner posts `cancelTurn` from a second HTTP call against the same
+            conversation. The original SSE sees the abort and emits a final
+            `done{stop_reason:"cancelled"}` (best-effort).
+
+        In both paths the assistant row is persisted with `stop_reason =
+        "cancelled"` and the partial accumulated text (BR-29).
 
         ## Tools (READ-ONLY)
 
-        The agentic loop exposes only the 13 tools of the `query` toolset:
-          - From `knowledge-graph`: `get_node`, `traverse`, `get_history_link`,
-            `get_history_attribute`, `get_history_attribute_key`, `list_nodes`,
-            `list_node_types`, `list_link_types`, `list_attribute_keys`.
-          - From `query-retrieval`: `search`, `get_provenance_link`,
-            `get_provenance_attribute`, `get_provenance_fragment`.
-        The catalog is resolved lazily on the first request via the in-process
-        `McpServer` registry (`mcp.getTool('query', name)`). Each tool invocation opens its
-        own short read-only Postgres transaction inside the same `withReadOnly` helper used
-        by the REST `query-retrieval` routes (v7 §2 inegociable rule).
-
-        Tool-choice policy: `tool_choice: { type: "auto", disable_parallel_tool_use: true }`.
-
+        Same 13-tool catalog as v1. Each tool invocation opens its own short
+        `BEGIN READ ONLY` transaction (`withReadOnly`). The LLM never reaches
+        the database directly. Tool inputs and results are persisted in
+        `chat_tool_call` (BR-32) for audit.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+          description: |
+            RFC 4122 UUID. REQUIRED. See the endpoint description for replay /
+            mismatch semantics (BR-26, BR-27).
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/ChatTurnRequest"
+            schema: { $ref: "#/components/schemas/SendMessageRequest" }
             examples:
-              firstUserMessage:
-                summary: "First message of a brand-new conversation"
+              simple:
+                summary: "A single user question"
                 value:
-                  messages:
-                    - role: "user"
-                      content: "Quem é o Rodrigo?"
-              multiTurnHistory:
-                summary: "Continuation of a previous turn (client carries history)"
-                value:
-                  messages:
-                    - role: "user"
-                      content: "Quem é o Rodrigo?"
-                    - role: "assistant"
-                      content: "Rodrigo aparece em duas atas como responsável pelo projeto Apollo."
-                    - role: "user"
-                      content: "Quais decisões ele tomou em 2026?"
+                  content: "Quem é o Rodrigo?"
               modelOverride:
-                summary: "Explicit model override (default is `claude-opus-4-8` via CHAT_MODEL)"
+                summary: "Explicit model override"
                 value:
+                  content: "Liste os documentos de junho de 2026."
                   model: "claude-opus-4-8"
-                  messages:
-                    - role: "user"
-                      content: "Liste os documentos de junho de 2026."
       responses:
         "200":
           description: |
-            SSE stream opened. The HTTP status line is `200 OK` and the response body is the
-            Server-Sent Events stream described in the endpoint description. The stream always
-            terminates with one `done` frame or one `error` frame, then closes.
+            SSE stream opened. The HTTP status line is `200 OK` and the response
+            body is the Server-Sent Events stream described above. The stream
+            always terminates with one `done` frame or one `error` frame, then
+            closes.
           headers:
             Cache-Control:
               schema: { type: string }
@@ -193,11 +393,10 @@ paths:
               description: "Always `keep-alive`."
             X-Accel-Buffering:
               schema: { type: string }
-              description: "Always `no` (disables proxy buffering of the event stream)."
+              description: "Always `no` (disables proxy buffering)."
           content:
             text/event-stream:
-              schema:
-                $ref: "#/components/schemas/SSEStream"
+              schema: { $ref: "#/components/schemas/SSEStream" }
               examples:
                 happyPath:
                   summary: "Two-iteration turn with one tool call, then end_turn"
@@ -222,6 +421,17 @@ paths:
 
                     event: done
                     data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1234,"tokens_out":78}
+                idempotentReplay:
+                  summary: "Same Idempotency-Key + identical body -> replay"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: text_delta
+                    data: {"delta":"Rodrigo aparece em duas atas como responsável pelo projeto Apollo."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1234,"tokens_out":78}
                 inStreamError:
                   summary: "Anthropic stream aborted mid-turn"
                   value: |
@@ -241,61 +451,226 @@ paths:
 
                     event: done
                     data: {"stop_reason":"cancelled","model":"claude-opus-4-8","tokens_in":0,"tokens_out":1}
-        "422":
-          description: "Request body failed Zod validation (422 Unprocessable Entity)."
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-              examples:
-                emptyMessages:
-                  value:
-                    ok: false
-                    error:
-                      code: "VALIDATION_INVALID_FORMAT"
-                      message: "messages must contain at least 1 entry"
-                      details:
-                        path: ["messages"]
-                tooManyMessages:
-                  value:
-                    ok: false
-                    error:
-                      code: "VALIDATION_INVALID_FORMAT"
-                      message: "messages must contain at most 40 entries"
-                      details:
-                        path: ["messages"]
-                        received: 41
-                firstNotUser:
-                  value:
-                    ok: false
-                    error:
-                      code: "VALIDATION_INVALID_FORMAT"
-                      message: "first message must have role=user"
-                      details:
-                        path: ["messages", 0, "role"]
-                        received: "assistant"
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "500": { $ref: "#/components/responses/InternalError" }
-        "503":
-          description: "Chat surface disabled or upstream provider unavailable."
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "409":
+          description: |
+            Conversation-state or idempotency conflict. Pre-stream — the SSE is
+            never opened.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
               examples:
-                killSwitch:
-                  summary: "CHAT_ENABLED=false at boot"
+                archived:
+                  summary: "Conversation is archived (BR-25)"
                   value:
                     ok: false
                     error:
-                      code: "BUSINESS_CHAT_DISABLED"
-                      message: "chat surface is disabled by CHAT_ENABLED=false"
-                providerUnavailable:
-                  summary: "Anthropic client failed to initialise"
+                      code: "BUSINESS_CONVERSATION_ARCHIVED"
+                      message: "conversation is archived; un-archive it via PATCH /conversations/:id { archived_at: null }"
+                turnInProgress:
+                  summary: "Another turn is already running on this conversation (BR-28)"
                   value:
                     ok: false
                     error:
-                      code: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE"
-                      message: "Anthropic client could not be initialised"
+                      code: "BUSINESS_TURN_IN_PROGRESS"
+                      message: "a turn is already in progress on this conversation"
+                idempotencyMismatch:
+                  summary: "Same Idempotency-Key reused with different body (BR-27)"
+                  value:
+                    ok: false
+                    error:
+                      code: "BUSINESS_IDEMPOTENCY_MISMATCH"
+                      message: "Idempotency-Key matches an existing message with a different body"
+        "422":
+          description: |
+            Request body / headers failed validation (422 Unprocessable Entity).
+            Pre-stream — the SSE is never opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                missingIdempotencyKey:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_REQUIRED_FIELD"
+                      message: "Idempotency-Key header is required"
+                      details: { header: "Idempotency-Key" }
+                badIdempotencyKey:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "Idempotency-Key must be a valid UUID"
+                      details: { header: "Idempotency-Key", received: "not-a-uuid" }
+                emptyContent:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "content must be a non-empty string"
+                      details: { path: ["content"] }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
 
+    get:
+      tags: ["Messages"]
+      operationId: listMessages
+      summary: List the messages of a conversation (chronological, paginated).
+      description: |
+        Returns up to `limit` persisted messages on this conversation, ordered
+        by `(created_at ASC, id ASC)`. The optional `before` parameter restricts
+        the result to messages older than the given timestamp -- the
+        pagination walks BACKWARDS in time so the SPA can lazy-load context
+        above the visible window (chat.spec.md BR-39).
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: before
+          required: false
+          schema: { type: string, format: date-time }
+          description: "RFC3339 timestamp. Only messages with `created_at < before` are returned."
+      responses:
+        "200":
+          description: "One page of messages."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageListResponse" }
+              examples:
+                page:
+                  value:
+                    ok: true
+                    result:
+                      items:
+                        - id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+                          conversation_id: "11111111-1111-1111-1111-111111111111"
+                          role: "user"
+                          content: [{ type: "text", text: "Quem é o Rodrigo?" }]
+                          stop_reason: null
+                          idempotency_key: "44444444-4444-4444-4444-444444444444"
+                          model: "claude-opus-4-8"
+                          tokens_in: null
+                          tokens_out: null
+                          latency_ms: null
+                          created_at: "2026-06-20T12:00:00Z"
+                        - id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+                          conversation_id: "11111111-1111-1111-1111-111111111111"
+                          role: "assistant"
+                          content: [{ type: "text", text: "Rodrigo aparece em duas atas como responsável pelo projeto Apollo." }]
+                          stop_reason: "end_turn"
+                          idempotency_key: null
+                          model: "claude-opus-4-8"
+                          tokens_in: 1234
+                          tokens_out: 78
+                          latency_ms: 3210
+                          created_at: "2026-06-20T12:00:05Z"
+                      next_before: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+  # =========================================================================
+  # Conversation operations — usage + cancel
+  # =========================================================================
+  /api/v1/conversations/{id}/usage:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: ["Conversation Operations"]
+      operationId: getConversationUsage
+      summary: Token + tool-call aggregates for a conversation.
+      description: |
+        Aggregates over `chat_message` (assistant rows) + `chat_tool_call` for
+        this conversation (chat.spec.md BR-40). Read-only; the message bodies
+        are not loaded.
+      responses:
+        "200":
+          description: "Aggregated usage."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageResponse" }
+              examples:
+                usage:
+                  value:
+                    ok: true
+                    result:
+                      messages: 18
+                      tokens_in: 25430
+                      tokens_out: 4980
+                      tool_calls: 7
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ConversationNotFound" }
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+  /api/v1/conversations/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: ["Conversation Operations"]
+      operationId: cancelTurn
+      summary: Cooperatively cancel an in-flight turn on this conversation.
+      description: |
+        Called from a SECOND HTTP request while the original `sendMessage` SSE
+        is still open. The BFF aborts the in-flight Anthropic stream; the
+        original SSE then emits a final `done{stop_reason:"cancelled"}` frame
+        (best-effort — the frame is dropped silently if the SSE socket is no
+        longer writable). The assistant row is persisted with `stop_reason =
+        "cancelled"` and the partial accumulated text (chat.spec.md BR-12,
+        BR-38).
+      responses:
+        "202":
+          description: "Cancellation requested. The original SSE will close shortly."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CancelResponse" }
+              examples:
+                cancelled:
+                  value:
+                    ok: true
+                    result: { cancelled: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: |
+            Conversation not found OR no in-flight turn for this conversation.
+            The two cases share the `RESOURCE_NOT_FOUND` code (BR-22, BR-38).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                noConversation:
+                  value:
+                    ok: false
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "conversation not found"
+                noInflight:
+                  value:
+                    ok: false
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "no in-flight turn for this conversation"
+        "409":
+          description: "Conversation archived — cancel is refused (BR-25)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                archived:
+                  value:
+                    ok: false
+                    error:
+                      code: "BUSINESS_CONVERSATION_ARCHIVED"
+                      message: "conversation is archived"
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+# =============================================================================
+# Components
+# =============================================================================
 components:
 
   securitySchemes:
@@ -304,11 +679,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Neon Auth (Stack Auth) JWT validated by the `requireNeonAuth` `preHandler` on the
-        `/api/v1` scope (CLAUDE.md "Authentication"). The chat endpoint inherits this
-        preHandler; no additional auth check is performed in the route itself.
+        Neon Auth (Stack Auth) JWT validated by the `requireNeonAuth`
+        `preHandler` on the `/api/v1` scope (CLAUDE.md "Authentication"). All
+        chat endpoints inherit this preHandler; no additional auth check is
+        performed in the route itself.
+
+  parameters:
+    ConversationId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: "UUID of the conversation."
 
   responses:
+
     Unauthorized:
       description: "Missing or invalid JWT"
       content:
@@ -326,15 +711,50 @@ components:
                 ok: false
                 error:
                   code: "AUTH_TOKEN_EXPIRED"
-                  message: "JWT expired at 2026-06-11T19:00:00Z"
-                  details:
-                    expired_at: "2026-06-11T19:00:00Z"
+                  message: "JWT expired at 2026-06-20T12:00:00Z"
+                  details: { expired_at: "2026-06-20T12:00:00Z" }
             invalidToken:
               value:
                 ok: false
                 error:
                   code: "AUTH_TOKEN_INVALID"
                   message: "JWT signature could not be verified"
+
+    ValidationError:
+      description: "Body or query validation failed (422)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            invalidFormat:
+              value:
+                ok: false
+                error:
+                  code: "VALIDATION_INVALID_FORMAT"
+                  message: "title must be a string of length 1..200"
+                  details: { path: ["title"] }
+            requiredField:
+              value:
+                ok: false
+                error:
+                  code: "VALIDATION_REQUIRED_FIELD"
+                  message: "at least one of `title` or `archived_at` must be present"
+                  details: { body: "PATCH /conversations/:id" }
+
+    ConversationNotFound:
+      description: "Conversation with the given id does not exist."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            notFound:
+              value:
+                ok: false
+                error:
+                  code: "RESOURCE_NOT_FOUND"
+                  message: "conversation not found"
+                  details: { id: "11111111-1111-1111-1111-111111111111" }
+
     InternalError:
       description: "Unexpected internal error"
       content:
@@ -348,10 +768,31 @@ components:
                   code: "SYSTEM_INTERNAL_ERROR"
                   message: "Unexpected internal error"
 
+    ChatUnavailable:
+      description: "Chat surface disabled (kill-switch) or upstream provider unavailable."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            killSwitch:
+              summary: "CHAT_ENABLED=false at boot"
+              value:
+                ok: false
+                error:
+                  code: "BUSINESS_CHAT_DISABLED"
+                  message: "chat surface is disabled by CHAT_ENABLED=false"
+            providerUnavailable:
+              summary: "Anthropic client failed to initialise (pre-stream)"
+              value:
+                ok: false
+                error:
+                  code: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE"
+                  message: "Anthropic client could not be initialised"
+
   schemas:
 
     # -------------------------------------------------------------------------
-    # Error envelope - identical shape used everywhere (CLAUDE.md "Architecture").
+    # Error envelope
     # -------------------------------------------------------------------------
     ErrorResponse:
       type: object
@@ -360,7 +801,6 @@ components:
         ok:
           type: boolean
           enum: [false]
-          description: "Always false on the error envelope."
           example: false
         error:
           type: object
@@ -369,68 +809,329 @@ components:
             code:
               type: string
               description: "SCREAMING_SNAKE_CASE code from the global error catalog."
-              example: "BUSINESS_CHAT_DISABLED"
+              example: "BUSINESS_CONVERSATION_ARCHIVED"
             message:
               type: string
-              description: "Operator-facing message - never carries stack traces."
-              example: "chat surface is disabled by CHAT_ENABLED=false"
+              description: "Operator-facing message — never carries stack traces."
+              example: "conversation is archived"
             details:
               type: object
-              description: "Optional structured context. Never carries PII or document text."
               additionalProperties: true
-              example: { path: ["messages"], received: 41 }
+              example: { id: "11111111-1111-1111-1111-111111111111" }
 
     # -------------------------------------------------------------------------
-    # Request body
+    # Conversation aggregate
     # -------------------------------------------------------------------------
-    ChatRole:
+    Conversation:
+      type: object
+      required: [id, title, archived_at, summary_rolling, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+        title:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 200
+          example: "Reuniao Apollo"
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        summary_rolling:
+          type: string
+          nullable: true
+          description: |
+            Distilled summary of the older portion of the conversation, refreshed
+            non-blockingly after `CHAT_SUMMARY_AFTER_TURNS` user turns
+            (chat.spec.md BR-33). Null when the conversation is short enough to
+            fit entirely in the recent window OR when `CHAT_SUMMARY_ENABLED=false`.
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-20T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-20T12:00:00Z"
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: "Optional title. When omitted, may be auto-distilled (BR-34)."
+          example: "Reuniao Apollo"
+
+    UpdateConversationRequest:
+      type: object
+      description: |
+        Partial update. At least one of `title` or `archived_at` MUST be present
+        (chat.spec.md BR-36). Empty body -> 422 `VALIDATION_REQUIRED_FIELD`.
+      properties:
+        title:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 200
+          example: "Apollo retro"
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: "RFC3339 timestamp to archive, or `null` to un-archive."
+          example: "2026-06-20T12:00:00Z"
+      example: { title: "Apollo retro" }
+
+    ConversationResponse:
+      type: object
+      required: [ok, result]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+        result:
+          $ref: "#/components/schemas/Conversation"
+
+    ConversationListResponse:
+      type: object
+      required: [ok, result]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+        result:
+          type: object
+          required: [items, next_cursor]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Conversation" }
+            next_cursor:
+              type: string
+              nullable: true
+              description: "Opaque cursor for the next page; `null` when this is the last page."
+              example: null
+
+    # -------------------------------------------------------------------------
+    # Message
+    # -------------------------------------------------------------------------
+    ChatMessageRole:
       type: string
       enum: [user, assistant]
       description: |
-        Sender role for a single chat history entry. The agentic-loop server side may
-        synthesise transient `assistant(tool_use)` and `user(tool_result)` turns inside
-        the Anthropic call, but those are NOT part of the public history (v1 stateless;
-        client carries only `user`/`assistant` text turns).
+        Persisted role on a `chat_message` row. The transient
+        `assistant(tool_use)` / `user(tool_result)` blocks the loop synthesises
+        during an iteration are NEVER persisted as their own messages.
+
+    ChatContentBlock:
+      type: object
+      description: |
+        One element of the Anthropic-style `content[]` array. v1 emits only
+        `text` blocks on the wire, but the jsonb column accepts arbitrary
+        Anthropic content shapes so the schema does not need to evolve when the
+        provider adds new block types.
+      required: [type]
+      properties:
+        type:
+          type: string
+          example: "text"
+        text:
+          type: string
+          example: "Rodrigo aparece em duas atas como responsável pelo projeto Apollo."
+      additionalProperties: true
 
     ChatMessage:
       type: object
-      required: [role, content]
+      required: [id, conversation_id, role, content, stop_reason, idempotency_key, model, tokens_in, tokens_out, latency_ms, created_at]
       properties:
+        id:
+          type: string
+          format: uuid
+          example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        conversation_id:
+          type: string
+          format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
         role:
-          $ref: "#/components/schemas/ChatRole"
+          $ref: "#/components/schemas/ChatMessageRole"
+        content:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ChatContentBlock" }
+        stop_reason:
+          type: string
+          nullable: true
+          enum:
+            - end_turn
+            - max_tokens
+            - stop_sequence
+            - max_iterations
+            - turn_timeout
+            - cancelled
+            - provider_error
+            - internal_error
+          description: |
+            Terminal stop reason for assistant rows. Always null on user rows.
+            `provider_error` / `internal_error` are synthetic markers persisted
+            when the SSE terminated with an `error` frame (chat.spec.md BR-29).
+          example: "end_turn"
+        idempotency_key:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The RFC 4122 UUID supplied by the client on the request that
+            produced this row. Always non-null on user rows; always null on
+            assistant rows (the idempotency key lives on the user row that
+            triggered the turn).
+          example: "44444444-4444-4444-4444-444444444444"
+        model:
+          type: string
+          nullable: true
+          description: |
+            The Anthropic model id used for this turn. Stored on both the user row
+            (the requested model at the time of the call) and the assistant row
+            (the actual model that produced the response). Null when the row
+            predates model tracking or when the field was not resolved.
+          example: "claude-opus-4-8"
+        tokens_in:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: "Sum of `input_tokens` across iterations. Assistant rows only."
+          example: 1234
+        tokens_out:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: "Sum of `output_tokens` across iterations. Assistant rows only."
+          example: 78
+        latency_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: "Wall-clock from first `llm_start` to terminal frame. Assistant rows only."
+          example: 3210
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-20T12:00:05Z"
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
         content:
           type: string
           minLength: 1
+          maxLength: 32768
           description: |
-            Plain-text content for this turn. Document content received from the user is
-            DATA, never instruction (v7 §13).
+            Plain-text user message. The server wraps it in a `[{type:"text",
+            text:<content>}]` jsonb block on insert. Document content received
+            from the user is DATA, never instruction (v7 §13).
           example: "Quem é o Rodrigo?"
-
-    ChatTurnRequest:
-      type: object
-      required: [messages]
-      properties:
-        messages:
-          type: array
-          minItems: 1
-          maxItems: 40
-          items: { $ref: "#/components/schemas/ChatMessage" }
-          description: |
-            Conversation history sent by the client (v1 STATELESS - no server-side
-            persistence). Minimum 1, maximum 40 (sanity ceiling - see `back/chat.back.md`
-            BR-06). The first entry MUST have `role=user`; otherwise 422
-            `VALIDATION_INVALID_FORMAT`. Order is significant - oldest first.
         model:
           type: string
+          minLength: 1
           description: |
-            Optional Anthropic model override. When omitted, the env `CHAT_MODEL` is used
-            (default `claude-opus-4-8`). Must be a non-empty string. No allow-list is
-            enforced at the BFF; an unknown model will surface as a provider error
+            Optional Anthropic model override. When omitted, `env.CHAT_MODEL`
+            is used (default `claude-opus-4-8`). No allow-list is enforced at
+            the BFF; an unknown model surfaces as a provider error
             (`BUSINESS_CHAT_PROVIDER_UNAVAILABLE`) once the loop starts.
           example: "claude-opus-4-8"
 
+    MessageListResponse:
+      type: object
+      required: [ok, result]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+        result:
+          type: object
+          required: [items, next_before]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ChatMessage" }
+            next_before:
+              type: string
+              format: date-time
+              nullable: true
+              description: |
+                The `created_at` of the oldest item of this page; pass it as
+                `before` on the next call to fetch the prior page. `null` when
+                there are no older messages.
+              example: null
+
     # -------------------------------------------------------------------------
-    # SSE event payloads (documentation-only; the on-the-wire format is
+    # Usage aggregate
+    # -------------------------------------------------------------------------
+    UsageResponse:
+      type: object
+      required: [ok, result]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+        result:
+          type: object
+          required: [messages, tokens_in, tokens_out, tool_calls]
+          properties:
+            messages:
+              type: integer
+              minimum: 0
+              description: "Count of `chat_message` rows on this conversation (both roles)."
+              example: 18
+            tokens_in:
+              type: integer
+              minimum: 0
+              description: "Sum of `tokens_in` over assistant rows."
+              example: 25430
+            tokens_out:
+              type: integer
+              minimum: 0
+              description: "Sum of `tokens_out` over assistant rows."
+              example: 4980
+            tool_calls:
+              type: integer
+              minimum: 0
+              description: "Count of `chat_tool_call` rows on this conversation."
+              example: 7
+
+    # -------------------------------------------------------------------------
+    # Cancel response
+    # -------------------------------------------------------------------------
+    CancelResponse:
+      type: object
+      required: [ok, result]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+          example: true
+        result:
+          type: object
+          required: [cancelled]
+          properties:
+            cancelled:
+              type: boolean
+              enum: [true]
+              example: true
+
+    # -------------------------------------------------------------------------
+    # SSE event payloads (documentation-only — wire format is
     # `event: <name>\ndata: <JSON>\n\n` blocks, not a JSON document).
     # -------------------------------------------------------------------------
     LlmStartEvent:
@@ -440,7 +1141,6 @@ components:
         iteration:
           type: integer
           minimum: 1
-          description: "1-based agentic-loop iteration number."
           example: 1
 
     TextDeltaEvent:
@@ -450,7 +1150,6 @@ components:
         delta:
           type: string
           minLength: 1
-          description: "Token (or token group) emitted by the model."
           example: "Olá, "
 
     ToolStartEvent:
@@ -459,12 +1158,6 @@ components:
       properties:
         tool:
           type: string
-          description: |
-            Name of the `query`-toolset tool the model decided to call. One of:
-            `search`, `get_provenance_link`, `get_provenance_attribute`,
-            `get_provenance_fragment`, `get_node`, `traverse`, `get_history_link`,
-            `get_history_attribute`, `get_history_attribute_key`, `list_nodes`,
-            `list_node_types`, `list_link_types`, `list_attribute_keys`.
           enum:
             - search
             - get_provenance_link
@@ -482,11 +1175,10 @@ components:
           example: "search"
         args_summary:
           type: string
-          description: |
-            Short redacted summary of the tool arguments for the SPA to render in the UI.
-            Never includes raw `value` / `text` columns or full provenance bodies; only
-            IDs and short string keys. Max 200 chars.
           maxLength: 200
+          description: |
+            Redacted summary of the tool arguments (chat.spec.md BR-09). Never
+            includes raw `value` / `text` columns or full provenance bodies.
           example: "query=\"reuniao apollo\""
 
     ToolResultEvent:
@@ -495,15 +1187,9 @@ components:
       properties:
         tool:
           type: string
-          description: "Same tool name as the preceding `tool_start`."
           example: "search"
         ok:
           type: boolean
-          description: |
-            True when the tool returned a successful business envelope (`{ ok: true, result }`);
-            false when it returned an error envelope. The tool error itself is NOT propagated
-            on the SSE stream - it is sent back to the model as the `tool_result` block of
-            the next Anthropic turn so the model can react.
           example: true
 
     DoneEvent:
@@ -520,24 +1206,25 @@ components:
             - turn_timeout
             - cancelled
           description: |
-            `end_turn`, `max_tokens`, `stop_sequence` are passed through from the Anthropic
-            stream. `max_iterations`, `turn_timeout`, `cancelled` are added by the BFF
-            agentic loop (sanity ceilings + client cancellation).
+            `end_turn`, `max_tokens`, `stop_sequence` are passed through from
+            the Anthropic stream. `max_iterations`, `turn_timeout`, `cancelled`
+            are added by the BFF agentic loop. The synthetic markers
+            `provider_error` and `internal_error` are NOT emitted as `done`
+            stop_reasons — those cases terminate with an `error` frame and the
+            persisted assistant row carries the synthetic marker (chat.spec.md
+            BR-29).
           example: "end_turn"
         model:
           type: string
-          description: "The model id actually used (after resolving `model` override / env)."
           example: "claude-opus-4-8"
         tokens_in:
           type: integer
           minimum: 0
-          description: "Sum of `input_tokens` across all iterations of the turn."
           example: 1234
         tokens_out:
           type: integer
           minimum: 0
-          description: "Sum of `output_tokens` across all iterations of the turn."
-          example: 567
+          example: 78
 
     ErrorEvent:
       type: object
@@ -546,19 +1233,22 @@ components:
         code:
           type: string
           description: |
-            Namespaced error code (`BUSINESS_CHAT_PROVIDER_UNAVAILABLE`, `SYSTEM_INTERNAL_ERROR`).
-            Pre-stream codes (`VALIDATION_*`, `AUTH_*`, `BUSINESS_CHAT_DISABLED`) never appear
-            inside an SSE `error` frame because they short-circuit before the stream opens.
+            In-stream codes only: `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` or
+            `SYSTEM_INTERNAL_ERROR`. Pre-stream codes (`VALIDATION_*`, `AUTH_*`,
+            `RESOURCE_NOT_FOUND`, `BUSINESS_CHAT_DISABLED`,
+            `BUSINESS_CONVERSATION_ARCHIVED`, `BUSINESS_TURN_IN_PROGRESS`,
+            `BUSINESS_IDEMPOTENCY_MISMATCH`) NEVER appear inside an SSE `error`
+            frame (chat.spec.md BR-23).
           example: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE"
         message:
           type: string
-          description: "Operator-facing message. Never carries stack traces or upstream provider strings verbatim."
           example: "Anthropic stream aborted: connection reset"
 
     SSEStream:
       type: string
       description: |
-        Server-Sent Events stream. Each frame is `event: <name>\ndata: <JSON>\n\n`. Possible
-        `<name>` values: `llm_start`, `text_delta`, `tool_start`, `tool_result`, `done`,
-        `error`. The JSON payload schemas are `LlmStartEvent`, `TextDeltaEvent`,
-        `ToolStartEvent`, `ToolResultEvent`, `DoneEvent`, `ErrorEvent` respectively.
+        Server-Sent Events stream. Each frame is `event: <name>\ndata: <JSON>\n\n`.
+        Possible `<name>` values: `llm_start`, `text_delta`, `tool_start`,
+        `tool_result`, `done`, `error`. The JSON payload schemas are
+        `LlmStartEvent`, `TextDeltaEvent`, `ToolStartEvent`, `ToolResultEvent`,
+        `DoneEvent`, `ErrorEvent` respectively.

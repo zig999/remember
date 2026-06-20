@@ -99,8 +99,11 @@ user-invocable: false
 
 | error.code | HTTP | Description | When it occurs |
 |------------|------|-------------|----------------|
-| `BUSINESS_CHAT_DISABLED` | 503 | Chat surface is disabled by kill-switch | `POST /api/v1/chat` called while `env.CHAT_ENABLED === false`. Returned pre-stream (no SSE opened). `chat.spec.md` BR-14 / UC-06. |
-| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | 503 (pre-stream) or n/a (in-stream `error` frame) | Anthropic provider could not be reached or aborted mid-turn | Pre-stream: Anthropic factory throws (missing `ANTHROPIC_API_KEY`, etc.). In-stream: Anthropic stream emits a non-`AbortError` provider/network error mid-turn. `chat.spec.md` BR-11, BR-21 / UC-01. |
+| `BUSINESS_CHAT_DISABLED` | 503 | Chat surface is disabled by kill-switch | Any `POST /api/v1/conversations/:id/messages` (or other chat endpoint) called while `env.CHAT_ENABLED === false`. Returned pre-stream (no SSE opened). `chat.spec.md` BR-14 / UC-09. |
+| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | 503 (pre-stream) or n/a (in-stream `error` frame) | Anthropic provider could not be reached or aborted mid-turn | Pre-stream: Anthropic factory throws (missing `ANTHROPIC_API_KEY`, etc.). In-stream: Anthropic stream emits a non-`AbortError` provider/network error mid-turn. `chat.spec.md` BR-11, BR-21 / UC-02. |
+| `BUSINESS_CONVERSATION_ARCHIVED` | 409 | Conversation is archived; writes are forbidden | `POST /api/v1/conversations/:id/messages` or `POST /api/v1/conversations/:id/cancel` called against a conversation whose `archived_at IS NOT NULL`. Unarchive via `PATCH /conversations/:id { archived_at: null }` first. `chat.spec.md` BR-25 / UC-04, UC-06. |
+| `BUSINESS_IDEMPOTENCY_MISMATCH` | 409 | Same `Idempotency-Key` reused with a different body | `POST /api/v1/conversations/:id/messages` with an `Idempotency-Key` that already exists on this conversation but whose stored `(content, model)` tuple differs from the current request. Replay with the IDENTICAL body returns the original assistant message instead (idempotent replay). `chat.spec.md` BR-27 / UC-07. |
+| `BUSINESS_TURN_IN_PROGRESS` | 409 | A turn is already running on this conversation | `POST /api/v1/conversations/:id/messages` called while another turn on the same conversation has not yet reached its terminal frame. Single-owner default: one turn at a time per conversation. `chat.spec.md` BR-28 / UC-06, UC-08. |
 
 
 ## Deprecated Codes

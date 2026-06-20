@@ -96,6 +96,15 @@ user-invocable: false
 | `BUSINESS_TEMPORAL_INCOHERENT` | 422 | Period violates the semi-open invariant `[valid_from, valid_to)` or the functional-scope rule | `correctItem` / `resolveDispute(adjust_periods)` supply `valid_from >= valid_to` (both non-null), OR an `adjust_periods` set would leave 2+ rows with `valid_to = NULL` on a functional scope (ADR A7, ADR A10; `curation.spec.md` UC-06, UC-10, BR-06, BR-09). |
 | `BUSINESS_REASON_REQUIRED` | 422 | Destructive operation called without `reason` | `mergeNodes`, `resolveEntityMatch(merge_into)`, `resolveDispute(prefer_one)`, `rejectItem`, or `correctItem` called with `reason = null/empty` (`curation.spec.md` UC-02, UC-04, UC-05, UC-09, UC-10, BR-10). |
 
+### Chat
+| error.code | HTTP | Description | When it occurs |
+|------------|------|-------------|----------------|
+| `BUSINESS_CHAT_DISABLED` | 503 | Chat surface is disabled by operator kill-switch | Any chat endpoint called while `CHAT_ENABLED === false` (environment kill-switch). Returned pre-stream; no SSE connection is opened. `chat.spec.md` BR-14 / UC-09. |
+| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | 503 | Anthropic provider unreachable or aborted during a chat turn | Pre-stream: Anthropic factory throws (missing API key, auth failure, etc.). In-stream: Anthropic stream emits a non-`AbortError` provider/network error mid-turn — delivered as an SSE `error` frame, not HTTP 503. `chat.spec.md` BR-11, BR-21 / UC-02. |
+| `BUSINESS_CONVERSATION_ARCHIVED` | 409 | Write operation attempted on an archived conversation | `POST /api/v1/conversations/:id/messages` or `POST /api/v1/conversations/:id/cancel` called against a conversation whose `archived_at IS NOT NULL`. Unarchive via `PATCH /conversations/:id { "archived_at": null }` first. `chat.spec.md` BR-25 / UC-04, UC-06. |
+| `BUSINESS_IDEMPOTENCY_MISMATCH` | 409 | Same `Idempotency-Key` reused with a different body | `POST /api/v1/conversations/:id/messages` with an `Idempotency-Key` that already exists on the conversation but whose stored `(content, model)` tuple differs from the current request. Use the identical body to trigger idempotent replay, or use a new key. `chat.spec.md` BR-27 / UC-07. |
+| `BUSINESS_TURN_IN_PROGRESS` | 409 | A turn is already running on this conversation | `POST /api/v1/conversations/:id/messages` called while another turn on the same conversation has not yet reached its terminal SSE frame. Single-owner default: one turn at a time per conversation. `chat.spec.md` BR-28 / UC-06, UC-08. |
+
 ## Deprecated Codes
 
 Removed codes that CANNOT be reused. Keep here to avoid collision.

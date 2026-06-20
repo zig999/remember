@@ -1,13 +1,84 @@
+# =============================================================================
+# chat-compliance.yaml
+# Compliance scan output — u-spec-compliance
+# Domain: chat | Regulations: lgpd | Spec version: 2.0.0
+# Generated: 2026-06-20T12:29:00Z
+# =============================================================================
+
 scan:
-  id: "CMP-20260620-000643"
-  reviewed_by: "u-spec-compliance"
-  domain: "chat"
-  spec_version: "1.1.1"
-  timestamp: "2026-06-20T00:06:43Z"
-  layer: "permanent"
+  id: CMP-20260620-122900
+  reviewed_by: u-spec-compliance
+  domain: chat
+  spec_version: "2.0.0"
+  timestamp: "2026-06-20T12:29:00Z"
+  layer: permanent
   regulations_checked:
     - lgpd
 
-findings: []
+findings:
+  - id: CFND-001
+    regulation: lgpd
+    article_or_control: LGPD Art.18 (direito de eliminação) — erasure scope documentation
+    type: hardcoded_pii_in_spec_example
+    location:
+      file: docs/specs/domains/chat/openapi.yaml
+      section: "paths: POST /api/v1/conversations/{id}/messages — SSE stream examples + MessageListResponse example"
+    gap_description: >
+      The OpenAPI examples include a realistic Portuguese first name ("Rodrigo") in
+      SSE stream data values and in the ChatContentBlock text example, which constitutes
+      real-looking PII in spec example values.
+    action: add_warning
 
 verdict: compliant
+
+# =============================================================================
+# Compliance scan notes (informational — not part of the schema)
+# =============================================================================
+#
+# LGPD rules evaluated and PASSED (no blocking or CR-requiring gaps):
+#
+# 1. missing_data_retention_policy
+#    PASS — No schema field matches known PII name patterns (email, name, phone,
+#    cpf, address, birth_date, ip_address). Chat tables store synthesised queries
+#    and model responses, not personal facts. Single-owner system; the owner's
+#    content is their own. No retention period BR is structurally required under
+#    this detection rule.
+#
+# 2. missing_consent_mechanism
+#    PASS — Single-owner system (v7 §2.3 / ADR A20); no User entity; no multi-
+#    tenant personal data collection. No consent mechanism BR is required for
+#    self-referential single-owner data processing.
+#
+# 3. missing_audit_log
+#    PASS — chat_tool_call provides an auditable record of every tool dispatch
+#    (BR-32). Pino structured logs record every turn (BR-19). The chat tables
+#    store synthesised conversational data, not facts subject to v7 §11 compliance
+#    audit trail. No sensitive-data endpoint creates/modifies/deletes PII fields
+#    (no PII field names match in the schemas).
+#
+# 4. pii_field_undeclared
+#    PASS — No field in any OpenAPI schema matches the PII name pattern list
+#    (email, name, phone, cpf, address, birth_date, ip_address). All column names
+#    in chat_conversation, chat_message, and chat_tool_call are structural
+#    (id, role, content, stop_reason, tokens_in, tokens_out, etc.).
+#
+# 5. missing_right_to_erasure
+#    PASS — Erasure mechanism is documented: DELETE /api/v1/conversations/:id
+#    triggers ON DELETE CASCADE for all associated chat_message and chat_tool_call
+#    rows (BR-37). The §11 exclusion is explicitly justified in chat.spec.md §6,
+#    chat.back.md §2.5, and the openapi.yaml description: chat stores synthesised
+#    answers, not facts anchored to raw_information; the cascade DELETE is
+#    permanent and sufficient.
+#
+# 6. missing_data_minimization
+#    PASS — All stored fields in the three chat tables serve a documented functional
+#    purpose (conversation management, context reconstruction, idempotency, audit,
+#    performance metrics). No excess fields detected structurally.
+#
+# Single-owner model note (v7 §2.3 / ADR A20):
+#    The chat domain carries NO user_id column on any table. Authentication is a
+#    network-access gate; the Owner is the sole data subject and the sole operator.
+#    LGPD obligations relating to third-party data subjects do not arise in this
+#    context. The compliance §11 exclusion for chat tables is deliberately documented
+#    and justified in spec artifacts; reconciliation with v7 is deferred to a
+#    future /u-improve pass as noted in BR-37 and §6.
