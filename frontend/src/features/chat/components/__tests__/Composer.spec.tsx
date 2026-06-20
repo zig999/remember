@@ -271,8 +271,8 @@ describe("Composer — send mode (UI-03)", () => {
     const form = ta.closest("form") as HTMLFormElement;
     submitForm(form);
 
-    // RHF + zodResolver runs validation asynchronously; flush microtasks so
-    // the mutation queues and resolves.
+    // RHF runs the (async) safeZodResolver, then handleSubmit dispatches
+    // onSubmit; flush microtasks so the mutation queues and resolves.
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
