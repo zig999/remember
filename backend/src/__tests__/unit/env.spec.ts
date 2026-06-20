@@ -193,6 +193,61 @@ describe("loadEnv", () => {
       expect(env.CHAT_MODEL).toBe("claude-sonnet-x");
       expect(env.CHAT_PROMPT_VERSION).toBe("v2");
     });
+
+    // --- TC-02 / chat.back.md v2.0.0 §8 — five new optional env vars ----
+    describe("v2 additive chat env vars (TC-02)", () => {
+      it("applies the v2 defaults (chat.back.md v2.0.0 §8)", () => {
+        // BR-31 / BR-33 / BR-34 lean on these defaults; missing values must
+        // yield the spec defaults rather than a boot failure.
+        const env = loadEnv(baseEnv);
+        expect(env.CHAT_UTILITY_MODEL).toBe("claude-haiku-4-5");
+        expect(env.CHAT_RECENT_WINDOW).toBe(10);
+        expect(env.CHAT_SUMMARY_AFTER_TURNS).toBe(20);
+        expect(env.CHAT_TITLE_ENABLED).toBe(true);
+        expect(env.CHAT_SUMMARY_ENABLED).toBe(true);
+        expect(env.MAX_CONTENT_LENGTH).toBe(32_768);
+      });
+
+      it("coerces CHAT_SUMMARY_ENABLED='false' (BR-33 disable)", () => {
+        // BR-33 last paragraph: false => summary_rolling stays NULL forever.
+        const env = loadEnv({ ...baseEnv, CHAT_SUMMARY_ENABLED: "false" });
+        expect(env.CHAT_SUMMARY_ENABLED).toBe(false);
+      });
+
+      it("coerces CHAT_TITLE_ENABLED='false' (BR-34 disable)", () => {
+        const env = loadEnv({ ...baseEnv, CHAT_TITLE_ENABLED: "false" });
+        expect(env.CHAT_TITLE_ENABLED).toBe(false);
+      });
+
+      it("coerces integer env strings for CHAT_RECENT_WINDOW / CHAT_SUMMARY_AFTER_TURNS / MAX_CONTENT_LENGTH", () => {
+        const env = loadEnv({
+          ...baseEnv,
+          CHAT_RECENT_WINDOW: "20",
+          CHAT_SUMMARY_AFTER_TURNS: "50",
+          MAX_CONTENT_LENGTH: "16384",
+        });
+        expect(env.CHAT_RECENT_WINDOW).toBe(20);
+        expect(env.CHAT_SUMMARY_AFTER_TURNS).toBe(50);
+        expect(env.MAX_CONTENT_LENGTH).toBe(16_384);
+      });
+
+      it("accepts an override for CHAT_UTILITY_MODEL", () => {
+        const env = loadEnv({
+          ...baseEnv,
+          CHAT_UTILITY_MODEL: "claude-haiku-9",
+        });
+        expect(env.CHAT_UTILITY_MODEL).toBe("claude-haiku-9");
+      });
+
+      it("preserves legacy MAX_HISTORY_MESSAGES alongside the new MAX_CONTENT_LENGTH", () => {
+        // Spec divergence: MAX_HISTORY_MESSAGES is functionally superseded
+        // by MAX_CONTENT_LENGTH in v2 but kept here for backward
+        // compatibility (see delivery file `spec_divergences`).
+        const env = loadEnv(baseEnv);
+        expect(env.MAX_HISTORY_MESSAGES).toBe(40);
+        expect(env.MAX_CONTENT_LENGTH).toBe(32_768);
+      });
+    });
   });
 });
 

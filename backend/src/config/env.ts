@@ -81,11 +81,23 @@ const envSchema = z.object({
     .default(true),
   // CHAT_MODEL: default Anthropic model id (per-request `model` field overrides).
   CHAT_MODEL: z.string().min(1).default("claude-opus-4-8"),
+  // CHAT_UTILITY_MODEL: Anthropic model for the distillation jobs — rolling
+  //   summary (BR-33) + title (BR-34). Smaller / cheaper than the turn model.
+  //   chat.back.md v2.0.0 §8. NEW in TC-02.
+  CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5"),
   // CHAT_PROMPT_VERSION: prompt module version (BR-18). Unknown value is a boot
   //   error — see modules/chat/prompts/index.ts (UnknownChatPromptVersionError).
   CHAT_PROMPT_VERSION: z.string().min(1).default("v1"),
-  // MAX_HISTORY_MESSAGES: upper bound on `messages.length` (BR-01).
+  // MAX_HISTORY_MESSAGES: legacy stateless-v1 upper bound on `messages.length`
+  //   (BR-01 v1). In v2.0 it is functionally superseded by MAX_CONTENT_LENGTH
+  //   (the request body now carries ONE `content` string; history is server-
+  //   reconstructed via context-builder). Kept here for backward compatibility
+  //   so existing deployments do not break on boot; safe to remove in a
+  //   follow-up cleanup. See delivery `spec_divergences`.
   MAX_HISTORY_MESSAGES: z.coerce.number().int().min(1).default(40),
+  // MAX_CONTENT_LENGTH: upper bound on `sendMessage.content` length (BR-01
+  //   v2.0). chat.back.md v2.0.0 §8. NEW in TC-02.
+  MAX_CONTENT_LENGTH: z.coerce.number().int().min(1).default(32_768),
   // MAX_ITERATIONS: upper bound on agentic-loop iterations (BR-15).
   MAX_ITERATIONS: z.coerce.number().int().min(1).default(8),
   // TURN_TIMEOUT_MS: per-turn wall-clock budget (BR-16).
@@ -95,6 +107,26 @@ const envSchema = z.object({
   // TOOL_RESULT_MAX_CHARS: truncation ceiling for tool results fed back to the
   //   model (BR-13). Unicode code points, not bytes.
   TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000),
+  // CHAT_RECENT_WINDOW: number of recent messages used by context-builder
+  //   (BR-31). Older messages are summarised into `summary_rolling` (BR-33).
+  //   chat.back.md v2.0.0 §8. NEW in TC-02.
+  CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(10),
+  // CHAT_SUMMARY_AFTER_TURNS: after this many USER turns on a conversation,
+  //   the rolling-summary policy fires (BR-33). chat.back.md v2.0.0 §8. NEW.
+  CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),
+  // CHAT_TITLE_ENABLED: when `false`, the title-distillation job (BR-34) is
+  //   skipped. chat.back.md v2.0.0 §8. NEW in TC-02.
+  CHAT_TITLE_ENABLED: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+    .default(true),
+  // CHAT_SUMMARY_ENABLED: when `false`, the rolling-summary job (BR-33) is
+  //   skipped — `summary_rolling` stays NULL permanently. chat.back.md v2.0.0
+  //   §8. NEW in TC-02.
+  CHAT_SUMMARY_ENABLED: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+    .default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;
