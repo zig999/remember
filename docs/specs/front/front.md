@@ -1,7 +1,7 @@
 # Front-end Spec — Global (Remember)
 
 > Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP
-> Version: 1.2.1 | Status: draft | Layer: permanent
+> Version: 1.3.0 | Status: draft | Layer: permanent
 
 > This is the global frontend architecture document for the Remember SPA — written once, updated as the project evolves. Per-feature configurations (data fetching, error mapping, transforms) go in each `.feature.spec.md`. The foundation of the design system lives in `design-system/`. This wave specifies **the foundation only**; the five functional areas (Graph / Search / Ingest / Curation / History) are out of scope here and will be specified in subsequent `/u-spec` waves.
 
@@ -127,8 +127,8 @@ The router is **TanStack Router** (type-safe). Routes are declared in `src/route
 | Route prefix | `/` (the app owns the root domain) |
 | Root route (`/`) | **Redirects to `/chat`** (owner decision 2026-06-20 — chat workspace is the primary entry point; `chat.flow.md FL-01`) |
 | Fallback route (404) | `/not-found` — rendered inside the workspace region; the frame stays visible |
-| Protected routes | All routes are protected — the `__root` loader runs the JWT guard (Neon Auth / Stack Auth) before any area mounts. Token absent / expired → redirect to `/sign-in`. The `/sign-in` route is unprotected. |
-| Layout strategy | **Single root layout** (`__root`) renders the 3-region shell once; child routes mount only inside the workspace region |
+| Protected routes | Protected routes are wrapped by a **pathless layout route** (`id="protected"`) that runs the JWT guard in its `beforeLoad`. The `__root` renders `AmbientBackdrop` + `AppErrorBoundary` + `AppToaster` — it does NOT run the guard itself. Token absent / expired → redirect to `/sign-in`. **Deviation from this spec's v1.2.x baseline** — see §3 deviation note below. |
+| Layout strategy | **Two-tier layout (auth wave):** `__root` = AmbientBackdrop + boundary + toaster (no chrome); `protectedLayoutRoute` (pathless, `id="protected"`) = AppShell (header + footer + workspace) wrapping all protected routes. `/sign-in` is a direct child of `__root` (no AppShell chrome). **Prior spec (v1.2.x) was single root layout with guard in `__root`; the auth wave replaces that.** |
 
 ### 3.1 Route map
 
@@ -139,13 +139,21 @@ The chat workspace (`/chat`) is the primary view (owner decision 2026-06-20). Th
 | `/` | Root redirect | `beforeLoad` throws `redirect({ to: "/chat" })` — chat is the primary view |
 | `/chat` | **Chat workspace — primary view** | Specified: `chat.feature.spec.md`; layout is `ChatWorkspace` (40% chat / 60% graph stub, container-query split) |
 | `/chat?conversation=<uuid>` | Chat workspace with active conversation | Search param validated by `chatRoute.validateSearch`; URL is source of truth for active conversation |
-| `/sign-in` | Authentication entry | Foundation: stub page using `GlassSurface` |
+| `/sign-in` | Authentication entry | **Specified (auth wave):** `sign-in.feature.spec.md`; CRT animation + `GlassSurface panel` + RHF/Zod form + Stack Auth SDK; no header/footer/chrome. Direct child of `RootRoute`. |
 | `/graph` | Graph explorer (standalone full-screen — later wave) | Reserved; currently a stub; NOT the root redirect destination |
 | `/search` | Lexical search | Reserved (specified in a later wave) |
 | `/ingest` | Ingest a document | Reserved (specified in a later wave) |
 | `/curation` | Review queues | Reserved (specified in a later wave) |
 | `/history` | Runs and audit trail | Reserved (specified in a later wave) |
 | `/not-found` | Fallback | Foundation: rendered inside `GlassSurface` |
+
+> **§3 Deviation note (auth wave — owner-authorized):**
+> The original §3 specified that `__root` runs the JWT guard and wraps all routes in `AppShell` (single root layout). The auth wave introduces a different routing structure:
+> - `__root.tsx` now renders: `<AmbientBackdrop/>` + `<AppErrorBoundary><Outlet/></AppErrorBoundary>` + `<AppToaster/>`. No guard. No AppShell.
+> - A new **pathless** `protectedLayoutRoute` (`id="protected"`) runs the JWT `beforeLoad` guard and renders `<AppShell><Outlet/></AppShell>`.
+> - All currently protected routes (`/`, `/chat`, `/graph`, etc.) are re-parented under `protectedLayoutRoute`.
+> - `/sign-in` remains a direct child of `RootRoute` (outside the protected layout) — it receives only the backdrop, boundary, and toaster.
+> Reconcile `front.back.md BR-04` in a future `/u-improve` run once the implementation is verified.
 
 ### 3.2 URL is the single source of truth for view state
 
@@ -300,12 +308,17 @@ frontend/src/
       components/               # feature-local components (no sister-feature import)
       hooks/
       types.ts
+    auth/
+      api/                      # useSignIn mutation hook
+      lib/                      # stack-app.ts (StackClientApp singleton)
+      components/               # SignInPanel, SignInForm
+      schema.ts                 # signInSchema (Zod v4)
     search/ ingest/ curation/ history/
   state/                        # Zustand stores (theme, as-of, graph view, command palette)
   lib/
     cn.ts                       # tailwind-merge + clsx wrapper
     http.ts                     # fetch wrapper that reads the BFF envelope
-    motion.ts                   # shared Framer Motion variants (uncertain pulse, promote, supersede, merge)
+    motion.ts                   # shared Framer Motion variants (uncertain pulse, promote, supersede, merge, transitionCrtPowerOn)
   styles/
     theme.css                   # Tailwind v4 @theme — single source of design tokens
 ```
@@ -479,6 +492,7 @@ or decorative) are added as new canonical factories there, not inline.
 | `zustand` v5 | Permitted | Client state — see §4.3 |
 | `vitest` v4 + `@vitest/browser` + `playwright` | Permitted | Testing |
 | `@storybook/react-vite` v9 + `@storybook/addon-a11y` + `@storybook/addon-vitest` | Permitted | Design system playground + stories-as-tests |
+| `@stackframe/react` (pinned) | **Approved exception** | Stack Auth client SDK for sign-in (auth wave). Emits a JWT fed to `useAuthStore` — the only consumer. Pin version; do not bump without verifying JWT format compatibility with the BFF JWKS middleware. Used exclusively in `features/auth/lib/stack-app.ts` + `features/auth/api/useSignIn.ts`. |
 | `react-i18next` / `i18next` / any i18n lib | **Prohibited** | App is single-owner pt-BR — strings live in code |
 | `axios` / `ky` / direct `fetch` in components | **Prohibited** | Use a TanStack Query hook in `features/<x>/api/` |
 | `tailwindcss` v3 / any `tailwind.config.ts` file | **Prohibited** | v4 CSS-first via `@theme` only |
@@ -501,7 +515,7 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 - The Provenance drawer component (z-drawer) — invokable from any fact
 - Command palette (⌘K) — `frontend-analise-funcional.md §9`
 - Time picker for `as_of` (popover) — referenced by Graph and Search later
-- Sign-in screen content (Neon Auth flow) — `/sign-in` is foundation-stubbed in this wave
+- ~~Sign-in screen content (Neon Auth flow)~~ — **specified in auth wave** (`sign-in.feature.spec.md`, `auth.flow.md`)
 - All `.feature.spec.md`, `.flow.md`, and additional component specs beyond `StateBadge` and `GlassSurface`
 
 > Anything not in §2–§11 above and not in the two component specs (`StateBadge.component.spec.md`, `GlassSurface.component.spec.md`) is **explicitly not specified by this wave**.
@@ -518,3 +532,4 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 | 1.1.0 | 2026-06-19 | owner-directed | minor | §9 — motion policy: **decorative motion now allowed** (revokes "motion is never decorative"); §9.1 reduced-motion gate **removed as a rule** (was mandatory) and **anti-bounce/elastic restriction removed**; §10 reduced-motion row updated. The **one mandatory rule kept**: components consume canonical variants from `lib/motion.ts` (no inline). Mirrored in `tokens.md §11` + `front.back.md` BR-10. Trade-off vs WCAG 2.2 AA acknowledged (gating now ad hoc, not required). | owner |
 | 1.2.0 | 2026-06-20 | Front Spec Agent | minor | §3 — root route changed from `/graph` to `/chat` (owner decision: chat workspace is the primary view); route map updated with `/chat` (primary) and `/graph` (standalone later wave); `?conversation` search param added to §3.2 URL state table. §4.3 — registered `useChatTurnStore` (ephemeral streaming turn state, no persistence). | chat-wave |
 | 1.2.1 | 2026-06-20 | Front Spec Agent | patch | §3.1 — noted `ChatWorkspace` 40%/60% container-query split in route map entry for `/chat`. | chat-wave |
+| 1.3.0 | 2026-06-20 | Front Spec Agent | minor | Auth/sign-in wave: §3 routing deviation note (guard moved to `protectedLayoutRoute`; `AmbientBackdrop` moved to `__root`; `/sign-in` direct child of root without chrome); §3.1 route map `/sign-in` updated from stub to specified; §6.1 folder structure updated (auth feature, `transitionCrtPowerOn` in motion.ts); §11 `@stackframe/react` added as approved exception; §12 sign-in removed from out-of-scope. | sdd_front |
