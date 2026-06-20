@@ -1,7 +1,7 @@
 # Front-end Spec — Global (Remember)
 
 > Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.2.1 | Status: draft | Layer: permanent
 
 > This is the global frontend architecture document for the Remember SPA — written once, updated as the project evolves. Per-feature configurations (data fetching, error mapping, transforms) go in each `.feature.spec.md`. The foundation of the design system lives in `design-system/`. This wave specifies **the foundation only**; the five functional areas (Graph / Search / Ingest / Curation / History) are out of scope here and will be specified in subsequent `/u-spec` waves.
 
@@ -125,19 +125,22 @@ The router is **TanStack Router** (type-safe). Routes are declared in `src/route
 | Property | Value |
 |---|---|
 | Route prefix | `/` (the app owns the root domain) |
-| Root route (`/`) | Redirects to `/graph` (the Graph area is the home of a knowledge workstation — `frontend-analise-funcional.md §10`) |
+| Root route (`/`) | **Redirects to `/chat`** (owner decision 2026-06-20 — chat workspace is the primary entry point; `chat.flow.md FL-01`) |
 | Fallback route (404) | `/not-found` — rendered inside the workspace region; the frame stays visible |
 | Protected routes | All routes are protected — the `__root` loader runs the JWT guard (Neon Auth / Stack Auth) before any area mounts. Token absent / expired → redirect to `/sign-in`. The `/sign-in` route is unprotected. |
 | Layout strategy | **Single root layout** (`__root`) renders the 3-region shell once; child routes mount only inside the workspace region |
 
-### 3.1 Route map (foundation only)
+### 3.1 Route map
 
-The five functional areas register their routes in later waves. The foundation pre-allocates the slots so the navigation works from day one:
+The chat workspace (`/chat`) is the primary view (owner decision 2026-06-20). The graph explorer and the other functional areas register their routes in later waves. The foundation pre-allocates the slots:
 
-| Route | Purpose | Status in this wave |
+| Route | Purpose | Status |
 |---|---|---|
+| `/` | Root redirect | `beforeLoad` throws `redirect({ to: "/chat" })` — chat is the primary view |
+| `/chat` | **Chat workspace — primary view** | Specified: `chat.feature.spec.md`; layout is `ChatWorkspace` (40% chat / 60% graph stub, container-query split) |
+| `/chat?conversation=<uuid>` | Chat workspace with active conversation | Search param validated by `chatRoute.validateSearch`; URL is source of truth for active conversation |
 | `/sign-in` | Authentication entry | Foundation: stub page using `GlassSurface` |
-| `/graph` | Graph explorer (the home) | Foundation: empty workspace + frame |
+| `/graph` | Graph explorer (standalone full-screen — later wave) | Reserved; currently a stub; NOT the root redirect destination |
 | `/search` | Lexical search | Reserved (specified in a later wave) |
 | `/ingest` | Ingest a document | Reserved (specified in a later wave) |
 | `/curation` | Review queues | Reserved (specified in a later wave) |
@@ -150,6 +153,7 @@ The following live in the URL (`search` params), never only in memory — so ref
 
 | State | Param | Used by | Format |
 |---|---|---|---|
+| Active conversation id | `?conversation=<uuid>` (omitted = no selection) | `/chat` | UUID |
 | Time-travel cursor (`as_of`) | `?as_of=YYYY-MM-DD` (omitted = "now") | All read areas (Search, Graph) | ISO date |
 | Search query | `?q=<term>` | `/search` | URL-encoded string |
 | Search layers | `?layers=fragment,node,chunk` | `/search` | CSV |
@@ -219,6 +223,7 @@ Zustand owns **only** state that survives navigation but does not belong on the 
 | `useAsOfStore` | `src/state/as-of.ts` | Time-travel cursor (`Date \| null`); the URL is the source of truth, the store is the in-memory mirror | URL only |
 | `useGraphViewStore` | `src/state/graph-view.ts` | Pinned node positions, expansion set, selection, panel collapse — survives a `/graph` ↔ `/search` round-trip | `sessionStorage` (`remember.graph`) |
 | `useCommandPaletteStore` | `src/state/command-palette.ts` | Open/closed state of ⌘K | none |
+| `useChatTurnStore` | `src/features/chat/state/chat-turn.ts` | Ephemeral per-turn streaming state: accumulated `streamingText`, in-flight `toolChips[]`, `AbortController` reference, current `idempotencyKey`, `isStreaming` flag — reset on conversation switch or turn completion | none (session only) |
 
 ### 4.4 Local state (the default)
 
@@ -511,3 +516,5 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 | 1.0.1 | 2026-06-19 | Front Spec Agent | patch | Cross-domain review: added §3.3 (app bootstrapping loading state — no spinner during boot; frame appears first; env-invalid fallback). | sdd_front |
 | 1.0.2 | 2026-06-19 | u-fe-developer (TC-03 r1) | patch | §5 — added `SYSTEM_ABORTED` row (silent routing) to the error-code table. Reconciles the implicit divergence flagged by QA on TC-03: TanStack Query cancels in-flight requests on component unmount; without explicit handling, every navigation-while-loading produces a spurious toast. Code already lives in `lib/error-routing.ts`. | qa_tc_003 |
 | 1.1.0 | 2026-06-19 | owner-directed | minor | §9 — motion policy: **decorative motion now allowed** (revokes "motion is never decorative"); §9.1 reduced-motion gate **removed as a rule** (was mandatory) and **anti-bounce/elastic restriction removed**; §10 reduced-motion row updated. The **one mandatory rule kept**: components consume canonical variants from `lib/motion.ts` (no inline). Mirrored in `tokens.md §11` + `front.back.md` BR-10. Trade-off vs WCAG 2.2 AA acknowledged (gating now ad hoc, not required). | owner |
+| 1.2.0 | 2026-06-20 | Front Spec Agent | minor | §3 — root route changed from `/graph` to `/chat` (owner decision: chat workspace is the primary view); route map updated with `/chat` (primary) and `/graph` (standalone later wave); `?conversation` search param added to §3.2 URL state table. §4.3 — registered `useChatTurnStore` (ephemeral streaming turn state, no persistence). | chat-wave |
+| 1.2.1 | 2026-06-20 | Front Spec Agent | patch | §3.1 — noted `ChatWorkspace` 40%/60% container-query split in route map entry for `/chat`. | chat-wave |
