@@ -67,9 +67,13 @@ export function HeaderConversationMenu({
   const updateMutation = useUpdateConversation();
   const deleteMutation = useDeleteConversation();
 
-  const conversations = listQuery.data?.conversations ?? [];
+  const conversations = listQuery.data?.items ?? [];
   const activeTitle =
     conversations.find((c) => c.id === activeConversationId)?.title ?? null;
+
+  // `exactOptionalPropertyTypes`: omit `className` when undefined rather than
+  // passing `className: undefined` (which the type rejects).
+  const classNameProp = className !== undefined ? { className } : {};
 
   return (
     <ConversationMenu
@@ -78,7 +82,7 @@ export function HeaderConversationMenu({
       conversations={conversations}
       isLoading={listQuery.isLoading}
       includeArchived={includeArchived}
-      className={className}
+      {...classNameProp}
       onSelect={(id) => {
         void navigate({ to: "/chat", search: { conversation: id } });
       }}
