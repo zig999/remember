@@ -74,6 +74,7 @@ import { cn } from "@/lib/cn";
 import { useListMessages } from "../api/use-list-messages";
 import { useChatTurnStore } from "../state/chat-turn";
 import type { ChatMessage, ChatContentBlock } from "../types";
+import { ChatStatusIndicator } from "./ChatStatusIndicator";
 
 /* ---------------- copy (verbatim pt-BR, TC-08 constraints) ---------------- */
 
@@ -376,6 +377,14 @@ export const MessageStream: FC<MessageStreamProps> = ({
               animate
             />
           ) : null}
+
+          {/* TC-FE-10 — discreet waiting hint anchored below the last bubble.
+              The component is a no-op render unless chatStatus is `thinking`
+              or `tool_running` (covers the gap between send and the first
+              `text_delta`, and the gap during a tool call). It carries its
+              own `aria-live="polite"` so a screen reader speaks the phrase
+              without re-reading the message history. Plan §7.2 + AC-F.17. */}
+          <ChatStatusIndicator />
         </div>
       )}
 

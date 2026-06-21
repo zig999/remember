@@ -18,3 +18,5 @@ export { ToolCallChip } from "./ToolCallChip";
 export type { ToolCallChipProps } from "./ToolCallChip/ToolCallChip.types";
 export { UsageBadge } from "./UsageBadge";
 export type { UsageBadgeProps } from "./UsageBadge/UsageBadge.types";
+export { ChatStatusIndicator } from "./ChatStatusIndicator";
+export type { ChatStatusIndicatorProps } from "./ChatStatusIndicator";
