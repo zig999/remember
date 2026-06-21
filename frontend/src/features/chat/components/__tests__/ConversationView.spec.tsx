@@ -6,17 +6,27 @@
  *    para começar.'). If a refactor silently rewords it, screen-reader users
  *    lose the documented entry hint and the QA gate fails. We pin the exact
  *    string.
- *  - The active vs. empty branch is the only behavioral fork in this
- *    component — both halves are asserted so the wrong branch never sneaks
- *    in undetected when MessageStream/Composer ship in TC-08/TC-09.
- *  - The component must NOT fetch data; this test indirectly confirms that
- *    by rendering without a QueryClientProvider — a future regression that
- *    adds a hook there would throw on mount.
+ *  - The active branch must actually mount the MessageStream AND the Composer
+ *    (its textarea) — a regression that leaves either slot empty means the
+ *    operator cannot read or send messages (the exact bug this guards). We
+ *    render the REAL components inside a QueryClientProvider with the network
+ *    stubbed (queries stay pending → MessageStream shows its skeleton, the
+ *    Composer shows its send band + textarea) so no real fetch fires.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConversationView } from "../ConversationView";
+
+// Keep every real export of the HTTP layer (EnvelopeError, authHeader, …) but
+// replace the network call with a promise that never settles, so the mounted
+// queries (history, conversation detail) stay in their pending state and no
+// real request leaves jsdom.
+vi.mock("@/lib/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/http")>();
+  return { ...actual, http: () => new Promise(() => {}) };
+});
 
 let container: HTMLDivElement;
 let root: Root;
@@ -32,8 +42,18 @@ afterEach(() => {
   container.remove();
 });
 
+function renderWithClient(node: React.ReactNode): void {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  act(() => {
+    root.render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+  });
+}
+
 describe("ConversationView", () => {
   it("renders UI-01 empty state with the normative pt-BR hint when no conversation is active", () => {
+    // Empty branch takes no hooks, so it renders fine without a client.
     act(() => {
       root.render(<ConversationView conversationId={undefined} />);
     });
@@ -52,22 +72,31 @@ describe("ConversationView", () => {
     ).toBeNull();
   });
 
-  it("renders the active conversation layout with MessageStream + Composer slots when a conversation id is present", () => {
+  it("mounts MessageStream + the Composer textarea when a conversation id is present", () => {
     const id = "11111111-1111-1111-1111-111111111111";
-    act(() => {
-      root.render(<ConversationView conversationId={id} />);
-    });
+    renderWithClient(<ConversationView conversationId={id} />);
 
     const view = container.querySelector('[data-testid="conversation-view"]');
     expect(view).not.toBeNull();
     expect(view?.getAttribute("data-conversation-id")).toBe(id);
-    // Both slots must be present — TC-08 / TC-09 fill them in later.
+
+    // Both slots present...
     expect(
       container.querySelector('[data-testid="message-stream-slot"]'),
     ).not.toBeNull();
     expect(
       container.querySelector('[data-testid="composer-slot"]'),
     ).not.toBeNull();
+
+    // ...and the REAL children mounted inside them: the message stream region
+    // and the composer's textarea (the operator can type a message).
+    expect(
+      container.querySelector('[data-testid="message-stream"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="composer-textarea"]'),
+    ).not.toBeNull();
+
     // The empty branch must NOT render at the same time.
     expect(
       container.querySelector('[data-testid="conversation-view-empty"]'),

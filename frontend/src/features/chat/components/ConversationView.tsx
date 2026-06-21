@@ -6,16 +6,23 @@
  * conversation id here):
  *
  *  - No active conversation -> UI-01 empty state (centered hint copy).
- *  - Active conversation    -> stub placeholders for MessageStream (TC-08)
- *                              and Composer (TC-09); replaced by those
- *                              components in their own task contracts.
+ *  - Active conversation    -> the MessageStream (TC-08) over the Composer
+ *                              (TC-09), both filling their slots.
  *
  * Layout: fills its parent column (height/width 100%); the parent
  * ChatWorkspace owns the 40% / 60% column split via container query.
- * No data-fetch here — that is the responsibility of MessageStream /
- * Composer (TC-08 / TC-09).
+ *
+ * The active branch needs the conversation's archived state to drive the
+ * Composer (BR-25 archived banner + 'Reativar'), so it fetches via
+ * `useGetConversation` and wires `onUnarchive` to `useUpdateConversation`.
+ * Those hooks live in the inner `ActiveConversation` component so they only
+ * run when a conversation is selected (the empty branch returns before any
+ * hook — Rules of Hooks).
  */
 import type { FC } from "react";
+import { useGetConversation, useUpdateConversation } from "../api";
+import { MessageStream } from "./MessageStream";
+import { Composer } from "./Composer";
 
 export interface ConversationViewProps {
   /**
@@ -43,9 +50,23 @@ export const ConversationView: FC<ConversationViewProps> = ({
     );
   }
 
-  // Stubs for TC-08 (MessageStream) and TC-09 (Composer). These slots will be
-  // replaced by the real components in their respective task contracts; the
-  // markers below let the hermetic gate assert the loading layout exists.
+  return <ActiveConversation conversationId={conversationId} />;
+};
+
+/**
+ * Active branch — owns the conversation-detail fetch (for archived state) and
+ * the un-archive mutation, then composes MessageStream over Composer. Split
+ * out so its hooks never run on the empty branch.
+ */
+const ActiveConversation: FC<{ conversationId: string }> = ({
+  conversationId,
+}) => {
+  const conversationQuery = useGetConversation(conversationId);
+  const updateMutation = useUpdateConversation();
+  // Until the detail loads, treat as not-archived (the Composer's send band is
+  // the safe default; if it turns out archived the banner swaps in on load).
+  const isArchived = conversationQuery.data?.archivedAt != null;
+
   return (
     <section
       aria-label="Conversa"
@@ -54,18 +75,24 @@ export const ConversationView: FC<ConversationViewProps> = ({
       data-conversation-id={conversationId}
     >
       <div
-        className="flex-1 overflow-hidden"
+        className="min-h-0 flex-1 overflow-hidden"
         data-testid="message-stream-slot"
         aria-label="Mensagens da conversa"
       >
-        {/* TC-08 — MessageStream renders here. */}
+        <MessageStream conversationId={conversationId} className="h-full" />
       </div>
       <div
-        className="shrink-0"
+        className="shrink-0 p-lg pt-sm"
         data-testid="composer-slot"
         aria-label="Compositor de mensagem"
       >
-        {/* TC-09 — Composer renders here. */}
+        <Composer
+          conversationId={conversationId}
+          isArchived={isArchived}
+          onUnarchive={() =>
+            updateMutation.mutate({ id: conversationId, archivedAt: null })
+          }
+        />
       </div>
     </section>
   );

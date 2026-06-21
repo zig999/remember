@@ -127,6 +127,27 @@ describe("theme.css — @theme block presence and shape (tokens.md §2)", () => 
     expect(css).toMatch(/--z-toast\s*:\s*60\b/);
   });
 
+  it("maps every z-index token to a real @utility (Tailwind v4 has no z-index namespace)", () => {
+    // Declaring `--z-frame: 40` in @theme emits the CSS var but NO `z-frame`
+    // utility — the class silently resolves to `z-index: auto`. Without these
+    // @utility rules the fixed header is not elevated above the workspace and
+    // header clicks are swallowed; popover/modal/toast stacking also collapses.
+    for (const level of [
+      "backdrop",
+      "base",
+      "panel",
+      "drawer",
+      "popover",
+      "frame",
+      "modal",
+      "toast",
+    ]) {
+      expect(css).toMatch(
+        new RegExp(`@utility\\s+z-${level}\\s*\\{[^}]*z-index:\\s*var\\(--z-${level}\\)`),
+      );
+    }
+  });
+
   it("declares the 5 canonical motion durations — and none of the forbidden ones", () => {
     expect(css).toMatch(/--duration-instant\s*:\s*100ms/);
     expect(css).toMatch(/--duration-fast\s*:\s*200ms/);

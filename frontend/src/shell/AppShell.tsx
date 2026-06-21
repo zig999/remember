@@ -49,7 +49,13 @@ export function AppShell({ children, className }: AppShellProps) {
         // Workspace: the only region that scrolls (front.md §2.1).
         // pt-12 / pb-8 reserve the fixed header (h-12) and footer (h-8).
         className={cn(
-          "relative z-base min-h-screen overflow-y-auto pt-12 pb-8",
+          // `h-screen` (a DEFINITE height, unlike min-h-screen) makes <main>
+          // the single scroll region (front.md §2.1) AND lets a `flex-1` child
+          // resolve its own `h-full` descendants — the chat workspace relies on
+          // this for its full-height 40/60 split. `flex flex-col` lets a route
+          // claim the region with `flex-1`; routes that flow normally just
+          // scroll inside main as before.
+          "relative z-base flex h-screen flex-col overflow-y-auto pt-12 pb-8",
           className,
         )}
         data-testid="app-workspace"

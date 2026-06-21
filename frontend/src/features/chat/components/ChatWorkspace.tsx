@@ -35,36 +35,41 @@ export const ChatWorkspace: FC = () => {
   const { conversation } = chatRoute.useSearch();
 
   return (
+    // `@container` marks the workspace as the query container and `flex-1`
+    // makes it fill the workspace region (AppShell's <main> is a flex column).
+    // The `@lg:` split MUST live on a DESCENDANT, never on this element: a
+    // container-query variant resolves against an ANCESTOR container, so an
+    // element cannot query its own inline-size.
     <div
-      // `@container` enables container-query modifiers (`@lg:` etc.) on
-      // descendants — replaces a media query (forbidden). `flex flex-col`
-      // is the narrow/stacked default; `@lg:flex-row` flips to the two-
-      // column layout when the WORKSPACE container (not the viewport)
-      // crosses Tailwind's `lg` container breakpoint.
-      className="@container flex h-full w-full flex-col @lg:flex-row"
+      className="@container min-h-0 w-full flex-1"
       data-testid="chat-workspace"
     >
-      {/* Left column — 40% of the workspace at @lg+ (w-2/5 = 40%).
-          Stacked above the graph column below @lg (full width). */}
-      <div className="flex-1 @lg:w-2/5 @lg:flex-none">
-        <ConversationView conversationId={conversation} />
-      </div>
+      {/* `flex-col` is the narrow/stacked default; `@lg:flex-row` flips to the
+          two-column layout once the WORKSPACE container (not the viewport)
+          crosses the `lg` container breakpoint. */}
+      <div className="flex h-full w-full flex-col @lg:flex-row">
+        {/* Left column — chat, 40% of the workspace at @lg+ (w-2/5 = 40%).
+            Stacked above the graph column below @lg (full width). */}
+        <div className="min-h-0 flex-1 @lg:w-2/5 @lg:flex-none">
+          <ConversationView conversationId={conversation} />
+        </div>
 
-      {/* Right column — 60% of the workspace at @lg+ (w-3/5 = 60%).
-          Graph rendering is out of scope for this wave; a glass panel
-          with the 'em breve' hint stands in. */}
-      <div
-        className="flex-1 p-lg @lg:w-3/5 @lg:flex-none"
-        data-testid="chat-graph-stub"
-      >
-        <GlassSurface
-          level="panel"
-          animate={false}
-          className="flex h-full w-full items-center justify-center text-content"
-          aria-label="Grafo da conversa"
+        {/* Right column — graph, 60% at @lg+ (w-3/5 = 60%), to the right.
+            Graph rendering is out of scope for this wave; a glass panel
+            with the 'em breve' hint stands in. */}
+        <div
+          className="min-h-0 flex-1 p-lg @lg:w-3/5 @lg:flex-none"
+          data-testid="chat-graph-stub"
         >
-          <p className="text-body text-body">Grafo em breve</p>
-        </GlassSurface>
+          <GlassSurface
+            level="panel"
+            animate={false}
+            className="flex h-full w-full items-center justify-center text-content"
+            aria-label="Grafo da conversa"
+          >
+            <p className="text-body text-body">Grafo em breve</p>
+          </GlassSurface>
+        </div>
       </div>
     </div>
   );

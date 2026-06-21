@@ -40,14 +40,39 @@ vi.mock("../../../../router/routes", () => ({
   chatRoute: { useSearch: mockUseSearch },
 }));
 
+// ConversationView's active branch fetches the conversation detail + message
+// history. Keep the real HTTP layer but stub the network call so those queries
+// stay pending (no real request in jsdom) — the active branch still renders.
+vi.mock("@/lib/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/http")>();
+  return { ...actual, http: () => new Promise(() => {}) };
+});
+
 // Framer Motion in jsdom — keep the real lib (GlassSurface uses motion.div +
 // useReducedMotion). No mock needed; jsdom + framer-motion render fine for
 // a static (animate=false) panel, which is what ChatWorkspace passes.
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatWorkspace } from "../ChatWorkspace";
 
 let container: HTMLDivElement;
 let root: Root;
+
+// Render inside a QueryClientProvider — the active conversation branch mounts
+// data hooks (history, conversation detail). The layout/empty branches take no
+// hooks, so the provider is simply inert for them.
+function renderWS(): void {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  act(() => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <ChatWorkspace />
+      </QueryClientProvider>,
+    );
+  });
+}
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -64,9 +89,7 @@ afterEach(() => {
 describe("ChatWorkspace", () => {
   it("renders the @container parent + container-query split classes (40%/60% via @lg modifiers)", () => {
     mockUseSearch.mockReturnValue({});
-    act(() => {
-      root.render(<ChatWorkspace />);
-    });
+    renderWS();
 
     const workspace = container.querySelector(
       '[data-testid="chat-workspace"]',
@@ -76,9 +99,20 @@ describe("ChatWorkspace", () => {
 
     // @container parent — the gate that enables @lg:* modifiers on children.
     expect(cls).toContain("@container");
-    // Mobile-first stacked default, container-row at @lg.
-    expect(cls).toContain("flex-col");
-    expect(cls).toContain("@lg:flex-row");
+
+    // CRITICAL: the flex split must NOT sit on the @container element itself.
+    // A container-query variant resolves against an ANCESTOR container, so an
+    // element cannot query its own inline-size — putting `@lg:flex-row` on the
+    // @container would silently never match (the bug this guards against). It
+    // belongs on a DESCENDANT.
+    expect(cls).not.toContain("@lg:flex-row");
+    const split = workspace?.querySelector('[class*="@lg:flex-row"]') ?? null;
+    expect(split).not.toBeNull();
+    expect(split).not.toBe(workspace);
+    const splitCls = split?.getAttribute("class") ?? "";
+    // Mobile-first stacked default, container-row at @lg — on the descendant.
+    expect(splitCls).toContain("flex-col");
+    expect(splitCls).toContain("@lg:flex-row");
 
     // Columns must use container-aware fractional widths — not media queries,
     // not arbitrary values. Searching the rendered HTML covers both columns.
@@ -93,9 +127,7 @@ describe("ChatWorkspace", () => {
 
   it("shows the UI-01 empty state when no ?conversation is in the URL", () => {
     mockUseSearch.mockReturnValue({});
-    act(() => {
-      root.render(<ChatWorkspace />);
-    });
+    renderWS();
 
     const empty = container.querySelector(
       '[data-testid="conversation-view-empty"]',
@@ -113,9 +145,7 @@ describe("ChatWorkspace", () => {
   it("forwards the ?conversation uuid to ConversationView when present", () => {
     const id = "22222222-2222-2222-2222-222222222222";
     mockUseSearch.mockReturnValue({ conversation: id });
-    act(() => {
-      root.render(<ChatWorkspace />);
-    });
+    renderWS();
 
     const view = container.querySelector('[data-testid="conversation-view"]');
     expect(view).not.toBeNull();
