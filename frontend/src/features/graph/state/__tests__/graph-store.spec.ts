@@ -494,5 +494,87 @@ describe("useGraphStore — single-writer invariant (D2)", () => {
     expect(typeof s.setStatus).toBe("function");
     expect(typeof s.dequeueReveal).toBe("function");
     expect(typeof s.settleTurn).toBe("function");
+    expect(typeof s.setNodePosition).toBe("function");
+  });
+});
+
+describe("useGraphStore.setNodePosition — drag commit (TC-FE drag, AC-F.12 ext.)", () => {
+  it("writes the dropped coordinate AND records the node as user-pinned", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1")]));
+    useGraphStore.getState().setNodePosition("n1", { x: 120, y: -40 });
+
+    const s = useGraphStore.getState();
+    expect(s.positions.get("n1")).toEqual({ x: 120, y: -40 });
+    // The pin set is the explicit record of user intent — distinct from a
+    // coordinate the force field merely computed.
+    expect(s.userPinned.has("n1")).toBe(true);
+  });
+
+  it("replaces the positions Map by identity so subscribers re-render (Zustand strict-eq)", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1")]));
+    const before = useGraphStore.getState().positions;
+    useGraphStore.getState().setNodePosition("n1", { x: 5, y: 5 });
+    expect(useGraphStore.getState().positions).not.toBe(before);
+  });
+
+  it("is a no-op for an id that is not in the graph (stale drag after remove/clear)", () => {
+    // A drag-stop event can race a removeNodes/clear; resurrecting an orphan
+    // position the force pass never reconciles would leave a phantom pin.
+    useGraphStore.getState().setNodePosition("ghost", { x: 1, y: 2 });
+    const s = useGraphStore.getState();
+    expect(s.positions.has("ghost")).toBe(false);
+    expect(s.userPinned.has("ghost")).toBe(false);
+  });
+
+  it("removeNodes drops the pin + position for removed nodes", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1"), makeNode("n2")]));
+    useGraphStore.getState().setNodePosition("n1", { x: 10, y: 10 });
+    useGraphStore.getState().setNodePosition("n2", { x: 20, y: 20 });
+
+    useGraphStore.getState().removeNodes(["n1"]);
+
+    const s = useGraphStore.getState();
+    expect(s.userPinned.has("n1")).toBe(false);
+    expect(s.positions.has("n1")).toBe(false);
+    // n2's pin survives.
+    expect(s.userPinned.has("n2")).toBe(true);
+    expect(s.positions.get("n2")).toEqual({ x: 20, y: 20 });
+  });
+
+  it("clear() resets userPinned to empty", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1")]));
+    useGraphStore.getState().setNodePosition("n1", { x: 9, y: 9 });
+    useGraphStore.getState().clear();
+    expect(useGraphStore.getState().userPinned.size).toBe(0);
+  });
+});
+
+describe("useGraphStore.resetLayout — Reorganizar (TC-FE drag, Phase 2)", () => {
+  it("clears userPinned and bumps layoutNonce so the force pass re-flows", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1")]));
+    useGraphStore.getState().setNodePosition("n1", { x: 50, y: 50 });
+    const nonceBefore = useGraphStore.getState().layoutNonce;
+
+    useGraphStore.getState().resetLayout();
+
+    const s = useGraphStore.getState();
+    expect(s.userPinned.size).toBe(0);
+    expect(s.layoutNonce).toBe(nonceBefore + 1);
+  });
+
+  it("does NOT clear positions (the reset force pass overwrites them — no {0,0} flash)", () => {
+    useGraphStore.getState().addNodes(makeDelta([makeNode("n1")]));
+    useGraphStore.getState().setNodePosition("n1", { x: 50, y: 50 });
+    useGraphStore.getState().resetLayout();
+    // Positions survive until the force pass recomputes them.
+    expect(useGraphStore.getState().positions.get("n1")).toEqual({ x: 50, y: 50 });
+  });
+
+  it("clear() resets layoutNonce to 0", () => {
+    useGraphStore.getState().resetLayout();
+    useGraphStore.getState().resetLayout();
+    expect(useGraphStore.getState().layoutNonce).toBeGreaterThan(0);
+    useGraphStore.getState().clear();
+    expect(useGraphStore.getState().layoutNonce).toBe(0);
   });
 });

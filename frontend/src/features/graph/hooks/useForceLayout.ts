@@ -209,21 +209,34 @@ export function useForceLayout(): ReadonlyMap<string, GraphPosition> {
   const nodes = useGraphStore((s) => s.nodes);
   const links = useGraphStore((s) => s.links);
   const positions = useGraphStore((s) => s.positions);
+  // `resetLayout` (Phase 2) bumps this. A change means "re-flow everything,
+  // ignoring pins" — distinct from a delta-driven run, which honours pins.
+  const layoutNonce = useGraphStore((s) => s.layoutNonce);
 
   // Latest-positions ref — used inside the effect to read the pin set without
   // making `positions` itself an effect dependency (that would loop on the
   // store write below).
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
+  // Tracks the last nonce the effect ran with, so we can tell a reset run
+  // (nonce changed) from a delta run (nodes/links changed).
+  const prevNonceRef = useRef(layoutNonce);
 
   useEffect(() => {
+    // A "Reorganizar" reset run ignores the pin set so every node re-flows;
+    // a normal (delta-driven) run pins existing/user-placed nodes (AC-F.12).
+    const isReset = prevNonceRef.current !== layoutNonce;
+    prevNonceRef.current = layoutNonce;
+
     // Snapshot the inputs at effect time.
     const nodeIds = Array.from(nodes.keys());
     const linkPairs = Array.from(links.values(), (l) => ({
       source: l.source,
       target: l.target,
     }));
-    const pinned = positionsRef.current;
+    const pinned = isReset
+      ? new Map<string, GraphPosition>()
+      : positionsRef.current;
 
     if (nodeIds.length === 0) {
       // No nodes → ensure the store's positions Map is empty (it may carry
@@ -241,8 +254,9 @@ export function useForceLayout(): ReadonlyMap<string, GraphPosition> {
     // subscription's referential check fires — Zustand uses strict equality.
     useGraphStore.setState({ positions: next });
     // Intentionally NOT depending on `positions` — see the docstring above.
+    // `layoutNonce` IS a dep: bumping it (resetLayout) forces a re-flow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, links]);
+  }, [nodes, links, layoutNonce]);
 
   return positions;
 }

@@ -61,6 +61,7 @@ import type { FC } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { cn } from "@/lib/cn";
 import { useForceLayout } from "../../hooks/useForceLayout";
+import { useGraphStore } from "../../state/graph-store";
 import {
   useGraphReveal,
   DEFAULT_REVEAL_STAGGER_MS,
@@ -103,6 +104,14 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
   // live (subscribed) positions — GraphCanvas reads them every render.
   const positions = useForceLayout();
 
+  // Drag-and-drop commit (TC-FE drag). The store action pins the dragged
+  // node; `useForceLayout` honours the pin on the next force pass. Selecting
+  // the action (stable reference) keeps this subscription from re-rendering
+  // on unrelated store changes.
+  const setNodePosition = useGraphStore((s) => s.setNodePosition);
+  // "Reorganizar" (Phase 2) — re-flow the layout, discarding user drags.
+  const resetLayout = useGraphStore((s) => s.resetLayout);
+
   // Consume the reveal queue at the configured stagger. The hook owns the
   // status transition `"revealing" → "ready"` and the reduced-motion
   // batch-drain — GraphSpace stays a thin orchestrator. Returns the live
@@ -138,6 +147,8 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
         links={links}
         positions={positions}
         revealedIds={revealedIds}
+        onNodePositionCommit={setNodePosition}
+        onResetLayout={resetLayout}
         {...canvasNodeSelectProp}
         {...canvasRefProp}
       />

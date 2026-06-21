@@ -36,12 +36,16 @@ import { useCallback, useImperativeHandle, useMemo } from "react";
 import type { FC, MouseEvent as ReactMouseEvent } from "react";
 import {
   ReactFlow,
+  Panel,
   useReactFlow,
   type Edge,
   type Node,
   type NodeMouseHandler,
+  type OnNodesChange,
 } from "@xyflow/react";
+import { Shuffle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
 import {
   GraphNodeAdapter,
   type GraphNode,
@@ -128,6 +132,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   positions,
   revealedIds,
   onNodeSelect,
+  onNodePositionCommit,
+  onResetLayout,
   ref,
   className,
 }) => {
@@ -222,6 +228,40 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     [onNodeSelect],
   );
 
+  /**
+   * React Flow's onNodesChange — the canvas is FULLY CONTROLLED (the store
+   * owns `positions`, fed in via the `nodes` prop), so RF cannot move a node
+   * during a drag unless we apply the change ourselves. We route every
+   * `position` change straight to the store via `onNodePositionCommit`: the
+   * store writes the coord + pins the node, which flows back through
+   * `positions` → `toRfNodes` and re-renders the node at the new spot (so it
+   * follows the cursor). On drop the final change persists; the pin makes the
+   * next force pass keep it put (AC-F.12 extended). Non-position changes
+   * (dimensions/selection) are RF-internal and intentionally ignored — they
+   * matched the prior view-only behaviour.
+   */
+  const handleNodesChange = useCallback<OnNodesChange>(
+    (changes) => {
+      if (!onNodePositionCommit) return;
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          onNodePositionCommit(change.id, {
+            x: change.position.x,
+            y: change.position.y,
+          });
+        }
+      }
+    },
+    [onNodePositionCommit],
+  );
+
+  // Spread `onNodesChange` only when a commit handler is wired — under
+  // `exactOptionalPropertyTypes` an explicit `undefined` is rejected by
+  // React Flow's prop type.
+  const nodesChangeProp = onNodePositionCommit
+    ? { onNodesChange: handleNodesChange }
+    : {};
+
   return (
     <ReactFlow
       // Controlled mode: parent owns nodes/edges; we never write to RF's
@@ -233,6 +273,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       edgeTypes={EDGE_TYPES}
       defaultViewport={DEFAULT_VIEWPORT}
       onNodeClick={handleNodeClick}
+      {...nodesChangeProp}
       // Auto-fit when nodes change so a new turn's subgraph centres
       // without the user having to click "fit". The `padding: 0.1` keeps
       // a 10% margin around the bounding box (RF default is too tight).
@@ -243,9 +284,14 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       // hiding it (see @xyflow/react LICENSE).
       proOptions={{ hideAttribution: true }}
       // Selection / drag flags: nodes are interactive (selectable +
-      // focusable for keyboard a11y per GraphSpace §8 scenario 6) but
-      // not draggable in v1 — d3-force owns layout (D5).
-      nodesDraggable={false}
+      // focusable for keyboard a11y per GraphSpace §8 scenario 6). Draggable
+      // when a position-commit handler is wired (TC-FE drag, supersedes D5):
+      // d3-force still computes the INITIAL layout and pins existing nodes,
+      // but the user can override any node's position by dragging — the
+      // commit persists it as a pin (AC-F.12 extended). Omitting the handler
+      // (tests / static callers) keeps the original view-only, non-draggable
+      // behaviour. `nodesConnectable` stays false — this is a read-only graph.
+      nodesDraggable={onNodePositionCommit !== undefined}
       nodesConnectable={false}
       elementsSelectable={true}
       // Pan/zoom are user-driven — these are the React Flow defaults
@@ -253,6 +299,24 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       panOnDrag
       zoomOnScroll
       className={cn("h-full w-full", className)}
-    />
+    >
+      {/* "Reorganizar" — re-flow the layout (discard user drags, re-run the
+          force pass). Shown only with a handler wired AND at least one node.
+          React Flow's <Panel> overlays the canvas without affecting layout. */}
+      {onResetLayout && visibleNodes.length > 0 && (
+        <Panel position="top-right">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onResetLayout}
+            aria-label="Reorganizar o layout do grafo"
+          >
+            <Shuffle aria-hidden="true" className="size-4" />
+            Reorganizar
+          </Button>
+        </Panel>
+      )}
+    </ReactFlow>
   );
 };

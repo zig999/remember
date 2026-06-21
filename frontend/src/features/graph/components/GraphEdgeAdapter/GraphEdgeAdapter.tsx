@@ -178,16 +178,17 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: "all",
+            // `none` — the label is purely DECORATIVE (the hover tooltip is
+            // deferred Tech Debt). With `all` the pill intercepts pointer
+            // events where it overlaps a node, blocking node drag/click
+            // (TC-FE drag). `none` lets the pointer fall through to the node
+            // beneath. Restore to `all` only when the interactive tooltip lands.
+            pointerEvents: "none",
           }}
           className={cn(
             "rounded-sm bg-surface-glass-panel px-xs py-xs",
             "text-caption text-content",
             "border border-border-glass",
-            // Selectable label: keep CSS `position: absolute` plus the
-            // pointer-events override so React Flow's nopan/nodrag overlays
-            // do not eat the label's hover region.
-            "nodrag nopan",
             isDimmed && "opacity-40",
           )}
         >

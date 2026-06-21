@@ -43,6 +43,16 @@ export interface GraphCanvasProps {
    *  to mount the NodeDetailPanel — never to trigger a chat mutation
    *  (REQ-6 / AC-U.3). */
   onNodeSelect?: (nodeId: string) => void;
+  /** Drag-and-drop commit (TC-FE drag). Fired on `onNodeDragStop` with the
+   *  node's final canvas coordinate. The parent persists it via the store's
+   *  `setNodePosition` (which pins the node). When OMITTED, nodes are NOT
+   *  draggable — preserves the view-only default and keeps unit tests that
+   *  don't wire it on the legacy non-draggable path. */
+  onNodePositionCommit?: (nodeId: string, position: GraphPosition) => void;
+  /** "Reorganizar" (TC-FE drag, Phase 2). When provided AND the canvas has at
+   *  least one node, an overlay button is shown that re-flows the layout
+   *  (discards user drags, re-runs the force pass). Omitted → no button. */
+  onResetLayout?: () => void;
   /** Imperative view-handle ref (React 19 ref-as-prop). Exposes
    *  `focusNode`/`fitView`/`recenter` against the React Flow viewport. */
   ref?: Ref<GraphSpaceHandle>;

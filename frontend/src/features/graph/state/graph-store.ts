@@ -81,6 +81,19 @@ export interface GraphState {
    *  `settleTurn`). Drives whether `settleTurn("done")` advances status
    *  to `ready` or leaves it alone. */
   receivedDeltaThisTurn: boolean;
+  /** IDs of nodes the USER has repositioned via drag (TC-FE drag). A node
+   *  in this set keeps its `positions` entry as a permanent pin: the force
+   *  layout already pins any node that has a position (AC-F.12), so this set
+   *  is the explicit record of *user intent* — distinct from a coordinate
+   *  the force field merely computed. Used to (a) let a future "reorganizar"
+   *  reset auto-placed nodes only, and (b) drop the pin on remove/clear. */
+  userPinned: Set<string>;
+  /** Monotonic counter bumped by `resetLayout` (TC-FE drag, Phase 2). It is a
+   *  dependency of the `useForceLayout` effect: bumping it forces ONE force
+   *  pass that IGNORES the pin set, re-flowing every node into a fresh layout
+   *  (the "Reorganizar" affordance). Distinct from a delta-driven run, which
+   *  honours pins. Reset to 0 by `clear()`. */
+  layoutNonce: number;
 
   /** Merge a delta into the store. Re-affirmed ids update in place; only
    *  new ids enter `revealQueue`. Sets `receivedDeltaThisTurn = true`
@@ -91,6 +104,23 @@ export interface GraphState {
    *  references one of them (orphan cleanup). The positions entry and
    *  revealed-ids membership for the removed nodes are dropped too. */
   removeNodes: (ids: readonly string[]) => void;
+  /** User drag-and-drop commit (TC-FE drag). Pins one node at the given
+   *  canvas coordinate and records it in `userPinned`. Writes a fresh
+   *  `positions` Map so the `useForceLayout` / `GraphCanvas` subscribers
+   *  re-render (Zustand strict-equality). Does NOT re-run the force pass —
+   *  that effect is keyed on `nodes`/`links`, not `positions` — so a drag is
+   *  a pure position override; the next delta's force run reads this coord
+   *  from the pin set and snaps the node back to it (AC-F.12). No-op if the
+   *  node id is not currently in the graph. */
+  setNodePosition: (id: string, position: GraphPosition) => void;
+  /** "Reorganizar" (TC-FE drag, Phase 2). Discards all user pins and forces a
+   *  fresh force-layout pass that re-flows every node from scratch. Clears
+   *  `userPinned` and bumps `layoutNonce` (the force effect re-runs ignoring
+   *  pins). Positions are NOT cleared here — the reset pass overwrites them in
+   *  place, so the nodes glide from their current spots to the new layout with
+   *  no `{0,0}` flash. No-op-safe on an empty graph (the force effect early
+   *  returns). */
+  resetLayout: () => void;
   /** Reset to empty / `status === "empty"`. Called on conversation
    *  switch — the right pane goes back to `GraphEmptyState`. Also
    *  resets `receivedDeltaThisTurn` (new conversation = new turn). */
@@ -138,6 +168,8 @@ function makeInitialState(): Pick<
   | "status"
   | "errorMessage"
   | "receivedDeltaThisTurn"
+  | "userPinned"
+  | "layoutNonce"
 > {
   return {
     nodes: new Map<string, GraphNodeData>(),
@@ -148,6 +180,8 @@ function makeInitialState(): Pick<
     status: "empty",
     errorMessage: undefined,
     receivedDeltaThisTurn: false,
+    userPinned: new Set<string>(),
+    layoutNonce: 0,
   };
 }
 
@@ -198,11 +232,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       const nextLinks = new Map(state.links);
       const nextPositions = new Map(state.positions);
       const nextRevealedIds = new Set(state.revealedIds);
+      const nextUserPinned = new Set(state.userPinned);
 
       for (const id of idSet) {
         nextNodes.delete(id);
         nextPositions.delete(id);
         nextRevealedIds.delete(id);
+        nextUserPinned.delete(id);
       }
 
       // Drop any link whose endpoint was removed — leaving orphan edges
@@ -227,8 +263,30 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         positions: nextPositions,
         revealedIds: nextRevealedIds,
         revealQueue: nextRevealQueue,
+        userPinned: nextUserPinned,
       };
     });
+  },
+
+  setNodePosition: (id, position) => {
+    set((state) => {
+      // Ignore a commit for a node that is not in the graph (a stale drag
+      // event arriving after a `removeNodes`/`clear`). Writing it would
+      // resurrect an orphan position the force pass never reconciles.
+      if (!state.nodes.has(id)) return {};
+      const nextPositions = new Map(state.positions);
+      nextPositions.set(id, position);
+      const nextUserPinned = new Set(state.userPinned);
+      nextUserPinned.add(id);
+      return { positions: nextPositions, userPinned: nextUserPinned };
+    });
+  },
+
+  resetLayout: () => {
+    set((state) => ({
+      userPinned: new Set<string>(),
+      layoutNonce: state.layoutNonce + 1,
+    }));
   },
 
   clear: () => {

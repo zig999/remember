@@ -21,6 +21,7 @@
 - Show processing state (`GraphStatusOverlay`) when the BFF is running a graph tool.
 - Animate new nodes one by one via `useGraphReveal` + Framer Motion (stagger ~90ms, `opacity 0→1` + `scale 0.85→1`).
 - Pin existing node positions when new nodes arrive (d3-force `fx`/`fy` — no layout jump, D5).
+- Let the user **reposition any node by drag-and-drop** (TC-FE drag, supersedes the v1 "not draggable" stance of D5). The drop commits the node's canvas coordinate to the store (`setNodePosition`) and records it in `userPinned`; because the force pass already pins any node that has a position, the dragged coordinate is honoured on every subsequent force run (AC-F.12 extended: existing **and user-placed** nodes do not jump). Drag stays view-local — it never writes to chat state (REQ-6 / UC-CG-09).
 - Render edges: `is_temporal=true → solid`, `is_temporal=false → dashed` (tokens.md §7).
 - Derive node visual state from `status` only: `active → accepted` (green), `needs_review → uncertain` (amber).
 - Expose a `ref` handle (`GraphSpaceHandle`) with view-only operations: `focusNode`, `fitView`, `recenter`.

@@ -167,6 +167,56 @@ describe("GraphCanvas", () => {
     expect(onNodeSelect).toHaveBeenCalledWith("n1");
   });
 
+  it("shows the Reorganizar button and fires onResetLayout when clicked (Phase 2)", () => {
+    const onResetLayout = vi.fn();
+    act(() =>
+      root.render(
+        withProvider(
+          <GraphCanvas
+            nodes={[makeNode("n1")]}
+            links={[]}
+            positions={new Map([["n1", { x: 0, y: 0 }]])}
+            onResetLayout={onResetLayout}
+          />,
+        ),
+      ),
+    );
+    const btn = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Reorganizar o layout do grafo"]',
+    );
+    expect(btn).not.toBeNull();
+    act(() => {
+      btn?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onResetLayout).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the Reorganizar button when onResetLayout is omitted OR there are no nodes", () => {
+    // No handler → no button.
+    act(() =>
+      root.render(
+        withProvider(
+          <GraphCanvas nodes={[makeNode("n1")]} links={[]} positions={new Map([["n1", { x: 0, y: 0 }]])} />,
+        ),
+      ),
+    );
+    expect(
+      container.querySelector('button[aria-label="Reorganizar o layout do grafo"]'),
+    ).toBeNull();
+
+    // Handler present but zero nodes → still no button (nothing to re-flow).
+    act(() =>
+      root.render(
+        withProvider(
+          <GraphCanvas nodes={[]} links={[]} positions={new Map()} onResetLayout={vi.fn()} />,
+        ),
+      ),
+    );
+    expect(
+      container.querySelector('button[aria-label="Reorganizar o layout do grafo"]'),
+    ).toBeNull();
+  });
+
   it("ref handle exposes focusNode / fitView / recenter (V5)", () => {
     let handle: GraphSpaceHandle | null = null;
     act(() =>
