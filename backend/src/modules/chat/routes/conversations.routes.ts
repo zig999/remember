@@ -714,8 +714,13 @@ export async function registerChatRoutes(
       reply.hijack();
       writeSseHeaders(reply);
 
-      // ---- (14) Drain the iterable. Persist tool_call rows in-loop (BR-32).
-      const collectedToolCallIds: string[] = [];
+      // ---- (14) Drain the iterable. Persist tool_call rows in-loop (BR-32)
+      //          and the per-iteration (assistant, tool_result) message pair on
+      //          `iteration_end` (BR-29 step 6.d). `pendingToolCallIds` holds
+      //          the current iteration's tool_call rows; they are attached to
+      //          that iteration's assistant row when the pair is persisted, then
+      //          reset for the next iteration.
+      const pendingToolCallIds: string[] = [];
       let assistantContent: ReadonlyArray<unknown> = [];
       let terminalKind: "done" | "error" | "none" = "none";
       let doneStopReason: DoneStopReason | undefined;
@@ -728,6 +733,53 @@ export async function registerChatRoutes(
 
       try {
         for await (const evt of iterable) {
+          // v2.2 (BR-29 step 6.d): a tool-bearing iteration completed. Persist
+          // the (assistant `[text?, tool_use]`, synthetic user `[tool_result]`)
+          // pair as TWO atomic chat_message rows so the next turn's replay is a
+          // valid Anthropic sequence, and attach this iteration's tool_call
+          // audit rows to the assistant row. INTERNAL event — `continue` BEFORE
+          // any wire framing so it never reaches the SSE stream.
+          if (evt.type === "iteration_end") {
+            try {
+              await withTransaction(deps.pool, async (client) => {
+                const { assistant } = await chatRepo.insertIterationPair(
+                  client,
+                  {
+                    conversation_id: id,
+                    assistant_content: [...evt.assistant_content],
+                    tool_result_content: [...evt.tool_results],
+                    model: finalModel,
+                  }
+                );
+                if (pendingToolCallIds.length > 0) {
+                  // Copy — `pendingToolCallIds` is reset right after this
+                  // transaction; never hand the live array to the repo.
+                  await chatRepo.attachToolCallsToMessage(
+                    client,
+                    [...pendingToolCallIds],
+                    assistant.id
+                  );
+                }
+              });
+            } catch (err) {
+              // Non-fatal: a failed pair-insert degrades future context replay
+              // but must NOT abort the live stream (the SSE frames already
+              // reached the client). Surfaced loud in the structured log.
+              deps.logger.warn(
+                {
+                  event: "chat.iteration_pair_persist_failure",
+                  conversation_id: id,
+                  iteration: evt.iteration,
+                  cause_message:
+                    err instanceof Error ? err.message : "unknown",
+                },
+                "chat iteration (assistant, tool_result) pair persist failed"
+              );
+            }
+            pendingToolCallIds.length = 0;
+            continue;
+          }
+
           // BR-32: persist tool_result events as chat_tool_call rows.
           if (evt.type === "tool_result") {
             try {
@@ -743,7 +795,7 @@ export async function registerChatRoutes(
                   duration_ms: evt.duration_ms,
                 })
               );
-              collectedToolCallIds.push(row.id);
+              pendingToolCallIds.push(row.id);
             } catch (err) {
               deps.logger.warn(
                 {
@@ -853,10 +905,14 @@ export async function registerChatRoutes(
             tokens_out: tokensOut,
             latency_ms: latencyMs,
           });
-          if (collectedToolCallIds.length > 0) {
+          // v2.2: normally empty here — a tool-bearing iteration attaches its
+          // own tool_calls on `iteration_end`. Defensive: a terminal frame that
+          // arrived with tool_calls still pending (e.g. max_iterations right
+          // after a tool) attaches them to the closing assistant row.
+          if (pendingToolCallIds.length > 0) {
             await chatRepo.attachToolCallsToMessage(
               client,
-              collectedToolCallIds,
+              pendingToolCallIds,
               row.id
             );
           }
@@ -1063,6 +1119,11 @@ function projectSseFrame(evt: ChatEvent): string {
       });
     case "error":
       return frameJson("error", { code: evt.code, message: evt.message });
+    case "iteration_end":
+      // v2.2 INTERNAL persistence event — the route handles it and `continue`s
+      // before reaching here, so this is never invoked at runtime. Present only
+      // to keep the switch exhaustive; emits nothing.
+      return "";
     case "graph_delta":
       // TC-be-002 — `graph_delta` is synthesised by the route handler from a
       // preceding `tool_result` (see drain loop above). Wire shape mirrors

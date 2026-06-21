@@ -202,4 +202,116 @@ describe("buildModelContext (BR-31)", () => {
       3
     );
   });
+
+  // -------------------------------------------------------------------------
+  // v2.2 — faithful multi-row persistence: replay-validity regression.
+  //
+  // This is THE regression for the bug that broke the 2nd turn. A tool-bearing
+  // turn is now persisted as separate rows; the builder must replay them as a
+  // VALID Anthropic sequence (every `tool_use` immediately followed by its
+  // `tool_result`), and must trim a window that was cut mid-turn.
+  // -------------------------------------------------------------------------
+
+  function toolUseRow(id: string, toolUseId: string): MessageRow {
+    return {
+      id,
+      conversation_id: CONVERSATION_NO_SUMMARY.id,
+      role: "assistant",
+      content: [
+        { type: "tool_use", id: toolUseId, name: "list_node_types", input: {} },
+      ],
+      stop_reason: null, // intermediate row — NOT terminal
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.500Z",
+    };
+  }
+  function toolResultRow(id: string, toolUseId: string): MessageRow {
+    return {
+      id,
+      conversation_id: CONVERSATION_NO_SUMMARY.id,
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: toolUseId, content: "10" }],
+      stop_reason: null,
+      idempotency_key: null, // synthetic — NOT a real user turn
+      model: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.600Z",
+    };
+  }
+
+  it("replays a persisted tool-turn as a VALID Anthropic sequence (the turn-2 bug)", async () => {
+    // Rows as persisted by a completed turn 1 that called a tool, then the new
+    // turn-2 user prompt at the tail (BR-29 step 3 inserts it before this call).
+    const u1 = userMessage("u1-3333-3333-3333-333333333333", "Quantos tipos de nó?");
+    const aToolUse = toolUseRow("a1-3333-3333-3333-333333333333", "toolu_X");
+    const uToolResult = toolResultRow("r1-3333-3333-3333-333333333333", "toolu_X");
+    const aText = assistantMessage("a2-3333-3333-3333-333333333333", "Existem 10.");
+    const u2 = userMessage("u2-3333-3333-3333-333333333333", "E os link types?");
+    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([
+      u1,
+      aToolUse,
+      uToolResult,
+      aText,
+      u2,
+    ]);
+    const pool = buildFakePool();
+    const ctx = await buildModelContext({
+      pool,
+      conversation: CONVERSATION_NO_SUMMARY,
+      systemPrompt: SYSTEM_PROMPT,
+      recentLimit: 10,
+    });
+
+    // The assistant tool_use is immediately followed by the user tool_result —
+    // the invariant whose violation produced the 400 on turn 2.
+    expect(ctx.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    const asst = ctx.messages[1];
+    const usr = ctx.messages[2];
+    expect((asst.content as Array<{ type: string }>)[0]!.type).toBe("tool_use");
+    expect((usr.content as Array<{ type: string; tool_use_id?: string }>)[0]!.type).toBe(
+      "tool_result"
+    );
+    expect(
+      (usr.content as Array<{ tool_use_id?: string }>)[0]!.tool_use_id
+    ).toBe("toolu_X");
+  });
+
+  it("trims a recent window that was cut MID-PAIR (leading orphan tool_result)", async () => {
+    // The window LIMIT sliced off the assistant[tool_use], leaving the
+    // user[tool_result] orphaned at the front — feeding it verbatim 400s
+    // Anthropic ("tool_result ... without tool_use").
+    const orphanToolResult = toolResultRow(
+      "r9-3333-3333-3333-333333333333",
+      "toolu_GONE"
+    );
+    const u2 = userMessage("u9-3333-3333-3333-333333333333", "E os link types?");
+    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([
+      orphanToolResult,
+      u2,
+    ]);
+    const pool = buildFakePool();
+    const ctx = await buildModelContext({
+      pool,
+      conversation: CONVERSATION_NO_SUMMARY,
+      systemPrompt: SYSTEM_PROMPT,
+      recentLimit: 10,
+    });
+    // The orphan is trimmed; the sequence starts on a clean user turn.
+    expect(ctx.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(
+      (ctx.messages[0].content as Array<{ type: string }>)[0]!.type
+    ).toBe("text");
+  });
 });

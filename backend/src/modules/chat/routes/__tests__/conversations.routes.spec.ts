@@ -41,6 +41,7 @@ vi.mock("../../repository/chat.repository.js", () => ({
   insertUserMessage: vi.fn(),
   findUserByIdempotencyKey: vi.fn(),
   findAssistantSuccessor: vi.fn(),
+  insertIterationPair: vi.fn(),
   insertAssistantMessage: vi.fn(),
   listRecentMessages: vi.fn(),
   listMessagesPaginated: vi.fn(),
@@ -1108,6 +1109,178 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
     expect(toolResultFrame!.data).toEqual({ tool: "search", ok: true });
     expect(toolResultFrame!.data).not.toHaveProperty("arguments");
     expect(toolResultFrame!.data).not.toHaveProperty("result");
+
+    await app.close();
+  });
+
+  it("v2.2: persists the (assistant tool_use, user tool_result) PAIR on iteration_end; never frames it to the wire", async () => {
+    // THE regression for the multi-turn bug: a tool-bearing iteration must be
+    // persisted as a valid pair of rows (BR-29 step 6.d) so the next turn's
+    // replay is a valid Anthropic sequence. The internal `iteration_end` event
+    // must NOT reach the SSE wire.
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
+      id: "u",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "hi" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValueOnce({
+      id: "tool-call-1",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "search",
+      arguments: { query: "x" },
+      result: { stub: "search" },
+      is_error: false,
+      error_message: null,
+      duration_ms: 12,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+    vi.mocked(chatRepo.insertIterationPair).mockResolvedValueOnce({
+      assistant: {
+        id: "asst-iter-1",
+        conversation_id: CID,
+        role: "assistant",
+        content: [],
+        stop_reason: null,
+        idempotency_key: null,
+        model: "claude-opus-4-8",
+        tokens_in: null,
+        tokens_out: null,
+        latency_ms: null,
+        created_at: "2026-06-20T12:00:00.600Z",
+      },
+      user: {
+        id: "usr-iter-1",
+        conversation_id: CID,
+        role: "user",
+        content: [],
+        stop_reason: null,
+        idempotency_key: null,
+        model: null,
+        tokens_in: null,
+        tokens_out: null,
+        latency_ms: null,
+        created_at: "2026-06-20T12:00:00.700Z",
+      },
+    });
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "a-final",
+      conversation_id: CID,
+      role: "assistant",
+      content: [{ type: "text", text: "Existem 10." }],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 10,
+      tokens_out: 5,
+      latency_ms: 100,
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+
+    const toolUseBlock = {
+      type: "tool_use",
+      id: "toolu_X",
+      name: "search",
+      input: { query: "x" },
+    };
+    const toolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "toolu_X",
+      content: "stub",
+      is_error: false,
+    };
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "search", args_summary: "query=x" },
+      {
+        type: "tool_result",
+        tool: "search",
+        ok: true,
+        arguments: { query: "x" },
+        result: { stub: "search" },
+        is_error: false,
+        error_message: null,
+        duration_ms: 12,
+      },
+      {
+        type: "iteration_end",
+        iteration: 1,
+        assistant_content: [toolUseBlock],
+        tool_results: [toolResultBlock],
+      },
+      { type: "llm_start", iteration: 2 },
+      { type: "text_delta", delta: "Existem 10." },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [{ type: "text", text: "Existem 10." }],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // The iteration pair is persisted with the tool_use + tool_result blocks.
+    expect(chatRepo.insertIterationPair).toHaveBeenCalledTimes(1);
+    expect(chatRepo.insertIterationPair).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        conversation_id: CID,
+        assistant_content: [toolUseBlock],
+        tool_result_content: [toolResultBlock],
+      })
+    );
+    // This iteration's tool_call row is attached to the PAIR's assistant row,
+    // not the final answer row.
+    expect(chatRepo.attachToolCallsToMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      ["tool-call-1"],
+      "asst-iter-1"
+    );
+    // The closing answer row is persisted separately with the final text.
+    expect(chatRepo.insertAssistantMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        content: [{ type: "text", text: "Existem 10." }],
+        stop_reason: "end_turn",
+      })
+    );
+
+    // The internal iteration_end event is NEVER framed to the SSE wire.
+    // (`search` is a graph tool, so a `graph_delta` frame still follows the
+    // tool_result — confirming graph_delta and iteration_end coexist: the
+    // observational graph_delta is framed, the persistence iteration_end is not.)
+    const frames = parseSse(res.body);
+    expect(frames.map((f) => f.event)).not.toContain("iteration_end");
+    expect(frames.map((f) => f.event)).toEqual([
+      "llm_start",
+      "tool_start",
+      "tool_result",
+      "graph_delta",
+      "llm_start",
+      "text_delta",
+      "done",
+    ]);
 
     await app.close();
   });

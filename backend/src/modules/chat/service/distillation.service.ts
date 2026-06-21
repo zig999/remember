@@ -46,6 +46,7 @@ import {
   selectSummaryPromptModule,
   selectTitlePromptModule,
 } from "../prompts/index.js";
+import { sanitizeAnthropicSequence } from "./message-sequence.js";
 
 // ---------------------------------------------------------------------------
 // Anthropic utility-model surface — non-streaming `messages.create(...)`
@@ -161,12 +162,20 @@ export async function maybeRefreshSummary(
     // Cast the persisted jsonb `content` (`unknown[]` at the repo seam) to
     // the Anthropic message content shape. BR-29 wrote Anthropic-shaped
     // blocks, so the cast is sound by construction.
-    const messages: Anthropic.Messages.MessageParam[] = olderSlice.map(
+    const rawMessages: Anthropic.Messages.MessageParam[] = olderSlice.map(
       (row) => ({
         role: row.role,
         content: row.content as Anthropic.Messages.MessageParam["content"],
       })
     );
+
+    // v2.2: the older slice is a COUNT-bounded cut that can begin or end mid
+    // tool-turn (dangling `tool_result` at the front, dangling `tool_use` at
+    // the back). Trim those so the utility-model call is a valid sequence —
+    // otherwise it 400s (the historical `chat.title_distillation_failure` /
+    // summary-refresh failure). If nothing valid remains, skip the call.
+    const messages = sanitizeAnthropicSequence(rawMessages);
+    if (messages.length === 0) return;
 
     const response = await anthropic.messages.create({
       model: env.CHAT_UTILITY_MODEL,
@@ -253,7 +262,11 @@ export async function maybeDistillTitle(
     );
     if (pair.user === null || pair.assistant === null) return;
 
-    const messages: Anthropic.Messages.MessageParam[] = [
+    // `getFirstUserAndAssistant` already returns the first REAL user turn and
+    // the first TERMINAL assistant answer (v2.2 repo filters), so this pair is
+    // a valid sequence with no tool scaffolding. Sanitise anyway — cheap, and
+    // it drops any empty-content edge before the call.
+    const messages = sanitizeAnthropicSequence([
       {
         role: "user",
         content: pair.user.content as Anthropic.Messages.MessageParam["content"],
@@ -263,7 +276,8 @@ export async function maybeDistillTitle(
         content:
           pair.assistant.content as Anthropic.Messages.MessageParam["content"],
       },
-    ];
+    ]);
+    if (messages.length === 0) return;
 
     const response = await anthropic.messages.create({
       model: env.CHAT_UTILITY_MODEL,

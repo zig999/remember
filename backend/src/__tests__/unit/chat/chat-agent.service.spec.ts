@@ -380,10 +380,14 @@ describe("chat-agent.service.runTurn", () => {
     const { input } = buildInput();
     const events = await collectEvents(svc.runTurn(input));
 
+    // v2.2: a tool-bearing iteration now emits an INTERNAL `iteration_end`
+    // event after its `tool_result` (carries the persistence pair). The route
+    // consumes it and does NOT frame it to the wire.
     expect(events.map((e) => e.type)).toEqual([
       "llm_start",
       "tool_start",
       "tool_result",
+      "iteration_end",
       "llm_start",
       "text_delta",
       "done",
@@ -395,8 +399,34 @@ describe("chat-agent.service.runTurn", () => {
     const toolResult = events[2];
     if (toolResult.type !== "tool_result") throw new Error("type guard");
     expect(toolResult.ok).toBe(true);
-    const done = events[5];
+
+    // v2.2 — the iteration_end payload is the persistence pair: assistant
+    // content carries the raw tool_use block; tool_results carries the matching
+    // tool_result. This is WHAT makes the next turn's replay a valid Anthropic
+    // sequence (the bug was: tool_use persisted without its tool_result).
+    const iterationEnd = events[3];
+    if (iterationEnd.type !== "iteration_end") throw new Error("type guard");
+    expect(iterationEnd.iteration).toBe(1);
+    const asstBlocks = iterationEnd.assistant_content as Array<{
+      type: string;
+      id?: string;
+    }>;
+    const toolUseBlock = asstBlocks.find((b) => b.type === "tool_use");
+    expect(toolUseBlock).toBeDefined();
+    const trBlocks = iterationEnd.tool_results as Array<{
+      type: string;
+      tool_use_id?: string;
+    }>;
+    expect(trBlocks).toHaveLength(1);
+    expect(trBlocks[0]!.type).toBe("tool_result");
+    // The tool_result references the SAME tool_use id — the pairing invariant.
+    expect(trBlocks[0]!.tool_use_id).toBe(toolUseBlock!.id);
+
+    const done = events[6];
     if (done.type !== "done") throw new Error("type guard");
+    // v2.2 — the terminal `done` carries ONLY the FINAL iteration's text (the
+    // tool_use scaffolding was persisted via iteration_end, not here).
+    expect(done.content).toEqual([{ type: "text", text: "Encontrei." }]);
     // tokens accumulate across both iterations.
     expect(done.tokens_in).toBe(30);
     expect(done.tokens_out).toBe(7);

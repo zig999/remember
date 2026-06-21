@@ -189,6 +189,58 @@ describe("maybeRefreshSummary (BR-33)", () => {
     );
   });
 
+  it("v2.2: SANITISES an older slice cut mid-pair before the utility call (no dangling tool_use → no 400)", async () => {
+    // Regression: the older slice (count-bounded) can begin with an orphaned
+    // user[tool_result] (its assistant[tool_use] is in the recent window) and
+    // end with an orphaned assistant[tool_use] (its tool_result is the next,
+    // excluded row). Feeding that verbatim 400s the utility model — the exact
+    // `chat.title_distillation_failure`/summary failure seen in production.
+    const orphanToolResult: MessageRow = {
+      ...userMessage(""),
+      content: [{ type: "tool_result", tool_use_id: "toolu_OLD", content: "x" }],
+    };
+    const orphanToolUse: MessageRow = {
+      ...assistantMessage(""),
+      stop_reason: null,
+      content: [
+        { type: "tool_use", id: "toolu_TAIL", name: "search", input: {} },
+      ],
+    };
+    vi.mocked(repo.countUserTurns).mockResolvedValueOnce(25);
+    vi.mocked(repo.listOlderMessagesForSummary).mockResolvedValueOnce([
+      orphanToolResult, // leading orphan — trimmed
+      userMessage("pergunta real"),
+      assistantMessage("resposta real"),
+      orphanToolUse, // trailing orphan — trimmed
+    ]);
+    vi.mocked(repo.updateSummaryRolling).mockResolvedValueOnce(undefined);
+    const { client, create } = buildAnthropicStub("resumo");
+    const pool = buildFakePool();
+
+    await maybeRefreshSummary({
+      pool,
+      conversationId: CONV_ID,
+      anthropic: client,
+      env: baseEnv,
+      logger: silentLogger,
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    const sent = create.mock.calls[0][0].messages as Array<{
+      role: string;
+      content: Array<{ type: string }>;
+    }>;
+    // Only the clean core survives — no dangling tool_result/tool_use.
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.role).toBe("user");
+    expect(sent[0]!.content[0]!.type).toBe("text");
+    expect(sent[1]!.role).toBe("assistant");
+    expect(sent[1]!.content[0]!.type).toBe("text");
+    const flat = sent.flatMap((m) => m.content.map((b) => b.type));
+    expect(flat).not.toContain("tool_use");
+    expect(flat).not.toContain("tool_result");
+  });
+
   it("early-returns when CHAT_SUMMARY_ENABLED is false (BR-33)", async () => {
     // BR-33 last paragraph: disabled => permanent NULL. No DB reads beyond
     // the no-op short-circuit; no LLM call.

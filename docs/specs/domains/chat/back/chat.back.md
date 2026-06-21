@@ -1,12 +1,14 @@
 # Chat -- Back-end Spec
 
-> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 3 tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` | Version: 2.1.0 | Status: draft | Layer: permanent
+> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 3 tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` | Version: 2.2.0 | Status: draft | Layer: permanent
 > Business spec: `../chat.spec.md` (v2.0.0)
 > REST contract: `../openapi.yaml` (v2.1.0)
 > Migration spec artifact: `./0004_chat_persistence.sql`
 > Normative deviation: this domain is an ADDITIVE deviation from `/remember-modelagem-v7.md` (which does not specify a chat surface). The inegociable rule of v7 §2 holds: the LLM never reaches the database directly; every tool opens its own short `BEGIN READ ONLY` transaction. The chat domain itself OWNS its own writes (conversation CRUD + message persistence) — those run via `withTransaction` on the BFF, NOT via tools. The v7 §11 compliance flow does NOT walk into chat tables (BR-37 of `.spec.md` / §6 of `.spec.md` "Compliance §11 note"). Reconcile via a future `/u-improve` pass that amends v7 §2 with the stateful chat transport.
 >
 > **v2.1 additive deviation (Chat-Graph projection).** The `sendMessage` SSE stream now emits a 7th frame, `graph_delta`, ONLY after a `tool_result` whose tool is one of the four graph-producing query tools (`traverse`, `get_node`, `list_nodes`, `search`). The frame carries a normalized subgraph projection (`{source_tool, nodes[], links[]}`) consumed by the SPA `GraphSpace`. The projection is route-owned (synthesised AFTER the `tool_result` event yielded by the agentic loop) — the agent service does NOT see this frame and the LLM is not aware of it. Frame is OBSERVATIONAL only — it carries no instructions and no new data beyond what the `tool_result` already produced. See BR-41. The `search` projector hydrates `items(kind=node).id` via `findNodesByIds` (one batched read; §4.1 G-A) to supply `node_type` + `canonical_name` — fields the `search` envelope itself does not carry. Source plan: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 / §9 Fase B / AC-B.7.
+>
+> **v2.2 bugfix (Faithful multi-row persistence of the agentic turn).** Owner-approved 2026-06-21. v2.0 / v2.1 persisted an agentic turn as ONE assistant `chat_message` row whose `content` carried the accumulated text + raw `tool_use` blocks but NOT the matching `tool_result` blocks (those lived only in audit `chat_tool_call` rows). The `context-builder` (BR-31) maps each persisted row 1:1 to an Anthropic `MessageParam` with `content` passed verbatim — so on the NEXT turn the rebuilt history contained an assistant `tool_use` with no following `tool_result`, and Anthropic rejected the request with HTTP 400 (`tool_use ids were found without tool_result blocks immediately after`). The stream rejected mid-flight via BR-11 and the user saw `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`. The same bug broke fire-and-forget title/summary distillation (BR-33 / BR-34) — identical 400 surfaced as `chat.title_distillation_failure`. The fix changes BR-29 sequencing: each agentic iteration now persists as the correct Anthropic message sequence ACROSS SEPARATE `chat_message` rows — assistant `[optional text, tool_use(s)]`, then user `[tool_result block(s)]`, repeated once per tool-bearing iteration, followed by a final assistant `[text]` row. Replaying rows 1:1 (BR-31) and slicing the older window for distillation (BR-33) now yield a VALID Anthropic sequence by construction. The model also sees its own tool-calling history on later turns. NO migration required — `chat_message.content jsonb` is already polymorphic enough to carry `tool_use` and `tool_result` content blocks; the `chat_message_role` enum stays `{user, assistant}` (BR-02). BR-32 (`chat_tool_call` audit trail) is preserved as-is — the audit row is no longer the SOLE persistence surface for tool calls but stays as the structured per-call payload (full input/result/timing) for `getConversationUsage` (BR-40) and audit dumps. Tests gap that let it ship: existing coverage was single-turn or text-only multi-turn; v2.2 mandates a multi-turn regression test where turn 1 invokes a tool and turn 2 then succeeds (§1 Testing row).
 
 ---
 
@@ -26,11 +28,11 @@
 | Auth | `requireNeonAuth` preHandler inherited from the `/api/v1` scope (CLAUDE.md "Authentication"). No additional auth check inside chat handlers. Owner-only model (v7 §2.3 / ADR A20) holds — no `user_id` column on any chat table. In development the carve-out `LOCAL_OPERATOR_TOKEN` works transparently because it is enforced by the inherited preHandler. | CLAUDE.md default |
 | Logging | `pino` structured JSON. One INFO record per completed turn (`event: "chat.turn"`) with fields per BR-19 of `.spec.md` and §9 below. NEVER logs `messages[i].content`, raw tool inputs, raw tool result bodies, or `args_summary` raw values. Distillation jobs log `chat.summary_refresh_*` / `chat.title_distillation_*` at INFO on success and WARN on failure (BR-33 / BR-34). DEBUG level may sample structural diagnostics but never PII. | CLAUDE.md default |
 | Observability | `observability_required: true`. Counters: `chat_turn_total{stop_reason}`, `chat_turn_idempotent_replay_total`, `chat_turn_in_progress_conflict_total`, `chat_summary_refresh_total{ok}`, `chat_title_distillation_total{ok}`. Histograms: `chat_turn_latency_ms`, `chat_turn_iterations`, `chat_summary_refresh_latency_ms`, `chat_title_distillation_latency_ms`. Reuses the pino transport (parallel to ingestion run metrics). | CLAUDE.md default |
-| Transaction policy | Three distinct transaction shapes inside the chat domain. (i) Owned WRITES on chat tables (conversation CRUD, user-row insert, assistant-row insert, tool-call inserts) run via `withTransaction(pool, ...)` — the SAME helper already exported by `curation/service/transaction.ts` line 10. (ii) Owned READS on chat tables (`getConversation`, `listConversations`, `listMessages`, `getConversationUsage`, context-builder reads) run via `withReadOnly(pool, ...)` — line 32 of the same file. (iii) Tool invocations issued by the agentic loop are still v7 §2 inegociable: each tool opens its OWN short `BEGIN READ ONLY` inside its own service code (existing behaviour preserved from v1). The chat route never bundles a tool call into one of its own transactions — the transactional boundaries do NOT overlap. | New (this domain). |
+| Transaction policy | FOUR distinct transaction shapes inside the chat domain (v2.2). (i) Owned WRITES on chat tables — conversation CRUD, user natural-language row insert, per-call `chat_tool_call` audit insert, final assistant row insert, summary/title updates — run via `withTransaction(pool, ...)` — the SAME helper already exported by `curation/service/transaction.ts` line 10. (ii) v2.2 NEW: per-iteration `(assistant, synthetic_user)` row pair inserts (BR-29 step 6.d) run inside their OWN dedicated short `withTransaction` so the pair is atomic — a half-persisted pair would re-introduce the next-turn bug. One `withTransaction` per iteration boundary, NOT one for the whole turn — committing between iterations bounds the rollback radius on a mid-turn failure. (iii) Owned READS on chat tables (`getConversation`, `listConversations`, `listMessages`, `getConversationUsage`, context-builder reads) run via `withReadOnly(pool, ...)` — line 32 of the same file. (iv) Tool invocations issued by the agentic loop are still v7 §2 inegociable: each tool opens its OWN short `BEGIN READ ONLY` inside its own service code (existing behaviour preserved from v1). The chat route never bundles a tool call into one of its own transactions — the transactional boundaries do NOT overlap. | New (this domain). |
 | Concurrency | (a) Multiple concurrent chat turns share the same `McpServer` registry instance and a single Anthropic client (instantiated once at first request). (b) Tool calls INSIDE a single turn are sequential (`tool_choice.disable_parallel_tool_use = true`, BR-22 of `.spec.md`). (c) At most ONE in-flight turn per conversation is enforced by an in-process registry (`Map<conversation_id, AbortController>`), keyed by conversation id (BR-28 of `.spec.md`). The registry is process-local; v1 is single-instance BFF — see §7 constraint "Multi-instance BFF". (d) Distillation jobs (BR-33, BR-34) are fire-and-forget Promise chains scheduled AFTER the HTTP response has terminated; they hold no shared lock — overlap is acceptable (idempotent `UPDATE`). | New (this domain). |
 | Time source | `Date.now()` for the wall-clock budgets (`TURN_TIMEOUT_MS`, `TOOL_TIMEOUT_MS`) and the per-turn `latency_ms`. SQL `now()` for `created_at` / `updated_at` defaults — server-clocked. No domain-owned use of `canonical_date` / `canonical_number` (those belong to v7 §6). | CLAUDE.md default |
 | External integration | Anthropic Messages API (streaming). Reuses the `defaultAnthropicFactory` pattern from `modules/ingestion/service/extraction.service.ts` (lines 177-198): `type AnthropicFactory = (apiKey: string) => AnthropicLike` with default constructing the SDK client from `env.ANTHROPIC_API_KEY` using `timeout: 5 * 60 * 1000` and `maxRetries: 2`. TWO models used: the turn model `env.CHAT_MODEL` (default `claude-opus-4-8`) and the utility model `env.CHAT_UTILITY_MODEL` (default `claude-haiku-4-5`) for distillation jobs. Tool catalog: 13 read-only tools resolved via `mcp.getTool('query', name)` (BR-05). | New (this domain). |
-| Testing | Vitest unit tests on (i) Zod schemas for the 4 body shapes + the `Idempotency-Key` header (BR-26), (ii) `conversation.service` CRUD + RESOURCE_NOT_FOUND mapping (BR-22), (iii) `context-builder.ts` reconstruction (BR-31: system prompt + summary block + recent window), (iv) `chat.repository` idempotency partial-index conflict path (BR-27), (v) `chat-agent.service.runTurn` agentic loop against a stub Anthropic client covering UC-02..UC-06 + UC-07 replay path, (vi) the per-turn registry that enforces BR-28, (vii) the persistence-sequencing sequencing in `chat.routes.ts` (user row BEFORE hijack, assistant row AFTER terminal frame, tool-call rows during the loop — BR-29 / BR-32), (viii) `distillation.service.ts` fire-and-forget rolling-summary + title jobs (BR-33 / BR-34) using stub utility model + assertion that the HTTP response is not awaiting the job, (ix) cascade behaviour of `deleteConversation` (BR-37), (x) `cancelTurn` registry interaction (BR-38), (xi) cursor pagination on `listConversations` (BR-35) + `before` pagination on `listMessages` (BR-39), (xii) compliance §11 exclusion is a NEGATIVE TEST: the compliance walker does not visit chat tables (sentinel row survives a `compliance_delete`). No acceptance scenario from v7 §17 maps to this domain (deviation). | CLAUDE.md default |
+| Testing | Vitest unit tests on (i) Zod schemas for the 4 body shapes + the `Idempotency-Key` header (BR-26), (ii) `conversation.service` CRUD + RESOURCE_NOT_FOUND mapping (BR-22), (iii) `context-builder.ts` reconstruction (BR-31: system prompt + summary block + recent window), (iv) `chat.repository` idempotency partial-index conflict path (BR-27), (v) `chat-agent.service.runTurn` agentic loop against a stub Anthropic client covering UC-02..UC-06 + UC-07 replay path, (vi) the per-turn registry that enforces BR-28, (vii) the persistence-sequencing sequencing in `chat.routes.ts` (user natural-language row BEFORE hijack; per tool-bearing iteration one assistant row carrying text+tool_use blocks AND one user row carrying tool_result blocks AFTER the iteration completes; final assistant row carrying the closing text AFTER the terminal frame; `chat_tool_call` audit rows during the loop — BR-29 / BR-32), (viii) `distillation.service.ts` fire-and-forget rolling-summary + title jobs (BR-33 / BR-34) using stub utility model + assertion that the HTTP response is not awaiting the job, (ix) cascade behaviour of `deleteConversation` (BR-37), (x) `cancelTurn` registry interaction (BR-38), (xi) cursor pagination on `listConversations` (BR-35) + `before` pagination on `listMessages` (BR-39), (xii) compliance §11 exclusion is a NEGATIVE TEST: the compliance walker does not visit chat tables (sentinel row survives a `compliance_delete`), (xiii) **v2.2 mandatory regression (the coverage gap that let the multi-turn provider_error bug ship):** a multi-turn integration test where turn 1 invokes a tool (e.g. `list_node_types`) AND turn 2 then issues a follow-up `sendMessage` on the SAME conversation; the test MUST assert that turn 2 reaches `ChatEvent.done` (NO `ChatEvent.error`, NO `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`) AND that the Anthropic `messages[]` passed by the route to `runTurn` on turn 2 is a VALID sequence (every `tool_use` block is followed by a `user` message whose first content block is a matching `tool_result` with the same `tool_use_id`). A real-LLM 2-turn E2E is preferred where credentials are available (create conversation → turn 1 "quantos tipos de no existem?" → turn 2 follow-up → assert no `provider_error`); dev token + UUID `Idempotency-Key` header required; BFF running on `:3000`. (xiv) **v2.2 mandatory regression on distillation:** a unit test on `distillation.service.maybeRefreshSummary` / `.maybeDistillTitle` that runs against a conversation whose older slice contains a tool-bearing iteration; the stub utility-model client MUST assert the `messages[]` it receives is a VALID Anthropic sequence (no dangling `tool_use`). No acceptance scenario from v7 §17 maps to this domain (deviation). | CLAUDE.md default |
 
 ### 1.1 File layout
 
@@ -64,11 +66,24 @@ backend/src/modules/chat/
                                #     - Consumes the AsyncIterable<ChatEvent> from
                                #       chatAgentService.runTurn(...) and writes one
                                #       `event: ...\ndata: ...\n\n` frame per ChatEvent.
-                               #       Persists chat_tool_call rows as tool_result
-                               #       events fire (BR-32).
+                               #       Persists chat_tool_call audit rows as
+                               #       tool_result events fire (BR-32).
+                               #     - v2.2: accumulates per-iteration content
+                               #       (text + tool_use blocks) on the route side
+                               #       and, AT EACH ITERATION BOUNDARY (when the
+                               #       model hands control back for tool dispatch
+                               #       and a new iteration is about to begin),
+                               #       inserts ONE assistant chat_message row
+                               #       carrying `text + tool_use` blocks AND ONE
+                               #       synthetic user chat_message row carrying
+                               #       the matching `tool_result` blocks — both
+                               #       inside the SAME withTransaction (BR-29
+                               #       step 6.d). Atomicity is non-negotiable.
                                #     - On terminal frame, deregisters the abort
-                               #       controller and inserts the assistant
-                               #       chat_message row (BR-29).
+                               #       controller and inserts the FINAL assistant
+                               #       chat_message row (BR-29 step 8.a) carrying
+                               #       the closing text + stop_reason + token
+                               #       sums + latency_ms.
                                #     - Schedules distillation.service.maybeRefreshSummary()
                                #       and .maybeDistillTitle() fire-and-forget AFTER
                                #       the HTTP response has terminated (BR-33, BR-34).
@@ -163,6 +178,19 @@ backend/src/modules/chat/
                                #   field to ChatEvent.tool_result: `{ arguments,
                                #   result, is_error, error_message, duration_ms }`
                                #   — see §1.2.
+                               #   v2.2: ALSO yields `tool_use_id` on BOTH
+                               #   `tool_start` and `tool_result` AND yields
+                               #   `iteration_end{iteration, assistant_content}`
+                               #   at each agentic-loop iteration boundary so
+                               #   the route can persist the per-iteration
+                               #   assistant row + synthetic user tool_result
+                               #   row pair (BR-29 step 6.d). `tool_use_id`
+                               #   matches the Anthropic SDK's `tool_use.id`
+                               #   verbatim; the synthetic user row uses it as
+                               #   `tool_result.tool_use_id`. The agent service
+                               #   itself does NOT touch the DB — it only emits
+                               #   the events; the route is the single
+                               #   persistence authority.
     tool-catalog.ts            # buildChatToolCatalog(mcp): resolves the 13 names
                                #   once and memoizes in module scope.
                                #   Returns ResolvedChatToolCatalog | undefined.
@@ -243,12 +271,43 @@ backend/src/modules/chat/
 export type ChatEvent =
   | { type: "llm_start";   iteration: number }
   | { type: "text_delta";  delta: string }
-  | { type: "tool_start";  tool: string; args_summary: string }
-  | { type: "tool_result"; tool: string; ok: boolean;
+  // NEW in v2.2 — `tool_use_id` and the model's typed `input` are required so
+  // the route can persist the per-iteration assistant row carrying the
+  // matching `tool_use` content block (BR-29 step 6.d). The id is the
+  // Anthropic SDK's `tool_use.id` verbatim.
+  | { type: "tool_start";  tool: string; tool_use_id: string;
+                            input: unknown; args_summary: string }
+  | { type: "tool_result"; tool: string;
+                            // NEW in v2.2 — `tool_use_id` matches the prior
+                            // `tool_start.tool_use_id` so the route can
+                            // persist the synthetic user row with
+                            // `tool_result.tool_use_id` set correctly.
+                            tool_use_id: string;
+                            ok: boolean;
                             // NEW in v2: full per-call payload for BR-32 persistence.
                             arguments: unknown; result: unknown | null;
                             is_error: boolean; error_message: string | null;
+                            // NEW in v2.2 — model-visible (post BR-13
+                            // truncation) result body fed back to the next
+                            // Anthropic iteration AND persisted as the
+                            // synthetic user row's `tool_result.content`.
+                            // Distinct from `result` (which is the full,
+                            // untruncated audit body persisted on
+                            // `chat_tool_call.result`).
+                            model_visible_content: unknown;
                             duration_ms: number }
+  // NEW in v2.2 — yielded exactly once per agentic-loop iteration that
+  // invoked at least one tool, immediately BEFORE the next `llm_start{i+1}`.
+  // Carries the iteration's accumulated assistant content (text blocks +
+  // tool_use blocks) and the matching tool_result content blocks the route
+  // assembled from the iteration's `tool_result` events. The route persists
+  // ONE assistant + ONE synthetic user chat_message row atomically on this
+  // event (BR-29 step 6.d). NOT written to the SSE wire (internal event;
+  // the SDK transport filters it out).
+  | { type: "iteration_end";
+                            iteration: number;
+                            assistant_content: ReadonlyArray<unknown>;
+                            tool_results: ReadonlyArray<unknown> }
   // NEW in v2.1 — route-owned synthesis after a graph-producing tool_result
   // (BR-41). The agent service NEVER yields this variant; the route handler
   // synthesises it in-place from the prior `tool_result.result` and writes
@@ -326,6 +385,23 @@ tool dispatch, ceilings). Tests drive `runTurn` directly against a stub
 Anthropic client; route-level integration tests drive the full SSE wire
 including DB writes.
 
+**v2.2 persistence partnership.** The route is the SINGLE persistence
+authority for `chat_message` rows. The agent service is the SINGLE source
+of event ordering. Per iteration:
+
+1. Agent yields `llm_start{i}`, then any number of `text_delta`, then any
+   number of `tool_start` / `tool_result` pairs.
+2. If the iteration invoked at least one tool, the agent yields
+   `iteration_end{i, assistant_content, tool_results}` BEFORE yielding
+   `llm_start{i+1}` — the route persists the per-iteration
+   `(assistant, synthetic_user)` chat_message row pair atomically on this
+   event (BR-29 step 6.d).
+3. The terminal frame is `done` OR `error`. The route persists the FINAL
+   assistant row on the terminal frame (BR-29 step 8).
+
+The agent NEVER touches the DB. The route NEVER inspects the in-loop
+Anthropic history.
+
 ---
 
 ## 2. Data Model
@@ -342,10 +418,39 @@ including DB writes.
 CREATE TYPE chat_message_role AS ENUM ('user', 'assistant');
 ```
 
-Only two roles are persisted (BR-02 of `.spec.md`). The transient
-`assistant(tool_use)` / `user(tool_result)` blocks the loop synthesises during
-an iteration are NEVER persisted as their own `chat_message` rows — they live
-only inside the in-loop Anthropic history.
+Only two roles are persisted (BR-02 of `.spec.md`); the same enum covers
+the natural-language exchange AND the agentic-loop's tool-use / tool-result
+exchange.
+
+**v2.2 amendment (multi-row persistence).** Each agentic iteration that
+invokes a tool persists as the correct Anthropic message sequence across
+separate `chat_message` rows:
+
+1. ONE `assistant` row whose `content` carries any text blocks emitted by the
+   model during that iteration FOLLOWED BY one or more `tool_use` blocks.
+2. ONE `user` row whose `content` carries the matching `tool_result` block(s)
+   — the same `tool_use_id` value(s) in the same order as the preceding
+   `assistant` row. This row's `idempotency_key`, `model`, `stop_reason`,
+   `tokens_in`, `tokens_out`, `latency_ms` are ALL NULL (it is not a real
+   user turn — it is the model's own tool-result delivery, persisted so the
+   rebuilt history on the next turn is a valid Anthropic sequence).
+
+The turn closes with ONE final `assistant` row carrying the closing text
+blocks AND the terminal `stop_reason` / per-turn aggregates
+(`tokens_in`/`tokens_out`/`latency_ms`/`model`). A text-only turn (no tool
+call) still persists as ONE user row + ONE final assistant row, identical to
+v2.0/v2.1.
+
+The `chat_message.content jsonb` column is already polymorphic enough to
+carry `text`, `tool_use`, and `tool_result` content blocks side-by-side
+(BR-02 of `.spec.md`) — NO migration required. The route layer is
+responsible for distinguishing "natural-language" rows from "synthetic"
+rows when surfacing them on `listMessages` (BR-39) — the SPA inspects the
+content block types and hides rows whose blocks are exclusively `tool_use`
+(assistant) or `tool_result` (user). The audit trail (`chat_tool_call`,
+BR-32) is preserved unchanged — it carries the FULL untruncated arguments
+and result for `getConversationUsage` (BR-40) and audit dumps, separate from
+the replay surface.
 
 ### 2.2 Table `chat_conversation` (aggregate root)
 
@@ -648,8 +753,8 @@ export interface ChatRepository {
 
 ### BR-02 -- Persisted role enum is exactly `{user, assistant}`
 **Related UC:** UC-02
-**Where to validate:** DB enum `chat_message_role` (§2.1) + repository (`insertUserMessage` / `insertAssistantMessage` choose role at insert time).
-**Description:** Transient `assistant(tool_use)` / `user(tool_result)` blocks during an iteration live only in the in-loop history and are NOT persisted.
+**Where to validate:** DB enum `chat_message_role` (§2.1) + repository (`insertUserMessage` / `insertAssistantMessage` / `insertSyntheticToolResultUserMessage` / `insertAssistantIterationMessage` choose role at insert time).
+**Description:** The persisted role enum is `{user, assistant}` and covers BOTH the natural-language exchange AND the synthetic agentic-loop tool-use / tool-result exchange. v2.2 amendment: the agentic-loop's `tool_use` blocks are persisted on `assistant` rows (alongside any in-iteration text), and the `tool_result` blocks are persisted on `user` rows (synthetic, no `idempotency_key`, no `model`, no `stop_reason`, no token sums). `chat_message.content jsonb` is polymorphic enough to carry `text`, `tool_use`, and `tool_result` content blocks; no migration required. See §2.1 for the multi-row sequencing and the surface-filtering rule on `listMessages` (BR-39).
 **Error returned:** n/a (architectural invariant).
 
 ### BR-03 -- Reserved (was "Roles in client body" in v1.x — superseded)
@@ -816,28 +921,48 @@ export interface ChatRepository {
 **Description:** Present in the registry -> 409 `BUSINESS_TURN_IN_PROGRESS`. Otherwise register `(conversation_id, controller)` BEFORE inserting the user row; release on terminal frame OR on iterator throw (try/finally). `cancelTurn` looks up the same registry (BR-38).
 **Error returned:** HTTP 409 -- error.code: `BUSINESS_TURN_IN_PROGRESS`.
 
-### BR-29 -- Persistence sequencing: user row BEFORE SSE, assistant row AFTER terminal frame, tool-call rows during the loop
+### BR-29 -- Persistence sequencing: faithful multi-row replay surface (v2.2)
 **Related UC:** UC-02..UC-06
 **Where to validate:** route handler (`sendMessage`).
-**Description:** Authoritative sequencing:
+**Description:** Authoritative sequencing. v2.2 changes how the agentic turn is persisted so that on subsequent turns `context-builder` (BR-31) rebuilds a VALID Anthropic message sequence by replaying rows 1:1.
+
 1. (pre-stream) Validate body + header (BR-01/BR-04/BR-26).
 2. (pre-stream) Resolve conversation (BR-22), check archived (BR-25), check turn-in-progress + register controller (BR-28), check idempotency (BR-27).
-3. (pre-stream) Open `withTransaction`. Inside: insert user row via `repository.insertUserMessage`. Commit. Now the user's question is durable on any later failure.
-4. (pre-stream) Build messages[] via `context-builder.buildModelContext` (under `withReadOnly`).
+3. (pre-stream) Open `withTransaction`. Inside: insert the user natural-language row via `repository.insertUserMessage` — content is `[{type:"text", text:<request content>}]`, `idempotency_key` is the request header, `model` is the resolved model id. Commit. Now the user's question is durable on any later failure.
+4. (pre-stream) Build `messages[]` via `context-builder.buildModelContext` (under `withReadOnly`). The just-inserted natural-language user row IS the last element of the result by construction.
 5. (open SSE) `reply.hijack()`, write headers.
-6. (in-loop) Consume `chatAgentService.runTurn(...)`:
-   - On each `ChatEvent.tool_result`, persist a `chat_tool_call` row via `repository.insertToolCall` (in its OWN `withTransaction` — short, single-statement) with `message_id = NULL`. Collect the inserted ids for step (8).
-   - On each `ChatEvent.text_delta`, write the SSE frame.
-   - On `ChatEvent.done` OR `ChatEvent.error`, write the terminal frame.
+6. (in-loop) Consume `chatAgentService.runTurn(...)`. The route layer is responsible for assembling the iteration-by-iteration persistence sequence in tandem with the SSE drain. Per iteration `i`:
+   a. As each `ChatEvent.text_delta` arrives, write the SSE frame AND accumulate the delta into `currentIterationTextBlocks`.
+   b. On each `ChatEvent.tool_start{tool_use_id, name, args_summary}`, write the SSE frame AND append a `tool_use` block to `currentIterationContent` (carrying `tool_use_id`, `name`, and the model's typed `input`).
+   c. On each `ChatEvent.tool_result{tool_use_id, tool, ok, arguments, result, is_error, error_message, duration_ms}`:
+      - Persist a `chat_tool_call` audit row via `repository.insertToolCall` (in its OWN short `withTransaction`) with `message_id = NULL`. Collect the inserted id for step 8.b. (BR-32 audit trail — unchanged.)
+      - Append a `tool_result` block to `currentIterationToolResults` carrying `tool_use_id` (matching the `tool_use` block of step (b)) and the (possibly truncated, BR-13) content fed back to the model. Failure tool_results carry `is_error: true` and the truncated error envelope.
+      - Write the SSE `tool_result` frame.
+      - (v2.1) If `evt.tool` is one of `{traverse, get_node, list_nodes, search}` AND `ok===true` AND a `CatalogSnapshot` is available, synthesise + write the `graph_delta` frame (BR-41).
+   d. When the iteration ENDS with a `tool_use` stop (i.e. the model handed control back for tool dispatch and a new iteration `i+1` is about to begin), open a SHORT `withTransaction`:
+      - Insert ONE assistant row via `repository.insertAssistantIterationMessage` with `content = currentIterationTextBlocks ∪ currentIterationContent` (text blocks first, then tool_use blocks, preserving the order they were yielded), `stop_reason = NULL`, `idempotency_key = NULL`, `model = NULL`, `tokens_in = NULL`, `tokens_out = NULL`, `latency_ms = NULL`. The row's `id` is captured for step 8.b. attachment.
+      - Insert ONE synthetic user row via `repository.insertSyntheticToolResultUserMessage` with `content = currentIterationToolResults`, `idempotency_key = NULL`, `model = NULL` (all assistant-only metadata stays NULL because role is `user`). The row's `created_at` MUST be strictly greater than the assistant iteration row's `created_at` (server-clocked `now()` guarantees this within a transaction; if the two writes share the same microsecond, the `id` UUID tie-breaks ordering in `(created_at, id)` index reads).
+      - Commit.
+      - Reset `currentIterationTextBlocks`, `currentIterationContent`, `currentIterationToolResults`. Increment `i`.
+   e. On `ChatEvent.done` OR `ChatEvent.error` (the terminal frame), write the terminal frame.
 7. (post-stream) `reply.raw.end()`. Release the in-process turn registry entry.
 8. (post-stream) Open a new `withTransaction`:
-   - Insert the assistant row via `repository.insertAssistantMessage` with `stop_reason` resolved from the terminal event (including synthetic `provider_error` / `internal_error`).
-   - `repository.attachToolCallsToMessage(toolCallIds, assistantRow.id)`.
-   - Commit.
+   a. Insert the FINAL assistant row via `repository.insertAssistantMessage` with:
+      - `content = currentIterationTextBlocks ∪ currentIterationContent` (in practice for the terminal iteration `currentIterationContent` is empty — no more tool_use blocks emitted after the terminal frame; only the closing text blocks remain).
+      - `stop_reason` resolved from the terminal event (including synthetic `provider_error` / `internal_error`).
+      - `model` = resolved model id.
+      - `tokens_in` / `tokens_out` = per-turn aggregates from the terminal event.
+      - `latency_ms` = first `llm_start` to terminal frame (whole-turn).
+   b. `repository.attachToolCallsToMessage(toolCallIds, finalAssistantRow.id)` — attach ALL `chat_tool_call` rows from step 6.c (across every iteration) to the final assistant row. (Per-iteration assistant rows from step 6.d are NEVER attached to tool-call rows; the audit trail is anchored to the turn's terminal assistant row to keep `getConversationUsage` joins simple.)
+   c. Commit.
 9. Emit the pino INFO turn record (BR-19).
 10. Schedule fire-and-forget `distillationService.maybeRefreshSummary(...)` + `.maybeDistillTitle(...)` (BR-33 / BR-34).
 
-If step 8 fails (DB error), the SSE has already closed — emit WARN `chat.assistant_row_persist_failure` with `request_id` and the error; the failure does NOT propagate to the client. Tool-call rows inserted in step 6 will keep `message_id = NULL` — auditable, no orphan cleanup needed.
+**Atomicity of iteration boundaries.** Each per-iteration `(assistant, synthetic_user)` pair in step 6.d MUST be inserted in the SAME `withTransaction` — a partial pair (assistant tool_use row persisted without the matching synthetic user tool_result row, OR vice versa) would re-introduce the original bug on the next turn. If step 6.d throws mid-pair, the transaction rolls back; the route layer logs WARN `chat.iteration_persist_failure`, emits the terminal `error` frame with `code: SYSTEM_INTERNAL_ERROR`, closes the stream, and proceeds to step 7 / step 8 — the final assistant row in step 8 still inserts with `stop_reason = "internal_error"`, leaving an interpretable conversation tail (no dangling `tool_use` blocks because the failed iteration was rolled back atomically).
+
+**Crash recovery (process loss between step 6.d and step 8).** Per-iteration `(assistant, synthetic_user)` pairs from completed iterations remain in the DB; the final assistant row is missing. On the NEXT turn the `context-builder` (BR-31) rebuilds a sequence whose last message is the synthetic user `tool_result` row — an Anthropic-valid sequence ending on a user turn. Anthropic accepts that shape (a user turn awaiting an assistant response); the new turn's natural-language user message is appended after the recovered synthetic user row by step 4. There is no orphan-cleanup task — the audit trail (`chat_tool_call`, BR-32) keeps `message_id = NULL` for the dangling tool-call rows of the missing terminal iteration; auditable, no first-class recovery surface in v2.2.
+
+**Step 8 failure (DB error).** The SSE has already closed — emit WARN `chat.assistant_row_persist_failure` with `request_id` + error; the failure does NOT propagate to the client. Tool-call rows inserted in step 6.c will keep `message_id = NULL` — auditable, no orphan cleanup needed. Per-iteration `(assistant, synthetic_user)` pairs from step 6.d remain in the DB; the same crash-recovery rationale applies.
 
 **Error returned:** n/a (sequencing invariant).
 
@@ -847,20 +972,29 @@ If step 8 fails (DB error), the SSE has already closed — emit WARN `chat.assis
 **Description:** Body schema is `{ title?: z.string().min(1).max(200) }`. Empty body `{}` is accepted (title defaults to NULL). The server assigns `id`, `created_at`, `updated_at`; `archived_at`, `summary_rolling` are initialised to NULL.
 **Error returned:** HTTP 422 -- error.code: `VALIDATION_INVALID_FORMAT`.
 
-### BR-31 -- Context reconstruction: system prompt + summary_rolling + recent window
+### BR-31 -- Context reconstruction: system prompt + summary_rolling + recent window (faithful 1:1 replay, v2.2)
 **Related UC:** UC-02
 **Where to validate:** service (`context-builder.buildModelContext`)
 **Description:** Step-by-step:
 1. `system` = `selectChatPromptModule(env.CHAT_PROMPT_VERSION).systemPrompt`.
 2. Read conversation by id (caller passed it, or read fresh from `repository.getConversationById`).
 3. `summary_rolling`-block: when `conversation.summary_rolling IS NOT NULL`, prepend a synthetic message `{role:"user", content:[{type:"text", text: "[contexto da conversa anterior, sintetizado]\n\n" + summary_rolling}]}`. The opening header tells the model this block is a recap, not a user instruction.
-4. Read the last `env.CHAT_RECENT_WINDOW` messages via `repository.listRecentMessages(client, conversation_id, env.CHAT_RECENT_WINDOW)`. Map them 1:1 to Anthropic `messages[]` (`role` -> `role`; jsonb `content` -> Anthropic `content`).
-5. The user row inserted in step 3 of BR-29 IS the last element of the result by construction (the BFF inserts it BEFORE calling `buildModelContext`).
+4. Read the last `env.CHAT_RECENT_WINDOW` messages via `repository.listRecentMessages(client, conversation_id, env.CHAT_RECENT_WINDOW)`. Map them 1:1 to Anthropic `messages[]` (`role` -> `role`; jsonb `content` -> Anthropic `content`, passed VERBATIM).
+5. The user natural-language row inserted in step 3 of BR-29 IS the last element of the result by construction (the BFF inserts it BEFORE calling `buildModelContext`).
+
+**Why 1:1 is now safe (v2.2).** Because BR-29 v2.2 persists each tool-bearing iteration as the correct Anthropic sequence (`assistant [text, tool_use]` + `user [tool_result]`) across separate rows in chronological order, the verbatim 1:1 mapping in step 4 yields a VALID Anthropic `messages[]` by construction: every `tool_use` block emitted by an assistant row is followed by a `user` row whose first content block is a `tool_result` with the matching `tool_use_id`. The v2.0 / v2.1 bug — assistant row carrying a `tool_use` block with no matching `tool_result` row, causing Anthropic 400 `tool_use ids were found without tool_result blocks immediately after` on the next turn — is removed at the persistence layer (BR-29) without changing the replay logic (BR-31 stays 1:1 verbatim).
+
+**Row classification (for downstream consumers — informative).** Rows in the recent window fall into three categories that share the `(user, assistant)` role enum:
+- **Natural-language `user` row:** `role='user'`, `content[*].type === "text"` only, `idempotency_key IS NOT NULL`. Surfaced to the SPA on `listMessages` (BR-39).
+- **Synthetic tool_result `user` row:** `role='user'`, `content[*].type === "tool_result"` exclusively, `idempotency_key IS NULL`. NOT surfaced to the SPA (BR-39 filtering rule).
+- **Assistant row:** `role='assistant'`. May carry any mix of `text` and `tool_use` blocks. ALL assistant rows are surfaced to the SPA on `listMessages` (BR-39) — the SPA renders only `text` blocks; `tool_use` blocks remain invisible to the user but are necessary in the replay sequence.
+
+The context-builder itself does NOT filter — all three categories enter `messages[]` verbatim; categorisation matters only at the SPA boundary (BR-39).
 
 Client-side history is NEITHER required NOR accepted.
 **Error returned:** n/a.
 
-### BR-32 -- Tool calls are persisted with full input and result
+### BR-32 -- Tool calls are persisted with full input and result (audit-only; not the replay surface, v2.2)
 **Related UC:** UC-02
 **Where to validate:** route handler (`sendMessage`) — inserts via `repository.insertToolCall` on each `ChatEvent.tool_result` consumed from `runTurn`. The agent service yields the full envelope (arguments, result, is_error, error_message, duration_ms) via the v2 enriched `ChatEvent.tool_result` shape (§1.2).
 **Description:**
@@ -869,17 +1003,24 @@ Client-side history is NEITHER required NOR accepted.
 - `is_error`: true when the tool envelope was `{ok:false}` OR on tool timeout (BR-17).
 - `error_message`: short string from the tool envelope's `error.message`.
 - `duration_ms`: wall-clock per tool call (start = `tool_start` yield, end = `tool_result` yield).
-- `message_id`: NULL at insert time; patched in step 8 of BR-29 via `attachToolCallsToMessage`.
+- `message_id`: NULL at insert time; patched in step 8.b of BR-29 via `attachToolCallsToMessage`. Attachment anchors EVERY tool-call row of the turn to the turn's TERMINAL assistant row (not to the per-iteration assistant rows persisted by step 6.d of BR-29) — keeps the `getConversationUsage` join one-step and the audit dump uniform.
+
+**v2.2 audit-vs-replay separation.** `chat_tool_call` rows are the AUDIT trail — they carry the FULL untruncated arguments, full untruncated result, error envelope, and wall-clock duration for `getConversationUsage` (BR-40) and audit dumps. They are NO LONGER the sole persistence surface for the tool exchange: BR-29 v2.2 ALSO persists the model-visible `tool_use` blocks on the per-iteration assistant rows and the (possibly truncated, BR-13) `tool_result` blocks on the synthetic user rows. The two surfaces serve different purposes:
+
+- `chat_tool_call` (audit): full input/result, decoupled from the replay shape. Read by `getConversationUsage` (BR-40) and any per-conversation audit dump.
+- `chat_message` per-iteration rows (replay): the Anthropic-shaped tool_use / tool_result pair, sized to fit the next-turn context window (BR-13 truncation applies to the `tool_result` content blocks of the synthetic user row — NOT to the `chat_tool_call.result` audit jsonb).
+
+A tool call ALWAYS produces both surfaces in lock-step within the same iteration; a `chat_tool_call` row with no matching `tool_result` block on a synthetic user row is a sequencing bug (the `chat.iteration_persist_failure` WARN in BR-29 surfaces it).
 **Error returned:** n/a (audit trail).
 
 ### BR-33 -- Rolling summary refresh policy
 **Related UC:** UC-02
 **Where to validate:** service (`distillation.service.maybeRefreshSummary`) — scheduled fire-and-forget by the route AFTER the HTTP response has terminated.
 **Description:**
-1. Read `repository.countUserTurns(client, conversation_id)` under `withReadOnly`.
+1. Read `repository.countUserTurns(client, conversation_id)` under `withReadOnly`. Only NATURAL-LANGUAGE user rows count (i.e. `role='user' AND idempotency_key IS NOT NULL`) — synthetic tool_result user rows (BR-02 / §2.1 v2.2 amendment) are NOT user turns from the policy's perspective. The repository query MUST filter accordingly.
 2. If `count > env.CHAT_SUMMARY_AFTER_TURNS` AND `env.CHAT_SUMMARY_ENABLED === true`, proceed; otherwise return.
-3. Read `repository.listOlderMessagesForSummary(client, conversation_id, env.CHAT_RECENT_WINDOW)` under `withReadOnly` — returns messages OLDER than the last `CHAT_RECENT_WINDOW`.
-4. Call `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, stream: false, system: <summary prompt>, messages: <older slice> })`.
+3. Read `repository.listOlderMessagesForSummary(client, conversation_id, env.CHAT_RECENT_WINDOW)` under `withReadOnly` — returns messages OLDER than the last `CHAT_RECENT_WINDOW` rows. **v2.2 boundary safety:** the older slice MUST be sliced on TURN boundaries, not on arbitrary row indices — splitting between an assistant `tool_use` row and its matching synthetic user `tool_result` row would yield an invalid Anthropic sequence and Anthropic would reject the distillation request with the same 400 that the v2.0 / v2.1 next-turn bug surfaced (`tool_use ids were found without tool_result blocks immediately after`). The repository's slicer rounds the cut backward until it lands on a natural-language user row OR the start of the conversation; same forward at the recent-window boundary.
+4. Call `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, stream: false, system: <summary prompt>, messages: <older slice> })`. The older slice carries the same row shapes as the recent window (text + tool_use + tool_result blocks per BR-02 v2.2); the utility model is expected to summarise across them — the summary prompt instructs it to treat tool exchanges as evidence-gathering steps, not user instructions.
 5. `repository.updateSummaryRolling(client, conversation_id, summary)` under `withTransaction`. The `set_updated_at` trigger bumps `updated_at` automatically.
 
 Errors logged WARN `chat.summary_refresh_failure` with `conversation_id` + error class; NEVER thrown to the caller. The route already returned to the client. Counter `chat_summary_refresh_total{ok=false}` incremented; on success `{ok=true}` + histogram `chat_summary_refresh_latency_ms`.
@@ -893,8 +1034,8 @@ When `env.CHAT_SUMMARY_ENABLED=false`, the function early-returns; `summary_roll
 **Description:**
 1. Read `repository.getConversationById(client, conversation_id)` under `withReadOnly`; early return if `title IS NOT NULL`.
 2. If `env.CHAT_TITLE_ENABLED === false`, return.
-3. Read `repository.getFirstUserAndAssistant(client, conversation_id)` under `withReadOnly`.
-4. Call `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, stream: false, system: <title prompt>, messages: [<user>, <assistant>] })`.
+3. Read `repository.getFirstUserAndAssistant(client, conversation_id)` under `withReadOnly`. **v2.2 boundary safety:** `<user>` MUST be the conversation's FIRST natural-language user row (`role='user' AND idempotency_key IS NOT NULL` — see BR-02 v2.2 amendment), NOT a synthetic tool_result user row. `<assistant>` MUST be the FIRST assistant row whose content has at least one `text` block — skipping any leading per-iteration assistant rows that carry only `tool_use` blocks. The repository implementation `getFirstUserAndAssistant` MUST apply both filters; v2.0 / v2.1 implementations that returned the raw chronologically-first rows would, after the v2.2 multi-row persistence change, sometimes return an assistant row carrying ONLY `tool_use` blocks — Anthropic would reject the request with the same 400 the next-turn bug surfaced.
+4. Call `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, stream: false, system: <title prompt>, messages: [<user>, <assistant>] })`. The pair is, by construction (step 3 filters), a VALID Anthropic exchange — no dangling `tool_use`.
 5. Trim result; if empty after trim OR `length > 80`, drop silently. Otherwise `repository.setTitleIfNull(client, conversation_id, title)` under `withTransaction` — the `IF NULL` guard makes the operation idempotent (a concurrent set wins; ours becomes a no-op).
 
 Errors logged WARN `chat.title_distillation_failure`; NEVER thrown. Counter `chat_title_distillation_total{ok}` + histogram `chat_title_distillation_latency_ms`.
@@ -948,6 +1089,7 @@ The actual SSE termination happens on the original `sendMessage` request (BR-12)
 - `before`: optional `z.string().datetime()` (RFC3339); query is `... WHERE conversation_id = $1 [AND created_at < $before] ORDER BY created_at ASC, id ASC LIMIT $limit + 1`.
 - The pagination walks BACKWARDS in time so the SPA can lazy-load older messages above the visible window. `next_before` = the `created_at` of the OLDEST item of the page (`items[0].created_at`) when there are more pages; null otherwise.
 - Conversation absence -> 404 `RESOURCE_NOT_FOUND` (BR-22) BEFORE the message query.
+- **v2.2 surface filtering.** The route returns ALL `chat_message` rows AS-IS — including the per-iteration assistant rows whose `content` carries `tool_use` blocks AND the synthetic user rows whose `content` carries `tool_result` blocks (BR-02 / §2.1 v2.2 amendment). The SPA is responsible for HIDING rows whose blocks are exclusively of the synthetic kinds (assistant rows with NO `text` block; user rows with NO `text` block) — this keeps the surface uniform with the replay model (BR-31) and avoids a server-side filter that would need to keep state in sync with future content-block taxonomy changes. `getConversationUsage` (BR-40) `messages` count is the raw count of all rows (synthetic + natural) — the conversation's underlying token + tool-call audit costs ARE produced by those rows even when the SPA hides them.
 **Error returned:** HTTP 422 on shape failure; 404 when conversation absent.
 
 ### BR-40 -- `getConversationUsage` aggregates over assistant rows + tool calls
@@ -1023,9 +1165,11 @@ Mirrors the business state machine of `.spec.md` §5.2. Technical guards added b
 | `llm_streaming(i)` | `llm_streaming(i)` | SDK `text_delta` | `delta.length >= 1` (BR-08), passes BR-20 guard | UC-02 |
 | `llm_streaming(i)` | `tool_pending(i,t)` | SDK stop = `tool_use` | tool name in resolved catalog (BR-05) | UC-02 |
 | `tool_pending(i,t)` | `tool_running(i,t)` | service yields `tool_start{t}` | redacted summary (BR-09) | UC-02 |
-| `tool_running(i,t)` | `iteration_completed(i)` | tool returns `{ok}` | `INSERT chat_tool_call` (BR-32); if `t in {traverse,get_node,list_nodes,search}` and `ok=true` and catalog available, emit `graph_delta` AFTER `tool_result` (BR-41) | UC-02 |
+| `tool_running(i,t)` | `iteration_completed(i)` | tool returns `{ok}` | `INSERT chat_tool_call` audit (BR-32); if `t in {traverse,get_node,list_nodes,search}` and `ok=true` and catalog available, emit `graph_delta` AFTER `tool_result` (BR-41) | UC-02 |
 | `tool_running(i,t)` | `iteration_completed(i)` | tool timeout | wall-clock > `TOOL_TIMEOUT_MS` (BR-17); persist with `is_error=true` (BR-32); NO `graph_delta` (BR-41) | UC-02 |
-| `iteration_completed(i)` | `llm_streaming(i+1)` | next iteration begins | `i+1 <= MAX_ITERATIONS` (BR-15); truncate prior result (BR-13) | UC-02 |
+| `iteration_completed(i)` | `iteration_persisted(i)` | agent yields `iteration_end{i}` | route opens `withTransaction`, inserts ONE assistant row `[text + tool_use]` + ONE synthetic user row `[tool_result]` atomically (BR-29 step 6.d). v2.2. | UC-02 |
+| `iteration_persisted(i)` | `llm_streaming(i+1)` | next iteration begins | `i+1 <= MAX_ITERATIONS` (BR-15); truncate prior result (BR-13) | UC-02 |
+| `iteration_completed(i)` | `done_internal_error` | per-iteration `withTransaction` fails | rollback; WARN `chat.iteration_persist_failure`; emit terminal `error{code:SYSTEM_INTERNAL_ERROR}` (BR-29 atomicity). v2.2. | UC-02 (`12a`) |
 | `iteration_completed(i)` | `done_max_iterations` | ceiling hit | `i+1 > MAX_ITERATIONS` (BR-15) | UC-03 |
 | any active | `done_error` | SDK error / loop exception | error mapped to `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` / `SYSTEM_INTERNAL_ERROR` (BR-11, BR-23) | UC-02 (`10a`/`12a`) |
 | any active | `aborting` | `req.raw.on('close')` OR `cancelTurn` | `AbortController.abort()`, `stream.abort()` (BR-12, BR-38) | UC-05/UC-06 |
@@ -1174,6 +1318,7 @@ Reused codes (already registered in the global catalog — no new code needed):
 - **Message listing p95:** < 80 ms — index scan on `(conversation_id, created_at)` with `LIMIT 51`.
 - **Distillation latency (background):** off the request path; budget governed by the utility model's response time + a single `UPDATE`. Failures logged WARN, do not block the next turn.
 - **`graph_delta` projection (v2.1, BR-41) p95:** < 50 ms — `traverse`/`get_node`/`list_nodes` are pure passthrough + catalog lookup (in-process map). `search` adds ONE batched `findNodesByIds` round-trip (single index scan on `node_pkey`, expected 1-3 ms on Neon). The projection runs inline in the drain loop AFTER the `tool_result` is on the wire; the user-visible latency cost is added to the inter-frame gap between `tool_result` and the subsequent `text_delta` of the next iteration.
+- **Per-iteration persistence cost (v2.2, BR-29):** each tool-bearing iteration adds ONE `withTransaction` round-trip (two INSERTs: assistant iteration row + synthetic user tool_result row) on top of the per-call `chat_tool_call` audit insert (BR-32). p95 budget per pair: < 30 ms on Neon's direct connection. With `MAX_ITERATIONS=8` worst case, the per-turn DB work is bounded by `1 + 8×(2 INSERTs + 1 audit INSERT) + 1 final assistant + 1 attach = 28 round-trips`, still small compared to the per-turn LLM wall-clock (`TURN_TIMEOUT_MS=90s`). The cost is spread across the turn — each per-iteration pair commits between iterations, so a failure in iteration `i+1` does NOT roll back the persisted rows of iteration `i`.
 
 ---
 
@@ -1193,6 +1338,9 @@ Reused codes (already registered in the global catalog — no new code needed):
 - **Boot diagnostic for missing tools.** Carried from v1: when `buildChatToolCatalog(mcp)` fails to resolve, the entire chat route family is not mounted — all 9 endpoints return 404. The BFF logs ERROR with the resolved-vs-expected diff at boot.
 - **`graph_delta` requires the catalog snapshot (v2.1, BR-41).** The route reads the `CatalogSnapshot` from `ChatRouteDeps` (forwarded by `app.ts` at boot). When the snapshot is unavailable (degraded mode — e.g. boot raced ahead of the catalog loader), the route silently SKIPS `graph_delta` emission while keeping `tool_result` intact. This is a degraded UX, NOT a turn failure. There is no automatic recovery path other than restart; the BFF should log ERROR at boot if the catalog fails to load (existing `knowledge-graph` invariant).
 - **`graph_delta` is not persisted; not replayable.** Per BR-41 step 5, the frame is observational only — the audit trail for the originating tool call lives on the existing `chat_tool_call` row (BR-32). The idempotent-replay path (UC-07, BR-27) does NOT re-emit `graph_delta`; clients reconstructing the visual graph from a replay must re-issue the tool call (out of scope for v2.1).
+- **Multi-row persistence per iteration (v2.2, BR-29 / BR-02 / §2.1).** Each tool-bearing iteration now inserts TWO `chat_message` rows (one assistant `[text + tool_use]`, one synthetic user `[tool_result]`) atomically inside the same `withTransaction`; the final assistant row inserts in the post-stream transaction (step 8). A turn with `MAX_ITERATIONS=8` worst case persists 17 rows (1 user natural-language + 8 × 2 iteration pair + 1 final assistant + 8 `chat_tool_call` audit) — still well within the chat tables' performance budget (§11). The atomicity of each iteration pair is non-negotiable: a half-persisted pair would re-introduce the v2.0 / v2.1 next-turn bug. If the iteration transaction fails mid-pair, the route surfaces a terminal `SYSTEM_INTERNAL_ERROR` SSE frame and writes the final assistant row with `stop_reason="internal_error"` — see BR-29 "Atomicity of iteration boundaries".
+- **`chat_message.content` jsonb is polymorphic (v2.2).** v2.0 / v2.1 implicitly assumed `chat_message.content` carried `[{type:"text", text:string}]` blocks only. v2.2 generalises the column to ANY Anthropic content-block taxonomy (`text`, `tool_use`, `tool_result`). The column type is unchanged (`jsonb`); the change is conceptual + at the repository / context-builder layers. The BR-27 idempotency comparator unwraps `content[0].text` on the user natural-language row only (the row carrying the `idempotency_key`) — synthetic user rows carry `idempotency_key=NULL` and are excluded from the partial unique index, so the comparator never sees a `tool_result` block.
+- **Surface filtering at the SPA boundary (v2.2, BR-39).** `listMessages` returns all `chat_message` rows verbatim — including synthetic rows used for replay. The SPA filters synthetic rows by content-block inspection (assistant rows with NO `text` block; user rows with NO `text` block). A future server-side filter is possible but explicitly deferred — keeping the surface uniform with the replay model (BR-31) avoids divergence between the model's view of history and the user's view that surfaced the v2.0 / v2.1 bug in the first place.
 
 ---
 
@@ -1224,3 +1372,4 @@ Reused codes (already registered in the global catalog — no new code needed):
 | 1.1.1 | 2026-06-19 | Back Spec Agent | patch | Corrected `VALIDATION_INVALID_FORMAT` pre-stream HTTP status from 400 to 422. | REPAIR-1 |
 | 2.0.0 | 2026-06-20 | Back Spec Agent | major (breaking) | **Stateful conversations.** Adopts `.spec.md` v2.0.0 / `openapi.yaml` v2.0.0. (a) §2 Data Model is no longer empty: 3 owned tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` (spec artifact at `./0004_chat_persistence.sql`; DB Safety Rule — NOT applied at spec time). NO `user_id` column anywhere (single-owner). Compliance §11 exclusion is intentional (BR-37). (b) NEW §3 Repository Layer documenting the `chat.repository.ts` contract (raw `pg` parameterized, `PoolClient`-based, reusing `withTransaction`/`withReadOnly` from `modules/curation/service/transaction.ts`). (c) §1.1 file layout extended: added `repository/chat.repository.ts`, `service/conversation.service.ts`, `service/context-builder.ts`, `service/distillation.service.ts`, `service/turn-registry.ts`; the existing `chat-agent.service.ts` keeps its scope (agentic loop only — DB reads now come from `context-builder`). (d) §1.2 `ChatEvent.tool_result` enriched with full per-call payload (arguments, result, is_error, error_message, duration_ms) and `ChatEvent.done` / `ChatEvent.error` carry the `content` blocks + token sums for BR-29 persistence. (e) §4 Business Rules: BR-01..BR-24 preserved (turn semantics unchanged) with edits to "Where to validate" reflecting the new repository + service split; added BR-25..BR-40 (archived = no-write, Idempotency-Key required, idempotent replay, single in-flight turn, persistence sequencing, conversation create body, context reconstruction, tool-call persistence, rolling summary, title distillation, conversation listing pagination, patch body, cascade delete + compliance exclusion, cancel endpoint, message listing pagination, usage aggregation). (f) §5 State machine extended: added ST-01 conversation lifecycle; ST-02 turn lifecycle now includes the `user_row_persisted`, `replay_open`, and `assistant_row_persisted` states. (g) §7 External Integrations: added the utility-model call (`CHAT_UTILITY_MODEL` for distillation jobs) and the chat-owned Neon writes. (h) §8 env table adds five additive optional vars (`CHAT_UTILITY_MODEL`, `CHAT_SUMMARY_AFTER_TURNS`, `CHAT_RECENT_WINDOW`, `CHAT_TITLE_ENABLED`, `CHAT_SUMMARY_ENABLED`). (i) §9 pino schema gains `conversation_id`, `message_id`, `idempotent_replay`; new counters/histograms for replay, in-progress conflict, summary refresh, title distillation. (j) §10 error catalog: 3 new business codes (`BUSINESS_CONVERSATION_ARCHIVED`, `BUSINESS_TURN_IN_PROGRESS`, `BUSINESS_IDEMPOTENCY_MISMATCH`) registered in `service/errors.ts`. (k) §11 budgets refined with the chat-table DB cost; §12 constraints add the in-process turn registry, distillation fire-and-forget model, `(content, model)` comparator caveat; §13 out-of-scope reaffirms the BACKEND-ONLY scope and the migration-not-applied stance. (l) PRESERVED from v1: agentic loop semantics, READ-ONLY tool catalog, SSE framing, sanity ceilings, abort semantics, pino observability shape (extended). | -- |
 | 2.1.0 | 2026-06-21 | Back Spec Agent | minor (additive) | **Chat-Graph projection (additive 7th SSE frame).** Adopts `openapi.yaml` v2.1.0. Source: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 wire format + §9 Fase B + AC-B.7. (a) Header amended with the v2.1 additive deviation paragraph documenting the route-owned `graph_delta` projection. (b) §1.1 file layout extended with `service/graph-normalizer.ts` (pure projection + dispatcher; consumes `CatalogSnapshot.linkTypeByName` and `findNodesByIds` from `knowledge-graph`). (c) §1.1 boundary note rewritten: the chat module is now permitted READ-ONLY imports of `CatalogSnapshot` (type) and `findNodesByIds` (value) from `knowledge-graph`; the `query-retrieval` boundary remains intact. (d) §1.2 `ChatEvent` union extended with a `graph_delta` variant (route-owned synthesis — the agent service NEVER yields it); new wire types `GraphNodeWire` / `GraphLinkWire` (snake_case). (e) NEW §4 BR-41 documents the projection contract end-to-end: trigger (`ok=true` + graph tool name), per-tool normalization (traverse / get_node / list_nodes / search-with-hydration), wire emission ordering (always AFTER the originating `tool_result`), defensive WARN-and-skip on exception, non-persistence, and non-replay. (f) §5 ST-02 transition row `tool_running -> iteration_completed (ok)` annotated with the `graph_delta` emission contract. (g) §7 External Integrations: new row for `findNodesByIds` consumption (search hydration / G-A); same Neon pool, no new connection. (h) §9 WARN log shapes: added `chat.graph_delta_normalize_failure`. (i) §11 budgets: new `graph_delta projection p95 < 50 ms` line. (j) §12 known constraints: catalog-snapshot dependency, non-persistence, non-replay. (k) Search hydration G-A deviation registered as a normative note inline in BR-41 (chat module imports `findNodesByIds`; `query-retrieval` boundary preserved). PRESERVED from v2.0: all existing BRs (no renumbering, no removals), data model unchanged, no new env var, no migration. | -- |
+| 2.2.0 | 2026-06-21 | Back Spec Agent | patch (bugfix) | **Faithful multi-row persistence of the agentic turn.** Owner-approved fix for the multi-turn provider_error bug: turn 1 succeeds, turn 2 fails with `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` whenever turn 1 invoked a tool. Root cause: the agentic turn persisted as ONE assistant `chat_message` row whose `content` carried raw `tool_use` blocks but NOT the matching `tool_result` blocks (those lived only in audit `chat_tool_call` rows); BR-31 mapped each row 1:1 to an Anthropic `MessageParam` verbatim, so the rebuilt history on turn 2 contained an assistant `tool_use` with no following `tool_result` — Anthropic 400 `tool_use ids were found without tool_result blocks immediately after` surfaced via BR-11 as `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`. Same bug broke title/summary distillation (BR-33 / BR-34). Changes: (a) Header amended with the v2.2 bugfix paragraph. (b) §1 Testing row: added regression items (xiii) multi-turn test where turn 1 invokes a tool and turn 2 succeeds (the coverage gap that let it ship) + (xiv) distillation regression on tool-bearing older slices. (c) §1 Transaction policy row: added a fourth shape — per-iteration `(assistant, synthetic_user)` pair `withTransaction`. (d) §1.1 chat.routes.ts blurb: replaced the SSE-drain persistence pseudocode with the per-iteration pair logic. (e) §1.1 chat-agent.service.ts blurb: agent now yields `tool_use_id` on `tool_start` + `tool_result` AND a new `iteration_end{iteration, assistant_content, tool_results}` event at each iteration boundary. (f) §1.2 `ChatEvent` union extended: `tool_start` carries `tool_use_id` + `input`; `tool_result` carries `tool_use_id` + `model_visible_content`; NEW `iteration_end` variant yielded by the agent and consumed by the route to drive BR-29 step 6.d persistence (internal event — NOT written to the SSE wire). (g) §1.2 contract narrative gained a v2.2 "persistence partnership" subsection. (h) §2.1 enum prose: replaced the v2.0 / v2.1 "transient tool_use / tool_result blocks NEVER persisted as their own rows" wording with the v2.2 multi-row sequencing rule: each tool-bearing iteration persists ONE assistant `[text + tool_use]` row + ONE synthetic user `[tool_result]` row, plus a final assistant `[text]` row at turn end. (i) BR-02 rewritten to reflect persisted `tool_use` / `tool_result` content blocks on the existing `{user, assistant}` enum; `chat_message.content jsonb` is already polymorphic — NO migration. (j) BR-29 rewritten end-to-end: pre-stream insert of the user natural-language row (unchanged); per-iteration `(assistant, synthetic_user)` pair atomically inserted in step 6.d INSIDE the same `withTransaction`; final assistant row inserted in the post-stream transaction (step 8.a) carrying the closing text + `stop_reason` + token sums + latency; ALL `chat_tool_call` audit rows attached to the FINAL assistant row in step 8.b. Atomicity of each iteration pair is non-negotiable; crash recovery is documented. (k) BR-31 rewritten to note that the 1:1 verbatim replay now yields a VALID Anthropic sequence by construction (because BR-29 v2.2 persists the matching `tool_result` row in lock-step); added a row-classification table (natural-language user / synthetic tool_result user / assistant). (l) BR-32 rewritten to clarify the audit-only role of `chat_tool_call` (no longer the SOLE persistence surface for tool calls); attachment now anchors to the FINAL assistant row, not the per-iteration ones. (m) BR-33 amended: `countUserTurns` filters to natural-language user rows only (`idempotency_key IS NOT NULL`); `listOlderMessagesForSummary` cuts on TURN boundaries to avoid splitting tool_use / tool_result pairs (otherwise the distillation request hits the same Anthropic 400). (n) BR-34 amended: `getFirstUserAndAssistant` filters to the first natural-language user row + the first text-bearing assistant row (skipping leading per-iteration assistant rows that carry only `tool_use` blocks). (o) BR-39 amended: route returns ALL `chat_message` rows verbatim; SPA filters synthetic rows (assistant rows with no `text` block; user rows with no `text` block) by content-block inspection. (p) §5 ST-02 updated: new `iteration_persisted(i)` state between `iteration_completed(i)` and `llm_streaming(i+1)`; new `done_internal_error` transition on per-iteration transaction failure. (q) §11 budgets: new bullet on per-iteration persistence cost (< 30 ms per pair on Neon). (r) §12 known constraints: three new entries (multi-row persistence per iteration with atomicity caveat; `chat_message.content` jsonb polymorphism; surface filtering at the SPA boundary). NO migration. NO new env var. NO new error code. PRESERVED from v2.1: `graph_delta` projection (BR-41) — unaffected by the fix (lives on `tool_result` events, which still arrive in the same order). PRESERVED from v2.0: all CRUD endpoints, all error codes, OpenAPI v2.1.0 (no wire changes for the SPA). | sdd_improve_1_spec-back |

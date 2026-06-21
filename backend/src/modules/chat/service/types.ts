@@ -101,6 +101,21 @@ export type ChatEvent =
       readonly tokens_out: number;
       readonly synthetic_stop_reason: ErrorSyntheticStopReason;
     }
+  // v2.2 (chat.back.md — faithful multi-row persistence). Emitted by the loop
+  // AFTER a tool-bearing iteration completes (every `tool_result` for that
+  // iteration has been yielded). Carries the iteration's assistant content
+  // (guarded text blocks + the raw `tool_use` block(s)) and the matching
+  // `tool_result` block(s). The ROUTE persists this as an atomic pair of
+  // `chat_message` rows — assistant `[text?, tool_use]` then synthetic user
+  // `[tool_result]` (BR-29 step 6.d) — so the NEXT turn's context replay is a
+  // valid Anthropic sequence. INTERNAL ONLY: never serialised to the SSE wire
+  // (`projectSseFrame` skips it; the route `continue`s before framing).
+  | {
+      readonly type: "iteration_end";
+      readonly iteration: number;
+      readonly assistant_content: ReadonlyArray<unknown>;
+      readonly tool_results: ReadonlyArray<unknown>;
+    }
   // v3 / TC-be-002 — `graph_delta` is synthesised by the ROUTE handler (NOT
   // by the agentic loop) immediately after a graph-producing `tool_result`,
   // by running the tool envelope through `service/graph-normalizer.ts`. It

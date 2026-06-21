@@ -173,6 +173,16 @@ export interface ChatRepository {
     after_created_at: string
   ): Promise<MessageRow | null>;
 
+  insertIterationPair(
+    client: PoolClient,
+    input: {
+      conversation_id: string;
+      assistant_content: unknown[];
+      tool_result_content: unknown[];
+      model: string | null;
+    }
+  ): Promise<{ assistant: MessageRow; user: MessageRow }>;
+
   insertAssistantMessage(
     client: PoolClient,
     input: {
@@ -465,11 +475,13 @@ export async function findUserByIdempotencyKey(
   return res.rows[0] ?? null;
 }
 
-// BR-27 / UC-07: locate the immediate successor assistant row. The
-// `idx_chat_message_conversation_created_at` index serves this lookup. We
-// break ties on `id ASC` so two messages with the same `created_at` (extremely
-// unlikely given `now()` resolution but the spec asks for determinism) resolve
-// stably.
+// BR-27 / UC-07: locate the TERMINAL assistant row that answered a user turn.
+// `idx_chat_message_conversation_created_at` serves this lookup; ties break on
+// `id ASC`. v2.2: a tool-bearing turn now persists INTERMEDIATE assistant rows
+// (the `[text?, tool_use]` half of each iteration pair) which carry
+// `stop_reason IS NULL`. The idempotent-replay answer is the FINAL assistant
+// row, which always carries a non-null `stop_reason` — so we filter on it to
+// skip the intermediate rows and return the actual answer.
 export async function findAssistantSuccessor(
   client: PoolClient,
   conversation_id: string,
@@ -480,6 +492,7 @@ export async function findAssistantSuccessor(
        FROM chat_message
       WHERE conversation_id = $1
         AND role = 'assistant'
+        AND stop_reason IS NOT NULL
         AND created_at > $2::timestamptz
       ORDER BY created_at ASC, id ASC
       LIMIT 1`,
@@ -488,7 +501,50 @@ export async function findAssistantSuccessor(
   return res.rows[0] ?? null;
 }
 
-// BR-29 step 8: insert the assistant row AFTER the terminal frame.
+// BR-29 step 6.d (v2.2 — faithful multi-row persistence): persist ONE
+// tool-bearing iteration as the atomic pair of rows that reproduces the
+// Anthropic message sequence — an INTERMEDIATE assistant row carrying
+// `[text?, tool_use]` (stop_reason NULL → not a terminal row) immediately
+// followed by a SYNTHETIC user row carrying `[tool_result]` (idempotency_key
+// NULL → not a real user turn). Both rows are stamped with `clock_timestamp()`
+// — NOT the transaction's `now()`, which returns the SAME instant for every
+// statement in a transaction. With identical `created_at` the `(created_at
+// ASC, id ASC)` read order would tiebreak on the random `id`, replaying the
+// pair in EITHER order and re-introducing the dangling-`tool_use` bug.
+// `clock_timestamp()` advances between the two sequential statements, so the
+// assistant row sorts STRICTLY BEFORE its `tool_result`. The caller MUST wrap
+// this in a single `withTransaction` so a crash never leaves a half-pair.
+export async function insertIterationPair(
+  client: PoolClient,
+  input: {
+    conversation_id: string;
+    assistant_content: unknown[];
+    tool_result_content: unknown[];
+    model: string | null;
+  }
+): Promise<{ assistant: MessageRow; user: MessageRow }> {
+  const assistantRes = await client.query<MessageRow>(
+    `INSERT INTO chat_message
+       (conversation_id, role, content, model, created_at)
+     VALUES ($1, 'assistant', $2::jsonb, $3, clock_timestamp())
+     RETURNING ${MESSAGE_COLS}`,
+    [
+      input.conversation_id,
+      JSON.stringify(input.assistant_content),
+      input.model,
+    ]
+  );
+  const userRes = await client.query<MessageRow>(
+    `INSERT INTO chat_message
+       (conversation_id, role, content, created_at)
+     VALUES ($1, 'user', $2::jsonb, clock_timestamp())
+     RETURNING ${MESSAGE_COLS}`,
+    [input.conversation_id, JSON.stringify(input.tool_result_content)]
+  );
+  return { assistant: assistantRes.rows[0]!, user: userRes.rows[0]! };
+}
+
+// BR-29 step 8: insert the TERMINAL assistant row AFTER the terminal frame.
 export async function insertAssistantMessage(
   client: PoolClient,
   input: {
@@ -562,10 +618,22 @@ export async function listMessagesPaginated(
   params.push(limit + 1);
   const limitParam = `$${params.length}`;
 
+  // v2.2: this is the human-facing conversation view (SPA). It returns ONLY
+  // the DISPLAY rows — real user turns (`idempotency_key IS NOT NULL`) and
+  // TERMINAL assistant answers (`stop_reason IS NOT NULL`). The intermediate
+  // tool-scaffolding rows added by faithful multi-row persistence (assistant
+  // `[tool_use]` + synthetic user `[tool_result]`) are hidden — they exist for
+  // the model's context replay, not for display, and the structured per-call
+  // payload lives in `chat_tool_call` (BR-32). Live tool activity is shown via
+  // the `tool_start`/`tool_result` SSE frames during streaming.
+  const displayFilter =
+    " AND ((role = 'user' AND idempotency_key IS NOT NULL)" +
+    " OR (role = 'assistant' AND stop_reason IS NOT NULL))";
+
   const res = await client.query<MessageRow>(
     `SELECT ${MESSAGE_COLS}
        FROM chat_message
-      WHERE conversation_id = $1${beforeClause}
+      WHERE conversation_id = $1${beforeClause}${displayFilter}
       ORDER BY created_at ASC, id ASC
       LIMIT ${limitParam}`,
     params
@@ -617,7 +685,11 @@ export async function listOlderMessagesForSummary(
   return res.rows;
 }
 
-// BR-33 trigger predicate.
+// BR-33 trigger predicate. Counts REAL user turns only. v2.2: synthetic user
+// rows carrying `tool_result` blocks (idempotency_key NULL) are NOT user turns
+// — counting them would trip the summary threshold far too early (one extra
+// "turn" per tool call). The `idempotency_key IS NOT NULL` filter selects only
+// genuine user messages.
 export async function countUserTurns(
   client: PoolClient,
   conversation_id: string
@@ -626,15 +698,20 @@ export async function countUserTurns(
     `SELECT count(*)::text AS count
        FROM chat_message
       WHERE conversation_id = $1
-        AND role = 'user'`,
+        AND role = 'user'
+        AND idempotency_key IS NOT NULL`,
     [conversation_id]
   );
   return Number(res.rows[0]?.count ?? "0");
 }
 
-// BR-34 trigger: first user + first assistant rows by `created_at ASC, id ASC`.
-// Two short index lookups are clearer than a windowing query and the chat
-// table indexes already serve both.
+// BR-34 trigger: first REAL user + first TERMINAL assistant rows by
+// `created_at ASC, id ASC`. v2.2: filter the user side to genuine turns
+// (`idempotency_key IS NOT NULL`, never a synthetic `tool_result` row) and the
+// assistant side to the answer row (`stop_reason IS NOT NULL`, never an
+// intermediate `tool_use` row). Without these filters the title prompt would
+// receive a dangling `tool_use` (assistant) or a `tool_result` (user) and the
+// utility model call would 400.
 export async function getFirstUserAndAssistant(
   client: PoolClient,
   conversation_id: string
@@ -643,6 +720,7 @@ export async function getFirstUserAndAssistant(
     `SELECT ${MESSAGE_COLS}
        FROM chat_message
       WHERE conversation_id = $1 AND role = 'user'
+        AND idempotency_key IS NOT NULL
       ORDER BY created_at ASC, id ASC
       LIMIT 1`,
     [conversation_id]
@@ -651,6 +729,7 @@ export async function getFirstUserAndAssistant(
     `SELECT ${MESSAGE_COLS}
        FROM chat_message
       WHERE conversation_id = $1 AND role = 'assistant'
+        AND stop_reason IS NOT NULL
       ORDER BY created_at ASC, id ASC
       LIMIT 1`,
     [conversation_id]
@@ -771,6 +850,7 @@ export const chatRepository: ChatRepository = {
   insertUserMessage,
   findUserByIdempotencyKey,
   findAssistantSuccessor,
+  insertIterationPair,
   insertAssistantMessage,
   listRecentMessages,
   listMessagesPaginated,

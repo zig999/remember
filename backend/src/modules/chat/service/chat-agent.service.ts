@@ -304,16 +304,19 @@ async function* runTurnGenerator(
     })
   );
 
-  // v2 (chat.back.md §1.2 / BR-29 / BR-32 persistence payload): accumulate
-  // assistant content blocks across iterations. The terminal `done` / `error`
-  // event carries this array so the route handler can persist the assistant
-  // chat_message row (BR-29 step 8). We append:
+  // v2.2 (chat.back.md — faithful multi-row persistence): accumulate the
+  // CURRENT iteration's assistant content blocks. RESET after each tool-bearing
+  // iteration (see the `iteration_end` emit below). We append:
   //   - `{ type: "text", text: <delta> }` for each filtered text_delta (BR-08).
-  //   - The raw `tool_use` block emitted by Anthropic on each iteration so
-  //     the persisted assistant row reproduces the agentic conversation faithfully.
-  // The accumulator captures ONLY what the model emitted (post-guard) — never
-  // the raw upstream string of an SDK error.
-  const contentBlocks: unknown[] = [];
+  //   - The raw `tool_use` block(s) emitted by Anthropic this iteration.
+  // On a tool-bearing iteration these blocks are carried on `iteration_end`
+  // (the route persists them as the iteration's assistant row, paired with the
+  // synthetic user `tool_result` row). On the FINAL (non-tool) iteration they
+  // are carried on the terminal `done`/`error` event (the closing assistant
+  // text row, BR-29 step 8 — always text-only by construction). The
+  // accumulator captures ONLY what the model emitted (post-guard) — never the
+  // raw upstream string of an SDK error.
+  const iterationBlocks: unknown[] = [];
 
   // The "currently active" stream — used by the abort handler to call
   // `stream.abort()` so the SDK tears down its socket promptly.
@@ -349,7 +352,7 @@ async function* runTurnGenerator(
           lastModel,
           turnTimer,
           externalAbortListener,
-          contentBlocks
+          iterationBlocks
         );
         return;
       }
@@ -366,7 +369,7 @@ async function* runTurnGenerator(
           lastModel,
           turnTimer,
           externalAbortListener,
-          contentBlocks
+          iterationBlocks
         );
         return;
       }
@@ -444,7 +447,7 @@ async function* runTurnGenerator(
           // v2 (BR-29): accumulate the filtered delta as a `text` block on the
           // assistant content blocks array. The persisted assistant row keeps
           // the same shape Anthropic itself returns.
-          contentBlocks.push({ type: "text", text: item.delta });
+          iterationBlocks.push({ type: "text", text: item.delta });
           yield { type: "text_delta", delta: item.delta } as const;
         } else if (item.kind === "end") {
           streamEnded = true;
@@ -481,7 +484,7 @@ async function* runTurnGenerator(
             lastModel,
             turnTimer,
             externalAbortListener,
-            contentBlocks
+            iterationBlocks
           );
           return;
         }
@@ -501,7 +504,7 @@ async function* runTurnGenerator(
           turnTimer,
           externalAbortListener,
           "provider_error",
-          contentBlocks
+          iterationBlocks
         );
         return;
       }
@@ -515,7 +518,7 @@ async function* runTurnGenerator(
           turnTimer,
           externalAbortListener,
           "internal_error",
-          contentBlocks
+          iterationBlocks
         );
         return;
       }
@@ -547,7 +550,7 @@ async function* runTurnGenerator(
           // content blocks fed back on the next iteration. Persist it as-is
           // so the chat_message row can be re-replayed against Anthropic if
           // the conversation is resumed in the future.
-          contentBlocks.push(block);
+          iterationBlocks.push(block);
 
           const toolName = block.name;
           // BR-09: redacted args summary.
@@ -627,6 +630,20 @@ async function* runTurnGenerator(
           inLoopHistory.push({ role: "user", content: toolResultBlocks });
         }
 
+        // v2.2 (BR-29 step 6.d): emit the per-iteration persistence pair. The
+        // route persists `assistant_content` (this iteration's guarded text +
+        // tool_use blocks) and `tool_results` as TWO atomic chat_message rows
+        // so the next turn's replay is a valid Anthropic sequence. INTERNAL —
+        // not written to the SSE wire. Reset the accumulator for the next
+        // iteration so the terminal `done` carries ONLY the closing text.
+        yield {
+          type: "iteration_end",
+          iteration,
+          assistant_content: iterationBlocks.slice(),
+          tool_results: toolResultBlocks.slice(),
+        } as const;
+        iterationBlocks.length = 0;
+
         // Loop — open the next iteration.
         continue;
       }
@@ -640,7 +657,7 @@ async function* runTurnGenerator(
         lastModel,
         turnTimer,
         externalAbortListener,
-        contentBlocks
+        iterationBlocks
       );
       return;
     }
@@ -661,7 +678,7 @@ async function* runTurnGenerator(
       turnTimer,
       externalAbortListener,
       "internal_error",
-      contentBlocks
+      iterationBlocks
     );
     return;
   } finally {
@@ -689,7 +706,7 @@ async function* terminate(
   model: string,
   turnTimer: NodeJS.Timeout,
   externalAbortListener: () => void,
-  contentBlocks: readonly unknown[]
+  iterationBlocks: readonly unknown[]
 ): AsyncGenerator<ChatEvent, void, void> {
   clearTimeout(turnTimer);
   ctx.input.abortSignal.removeEventListener("abort", externalAbortListener);
@@ -703,7 +720,7 @@ async function* terminate(
     tokens_in: snapshot.tokens_in,
     tokens_out: snapshot.tokens_out,
     // v2 (BR-29): the route handler persists this on the assistant chat_message row.
-    content: contentBlocks.slice(),
+    content: iterationBlocks.slice(),
   } as const;
 }
 
@@ -714,7 +731,7 @@ async function* terminateError(
   turnTimer: NodeJS.Timeout,
   externalAbortListener: () => void,
   syntheticStopReason: ErrorSyntheticStopReason,
-  contentBlocks: readonly unknown[]
+  iterationBlocks: readonly unknown[]
 ): AsyncGenerator<ChatEvent, void, void> {
   clearTimeout(turnTimer);
   ctx.input.abortSignal.removeEventListener("abort", externalAbortListener);
@@ -725,9 +742,18 @@ async function* terminateError(
     type: "error",
     code,
     message,
-    // v2 (BR-29 error path): the route handler persists the partial content + the
-    // synthetic stop_reason on the assistant chat_message row.
-    content: contentBlocks.slice(),
+    // v2.2 (BR-29 error path): the route persists the partial content + the
+    // synthetic stop_reason on the closing assistant chat_message row. We strip
+    // any non-text block (a `tool_use` may have been pushed this iteration
+    // before the failure) — a TERMINAL assistant row is never followed by a
+    // `tool_result`, so a surviving `tool_use` would be a dangling block that
+    // breaks the NEXT turn's replay.
+    content: iterationBlocks.filter(
+      (b) =>
+        typeof b === "object" &&
+        b !== null &&
+        (b as { type?: unknown }).type === "text"
+    ),
     tokens_in: snapshot.tokens_in,
     tokens_out: snapshot.tokens_out,
     synthetic_stop_reason: syntheticStopReason,

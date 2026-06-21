@@ -33,6 +33,7 @@ import type {
   ConversationRow,
   MessageRow,
 } from "../repository/chat.repository.js";
+import { sanitizeAnthropicSequence } from "./message-sequence.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -131,12 +132,23 @@ export async function buildModelContext(
   // 1:1 map. The persisted `content` is `unknown[]` at the repo boundary
   // (jsonb -> JS) but is structurally `MessageParam["content"]` by
   // construction (BR-29 wrote Anthropic-shaped blocks). Cast at the seam.
-  for (const row of recent) {
-    messages.push({
+  const windowMessages: Anthropic.Messages.MessageParam[] = recent.map(
+    (row) => ({
       role: row.role,
       content: row.content as Anthropic.Messages.MessageParam["content"],
-    });
-  }
+    })
+  );
+
+  // v2.2 (faithful multi-row persistence): the COUNT-bounded recent window can
+  // begin or end in the MIDDLE of a tool-bearing turn (a leading
+  // `user[tool_result]` whose `assistant[tool_use]` fell outside the window, a
+  // trailing dangling `assistant[tool_use]`, or an empty-content row). Trim
+  // those boundary artefacts so the replayed sequence is valid by construction
+  // — otherwise Anthropic 400s and the turn surfaces as
+  // BUSINESS_CHAT_PROVIDER_UNAVAILABLE. The current user turn (the row inserted
+  // in BR-29 step 3) is the tail and is preserved (it is a real user message,
+  // never trimmed).
+  messages.push(...sanitizeAnthropicSequence(windowMessages));
 
   return {
     system: input.systemPrompt,
