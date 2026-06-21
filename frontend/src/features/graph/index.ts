@@ -42,3 +42,25 @@ export type {
   GraphEdgeAdapterProps,
   GraphLinkDataRF,
 } from "./components/GraphEdgeAdapter";
+
+export { GraphSpace } from "./components/GraphSpace";
+export type { GraphSpaceHandle, GraphSpaceProps } from "./components/GraphSpace";
+
+export { GraphCanvas } from "./components/GraphCanvas";
+export type { GraphCanvasProps } from "./components/GraphCanvas";
+
+export {
+  GraphStatusOverlay,
+  GRAPH_STATUS_LOADING_COPY,
+  GRAPH_STATUS_ERROR_DEFAULT_COPY,
+} from "./components/GraphStatusOverlay";
+export type {
+  GraphStatusOverlayProps,
+  GraphStatusOverlayVariant,
+} from "./components/GraphStatusOverlay";
+
+export {
+  GraphEmptyState,
+  GRAPH_EMPTY_STATE_COPY,
+} from "./components/GraphEmptyState";
+export type { GraphEmptyStateProps } from "./components/GraphEmptyState";
