@@ -23,3 +23,6 @@ export type {
 } from "./types";
 
 export { deriveLinkState, deriveNodeState, mapNodeType } from "./lib/map";
+
+export { useGraphStore } from "./state/graph-store";
+export type { GraphPosition, GraphState } from "./state/graph-store";
