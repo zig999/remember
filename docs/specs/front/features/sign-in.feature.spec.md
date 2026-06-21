@@ -1,9 +1,9 @@
 # Sign-In -- Feature Spec
 
 > Route: `/sign-in` | Related flows: `_flows/auth.flow.md`
-> Consumed domains: **none (client-side auth via Stack Auth SDK — no BFF endpoints)** | Status: draft | Layer: permanent
+> Consumed domains: **none (client-side auth via Better Auth — no BFF endpoints)** | Status: draft | Layer: permanent
 
-> **Normative brief:** `temp/login-screen-plan.md` (authoritative) + Requirement inline decisions D1–D3, R1–R6.
+> **Normative brief:** `temp/login-better-auth-plan.md` (authoritative). Supersedes `temp/login-screen-plan.md` for auth implementation decisions. R1–R6 from the previous wave remain in effect; only the auth layer changes.
 >
 > **Deviation note (D5 / R5):** this feature introduces a layout refactor that deviates from `front.md §2` (single root layout), `§3.1` (guard in `__root.beforeLoad`), `§5.1` (ErrorBoundary in root), and `front.back.md BR-04` (guard in `__root`). Owner-authorized. Reconcile `front.md` on the next `/u-improve` wave.
 >
@@ -12,19 +12,19 @@
 > - The JWT guard (`beforeLoad`) moves from `__root` → a **pathless layout route** (`id="protected"`) that wraps all currently protected routes. `/sign-in` is a direct child of `RootRoute` (outside the protected layout), receiving only `AmbientBackdrop` + `AppErrorBoundary` + `AppToaster`.
 > - `AppShell` no longer renders `<AmbientBackdrop/>`.
 >
-> **Auth approach (D2 = Option A):** Stack Auth client SDK (`@stackframe/react`, pinned). SPA calls the SDK's sign-in method → receives JWT → calls `useAuthStore.setToken(jwt)` → TanStack Router navigates. The BFF's auth middleware (JWKS/EdDSA) is unchanged.
+> **Auth approach (DA = fetch cru, DB = direto, DC = refresh silencioso):** SPA calls the Better Auth endpoints directly (no SDK, no proxy). Flow is 2-step: (1) `POST {VITE_NEON_AUTH_URL}/sign-in/email` with `credentials:'include'` to set the HttpOnly session cookie, then (2) `GET {VITE_NEON_AUTH_URL}/token` with `credentials:'include'` to obtain the JWT EdDSA. JWT passed to `useAuthStore.setToken(jwt)`. A silent refresh (DC) is supported: on a 401 from the BFF, `lib/http.ts` re-calls `GET /token` once using the long-lived session cookie before redirecting to `/sign-in`. The BFF's auth middleware (JWKS/EdDSA) is unchanged.
 >
-> **R2 note:** Exact SDK method signatures (`signInWithCredential`, `getAuthJson`) must be confirmed against the pinned `@stackframe/react` version during implementation. The spec describes the **functional contract** without fixing method names.
+> **Better Auth contract (PROVEN, 2026-06-21):** `POST {base}/sign-in/email {email, password}` with `credentials:'include'` → HTTP 200 + sets cookie `__Secure-neon-auth.session_token` (SameSite=None; Secure; Partitioned; Max-Age 7d). Then `GET {base}/token` with `credentials:'include'` → `{ token: "<JWT EdDSA>" }` (exp = iat + 900s). The JWT is what the BFF validates via JWKS. The session cookie is never sent to the BFF.
 
 ---
 
 ## 1. Consumed Endpoints
 
-> No BFF endpoints are consumed by this feature. Authentication is performed client-side via the Stack Auth SDK (`@stackframe/react`). The BFF's JWKS verification middleware is unchanged and requires no new endpoint.
+> No BFF endpoints are consumed by this feature. Authentication is performed client-side via direct `fetch` calls to the Better Auth (Neon Auth) service. The BFF's JWKS verification middleware is unchanged and requires no new endpoint.
 
 | Domain | operationId | Purpose |
 |--------|-------------|---------|
-| — | — | No BFF calls. Stack Auth client SDK (`stackApp.signIn({ email, password })`) is called directly by `useSignIn`. |
+| — | — | No BFF calls. `features/auth/api/neon-auth.ts` calls `POST {VITE_NEON_AUTH_URL}/sign-in/email` and `GET {VITE_NEON_AUTH_URL}/token` directly (raw fetch, credentials:'include'). |
 
 ---
 
@@ -49,7 +49,7 @@
 
 ### UI-02 — submitting
 
-**Entry condition:** form submitted, Stack Auth call in progress.
+**Entry condition:** form submitted, Better Auth 2-step call in progress (step 1 `POST /sign-in/email` or step 2 `GET /token`).
 
 **What to display:**
 - All form fields disabled.
@@ -58,19 +58,20 @@
 
 ### UI-03 — error (credential / network)
 
-**Entry condition:** Stack Auth call returns a credential error (`invalid_credentials` or equivalent) or a network error.
+**Entry condition:** step 1 returns 401 (credential error) or either step returns a network error.
 
 **What to display:**
 - Form fields re-enabled.
 - Inline error message below the form (above the button) in `text-body-sm text-danger`, linked to the form root via `role="alert"`. Message variants:
-  - Credential error: "E-mail ou senha incorretos."
+  - Credential error (`INVALID_EMAIL_OR_PASSWORD`): "E-mail ou senha incorretos."
+  - Session error (step 2 `GET /token` fails after step 1 success — rare): "Erro ao obter sessão. Tente novamente."
   - Network error: "Erro de conexão. Verifique sua rede e tente novamente."
 - A `toast.error(...)` via sonner is also fired (secondary notification — does not replace the inline message).
 - Button returns to "Entrar" (enabled).
 
 ### UI-04 — success (redirecting)
 
-**Entry condition:** Stack Auth sign-in succeeded, JWT obtained, `useAuthStore.setToken(jwt)` called.
+**Entry condition:** Both Better Auth steps succeeded, JWT obtained from `GET /token`, `useAuthStore.setToken(jwt)` called.
 
 **What to display:**
 - Button shows brief success state (optional: "Entrando…" keeps spinner or becomes a checkmark for ~300 ms) then the router navigates automatically.
@@ -84,11 +85,13 @@
 | From | Trigger | To | Side Effect |
 |------|---------|----|-------------|
 | — | `/sign-in` mounted | UI-01 (idle) | CRT power-on entrance animation plays; if `?reason=session_expired`, show session-expired notice |
-| UI-01 | Form submitted (valid) | UI-02 (submitting) | `stackApp.signIn()` called; fields disabled |
+| UI-01 | Form submitted (valid) | UI-02 (submitting) | `signInWithEmail(email, password)` called (step 1); fields disabled |
 | UI-01 | Form submitted (invalid client-side) | UI-01 (idle, field errors shown) | RHF field errors displayed inline; no network call |
-| UI-02 | Stack Auth success | UI-04 (success) | `useAuthStore.setToken(jwt)` called; router navigates to `?redirect` or `/chat` |
-| UI-02 | Stack Auth credential error | UI-03 (error) | Inline error + `toast.error(...)` fired; fields re-enabled |
-| UI-02 | Stack Auth network error | UI-03 (error) | Inline error + `toast.error(...)` fired; fields re-enabled |
+| UI-02 | Step 1 success (cookie set) | UI-02 (submitting) | `fetchAccessToken()` called (step 2); still loading |
+| UI-02 | Step 2 success (JWT received) | UI-04 (success) | `useAuthStore.setToken(jwt)` called; router navigates to `?redirect` or `/chat` |
+| UI-02 | Step 1 credential error (`INVALID_EMAIL_OR_PASSWORD`) | UI-03 (error) | Inline credential error + `toast.error(...)` fired; fields re-enabled |
+| UI-02 | Step 1 or step 2 network error | UI-03 (error) | Inline network error + `toast.error(...)` fired; fields re-enabled |
+| UI-02 | Step 2 session error (`NO_SESSION` / `NO_TOKEN`) | UI-03 (error) | Inline session error + `toast.error(...)` fired; fields re-enabled |
 | UI-03 | User edits any field | UI-01 (idle) | Inline error cleared (reset on first keystroke via `onChange` or on re-submit) |
 | UI-03 | Form re-submitted | UI-02 (submitting) | Same as UI-01 → submit |
 | UI-04 | `router.navigate()` fires | — (feature unmounts) | Route transition to protected area |
@@ -97,13 +100,18 @@
 
 ## 4. Requests, Order and Cache
 
-> This feature makes no BFF calls. The Stack Auth SDK manages its own HTTP communication. There is no TanStack Query cache entry for sign-in.
+> This feature makes no BFF calls. `features/auth/api/neon-auth.ts` calls the Better Auth service directly. There is no TanStack Query cache entry for sign-in — the mutation is a `useMutation` with no query key.
 
-| # | operationId | Domain | Execution | Priority | Cache TTL | Revalidation | Params / Headers |
-|---|-------------|--------|-----------|----------|-----------|--------------|-----------------|
-| 1 | `stackApp.signIn` | Stack Auth SDK (client) | sequential (on form submit) | critical | n/a (no cache — auth call) | n/a | `{ email, password }` via SDK |
+| # | Call | Execution | Priority | Cache TTL | Notes |
+|---|------|-----------|----------|-----------|-------|
+| 1 | `POST {VITE_NEON_AUTH_URL}/sign-in/email` | sequential (on form submit, step 1) | critical | n/a | `credentials:'include'`; body `{ email, password }` |
+| 2 | `GET {VITE_NEON_AUTH_URL}/token` | sequential (after step 1 success, step 2) | critical | n/a | `credentials:'include'`; returns `{ token: "<JWT>" }` |
 
-> **No response transforms.** The JWT is extracted from the SDK response and passed directly to `useAuthStore.setToken()`. No reshape required.
+**Execution order:** step 1 MUST complete successfully before step 2 is called. On step 1 failure, step 2 is never called.
+
+**No response transforms.** The JWT string is extracted from `body.token` and passed directly to `useAuthStore.setToken()`. No reshape required.
+
+**DC — Silent refresh (post-sign-in, mid-session):** When `lib/http.ts` receives a 401 from the BFF, it calls `fetchAccessToken()` once (step 2 only — the session cookie is still valid for up to 7 days). If a fresh JWT is returned, the store is updated and the failed request is retried once. If step 2 also fails (`NO_SESSION`), the store is cleared and the router redirects to `/sign-in?reason=session_expired`. This logic lives in `lib/http.ts`, not in this feature.
 
 ---
 
@@ -123,22 +131,24 @@
 >   senha: z.string().min(1, "Informe a senha."),
 > })
 > ```
-> Field name `login` matches the UI label "Login"; it is the Stack Auth credential email (D3).
+> Field name `login` matches the UI label "Login"; it maps to the `email` field in the Better Auth API body (D3 — unchanged from previous wave).
 
 ---
 
 ## 6. API Error → UI Mapping
 
-> The Stack Auth SDK throws exceptions (not BFF envelopes). These are caught in `useSignIn`'s mutation handler.
+> The Better Auth calls throw `AuthError` instances (see `neon-auth.ts`). These are caught in `useSignIn`'s `onError` handler. There are no BFF envelope codes during sign-in itself.
 
 | Error type | Display | User message | Action |
 |------------|---------|--------------|--------|
-| SDK credential error (`invalid_credentials` or equivalent) | inline + toast | "E-mail ou senha incorretos." | Dismiss (user edits form) |
-| SDK network / fetch error (offline, timeout) | inline + toast | "Erro de conexão. Verifique sua rede e tente novamente." | Dismiss (user retries) |
+| `AuthError.code === "INVALID_EMAIL_OR_PASSWORD"` (step 1 → HTTP 401) | inline + toast | "E-mail ou senha incorretos." | Dismiss (user edits form) |
+| `AuthError.code === "NO_SESSION"` (step 2 → HTTP 401) | inline + toast | "Erro ao obter sessão. Tente novamente." | Dismiss (user retries) |
+| `AuthError.code === "NO_TOKEN"` (step 2 → HTTP 200 but no token in body) | inline + toast | "Erro ao obter sessão. Tente novamente." | Dismiss (user retries) |
+| Network / fetch error (offline, CORS failure, timeout) | inline + toast | "Erro de conexão. Verifique sua rede e tente novamente." | Dismiss (user retries) |
+| `AuthError.code === "AUTH_FAILED"` (step 1 → any non-401 HTTP error) | inline + toast | "Erro inesperado. Tente novamente." | Dismiss |
 | `AUTH_UNAUTHORIZED` from BFF (post-redirect, if token rejected) | redirect | — | → `/sign-in?reason=session_expired` (handled globally by `front.md §5`) |
-| SDK unknown error | inline + toast | "Erro inesperado. Tente novamente." | Dismiss |
 
-> **Note:** BFF error codes (`AUTH_*`, `SYSTEM_*`) do not appear during sign-in itself (there is no BFF call). They appear after redirect to protected areas if the JWT is rejected. The global handler in `front.md §5` covers those cases.
+> **Note:** BFF error codes (`AUTH_*`, `SYSTEM_*`) do not appear during sign-in itself (there is no BFF call at sign-in time). They appear after redirect to protected areas if the JWT is rejected. The global handler in `front.md §5` covers those cases. Mid-session refresh (DC) is handled by `lib/http.ts` before the redirect fires.
 
 ---
 
@@ -194,7 +204,8 @@
 Given the user is on /sign-in (not authenticated)
 When they enter a valid email and password and click "Entrar"
 Then the form enters submitting state (fields disabled, button shows spinner + "Entrando…")
-  And the Stack Auth SDK call resolves successfully
+  And POST {VITE_NEON_AUTH_URL}/sign-in/email resolves with HTTP 200 (session cookie set)
+  And GET {VITE_NEON_AUTH_URL}/token resolves with { token: "<JWT>" }
   And useAuthStore.setToken is called with the received JWT
   And the router navigates to /chat (or ?redirect target if present)
   And the /sign-in route unmounts
@@ -205,21 +216,37 @@ Then the form enters submitting state (fields disabled, button shows spinner + "
 ```
 Given the user is on /sign-in (not authenticated)
 When they enter an incorrect email or password and click "Entrar"
-Then the Stack Auth SDK returns a credential error
+Then POST {VITE_NEON_AUTH_URL}/sign-in/email returns HTTP 401 with code "INVALID_EMAIL_OR_PASSWORD"
   And the form returns to idle state (fields re-enabled, button shows "Entrar")
   And an inline error message "E-mail ou senha incorretos." is displayed with role="alert"
   And a toast.error fires with the same message
+  And GET {VITE_NEON_AUTH_URL}/token is never called
   And no navigation occurs
 ```
 
 ### Session-expired redirect
 
 ```
-Given the user's JWT has expired and the router guard fires
-When the guard redirects to /sign-in?reason=session_expired
-Then the sign-in page displays (UI-01 idle)
+Given the user's JWT has expired and the BFF returns 401
+When lib/http.ts attempts silent refresh via GET {VITE_NEON_AUTH_URL}/token
+  And the session cookie is also expired (GET /token → 401)
+Then useAuthStore is cleared
+  And the router redirects to /sign-in?reason=session_expired
+  And the sign-in page displays (UI-01 idle)
   And the inline notice "Sua sessão expirou. Faça login novamente." is visible
   And after valid sign-in the router navigates back to the route the user was accessing
+```
+
+### Silent refresh — JWT expired but session cookie valid
+
+```
+Given the user has a valid session cookie but an expired JWT
+When any protected BFF call returns 401
+Then lib/http.ts calls GET {VITE_NEON_AUTH_URL}/token (credentials:'include')
+  And the call succeeds (HTTP 200, new JWT)
+  And useAuthStore.setToken is called with the new JWT
+  And the original BFF request is retried once with the new JWT
+  And no redirect to /sign-in occurs
 ```
 
 ### Reduced-motion CRT
@@ -238,28 +265,34 @@ Then the CRT power-on phases 1–3 (scale animation) are skipped
 
 | Component | Action | Needed by | Rationale |
 |-----------|--------|-----------|-----------|
-| `SignInPanel` | create | `/sign-in` | Composes CRT wrapper + `GlassSurface panel` + welcome text + `SignInForm`; single-use → no separate `component.spec.md` (documented inline here) |
-| `SignInForm` | create | `/sign-in` | RHF + Zod form with email/password/submit; single-use → documented inline |
-| `useSignIn` | create | `/sign-in` | Mutation hook: calls Stack Auth SDK, calls `setToken`, calls `router.navigate`; lives in `features/auth/api/useSignIn.ts` |
-| `transitionCrtPowerOn` factory | create | `/sign-in` | New canonical factory in `src/lib/motion.ts`; consumes `duration-*` + `ease-*` tokens; 4-phase CRT animation + reduced-motion fallback |
-| `stack-app.ts` | create | `features/auth/` | `StackClientApp` singleton (`@stackframe/react`); initialized with `VITE_STACK_PROJECT_ID` + `VITE_STACK_PUBLISHABLE_CLIENT_KEY` |
-| `src/router/__root.tsx` | update | all routes | Move `AmbientBackdrop` here; remove `beforeLoad` guard + `PUBLIC_ROUTES`; render `<AmbientBackdrop/> + <AppErrorBoundary><Outlet/></AppErrorBoundary> + <AppToaster/>` |
-| `src/router/routes.tsx` | update | all routes | Add `protectedLayoutRoute` (pathless, id="protected", guard here, renders `<AppShell><Outlet/></AppShell>`); reparent all currently protected routes; `/sign-in` remains direct child of `RootRoute` |
-| `src/shell/AppShell.tsx` | update | all protected routes | Remove `<AmbientBackdrop/>` (it moved to `__root`) |
-| `src/main.tsx` | update | app bootstrap | Validate `VITE_STACK_PROJECT_ID` + `VITE_STACK_PUBLISHABLE_CLIENT_KEY` in env validation block |
+| `features/auth/api/neon-auth.ts` | create | `/sign-in` | New module: `signInWithEmail()`, `fetchAccessToken()`, `AuthError` — raw `fetch` with `credentials:'include'` to the Better Auth endpoints |
+| `features/auth/api/__tests__/neon-auth.spec.ts` | create | `/sign-in` | MSW tests: step 1 200/401, step 2 200/401/no-token |
+| `useSignIn` | update | `/sign-in` | Rewrite to call `neon-auth.ts` (remove import of `stack-app.ts`); same public signature consumed by `SignInForm` |
+| `SignInForm` | update | `/sign-in` | Update error code mapping: `INVALID_EMAIL_OR_PASSWORD` (Better Auth) instead of Stack Auth equivalent |
+| `features/auth/index.ts` | update | `features/auth/` | Remove export of `stack-app`/Stack Auth types |
+| `features/auth/lib/stack-app.ts` | remove | — | No longer needed; replaced by `neon-auth.ts` |
+| `lib/env.ts` | update | app bootstrap | Remove `VITE_STACK_PROJECT_ID` and `VITE_STACK_PUBLISHABLE_CLIENT_KEY` from the Zod schema |
+| `src/main.tsx` | update | app bootstrap | `EnvErrorFallback`: remove `VITE_STACK_*` from the env error text; keep `VITE_BFF_URL` + `VITE_NEON_AUTH_URL` |
+| `lib/http.ts` | update | all protected routes | Add DC (silent refresh): on 401 from BFF, call `fetchAccessToken()` once; on success re-do the request; on failure clear store + redirect `/sign-in?reason=session_expired` |
+| `frontend/.env.local` + `.env.example` | update | dev/build | Remove `VITE_STACK_PROJECT_ID` and `VITE_STACK_PUBLISHABLE_CLIENT_KEY` |
+| `frontend/package.json` | update | build | `npm rm @stackframe/react` |
+| `SignInPanel` | no change | `/sign-in` | UI unchanged — only auth layer changes |
+| `transitionCrtPowerOn` | no change | `/sign-in` | Factory unchanged |
+| `src/router/__root.tsx` | no change (already updated in prior wave) | all routes | `AmbientBackdrop` already moved here |
+| `src/router/routes.tsx` | no change (already updated in prior wave) | all routes | `protectedLayoutRoute` already in place |
+| `src/shell/AppShell.tsx` | no change (already updated in prior wave) | all protected routes | `<AmbientBackdrop/>` already removed |
 
 ---
 
 ## 11. Out of Scope
 
-- Refresh-token logic (the `useAuthStore` has no refresh; JWT ~1h; expiry → guard redirects to `/sign-in`) (R3 — maintained)
 - Sign-up / registration screen (not requested; single-owner project)
 - Password reset / forgot-password flow (not requested)
 - Social / OAuth sign-in (not requested)
-- The full Chrome refactor test coverage (route guard + protected layout) beyond the sign-in route — will be verified by the existing `routes.spec.tsx` update
-- E2E sign-in with real Stack Auth credentials (requires test credentials; annotated as a test dependency — see §8)
-- Migrating from Stack Auth to Better Auth (R1 — explicitly deferred)
-- Backend changes of any kind (spec-back is NO-OP per Requirement)
+- Backend / BFF changes of any kind (FRONTEND-ONLY requirement)
+- Any database migration
+- The full Chrome refactor test coverage beyond the sign-in route (already done in prior wave)
+- E2E Playwright login with real credentials (annotated as a test dependency — real credentials required)
 
 ---
 
@@ -268,3 +301,4 @@ Then the CRT power-on phases 1–3 (scale animation) are skipped
 | Version | Date | Author | Type | Description | CR |
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Sign-in feature spec: CRT animation, auth flow (Option A — Stack Auth SDK), chrome refactor (layout route), form + a11y. Deviation from front.md §2/§3.1/§5.1/front.back.md BR-04 registered. | sdd_front |
+| 2.0.0 | 2026-06-21 | Front Spec Agent | major | Auth layer replaced: Stack Auth SDK → Better Auth 2-step flow (POST /sign-in/email + GET /token, credentials:'include'). §1 (no BFF calls — now Better Auth direct), §2 (UI-02 covers both steps; UI-03 maps Better Auth error codes), §3 (transition table updated for 2-step), §4 (two calls, sequential, no cache), §6 (AuthError codes from neon-auth.ts), §9 (BDD includes silent refresh scenario), §10 (create neon-auth.ts, remove stack-app.ts, update useSignIn/SignInForm/env.ts/http.ts). Refresh silencioso (DC) documented. Removed §11 "Migrating from Stack Auth" (now done). | sdd_front |

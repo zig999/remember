@@ -2,7 +2,7 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.1.0 | Status: draft
+> Version: 1.2.0 | Status: draft
 
 ---
 
@@ -86,7 +86,7 @@ All motion variants are exported from `lib/motion.ts`. No component inlines its 
 **`prefers-reduced-motion` contract (mandatory — WCAG 2.2 AA):**
 
 ```ts
-// Pseudocode — implementation confirmed at dev time against pinned @stackframe/react
+// Pseudocode — implementation confirmed at dev time
 export function transitionCrtPowerOn(reduced: boolean) {
   if (reduced) {
     return {
@@ -167,13 +167,13 @@ Named spacing tokens (`--spacing-{xs,sm,md,lg,xl,2xl}`) shadow `max-w-*` / `min-
 
 Sonner's base styles are unlayered — they beat Tailwind `@layer utilities` regardless of specificity. For glass toast customization, use `sonner` CSS variables + inline `box-shadow` (not Tailwind utility classes on the toast root). See MEMORY.md "Tailwind v4 color-namespace utilities" for the AppToaster pattern.
 
-### 3.7 `@stackframe/react` SDK — method names (R2)
+### 3.7 Better Auth — `credentials:'include'` required on both calls (DC)
 
-Exact method names (`signInWithCredential`, `getAuthJson`, or equivalent) must be confirmed against the pinned version of `@stackframe/react` at implementation time. The spec describes the functional contract: call the SDK's email+password sign-in method → extract the JWT → pass to `useAuthStore.setToken()`. Do not hardcode method names from the spec into code without verifying the installed package's API.
+`signInWithEmail` and `fetchAccessToken` MUST pass `credentials:'include'` on every call to Neon Auth. Omitting it on step 1 prevents the browser from storing the session cookie; omitting it on step 2 (or the silent refresh call in `lib/http.ts`) prevents the cookie from being sent, causing a 401 even with a valid session. CORS on the Neon Auth host is configured for `credentials` (`Access-Control-Allow-Credentials: true`, `SameSite=None; Partitioned`).
 
-### 3.8 Stack Auth legado vs Better Auth (R1)
+### 3.8 Better Auth — error code casing
 
-The project uses **Stack Auth** (JWKS/EdDSA, `NEON_AUTH_URL`). Neon Auth's new implementation ("Better Auth") has different client methods. Do NOT use Better Auth methods on the assumption of documentation currency. Stay on Stack Auth; any migration is a separate, backend-affecting wave.
+Better Auth returns error codes as `SCREAMING_SNAKE_CASE` in the JSON body (e.g., `INVALID_EMAIL_OR_PASSWORD`). Do not expect lowercase or camelCase variants. The `AuthError` class in `neon-auth.ts` carries the code as-is from `body.code` — the `SignInForm` error mapping reads `error.code` directly.
 
 ---
 
@@ -198,3 +198,4 @@ Note: the chat split is a **container query** on `ChatWorkspace`, not a viewport
 |---|---|---|---|---|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Initial implementation doc: accessibility checklist (global + chat), animation guidelines, known gotchas (border namespaces, GlassSurface ARIA, Zod v4 resolver, SSE, max-w collision, Sonner), QA viewports. |
 | 1.1.0 | 2026-06-20 | Front Spec Agent | minor | Auth wave: added §1.3 sign-in accessibility checklist; added `transitionCrtPowerOn` to motion factory table (§2.1) and full specification (§2.2); added sign-in-specific gotchas (§3.3 Zod resolver extends to SignInForm, §3.7 Stack Auth SDK method names — R2, §3.8 Stack Auth vs Better Auth — R1); updated QA viewports with sign-in panel behavior. |
+| 1.2.0 | 2026-06-21 | Front Spec Agent | minor | Better Auth migration: replaced §3.7 (Stack Auth SDK method names) with Better Auth `credentials:'include'` gotcha; replaced §3.8 (Stack Auth legacy note) with Better Auth error code casing gotcha. `transitionCrtPowerOn` pseudocode comment updated (removed Stack Auth reference). | sdd_front |

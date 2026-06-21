@@ -1,6 +1,6 @@
 # Front-Global -- Technical Spec (Frontend Foundation)
 
-> Stack: Vite 6 + React 19 + TypeScript strict | Client state: Zustand v5 | Server state: TanStack Query v5 | Router: TanStack Router | Auth: Neon Auth (Stack Auth) JWT | Version: 1.0.0 | Status: draft | Layer: permanent
+> Stack: Vite 6 + React 19 + TypeScript strict | Client state: Zustand v5 | Server state: TanStack Query v5 | Router: TanStack Router | Auth: Better Auth (Neon Auth) 2-step JWT | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `front.md`
 
 > Scope note: this `front-global` domain is a **frontend foundation wave** — there is no BFF code being designed here. This document collects the technical decisions that support the frontend architecture defined in `front.md`: build config, state architecture, router config, API client, auth client, theming, graph visualization config, tests, dev tooling. Standard `.back.md` sections (Data Model, BR, ST, EV) are reinterpreted for the frontend context — there is no database, so "Data Model" describes the **shape of persisted client state**, "BR" describes **invariant behaviours** the implementation must enforce, "EV" describes the **named motion/state transitions** referenced by `front.md §9`.
@@ -23,7 +23,7 @@
 | Router | TanStack Router (`@tanstack/react-router`) | File-based routes under `src/router/`; single `__root` shell |
 | Forms | React Hook Form v7 + Zod v4 + `@hookform/resolvers/zod` | Schema-first: `schema → z.infer → form` |
 | API client | Native `fetch` wrapped in `lib/http.ts` | No `axios` / `ky` (CLAUDE.md `Anti-patterns`); envelope parsed centrally |
-| Auth client | Neon Auth (Stack Auth) JWT verified BFF-side via JWKS; SPA holds bearer in memory + `sessionStorage` | No service key on the client; no refresh-token logic in this wave (re-login on expiry) |
+| Auth client | Better Auth (Neon Auth) 2-step flow: `POST {VITE_NEON_AUTH_URL}/sign-in/email` + `GET {VITE_NEON_AUTH_URL}/token`; SPA holds JWT bearer in memory + `sessionStorage`; JWT verified BFF-side via JWKS | No SDK dependency; raw `fetch` with `credentials:'include'`; session cookie (7d) enables silent JWT refresh (DC — see BR-19) |
 | Architecture pattern | Feature-folder monorepo single-app (`features/<area>/{api,components,hooks,types.ts}`) | Cross-feature import forbidden — enforced by `eslint-plugin-import` `no-restricted-paths` |
 | Graph renderer | React Flow `@xyflow/react` v12 (MIT) | Pinned by `front.md §1.1`; v11 → v12 is a package-name rename |
 | Graph layout | `d3-force` | Existing nodes pinned with `fx`/`fy` |
@@ -156,7 +156,7 @@ The URL is the canonical place for view state per `front.md §3.2`. The implemen
 
 | Field | Storage | Lifetime | Rationale |
 |---|---|---|---|
-| `accessToken` (JWT) | In-memory Zustand store (`useAuthStore`, not persisted) + mirrored to `sessionStorage` key `remember.auth.token` | Until tab closes or 401 occurs | Foundation policy — refresh-token flow is **out of scope this wave**. JWT expiry produces a redirect to `/sign-in?reason=session_expired` (BR-04). |
+| `accessToken` (JWT) | In-memory Zustand store (`useAuthStore`, not persisted) + mirrored to `sessionStorage` key `remember.auth.token` | Until tab closes, or until 401 + failed silent refresh | JWT obtained from `GET {VITE_NEON_AUTH_URL}/token` (Better Auth, step 2). Silent refresh (BR-19): on BFF 401, `lib/http.ts` re-calls `GET /token` once using the session cookie (7d lifetime). If that also fails, JWT is cleared and router redirects to `/sign-in?reason=session_expired` (BR-04). |
 | Username / claims (decoded JWT) | Same store | Same | Read-only; never written back. Verified server-side by the BFF, the client only trusts it for display. |
 
 > Why `sessionStorage` and not `localStorage`: prevents the token from leaking across tabs/contexts that the user did not actively start. `localStorage` would persist across logout-equivalent events (close-tab) and complicate the single-owner trust model.
@@ -196,11 +196,11 @@ The URL is the canonical place for view state per `front.md §3.2`. The implemen
 3. `EnvelopeError` is caught by the global `QueryCache.onError` callback (`front.md §4.1`) and routed per the table in `front.md §5`.
 **Error returned:** Throws `EnvelopeError`; rendered per `front.md §5` table.
 
-### BR-04 -- JWT guard on protected routes
-**Related spec section:** `front.md §3` (Protected routes), CLAUDE.md `Auth` deviation
-**Where to validate:** TanStack Router `__root` `beforeLoad`
-**Description:** Every route except `/sign-in` is protected. Before any area mounts, the `__root` loader reads the JWT from `useAuthStore`. Absent or expired token (decoded `exp` < `now() + 30s`) redirects to `/sign-in?reason=session_expired`. The expiry check is local (no token introspection round-trip in the foundation).
-**Error returned:** Redirect to `/sign-in?reason=session_expired`. A 401 from the BFF (token rejected server-side) follows the same flow via `QueryCache.onError`.
+### BR-04 -- JWT guard on protected routes + Better Auth source
+**Related spec section:** `front.md §3` (Protected routes), CLAUDE.md `Auth` deviation, `sign-in.feature.spec.md §4`
+**Where to validate:** TanStack Router `protectedLayoutRoute` `beforeLoad`; `lib/http.ts` on 401
+**Description:** Every route except `/sign-in` is protected. Before any area mounts, the `protectedLayoutRoute` loader reads the JWT from `useAuthStore`. Absent or expired token (decoded `exp` < `now() + 30s`) triggers a silent refresh attempt first (BR-19); only if the refresh also fails does it redirect to `/sign-in?reason=session_expired`. The JWT originates from `GET {VITE_NEON_AUTH_URL}/token` (Better Auth, step 2) — NOT from the Stack Auth SDK. JWKS validation is server-side (BFF); the SPA only decodes `exp` from the JWT payload client-side.
+**Error returned:** Redirect to `/sign-in?reason=session_expired`. A 401 from the BFF (token rejected server-side) triggers BR-19 first, then redirects if refresh fails.
 
 ### BR-05 -- No `fetch` / `axios` inside components
 **Related spec section:** `front.md §4.5`
@@ -285,6 +285,12 @@ The URL is the canonical place for view state per `front.md §3.2`. The implemen
 **Where to validate:** Graph feature implementation (later wave)
 **Description:** Custom node and edge renderers are registered through React Flow's `nodeTypes` / `edgeTypes` props. Direct SVG element construction outside the React tree is forbidden — every node and edge MUST be a React component so semantic tokens, lucide icons, and Framer Motion variants apply.
 **Error returned:** N/A.
+
+### BR-19 -- Silent JWT refresh via Better Auth session cookie (DC)
+**Related spec section:** `sign-in.feature.spec.md §4` (DC — refresh silencioso), `auth.flow.md §3 alt 3c`
+**Where to validate:** `lib/http.ts` 401 interceptor
+**Description:** JWT lifetime is 15 min (exp = iat + 900s); session cookie lifetime is 7 days. When `lib/http.ts` receives a 401 from the BFF, it MUST attempt `GET {VITE_NEON_AUTH_URL}/token` (with `credentials:'include'`) exactly once before redirecting. If the call returns a new JWT, `useAuthStore.setToken(jwt)` is called and the original request is retried once with the new bearer. If `GET /token` fails (HTTP 401 — cookie also expired, or CORS error), the store is cleared and the router redirects to `/sign-in?reason=session_expired`. The retry loop is bounded to 1 attempt — any second 401 on the retry MUST NOT trigger another refresh cycle (prevents infinite loops). This logic is confined to `lib/http.ts` and is invisible to feature hooks.
+**Error returned:** Redirect to `/sign-in?reason=session_expired` when refresh fails.
 
 ---
 
@@ -443,7 +449,7 @@ Invalid transition policy: throw — surfaced via the `AppErrorBoundary`. No sil
 | Service | Type | Purpose | Timeout | Fallback |
 |---|---|---|---|---|
 | Remember BFF (`/api/v1/**`) | REST (JSON envelope) | All data reads/writes; runs `ingest`, `query`, `curation` toolsets via REST mirrors | Default: TanStack Query has no built-in network timeout; `lib/http.ts` wraps `fetch` with an `AbortController` set to **30 s** for non-ingest calls. `/ingest` and `/mcp/ingest` MUST be called with `AbortSignal.timeout(0)` (no client-side cutoff) per `CLAUDE.md` "ingest_document client timeout ≠ failure" memory. | On timeout: TanStack Query `retry: 1` re-attempts; second failure surfaces `SYSTEM_TIMEOUT` toast. Ingest "timeout" is **not** a failure — UI displays "A extração continua no servidor". |
-| Neon Auth (Stack Auth) | OIDC / JWT issuer | Issues the JWT the SPA carries on every BFF request. JWKS validation happens **server-side** (BFF middleware) — the SPA does not call JWKS itself. | N/A (server-side concern); SPA only handles the OAuth-style redirect to `${VITE_NEON_AUTH_URL}/sign-in` | On Neon Auth unreachable: sign-in screen surfaces "Serviço de login indisponível — tente novamente em alguns minutos." (`SYSTEM_AUTH_UPSTREAM_DOWN`). No silent fallback. |
+| Better Auth (Neon Auth) | Direct HTTP (raw fetch, no SDK) | 2-step sign-in: `POST {base}/sign-in/email` (session cookie) + `GET {base}/token` (JWT EdDSA). Also used for silent refresh (BR-19): `GET {base}/token` on BFF 401. JWKS validation is **server-side** (BFF middleware) — the SPA never calls JWKS. | Step 1: 15 s `AbortController` timeout; Step 2 (token fetch + refresh): 10 s. | On Neon Auth unreachable at sign-in: UI-03 error "Erro de conexão. Verifique sua rede e tente novamente." On Neon Auth unreachable during silent refresh: refresh fails → redirect to `/sign-in?reason=session_expired`. |
 
 > The frontend has no other external integrations in this wave. Future waves may add: a CDN for the backdrop asset (currently bundled in `public/backdrop/`), telemetry (currently forbidden — see `front.md §11`).
 
@@ -455,7 +461,7 @@ Invalid transition policy: throw — surfaced via the `AppErrorBoundary`. No sil
 2. **Tailwind v4 two `border` namespaces** — `--color-border-*` (color) and `--border-*` (width) are distinct namespaces; mixing them makes the border disappear silently. Every glass-surface border in components MUST be written as the pair `border <color-token>` (`front.md §8.3`). Foundation does not yet enforce this with a lint rule — added to the technical-debt list.
 3. **React 19 `forwardRef` deprecation** — third-party libraries that still ship `forwardRef` work transparently; project code MUST NOT introduce new `forwardRef` usage. ESLint rule via `react-hooks` is insufficient — code review + custom check is the current safeguard.
 4. **TanStack Router file-based vs. code-based** — the foundation adopts **code-based** route declaration in `src/router/`. File-based may be evaluated later if the route count grows; the migration is mechanical and isolated to `src/router/`.
-5. **No refresh-token flow this wave** — JWT expiry (~1 h from Neon Auth) causes a redirect to `/sign-in?reason=session_expired`. Refresh-token handling is deferred to a later wave; CLAUDE.md memory `ingest-document client timeout ≠ failure` already covers the longer-running concern (server-side completion despite client-side disconnect).
+5. **Silent JWT refresh via session cookie (DC — implemented)** — JWT lifetime is 15 min (Better Auth, `exp = iat + 900s`). The session cookie lasts 7 days and enables silent renewal: `lib/http.ts` calls `GET {VITE_NEON_AUTH_URL}/token` on 401 before redirecting. Full refresh-token rotation (rolling sessions) is out of scope; only the stateless `GET /token` re-fetch is implemented. See BR-19.
 6. **Single-owner = no telemetry / no error tracker** — `front.md §11` prohibits Sentry / Bugsnag / Datadog RUM / any analytics lib. Client-side errors above `SYSTEM_*` route through the BFF (pino logs) — the foundation MUST provide a `lib/report-error.ts` that POSTs to a BFF endpoint (`/api/v1/system/client-error`) **only if that endpoint exists**; absent the endpoint, errors stay in `console.error`. Implementing the BFF endpoint is **out of scope this wave**.
 7. **Backdrop assets are placeholders** — `public/backdrop/dusk.jpg` and `public/backdrop/dawn.jpg` are placeholder names; the final commissioned assets replace them with no spec change required. The fallback (BR-15) covers the missing-asset case.
 8. **`addon-vitest` requires Playwright on the host** — Storybook stories-as-tests run in a real browser via `@vitest/browser` + Playwright. CI MUST install Playwright browsers (`npx playwright install --with-deps`); local dev MUST run the same command at least once.
@@ -468,7 +474,7 @@ Invalid transition policy: throw — surfaced via the `AppErrorBoundary`. No sil
 
 This foundation does NOT include:
 
-- **Refresh-token / silent re-auth flow** — expiry produces a redirect. Re-evaluate when ingest sessions routinely exceed JWT lifetime.
+- **Full refresh-token rotation / rolling sessions** — silent refresh via `GET {VITE_NEON_AUTH_URL}/token` is implemented (BR-19, DC). Rolling session tokens and full refresh-token rotation are out of scope.
 - **Client-side error reporting endpoint** — `lib/report-error.ts` is a stub; the BFF `POST /api/v1/system/client-error` endpoint that would receive forwarded errors is out of scope.
 - **Per-area state stores (Graph data, Search filters, Ingest run progress)** — the foundation reserves `useGraphViewStore`, but the per-area Query hooks and feature stores ship in the area-specific waves.
 - **Per-area route content** — `/graph`, `/search`, `/ingest`, `/curation`, `/history` are foundation-stubbed with an empty workspace + frame; their content is out of scope.
@@ -491,3 +497,4 @@ This foundation does NOT include:
 |---|---|---|---|---|---|
 | 1.0.0 | 2026-06-18 | Back Spec Agent | initial | Initial foundation: Vite 6 / TS strict / Tailwind v4 / TanStack stack pins; persisted client state shapes; 18 BRs covering aliases, env, envelope, auth guard, lint guards, motion gate, theme hydration; ST for boot + theme; 5 named motion/error events; BFF + Neon Auth integrations; technical-debt list. | -- |
 | 1.0.1 | 2026-06-19 | Owner review | patch | EV-01–04 motion payloads now reference the canonical token names from `tokens.md §11.1` (`--duration-*` / `--ease-*`) instead of the non-existent `--motion-duration-*` / `--motion-easing-*` (W-FG-3). | -- |
+| 1.1.0 | 2026-06-21 | Front Spec Agent | minor | Auth layer replaced: Stack Auth SDK → Better Auth 2-step flow (PROVEN 2026-06-21). §1 auth client row updated (raw fetch, no SDK, session cookie). BR-04 updated (JWT source = GET /token, guard location = protectedLayoutRoute, silent refresh precedes redirect). BR-19 added (silent refresh via session cookie — DC — bounded 1 retry). §6 Neon Auth row updated (2-step endpoints, timeout, silent refresh). Constraint 5 updated (refresh implemented, not deferred). §8 Out of scope updated (rolling sessions remain out of scope). | sdd_front |
