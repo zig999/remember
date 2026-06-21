@@ -28,3 +28,17 @@ export { useGraphStore } from "./state/graph-store";
 export type { GraphPosition, GraphState } from "./state/graph-store";
 
 export { useForceLayout, runForceLayout } from "./hooks/useForceLayout";
+
+export { GraphNodeAdapter } from "./components/GraphNodeAdapter";
+export type {
+  GraphNode,
+  GraphNodeAdapterProps,
+  GraphNodeDataRF,
+} from "./components/GraphNodeAdapter";
+
+export { GraphEdgeAdapter } from "./components/GraphEdgeAdapter";
+export type {
+  GraphEdge,
+  GraphEdgeAdapterProps,
+  GraphLinkDataRF,
+} from "./components/GraphEdgeAdapter";
