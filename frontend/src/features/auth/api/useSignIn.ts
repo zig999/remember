@@ -25,12 +25,11 @@
  * Error classification:
  *   AuthError("INVALID_EMAIL_OR_PASSWORD") → { type: "credential" }
  *   AuthError("NETWORK")                   → { type: "network" }
- *   AuthError("NO_SESSION" | "NO_TOKEN")   → { type: "unknown" }
+ *   AuthError("NO_SESSION" | "NO_TOKEN")   → { type: "session" }
  *   any other thrown value                 → { type: "unknown" }
  *
- *   We keep the existing `SignInError` discriminant union (credential |
- *   network | unknown) so `SignInForm` and its tests stay unchanged — the
- *   user-visible strings already match the spec §6 mapping.
+ *   The `SignInError` discriminant union (credential | network | session |
+ *   unknown) lets `SignInForm` render the spec §6 user-visible message map.
  */
 import { useCallback, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -110,10 +109,11 @@ export function classifySignInError(reason: unknown): SignInError {
       case "NO_SESSION":
       case "NO_TOKEN":
         // The credential check passed (or this is step 2) but we couldn't
-        // mint a JWT — surface as a generic "unexpected" error so the
+        // mint a JWT — surface as a "session" error per spec §6 so the
         // operator retries. Distinct from `credential` because the
-        // remediation differs (it is NOT "fix your password").
-        return { type: "unknown" };
+        // remediation differs (it is NOT "fix your password") and distinct
+        // from `unknown` so the user sees the session-specific message.
+        return { type: "session" };
       default:
         return { type: "unknown" };
     }

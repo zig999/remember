@@ -25,4 +25,5 @@ export type SignInFormValues = z.infer<typeof signInSchema>;
 export type SignInError =
   | { type: "credential" }
   | { type: "network" }
+  | { type: "session" }
   | { type: "unknown" };

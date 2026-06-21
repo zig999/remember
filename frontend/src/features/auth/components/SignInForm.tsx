@@ -52,6 +52,7 @@ import { signInSchema, type SignInError, type SignInFormValues } from "../schema
 const SIGN_IN_ERROR_MESSAGE: Readonly<Record<SignInError["type"], string>> = {
   credential: "E-mail ou senha incorretos.",
   network: "Erro de conexão. Verifique sua rede e tente novamente.",
+  session: "Erro ao obter sessão. Tente novamente.",
   unknown: "Erro inesperado. Tente novamente.",
 };
 

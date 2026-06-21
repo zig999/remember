@@ -15,7 +15,7 @@
  *        BEFORE navigate (BR-04 ordering).
  *      - Credential error (step 1): error.type === 'credential', step 2 is
  *        NOT called, no token, no navigate.
- *      - NO_SESSION / NO_TOKEN (step 2): error.type === 'unknown', no token.
+ *      - NO_SESSION / NO_TOKEN (step 2): error.type === 'session', no token.
  *      - Network error: error.type === 'network'.
  *      - FL-AUTH-03: a `?redirect=https://evil.com` URL falls back to /chat.
  *
@@ -143,12 +143,12 @@ describe("classifySignInError", () => {
     expect(classifySignInError(new AuthError("NETWORK", "x"))).toEqual({ type: "network" });
   });
 
-  it("maps AuthError('NO_SESSION') to unknown", () => {
-    expect(classifySignInError(new AuthError("NO_SESSION", "x"))).toEqual({ type: "unknown" });
+  it("maps AuthError('NO_SESSION') to session", () => {
+    expect(classifySignInError(new AuthError("NO_SESSION", "x"))).toEqual({ type: "session" });
   });
 
-  it("maps AuthError('NO_TOKEN') to unknown", () => {
-    expect(classifySignInError(new AuthError("NO_TOKEN", "x"))).toEqual({ type: "unknown" });
+  it("maps AuthError('NO_TOKEN') to session", () => {
+    expect(classifySignInError(new AuthError("NO_TOKEN", "x"))).toEqual({ type: "session" });
   });
 
   it("maps AuthError with an unrecognised code to unknown", () => {
@@ -314,25 +314,26 @@ describe("useSignIn — error flow", () => {
     );
   });
 
-  it("step 2 NO_SESSION → type=unknown; no token stored", async () => {
+  it("step 2 NO_SESSION → type=session; no token stored", async () => {
     fetchAccessToken.mockRejectedValueOnce(new AuthError("NO_SESSION", "no cookie"));
     const ref = mount();
     await act(async () => {
       await ref.current!.signIn({ login: "u@example.com", senha: "x" });
     });
-    expect(ref.current!.getState().error).toEqual({ type: "unknown" });
+    expect(ref.current!.getState().error).toEqual({ type: "session" });
+    expect(toastError).toHaveBeenCalledWith("Erro ao obter sessão. Tente novamente.");
     expect(useAuthStore.getState().accessToken).toBe(null);
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("step 2 NO_TOKEN → type=unknown", async () => {
+  it("step 2 NO_TOKEN → type=session", async () => {
     fetchAccessToken.mockRejectedValueOnce(new AuthError("NO_TOKEN", "no token in body"));
     const ref = mount();
     await act(async () => {
       await ref.current!.signIn({ login: "u@example.com", senha: "x" });
     });
-    expect(ref.current!.getState().error).toEqual({ type: "unknown" });
-    expect(toastError).toHaveBeenCalledWith("Erro inesperado. Tente novamente.");
+    expect(ref.current!.getState().error).toEqual({ type: "session" });
+    expect(toastError).toHaveBeenCalledWith("Erro ao obter sessão. Tente novamente.");
   });
 
   it("unknown error: any other throw → type=unknown", async () => {
