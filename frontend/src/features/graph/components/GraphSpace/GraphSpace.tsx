@@ -61,6 +61,10 @@ import type { FC } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { cn } from "@/lib/cn";
 import { useForceLayout } from "../../hooks/useForceLayout";
+import {
+  useGraphReveal,
+  DEFAULT_REVEAL_STAGGER_MS,
+} from "../../hooks/useGraphReveal";
 import { GraphCanvas } from "../GraphCanvas";
 import { GraphEmptyState } from "../GraphEmptyState";
 import { GraphStatusOverlay } from "../GraphStatusOverlay";
@@ -80,6 +84,7 @@ interface GraphCanvasRegionProps {
   links: GraphSpaceProps["links"];
   status: GraphSpaceProps["status"];
   errorMessage?: GraphSpaceProps["errorMessage"];
+  revealStaggerMs: number;
   onNodeSelect?: GraphSpaceProps["onNodeSelect"];
   spaceRef?: GraphSpaceProps["ref"];
 }
@@ -89,6 +94,7 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
   links,
   status,
   errorMessage,
+  revealStaggerMs,
   onNodeSelect,
   spaceRef,
 }) => {
@@ -96,6 +102,13 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
   // pass whenever the `nodes`/`links` Maps change identity. Returns the
   // live (subscribed) positions — GraphCanvas reads them every render.
   const positions = useForceLayout();
+
+  // Consume the reveal queue at the configured stagger. The hook owns the
+  // status transition `"revealing" → "ready"` and the reduced-motion
+  // batch-drain — GraphSpace stays a thin orchestrator. Returns the live
+  // `revealedIds` Set that GraphCanvas uses to filter visible nodes/edges
+  // (AC-F.14, AC-F.15).
+  const revealedIds = useGraphReveal(revealStaggerMs);
 
   // Loading / error overlay variant. `null` skips the overlay entirely
   // for `revealing` / `ready` — the canvas is fully visible.
@@ -124,6 +137,7 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
         nodes={nodes}
         links={links}
         positions={positions}
+        revealedIds={revealedIds}
         {...canvasNodeSelectProp}
         {...canvasRefProp}
       />
@@ -139,11 +153,11 @@ export const GraphSpace: FC<GraphSpaceProps> = ({
   links,
   status,
   errorMessage,
-  // `revealStaggerMs` is accepted to keep the props contract complete
-  // (GraphSpace.component.spec.md §2) but is consumed by `useGraphReveal`
-  // — out of TC-FE-07 scope. Pinned at the prop layer here so the
-  // follow-up TC plumbs it in without a contract change.
-  revealStaggerMs: _revealStaggerMs,
+  // Consumed by `useGraphReveal` (TC-FE-09). Default in this layer must
+  // mirror GraphSpace.component.spec.md §2 (90ms). The hook also exports
+  // its own DEFAULT_REVEAL_STAGGER_MS — both sources are kept in sync via
+  // a shared constant.
+  revealStaggerMs = DEFAULT_REVEAL_STAGGER_MS,
   onNodeSelect,
   ref,
   className,
@@ -196,6 +210,7 @@ export const GraphSpace: FC<GraphSpaceProps> = ({
             links={links}
             status={status}
             errorMessage={errorMessage}
+            revealStaggerMs={revealStaggerMs}
             onNodeSelect={onNodeSelect}
             {...regionRefProp}
           />

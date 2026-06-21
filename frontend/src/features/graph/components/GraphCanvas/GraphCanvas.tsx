@@ -126,6 +126,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   nodes,
   links,
   positions,
+  revealedIds,
   onNodeSelect,
   ref,
   className,
@@ -134,14 +135,43 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   // GraphSpace wraps this component in `<ReactFlowProvider>`.
   const rfApi = useReactFlow();
 
+  // Apply the reveal filter (TC-FE-09):
+  //  - When `revealedIds` is undefined → no filtering (legacy callers /
+  //    static rendering). Pass nodes and links through.
+  //  - When provided → mount only nodes whose id is in the Set, and only
+  //    edges whose BOTH endpoints are in the Set (AC-F.15). An edge whose
+  //    source OR target is still queued would render a stroke into an
+  //    unmounted node — visually a phantom.
+  //
+  // The filtered arrays feed the memoized RF-shape builders below. Identity
+  // changes on every reveal tick (the Set grows), so the memos recompute —
+  // that is the intended trigger for React Flow to re-diff and mount the
+  // newly-revealed node.
+  const visibleNodes = useMemo(
+    () =>
+      revealedIds === undefined
+        ? nodes
+        : nodes.filter((n) => revealedIds.has(n.id)),
+    [nodes, revealedIds],
+  );
+  const visibleLinks = useMemo(
+    () =>
+      revealedIds === undefined
+        ? links
+        : links.filter(
+            (l) => revealedIds.has(l.source) && revealedIds.has(l.target),
+          ),
+    [links, revealedIds],
+  );
+
   // Memoize the RF arrays so React Flow's diff stays cheap. Identity only
   // changes when the underlying props change — addNodes produces fresh
   // Maps so the source arrays' identities flip on every delta.
   const rfNodes = useMemo<Node[]>(
-    () => toRfNodes(nodes, positions),
-    [nodes, positions],
+    () => toRfNodes(visibleNodes, positions),
+    [visibleNodes, positions],
   );
-  const rfEdges = useMemo<Edge[]>(() => toRfEdges(links), [links]);
+  const rfEdges = useMemo<Edge[]>(() => toRfEdges(visibleLinks), [visibleLinks]);
 
   // Build the imperative handle. `useImperativeHandle` is still the
   // documented primitive in React 19 for binding a ref-as-prop to a

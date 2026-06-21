@@ -33,6 +33,12 @@ export interface GraphCanvasProps {
    *  Nodes without a position get a fallback {0, 0} — temporary placement
    *  until the next force pass writes them. */
   positions: ReadonlyMap<string, GraphPosition>;
+  /** Reveal filter (TC-FE-09 — AC-F.14 / AC-F.15). When provided, only
+   *  nodes whose id is in this Set are mounted, and only edges whose BOTH
+   *  endpoints are in the Set are mounted. When omitted (`undefined`), all
+   *  nodes and edges render — the "no reveal cadence" path used by tests
+   *  and by static rendering callers. */
+  revealedIds?: ReadonlySet<string>;
   /** View-only callback fired when a node is clicked. The parent uses it
    *  to mount the NodeDetailPanel — never to trigger a chat mutation
    *  (REQ-6 / AC-U.3). */
