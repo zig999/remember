@@ -28,6 +28,10 @@ export { useGraphStore } from "./state/graph-store";
 export type { GraphPosition, GraphState } from "./state/graph-store";
 
 export { useForceLayout, runForceLayout } from "./hooks/useForceLayout";
+export {
+  useGraphReveal,
+  DEFAULT_REVEAL_STAGGER_MS,
+} from "./hooks/useGraphReveal";
 
 export { GraphNodeAdapter } from "./components/GraphNodeAdapter";
 export type {
@@ -64,3 +68,15 @@ export {
   GRAPH_EMPTY_STATE_COPY,
 } from "./components/GraphEmptyState";
 export type { GraphEmptyStateProps } from "./components/GraphEmptyState";
+
+export { NodeDetailPanel } from "./components/NodeDetailPanel";
+export type { NodeDetailPanelProps } from "./components/NodeDetailPanel";
+
+/* ---------- api surface (TC-FE-08) ---------- */
+export { graphNodeKeys, useNodeDetail } from "./api";
+export type {
+  NodeAliasView,
+  NodeAttributeView,
+  NodeDetailView,
+  NodeDetailWire,
+} from "./api";
