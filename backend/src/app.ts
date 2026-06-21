@@ -269,7 +269,18 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // preHandler.
       await scoped.register(
         async (convScope) => {
-          await registerChatRoutes(convScope, { mcp, logger, env, pool });
+          await registerChatRoutes(convScope, {
+            mcp,
+            logger,
+            env,
+            pool,
+            // TC-be-002: the catalog snapshot drives the `graph_delta` SSE
+            // projection (`is_temporal` lookup per link). When undefined, the
+            // chat module still works — sendMessage just won't emit
+            // `graph_delta` frames. Forwarded as a conditional spread so
+            // exactOptionalPropertyTypes does not see an explicit `undefined`.
+            ...(catalog !== undefined ? { catalog } : {}),
+          });
         },
         { prefix: "/conversations" }
       );

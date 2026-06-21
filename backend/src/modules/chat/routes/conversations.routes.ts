@@ -46,6 +46,7 @@ import type { Pool } from "pg";
 
 import type { Env } from "../../../config/env.js";
 import type { McpServer } from "../../../mcp/server.js";
+import type { CatalogSnapshot } from "../../knowledge-graph/catalog/catalog.js";
 import {
   withReadOnly,
   withTransaction,
@@ -60,6 +61,10 @@ import {
   CHAT_TOOL_NAMES,
   type ResolvedChatToolCatalog,
 } from "../service/tool-catalog.js";
+import {
+  normalizeToolResult,
+  type GraphDeltaWire,
+} from "../service/graph-normalizer.js";
 import {
   createChatAgentService,
   type ChatAgentServiceWithStats,
@@ -119,6 +124,15 @@ export interface ChatRouteDeps {
   readonly anthropicFactory?: AnthropicFactory;
   /** Optional wall-clock injection (tests). Defaults to `Date.now`. */
   readonly now?: () => number;
+  /**
+   * Optional catalog snapshot (TC-be-002). Required for the `graph_delta` SSE
+   * projection — every link in a `graph_delta` carries `is_temporal` which the
+   * normalizer resolves via `catalog.linkTypeByName`. When the catalog is
+   * absent (e.g. tests that do not load it) the route silently skips graph
+   * normalization: tool_result frames still emit, but no `graph_delta` frame
+   * is generated. The eight non-SSE endpoints do NOT need the catalog.
+   */
+  readonly catalog?: CatalogSnapshot;
 }
 
 /**
@@ -750,6 +764,36 @@ export async function registerChatRoutes(
           const wireFrame = projectSseFrame(evt);
           tryWrite(reply, wireFrame);
 
+          // TC-be-002: synthesise a `graph_delta` frame AFTER the `tool_result`
+          // frame for any tool that produces graph data (traverse / get_node /
+          // list_nodes / search). The agentic loop does NOT yield this event —
+          // it is a pure projection of the preceding `tool_result.result`,
+          // owned by the route handler so the service stays free of SSE
+          // framing concerns. Order is contractual (plan §4.1): graph_delta
+          // ALWAYS follows the tool_result for the same tool call. Skipped
+          // entirely when the tool failed (ok:false), when the catalog
+          // snapshot is unavailable, or when the normalizer returns null
+          // (non-graph-producing tool).
+          if (evt.type === "tool_result" && evt.ok && deps.catalog !== undefined) {
+            const graphDelta = await projectGraphDelta(
+              evt.tool,
+              evt.result,
+              deps.catalog,
+              deps.pool,
+              deps.logger,
+              id
+            );
+            if (graphDelta !== null) {
+              const graphEvt = {
+                type: "graph_delta" as const,
+                source_tool: graphDelta.source_tool,
+                nodes: graphDelta.nodes,
+                links: graphDelta.links,
+              };
+              tryWrite(reply, projectSseFrame(graphEvt));
+            }
+          }
+
           if (evt.type === "done") {
             terminalKind = "done";
             doneStopReason = evt.stop_reason;
@@ -1019,6 +1063,58 @@ function projectSseFrame(evt: ChatEvent): string {
       });
     case "error":
       return frameJson("error", { code: evt.code, message: evt.message });
+    case "graph_delta":
+      // TC-be-002 — `graph_delta` is synthesised by the route handler from a
+      // preceding `tool_result` (see drain loop above). Wire shape mirrors
+      // GraphDeltaWire (plan §4.1) verbatim; the normalizer already produced
+      // the snake_case projection.
+      return frameJson("graph_delta", {
+        source_tool: evt.source_tool,
+        nodes: evt.nodes,
+        links: evt.links,
+      });
+  }
+}
+
+/**
+ * Project a `tool_result` envelope to a `GraphDeltaWire`, or `null` when the
+ * tool is not graph-producing. Wraps `normalizeToolResult` with:
+ *   - a `withReadOnly(...)` boundary for the `search` hydration path (the
+ *     only graph tool that needs DB access);
+ *   - a defensive try/catch that logs + swallows normalization errors. A
+ *     failure here MUST NOT abort the SSE stream — the tool_result has
+ *     already been emitted; missing graph_delta is degraded UX, not a turn
+ *     failure.
+ *
+ * @returns the delta, or `null` when (a) the tool is not graph-producing or
+ *          (b) normalization threw.
+ */
+async function projectGraphDelta(
+  toolName: string,
+  result: unknown,
+  catalog: CatalogSnapshot,
+  pool: Pool,
+  logger: Logger,
+  conversationId: string
+): Promise<GraphDeltaWire | null> {
+  try {
+    if (toolName === "search") {
+      return await withReadOnly(pool, (client) =>
+        normalizeToolResult(toolName, result, catalog, client)
+      );
+    }
+    return await normalizeToolResult(toolName, result, catalog);
+  } catch (err) {
+    logger.warn(
+      {
+        event: "chat.graph_delta_normalize_failure",
+        conversation_id: conversationId,
+        tool_name: toolName,
+        cause_message: err instanceof Error ? err.message : "unknown",
+      },
+      "chat graph_delta normalization failed — skipping frame"
+    );
+    return null;
   }
 }
 

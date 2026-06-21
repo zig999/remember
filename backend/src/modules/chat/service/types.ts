@@ -22,6 +22,10 @@ import type { Logger } from "pino";
 
 import type { McpServer } from "../../../mcp/server.js";
 import type { Env } from "../../../config/env.js";
+import type {
+  GraphLinkWire,
+  GraphNodeWire,
+} from "./graph-normalizer.js";
 
 // Single import seam to the ingestion module — re-export ONLY the factory type
 // (BR-21). This avoids maintaining two diverging definitions while keeping the
@@ -96,6 +100,18 @@ export type ChatEvent =
       readonly tokens_in: number;
       readonly tokens_out: number;
       readonly synthetic_stop_reason: ErrorSyntheticStopReason;
+    }
+  // v3 / TC-be-002 — `graph_delta` is synthesised by the ROUTE handler (NOT
+  // by the agentic loop) immediately after a graph-producing `tool_result`,
+  // by running the tool envelope through `service/graph-normalizer.ts`. It
+  // lives in this union purely so `projectSseFrame` stays exhaustive (the
+  // service never yields it). It is NOT persisted (no `chat_tool_call` row)
+  // — it is a pure projection of the preceding `tool_result`.
+  | {
+      readonly type: "graph_delta";
+      readonly source_tool: string;
+      readonly nodes: ReadonlyArray<GraphNodeWire>;
+      readonly links: ReadonlyArray<GraphLinkWire>;
     };
 
 // ---------------------------------------------------------------------------

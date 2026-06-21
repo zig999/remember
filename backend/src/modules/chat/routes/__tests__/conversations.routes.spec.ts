@@ -63,6 +63,14 @@ vi.mock("../../service/distillation.service.js", () => ({
   maybeDistillTitle: vi.fn().mockResolvedValue(undefined),
 }));
 
+// TC-be-002: the route's `graph_delta` projection calls `findNodesByIds` for
+// the `search` hydration path. Mock at module-load so the dispatcher in
+// `graph-normalizer.ts` resolves to the stub. The seven other tests that do
+// NOT exercise `search` never trigger this mock.
+vi.mock("../../../knowledge-graph/repository/graph.repository.js", () => ({
+  findNodesByIds: vi.fn().mockResolvedValue([]),
+}));
+
 import * as chatRepo from "../../repository/chat.repository.js";
 import { createChatAgentService } from "../../service/chat-agent.service.js";
 import {
@@ -70,6 +78,13 @@ import {
   maybeRefreshSummary,
 } from "../../service/distillation.service.js";
 import * as turnRegistry from "../../service/turn-registry.js";
+import { findNodesByIds } from "../../../knowledge-graph/repository/graph.repository.js";
+import {
+  buildSnapshot,
+  type CatalogSnapshot,
+  type LinkTypeRow,
+  type NodeTypeRow,
+} from "../../../knowledge-graph/catalog/catalog.js";
 import type { Env } from "../../../../config/env.js";
 import { buildErrorHandler } from "../../../../middleware/error-handler.js";
 import { buildMcpServer, type McpServer } from "../../../../mcp/server.js";
@@ -140,6 +155,50 @@ function buildMcpWithAllChatTools(): McpServer {
   return mcp;
 }
 
+/**
+ * Minimal catalog snapshot for the `graph_delta` projection tests
+ * (TC-be-002). Carries just enough rows so the normalizer can resolve
+ * `is_temporal` for the two link types we test against.
+ */
+function buildTestCatalog(): CatalogSnapshot {
+  const linkTypes: LinkTypeRow[] = [
+    {
+      id: "lt-works-at",
+      name: "works_at",
+      label: "trabalha em",
+      description: "",
+      inverse_name: "employs",
+      is_temporal: true, // wire should set is_temporal=true
+      allows_multiple_current: false,
+      requires_valid_from: true,
+      requires_valid_to_on_change: true,
+      version: 1,
+    },
+    {
+      id: "lt-located-in",
+      name: "located_in",
+      label: "localizado em",
+      description: "",
+      inverse_name: "contains",
+      is_temporal: false, // wire should set is_temporal=false
+      allows_multiple_current: false,
+      requires_valid_from: false,
+      requires_valid_to_on_change: false,
+      version: 1,
+    },
+  ];
+  const nodeTypes: NodeTypeRow[] = [
+    { id: "nt-person", name: "person", description: "", version: 1 },
+    { id: "nt-organization", name: "organization", description: "", version: 1 },
+  ];
+  return buildSnapshot({
+    nodeTypes,
+    linkTypes,
+    linkTypeRules: [],
+    attributeKeys: [],
+  });
+}
+
 interface BuildAppOpts {
   /** Env override. */
   readonly env?: Env;
@@ -151,6 +210,12 @@ interface BuildAppOpts {
   readonly factoryThrows?: boolean;
   /** Register @fastify/cors (mirrors app.ts) — to assert CORS on the SSE stream. */
   readonly withCors?: boolean;
+  /**
+   * TC-be-002: catalog snapshot for the `graph_delta` projection. Pass `null`
+   * to leave the route in catalog-absent mode (no graph_delta emission).
+   * Default: minimal test catalog with two link types.
+   */
+  readonly catalog?: CatalogSnapshot | null;
 }
 
 async function buildApp(opts: BuildAppOpts = {}): Promise<{
@@ -272,6 +337,13 @@ async function buildApp(opts: BuildAppOpts = {}): Promise<{
       },
     }) as never;
 
+  // TC-be-002: default to a non-empty catalog so graph_delta projection runs.
+  // Pass `catalog: null` to opt out (used by the AC-B.6 negative test that
+  // exercises catalog-absent mode at the route boundary level — though the
+  // primary "no graph tool" assertion uses the default catalog + non-graph
+  // tool to prove the absence of graph_delta).
+  const catalog = opts.catalog === undefined ? buildTestCatalog() : opts.catalog;
+
   await app.register(
     async (scoped) => {
       await registerChatRoutes(scoped, {
@@ -280,6 +352,7 @@ async function buildApp(opts: BuildAppOpts = {}): Promise<{
         env,
         pool,
         anthropicFactory: stubAnthropicFactory as never,
+        ...(catalog !== null ? { catalog } : {}),
       });
     },
     { prefix: "/conversations" }
@@ -1208,5 +1281,572 @@ describe("Compliance §11 exclusion (BR-37, .spec.md §6)", () => {
     for (const key of surfaceKeys) {
       expect(key).not.toMatch(/chat/i);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sendMessage — TC-be-002 graph_delta SSE projection
+//
+// Covers the AC-B.5 / AC-B.6 / BR-09 acceptance criteria from
+// .orch/sessions/<id>/backlog/tc-be-002.md:
+//   AC-B.5 — graph-producing tool_result is followed by a graph_delta frame
+//   AC-B.6 — non-graph tool_result emits NO graph_delta frame
+//   BR-09  — tool_result wire frame stays {tool, ok} (unchanged)
+//   Plus: graph_delta does NOT trigger a chat_tool_call row, and frame order
+//         is contractual (graph_delta ALWAYS follows its tool_result).
+// ---------------------------------------------------------------------------
+
+describe("POST /conversations/:id/messages — TC-be-002 graph_delta SSE projection", () => {
+  /** Fixtures shared by the graph_delta tests. */
+  function setupGraphTestMocks(): void {
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
+      id: "u",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "hi" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
+      id: "tool-call-1",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "traverse",
+      arguments: {},
+      result: null,
+      is_error: false,
+      error_message: null,
+      duration_ms: 5,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "a",
+      conversation_id: CID,
+      role: "assistant",
+      content: [],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 10,
+      tokens_out: 5,
+      latency_ms: 100,
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+  }
+
+  it("AC-B.5: emits graph_delta AFTER tool_result for a `traverse` tool call", async () => {
+    setupGraphTestMocks();
+
+    // Traverse envelope shape — what the chat agent loop captures in
+    // `tool_result.result` from the MCP `traverse` tool: a subgraph with
+    // node_summary nodes + traversal_link links. We use one of each link
+    // type from the test catalog so the normalizer must consult
+    // `linkTypeByName` for `is_temporal`.
+    const traverseResult = {
+      starting_node_id: "n-1",
+      nodes: [
+        {
+          id: "n-1",
+          node_type: "person",
+          canonical_name: "Alice",
+          status: "active",
+        },
+        {
+          id: "n-2",
+          node_type: "organization",
+          canonical_name: "Acme",
+          status: "active",
+        },
+      ],
+      links: [
+        {
+          id: "l-1",
+          source_node_id: "n-1",
+          target_node_id: "n-2",
+          link_type: "works_at", // is_temporal = true in test catalog
+        },
+        {
+          id: "l-2",
+          source_node_id: "n-2",
+          target_node_id: "n-2",
+          link_type: "located_in", // is_temporal = false in test catalog
+        },
+      ],
+    };
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "traverse", args_summary: "node=n-1" },
+      {
+        type: "tool_result",
+        tool: "traverse",
+        ok: true,
+        arguments: { starting_node_id: "n-1" },
+        result: traverseResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 5,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const frames = parseSse(res.body);
+    const eventOrder = frames.map((f) => f.event);
+
+    // Both frames present.
+    expect(eventOrder).toContain("tool_result");
+    expect(eventOrder).toContain("graph_delta");
+
+    // Order: graph_delta MUST come AFTER its tool_result (AC-B.5).
+    const toolResultIdx = eventOrder.indexOf("tool_result");
+    const graphDeltaIdx = eventOrder.indexOf("graph_delta");
+    expect(graphDeltaIdx).toBeGreaterThan(toolResultIdx);
+
+    // Exactly one graph_delta for one tool_result.
+    expect(
+      eventOrder.filter((e) => e === "graph_delta")
+    ).toHaveLength(1);
+
+    // BR-09: tool_result wire frame remains {tool, ok} — UNCHANGED.
+    const toolResultFrame = frames[toolResultIdx]!;
+    expect(toolResultFrame.data).toEqual({ tool: "traverse", ok: true });
+
+    // graph_delta payload mirrors the normalizer output (snake_case wire).
+    const graphDeltaFrame = frames[graphDeltaIdx]!;
+    const payload = graphDeltaFrame.data as {
+      source_tool: string;
+      nodes: Array<{ id: string; node_type: string; canonical_name: string; status: string }>;
+      links: Array<{
+        id: string;
+        source_node_id: string;
+        target_node_id: string;
+        link_type: string;
+        is_temporal: boolean;
+      }>;
+    };
+    expect(payload.source_tool).toBe("traverse");
+    expect(payload.nodes).toHaveLength(2);
+    expect(payload.links).toHaveLength(2);
+    expect(payload.nodes[0]).toEqual({
+      id: "n-1",
+      node_type: "person",
+      canonical_name: "Alice",
+      status: "active",
+    });
+    // is_temporal flows from the catalog: works_at=true, located_in=false.
+    const worksAt = payload.links.find((l) => l.link_type === "works_at")!;
+    const locatedIn = payload.links.find((l) => l.link_type === "located_in")!;
+    expect(worksAt.is_temporal).toBe(true);
+    expect(locatedIn.is_temporal).toBe(false);
+
+    // graph_delta does NOT produce a chat_tool_call row — only the original
+    // tool_result does (1 call, not 2).
+    expect(chatRepo.insertToolCall).toHaveBeenCalledTimes(1);
+
+    await app.close();
+  });
+
+  it("AC-B.6: no graph_delta frame is emitted for a non-graph-producing tool (`list_node_types`)", async () => {
+    setupGraphTestMocks();
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "list_node_types", args_summary: "" },
+      {
+        type: "tool_result",
+        tool: "list_node_types",
+        ok: true,
+        arguments: {},
+        result: { items: [{ name: "person" }] },
+        is_error: false,
+        error_message: null,
+        duration_ms: 1,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const frames = parseSse(res.body);
+    // tool_result present (and unchanged shape).
+    const toolResultFrame = frames.find((f) => f.event === "tool_result");
+    expect(toolResultFrame).toBeDefined();
+    expect(toolResultFrame!.data).toEqual({
+      tool: "list_node_types",
+      ok: true,
+    });
+    // No graph_delta frame whatsoever (AC-B.6).
+    expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
+
+    await app.close();
+  });
+
+  it("AC-B.6 / no-tool turn: a turn with no tool calls emits no graph_delta", async () => {
+    setupGraphTestMocks();
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "text_delta", delta: "hello" },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [{ type: "text", text: "hello" }],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+    const frames = parseSse(res.body);
+    expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
+    await app.close();
+  });
+
+  it("emits NO graph_delta when the tool_result is ok:false (failed tool call)", async () => {
+    setupGraphTestMocks();
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
+      id: "tool-call-err",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "traverse",
+      arguments: {},
+      result: null,
+      is_error: true,
+      error_message: "boom",
+      duration_ms: 3,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "traverse", args_summary: "node=n-1" },
+      {
+        type: "tool_result",
+        tool: "traverse",
+        ok: false,
+        arguments: { starting_node_id: "n-1" },
+        result: null,
+        is_error: true,
+        error_message: "boom",
+        duration_ms: 3,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+    const frames = parseSse(res.body);
+    expect(frames.find((f) => f.event === "tool_result")).toBeDefined();
+    expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
+    await app.close();
+  });
+
+  it("emits NO graph_delta when the catalog snapshot is absent (degraded mode)", async () => {
+    setupGraphTestMocks();
+
+    const traverseResult = {
+      starting_node_id: "n-1",
+      nodes: [
+        {
+          id: "n-1",
+          node_type: "person",
+          canonical_name: "Alice",
+          status: "active",
+        },
+      ],
+      links: [],
+    };
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "traverse", args_summary: "node=n-1" },
+      {
+        type: "tool_result",
+        tool: "traverse",
+        ok: true,
+        arguments: { starting_node_id: "n-1" },
+        result: traverseResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 5,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({
+      runTurnEvents: events,
+      catalog: null, // catalog-absent path
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+    const frames = parseSse(res.body);
+    expect(frames.find((f) => f.event === "tool_result")).toBeDefined();
+    expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
+    await app.close();
+  });
+
+  it("emits graph_delta for `search` after hydrating items via findNodesByIds", async () => {
+    setupGraphTestMocks();
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
+      id: "tool-call-search",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "search",
+      arguments: { query: "alice" },
+      result: null,
+      is_error: false,
+      error_message: null,
+      duration_ms: 8,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+
+    // search items only carry the id — hydrated rows come from findNodesByIds.
+    vi.mocked(findNodesByIds).mockResolvedValueOnce([
+      {
+        id: "n-1",
+        node_type: "person",
+        canonical_name: "Alice",
+        status: "active",
+        merged_into_node_id: null,
+      },
+    ]);
+
+    const searchResult = {
+      query: "alice",
+      total: 1,
+      limit: 10,
+      offset: 0,
+      items: [
+        {
+          kind: "node",
+          layer: "node",
+          id: "n-1",
+          score: 0.9,
+          hop: 0,
+          summary: "Alice",
+          flags: [],
+        },
+      ],
+    };
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "search", args_summary: "query=alice" },
+      {
+        type: "tool_result",
+        tool: "search",
+        ok: true,
+        arguments: { query: "alice" },
+        result: searchResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 8,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "find alice" },
+    });
+    expect(res.statusCode).toBe(200);
+    const frames = parseSse(res.body);
+    const graphDeltaFrame = frames.find((f) => f.event === "graph_delta");
+    expect(graphDeltaFrame).toBeDefined();
+    const payload = graphDeltaFrame!.data as {
+      source_tool: string;
+      nodes: ReadonlyArray<{ id: string; canonical_name: string }>;
+      links: ReadonlyArray<unknown>;
+    };
+    expect(payload.source_tool).toBe("search");
+    expect(payload.nodes).toHaveLength(1);
+    expect(payload.nodes[0]!.id).toBe("n-1");
+    expect(payload.nodes[0]!.canonical_name).toBe("Alice");
+    expect(payload.links).toHaveLength(0);
+    expect(findNodesByIds).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("each graph-producing tool_result in a multi-tool turn is followed by its own graph_delta (order preserved)", async () => {
+    setupGraphTestMocks();
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
+      id: "tool-call",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "traverse",
+      arguments: {},
+      result: null,
+      is_error: false,
+      error_message: null,
+      duration_ms: 5,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+
+    const traverseResult = {
+      starting_node_id: "n-1",
+      nodes: [
+        {
+          id: "n-1",
+          node_type: "person",
+          canonical_name: "Alice",
+          status: "active",
+        },
+      ],
+      links: [],
+    };
+    const getNodeResult = {
+      node: {
+        id: "n-2",
+        node_type: "organization",
+        canonical_name: "Acme",
+        status: "active",
+      },
+      aliases: [],
+      attributes: [],
+    };
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "traverse", args_summary: "node=n-1" },
+      {
+        type: "tool_result",
+        tool: "traverse",
+        ok: true,
+        arguments: { starting_node_id: "n-1" },
+        result: traverseResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 5,
+      },
+      { type: "tool_start", tool: "get_node", args_summary: "id=n-2" },
+      {
+        type: "tool_result",
+        tool: "get_node",
+        ok: true,
+        arguments: { id: "n-2" },
+        result: getNodeResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 2,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const frames = parseSse(res.body);
+    const eventOrder = frames.map((f) => f.event);
+
+    // Exactly two graph_delta frames, one per graph tool_result.
+    expect(eventOrder.filter((e) => e === "graph_delta")).toHaveLength(2);
+
+    // Each graph_delta follows its own tool_result. Pairing:
+    //   tool_result(traverse) -> graph_delta(traverse) ->
+    //   tool_result(get_node) -> graph_delta(get_node)
+    const graphDeltaPayloads = frames
+      .filter((f) => f.event === "graph_delta")
+      .map((f) => (f.data as { source_tool: string }).source_tool);
+    expect(graphDeltaPayloads).toEqual(["traverse", "get_node"]);
+
+    // Two tool_result rows persisted (one per tool call); the graph_delta
+    // events MUST NOT inflate the chat_tool_call insert count.
+    expect(chatRepo.insertToolCall).toHaveBeenCalledTimes(2);
+
+    await app.close();
   });
 });
