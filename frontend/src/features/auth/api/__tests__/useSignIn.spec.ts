@@ -1,31 +1,33 @@
 /**
- * useSignIn — unit tests (TC-03).
+ * useSignIn — unit tests (TC-01).
  *
  * What we test:
  *   1. `resolveSafeRedirect` (FL-AUTH-03): the pure same-origin guard — a
  *      tight table-driven test of every relevant input class. This is the
- *      security-critical seam, so we exercise it directly without the SDK
- *      mock in the loop.
+ *      security-critical seam, so we exercise it directly without any
+ *      Better Auth client in the loop.
  *   2. `classifySignInError`: the discriminator that decides which message
- *      the form will show — exercised against the Stack Auth `KnownError`
- *      shape, native `TypeError`, and arbitrary throws.
+ *      the form will show — exercised against AuthError codes
+ *      (INVALID_EMAIL_OR_PASSWORD, NETWORK, NO_SESSION, NO_TOKEN, UNKNOWN),
+ *      native TypeError, and arbitrary throws.
  *   3. `useSignIn` integration:
- *      - Success: `setToken` is called BEFORE `navigate` (BR-04 ordering).
- *      - Credential error: `error.type === 'credential'` and `toast.error`
- *        is called with the canonical pt-BR message.
- *      - FL-AUTH-03: a `?redirect=https://evil.com` URL falls back to
- *        `/chat` when sign-in succeeds.
+ *      - Success: BOTH neon-auth calls fire in order; setToken is called
+ *        BEFORE navigate (BR-04 ordering).
+ *      - Credential error (step 1): error.type === 'credential', step 2 is
+ *        NOT called, no token, no navigate.
+ *      - NO_SESSION / NO_TOKEN (step 2): error.type === 'unknown', no token.
+ *      - Network error: error.type === 'network'.
+ *      - FL-AUTH-03: a `?redirect=https://evil.com` URL falls back to /chat.
  *
  * Strategy:
- *   - The Stack Auth SDK is mocked entirely — we never need to reach the
- *     network. The mock owns the resolved `Result<undefined, KnownError>` so
- *     each test selects which branch to exercise.
+ *   - `./neon-auth` is mocked entirely — we never need to reach the
+ *     network. The mocks expose the two functions the hook calls and the
+ *     real AuthError class so `classifySignInError` can `instanceof`-match.
  *   - TanStack Router's `useNavigate` is mocked to a spy — we assert on the
  *     order of `setToken` vs `navigate` via `mock.invocationCallOrder`.
  *   - `sonner`'s `toast` is mocked to spy on `error()` invocations.
  *   - We use the project's `createRoot + act` harness (no
- *     @testing-library/react in the repo) to drive a tiny host component
- *     that consumes `useSignIn` and exposes its API on a ref.
+ *     @testing-library/react in the repo).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createRef, useImperativeHandle, type RefObject } from "react";
@@ -40,40 +42,32 @@ import * as React from "react";
  * `vi.hoisted` (which is also hoisted) or it will be undefined at factory
  * invocation time.
  *
- * The two SDK methods + the navigate/toast spies live here so the per-test
+ * The neon-auth functions + navigate/toast spies live here so the per-test
  * `beforeEach` can clear their call records without re-mocking.
+ *
+ * We import the REAL `AuthError` class inside the hoisted factory so the
+ * classifier's `instanceof AuthError` checks succeed against the same class
+ * the mocked functions throw.
  */
-type SignInResult =
-  | { status: "ok"; data: undefined }
-  | { status: "error"; error: unknown };
-
 const mocks = vi.hoisted(() => {
-  // Mutable holders the tests poke before each call. Returning fns keeps the
-  // closure live across the hoisted boundary.
-  const state = {
-    nextSignInResult: { status: "ok", data: undefined } as SignInResult,
-    nextAccessToken: "jwt.payload.sig" as string | null,
-  };
   return {
-    state,
-    signInWithCredential: vi.fn(async () => state.nextSignInResult),
-    getAccessToken: vi.fn(async () => state.nextAccessToken),
+    signInWithEmail: vi.fn(async (_email: string, _password: string) => undefined),
+    fetchAccessToken: vi.fn(async () => "jwt.payload.sig"),
     navigate: vi.fn(),
     toastError: vi.fn(),
   };
 });
 
-vi.mock("../../lib/stack-app", () => ({
-  // The SUT only consumes `getStackApp()` — return a tiny stub exposing the
-  // two methods the hook touches. The Promise must resolve fresh each call
-  // (the hook awaits it inside `signIn`), so we return a `Promise.resolve`
-  // wrapped lazily.
-  getStackApp: () =>
-    Promise.resolve({
-      signInWithCredential: mocks.signInWithCredential,
-      getAccessToken: mocks.getAccessToken,
-    }),
-}));
+vi.mock("../neon-auth", async () => {
+  // Re-export the real AuthError class so `instanceof` lines in
+  // classifySignInError match the errors thrown by tests below.
+  const actual = await vi.importActual<typeof import("../neon-auth")>("../neon-auth");
+  return {
+    AuthError: actual.AuthError,
+    signInWithEmail: mocks.signInWithEmail,
+    fetchAccessToken: mocks.fetchAccessToken,
+  };
+});
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
@@ -85,8 +79,8 @@ vi.mock("sonner", () => ({
 }));
 
 // Aliases that read more naturally in the assertions below.
-const signInWithCredential = mocks.signInWithCredential;
-const getAccessToken = mocks.getAccessToken;
+const signInWithEmail = mocks.signInWithEmail;
+const fetchAccessToken = mocks.fetchAccessToken;
 const navigate = mocks.navigate;
 const toastError = mocks.toastError;
 
@@ -98,6 +92,7 @@ import {
   classifySignInError,
   type UseSignInReturn,
 } from "../useSignIn";
+import { AuthError } from "../neon-auth";
 import { useAuthStore } from "../../../../state/auth";
 
 /* ---------- Pure-function tests ----------------------------------------- */
@@ -138,25 +133,35 @@ describe("resolveSafeRedirect (FL-AUTH-03)", () => {
 });
 
 describe("classifySignInError", () => {
-  it("maps KnownErrors.EmailPasswordMismatch shape to credential", () => {
-    expect(
-      classifySignInError({ errorCode: "EMAIL_PASSWORD_MISMATCH", message: "x" }),
-    ).toEqual({ type: "credential" });
-  });
-
-  it("maps any *PASSWORD_MISMATCH variant to credential", () => {
-    expect(classifySignInError({ errorCode: "INTERNAL_PASSWORD_MISMATCH" })).toEqual({
+  it("maps AuthError('INVALID_EMAIL_OR_PASSWORD') to credential", () => {
+    expect(classifySignInError(new AuthError("INVALID_EMAIL_OR_PASSWORD", "x"))).toEqual({
       type: "credential",
     });
   });
 
-  it("maps native TypeError to network", () => {
-    expect(classifySignInError(new TypeError("Failed to fetch"))).toEqual({
-      type: "network",
+  it("maps AuthError('NETWORK') to network", () => {
+    expect(classifySignInError(new AuthError("NETWORK", "x"))).toEqual({ type: "network" });
+  });
+
+  it("maps AuthError('NO_SESSION') to unknown", () => {
+    expect(classifySignInError(new AuthError("NO_SESSION", "x"))).toEqual({ type: "unknown" });
+  });
+
+  it("maps AuthError('NO_TOKEN') to unknown", () => {
+    expect(classifySignInError(new AuthError("NO_TOKEN", "x"))).toEqual({ type: "unknown" });
+  });
+
+  it("maps AuthError with an unrecognised code to unknown", () => {
+    expect(classifySignInError(new AuthError("SOMETHING_ELSE", "x"))).toEqual({
+      type: "unknown",
     });
   });
 
-  it("maps message mentioning 'failed to fetch' to network even when not TypeError", () => {
+  it("maps native TypeError (defensive) to network", () => {
+    expect(classifySignInError(new TypeError("Failed to fetch"))).toEqual({ type: "network" });
+  });
+
+  it("maps message mentioning 'failed to fetch' (defensive) to network", () => {
     expect(classifySignInError({ message: "Network call failed to fetch /api" })).toEqual({
       type: "network",
     });
@@ -196,11 +201,11 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  // Reset SDK + spy state.
-  mocks.state.nextSignInResult = { status: "ok", data: undefined };
-  mocks.state.nextAccessToken = "jwt.payload.sig";
-  signInWithCredential.mockClear();
-  getAccessToken.mockClear();
+  // Reset stub behavior + spy state for each test.
+  signInWithEmail.mockReset();
+  signInWithEmail.mockResolvedValue(undefined);
+  fetchAccessToken.mockReset();
+  fetchAccessToken.mockResolvedValue("jwt.payload.sig");
   navigate.mockClear();
   toastError.mockClear();
   useAuthStore.getState().clear();
@@ -225,7 +230,7 @@ function mount(): RefObject<Harness | null> {
 }
 
 describe("useSignIn — success flow", () => {
-  it("calls setToken BEFORE navigate (BR-04 ordering)", async () => {
+  it("calls signInWithEmail then fetchAccessToken then setToken BEFORE navigate (BR-04)", async () => {
     const ref = mount();
     const setTokenSpy = vi.spyOn(useAuthStore.getState(), "setToken");
 
@@ -233,20 +238,19 @@ describe("useSignIn — success flow", () => {
       await ref.current!.signIn({ login: "u@example.com", senha: "secret" });
     });
 
-    expect(signInWithCredential).toHaveBeenCalledWith({
-      email: "u@example.com",
-      password: "secret",
-      noRedirect: true,
-    });
+    expect(signInWithEmail).toHaveBeenCalledWith("u@example.com", "secret");
+    expect(fetchAccessToken).toHaveBeenCalledTimes(1);
     expect(setTokenSpy).toHaveBeenCalledWith("jwt.payload.sig");
     expect(navigate).toHaveBeenCalledTimes(1);
 
-    // Invocation order — setToken must precede navigate.
-    const setTokenOrder = setTokenSpy.mock.invocationCallOrder[0];
-    const navigateOrder = navigate.mock.invocationCallOrder[0];
-    expect(setTokenOrder).toBeDefined();
-    expect(navigateOrder).toBeDefined();
-    expect(setTokenOrder!).toBeLessThan(navigateOrder!);
+    // Invocation order — signInWithEmail < fetchAccessToken < setToken < navigate.
+    const order1 = signInWithEmail.mock.invocationCallOrder[0]!;
+    const order2 = fetchAccessToken.mock.invocationCallOrder[0]!;
+    const orderSet = setTokenSpy.mock.invocationCallOrder[0]!;
+    const orderNav = navigate.mock.invocationCallOrder[0]!;
+    expect(order1).toBeLessThan(order2);
+    expect(order2).toBeLessThan(orderSet);
+    expect(orderSet).toBeLessThan(orderNav);
   });
 
   it("navigates to /chat when no ?redirect is present", async () => {
@@ -278,40 +282,28 @@ describe("useSignIn — success flow", () => {
     });
     expect(navigate).toHaveBeenCalledWith({ to: "/chat" });
   });
-
-  it("treats SDK success with null access token as unknown error", async () => {
-    mocks.state.nextAccessToken = null;
-    const ref = mount();
-    await act(async () => {
-      await ref.current!.signIn({ login: "u@example.com", senha: "x" });
-    });
-    expect(navigate).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith("Erro inesperado. Tente novamente.");
-    expect(ref.current!.getState().error).toEqual({ type: "unknown" });
-  });
 });
 
 describe("useSignIn — error flow", () => {
-  it("credential error: sets error.type='credential' AND toasts the canonical message", async () => {
-    mocks.state.nextSignInResult = {
-      status: "error",
-      error: { errorCode: "EMAIL_PASSWORD_MISMATCH", message: "mismatch" },
-    };
+  it("credential error: step 1 throws INVALID_EMAIL_OR_PASSWORD → type=credential; step 2 NOT called", async () => {
+    signInWithEmail.mockRejectedValueOnce(
+      new AuthError("INVALID_EMAIL_OR_PASSWORD", "bad creds"),
+    );
     const ref = mount();
     await act(async () => {
       await ref.current!.signIn({ login: "u@example.com", senha: "wrong" });
     });
     expect(ref.current!.getState().error).toEqual({ type: "credential" });
     expect(toastError).toHaveBeenCalledWith("E-mail ou senha incorretos.");
+    expect(fetchAccessToken).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
-    // setToken must NOT be called on the failure path.
     expect(useAuthStore.getState().accessToken).toBe(null);
   });
 
-  it("network error: thrown TypeError → error.type='network' + network toast", async () => {
-    signInWithCredential.mockImplementationOnce(async () => {
-      throw new TypeError("Failed to fetch");
-    });
+  it("network error in step 1: AuthError('NETWORK') → type=network", async () => {
+    signInWithEmail.mockRejectedValueOnce(
+      new AuthError("NETWORK", "Network error contacting auth"),
+    );
     const ref = mount();
     await act(async () => {
       await ref.current!.signIn({ login: "u@example.com", senha: "x" });
@@ -322,8 +314,29 @@ describe("useSignIn — error flow", () => {
     );
   });
 
-  it("unknown error: any other throw → error.type='unknown' + unknown toast", async () => {
-    signInWithCredential.mockImplementationOnce(async () => {
+  it("step 2 NO_SESSION → type=unknown; no token stored", async () => {
+    fetchAccessToken.mockRejectedValueOnce(new AuthError("NO_SESSION", "no cookie"));
+    const ref = mount();
+    await act(async () => {
+      await ref.current!.signIn({ login: "u@example.com", senha: "x" });
+    });
+    expect(ref.current!.getState().error).toEqual({ type: "unknown" });
+    expect(useAuthStore.getState().accessToken).toBe(null);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("step 2 NO_TOKEN → type=unknown", async () => {
+    fetchAccessToken.mockRejectedValueOnce(new AuthError("NO_TOKEN", "no token in body"));
+    const ref = mount();
+    await act(async () => {
+      await ref.current!.signIn({ login: "u@example.com", senha: "x" });
+    });
+    expect(ref.current!.getState().error).toEqual({ type: "unknown" });
+    expect(toastError).toHaveBeenCalledWith("Erro inesperado. Tente novamente.");
+  });
+
+  it("unknown error: any other throw → type=unknown", async () => {
+    signInWithEmail.mockImplementationOnce(async () => {
       throw new Error("boom");
     });
     const ref = mount();
@@ -335,12 +348,6 @@ describe("useSignIn — error flow", () => {
   });
 
   it("isLoading settles to false after a completed call (success path)", async () => {
-    // Note: capturing the *true* mid-flight value would require a test
-    // harness with full act-environment support (jsdom + React 19 +
-    // @testing-library/react); the project deliberately avoids that dep
-    // and relies on the createRoot+act pattern. We verify the observable
-    // contract — `isLoading` returns to false once the call settles — and
-    // delegate the true→false transition to React's batching.
     const ref = mount();
     expect(ref.current!.getState().isLoading).toBe(false);
     await act(async () => {
@@ -350,7 +357,7 @@ describe("useSignIn — error flow", () => {
   });
 
   it("isLoading settles to false after a failed call (error path)", async () => {
-    signInWithCredential.mockImplementationOnce(async () => {
+    signInWithEmail.mockImplementationOnce(async () => {
       throw new Error("boom");
     });
     const ref = mount();

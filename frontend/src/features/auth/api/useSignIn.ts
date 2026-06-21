@@ -1,39 +1,36 @@
 /**
- * useSignIn — Stack Auth sign-in mutation hook (TC-03).
+ * useSignIn — Better Auth (Neon Auth) sign-in mutation hook (TC-01).
  *
  * Spec references:
  *  - docs/specs/front/features/sign-in.feature.spec.md §1, §3, §4, §6, §9
  *  - docs/specs/front/_flows/auth.flow.md FL-AUTH-03 (safe redirect)
- *  - temp/login-screen-plan.md §3 (D2 = Option A — SDK client-side)
+ *  - temp/login-better-auth-plan.md §0, §3 (Better Auth 2-step contract)
  *
- * Why a custom hook (not TanStack Query):
- *  - There is no BFF endpoint to cache; Stack Auth manages its own HTTP. A
- *    `useMutation` would buy nothing here — we already own the error
- *    classification + the post-success side effects.
+ * Two-step Better Auth flow (see `api/neon-auth.ts` header):
+ *   1. `signInWithEmail(email, password)` — POST /sign-in/email; sets the
+ *      session cookie on success.
+ *   2. `fetchAccessToken()` — GET /token; returns the JWT EdDSA bearer.
  *
- * Success flow (sign-in.feature.spec.md §3 ST-2 → ST-3):
- *  1. `isLoading = true`, clear local error.
- *  2. `stackApp.signInWithCredential({ email, password, noRedirect: true })`.
- *  3. On `status === "ok"`: read the access token via `stackApp.getAccessToken()`.
- *  4. `useAuthStore.getState().setToken(jwt)` — MUST run before any navigation
- *     (front.back.md BR-04: the protected layout guard reads `isFresh()`
- *     synchronously on navigation; setting the token after `navigate()` would
- *     bounce the operator back to /sign-in).
- *  5. Read `?redirect` from search; validate same-origin (FL-AUTH-03) — fall
- *     back to `/chat` for any unsafe value.
- *  6. Navigate.
+ * Step 2 is sequential — never invoked if step 1 fails (the spec's BR
+ * "credentials:'include' must already have set the session cookie before we
+ * ask for a token"). This is also reflected in error classification: a step-1
+ * failure surfaces as a credential error; a step-2 failure (rare — server
+ * configuration issue) surfaces as `unknown`.
  *
- * Error flow (sign-in.feature.spec.md §6):
- *  - Classify the rejection into `credential | network | unknown`.
- *  - `credential` — Stack Auth `KnownError` with `errorCode` containing the
- *    string "EMAIL_PASSWORD_MISMATCH" / "PASSWORD" / "EMAIL", OR
- *    `signInWithCredential` returning `{ status: "error" }` (no throw).
- *  - `network` — `TypeError` whose message hints at fetch failure (the SDK
- *    wraps fetch but propagates these as native TypeErrors in Chromium /
- *    Firefox / WebKit).
- *  - `unknown` — anything else.
- *  - Set local error AND emit `toast.error(message)` per §2 UI-03 (the inline
- *    alert + a secondary toast — see SIGN_IN_ERROR_MESSAGE in SignInForm).
+ * Success ordering (BR-04):
+ *   stepCount: setToken BEFORE navigate — the protected layout guard reads
+ *   `isFresh()` synchronously on navigation; setting the token after
+ *   `navigate()` would bounce the operator back to /sign-in.
+ *
+ * Error classification:
+ *   AuthError("INVALID_EMAIL_OR_PASSWORD") → { type: "credential" }
+ *   AuthError("NETWORK")                   → { type: "network" }
+ *   AuthError("NO_SESSION" | "NO_TOKEN")   → { type: "unknown" }
+ *   any other thrown value                 → { type: "unknown" }
+ *
+ *   We keep the existing `SignInError` discriminant union (credential |
+ *   network | unknown) so `SignInForm` and its tests stay unchanged — the
+ *   user-visible strings already match the spec §6 mapping.
  */
 import { useCallback, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -41,12 +38,12 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/state/auth";
 import { SIGN_IN_ERROR_MESSAGE } from "../components/SignInForm";
 import type { SignInError, SignInFormValues } from "../schema";
-import { getStackApp } from "../lib/stack-app";
+import { signInWithEmail, fetchAccessToken, AuthError } from "./neon-auth";
 
 export interface UseSignInReturn {
   /** Imperative submit handler — wire to RHF's `handleSubmit(onSubmit)`. */
   readonly signIn: (values: SignInFormValues) => Promise<void>;
-  /** UI-02 gate — true while the SDK call is in flight. */
+  /** UI-02 gate — true while either Better Auth call is in flight. */
   readonly isLoading: boolean;
   /** UI-03 gate — the discriminated error category surfaced to the form. */
   readonly error: SignInError | null;
@@ -98,35 +95,39 @@ export function resolveSafeRedirect(candidate: string | null): "/chat" | string 
 }
 
 /**
- * Classify an SDK rejection into a `SignInError` discriminant.
+ * Map an `AuthError` (or any thrown value) into a `SignInError` discriminant.
  *
- * The SDK exposes credential failures both as throws (legacy paths) and as
- * `Result<undefined, KnownError>` (current path). Callers must invoke
- * `classifySignInError` on whichever surface produced the failure.
+ * Exported for unit testing — the classifier is the seam between the
+ * Better Auth code namespace and the form's display contract.
  */
 export function classifySignInError(reason: unknown): SignInError {
-  // KnownError-shaped: { errorCode: "EMAIL_PASSWORD_MISMATCH", ... }
+  if (reason instanceof AuthError) {
+    switch (reason.code) {
+      case "INVALID_EMAIL_OR_PASSWORD":
+        return { type: "credential" };
+      case "NETWORK":
+        return { type: "network" };
+      case "NO_SESSION":
+      case "NO_TOKEN":
+        // The credential check passed (or this is step 2) but we couldn't
+        // mint a JWT — surface as a generic "unexpected" error so the
+        // operator retries. Distinct from `credential` because the
+        // remediation differs (it is NOT "fix your password").
+        return { type: "unknown" };
+      default:
+        return { type: "unknown" };
+    }
+  }
+  // Native fetch failure that escaped neon-auth.ts (defensive) — also
+  // anything else we didn't anticipate.
+  if (reason instanceof TypeError) return { type: "network" };
   if (typeof reason === "object" && reason !== null) {
-    const obj = reason as { errorCode?: unknown; message?: unknown; name?: unknown };
-    const code = typeof obj.errorCode === "string" ? obj.errorCode.toUpperCase() : "";
-    if (
-      code === "EMAIL_PASSWORD_MISMATCH" ||
-      code.includes("PASSWORD_MISMATCH") ||
-      code.includes("INVALID_CREDENTIAL")
-    ) {
-      return { type: "credential" };
-    }
-    // Native fetch failures surface as TypeError("Failed to fetch") / similar.
-    if (obj.name === "TypeError") {
-      return { type: "network" };
-    }
-    const msg = typeof obj.message === "string" ? obj.message.toLowerCase() : "";
-    if (
-      msg.includes("network") ||
-      msg.includes("failed to fetch") ||
-      msg.includes("load failed")
-    ) {
-      return { type: "network" };
+    const msg = (reason as { message?: unknown }).message;
+    if (typeof msg === "string") {
+      const lower = msg.toLowerCase();
+      if (lower.includes("failed to fetch") || lower.includes("network")) {
+        return { type: "network" };
+      }
     }
   }
   return { type: "unknown" };
@@ -148,38 +149,23 @@ export function useSignIn(): UseSignInReturn {
 
       let classified: SignInError | null = null;
       try {
-        const stackApp = await getStackApp();
-        const result = await stackApp.signInWithCredential({
-          email: values.login,
-          password: values.senha,
-          // SDK redirect is off — TC-03 owns navigation (R4 of plan §3).
-          noRedirect: true,
-        });
+        // Step 1 — credential exchange. Throws AuthError on non-2xx.
+        await signInWithEmail(values.login, values.senha);
 
-        if (result.status === "error") {
-          classified = classifySignInError(result.error);
-        } else {
-          // Success path: extract the access token AFTER signInWithCredential
-          // has resolved, then push it into useAuthStore BEFORE navigation.
-          const accessToken = await stackApp.getAccessToken();
-          if (accessToken === null || accessToken.length === 0) {
-            // The SDK reported success but produced no token — treat as
-            // unknown (we cannot enter the protected layout without a JWT).
-            classified = { type: "unknown" };
-          } else {
-            // BR-04 ordering: setToken first so isFresh() is true when the
-            // protected layout guard runs.
-            useAuthStore.getState().setToken(accessToken);
+        // Step 2 — JWT minting from the freshly-set session cookie. Sequential
+        // by contract (the cookie MUST already exist).
+        const jwt = await fetchAccessToken();
 
-            const redirectParam = readRedirectParam();
-            const target = resolveSafeRedirect(redirectParam);
-            // navigate() may return a Promise in TS; we don't await it —
-            // the loading state visually unmounts when the destination route
-            // takes over. Awaiting would block on a route that may need to
-            // load data, prolonging the spinner unnecessarily.
-            void navigate({ to: target });
-          }
-        }
+        // BR-04 ordering: setToken before navigate so the protected layout
+        // guard sees a fresh token when it runs.
+        useAuthStore.getState().setToken(jwt);
+
+        const redirectParam = readRedirectParam();
+        const target = resolveSafeRedirect(redirectParam);
+        // We don't `await` — the loading state visually unmounts when the
+        // destination route takes over. Awaiting would block on a route
+        // that may need to load data, prolonging the spinner unnecessarily.
+        void navigate({ to: target });
       } catch (thrown) {
         classified = classifySignInError(thrown);
       } finally {

@@ -7,6 +7,10 @@
  * accepts a missing or non-URL `VITE_BFF_URL`, every BFF call later fails
  * with an opaque network error — there is no second guard rail. The "fail
  * loud at boot" contract is the only safety net.
+ *
+ * TC-01 (Better Auth migration): the schema now requires only
+ * VITE_BFF_URL + VITE_NEON_AUTH_URL — the Stack Auth env vars
+ * (VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY) were removed.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { getEnv, EnvInvalidError, __resetEnvCacheForTests } from "../env";
@@ -14,9 +18,6 @@ import { getEnv, EnvInvalidError, __resetEnvCacheForTests } from "../env";
 const validSource = {
   VITE_BFF_URL: "https://bff.example.com",
   VITE_NEON_AUTH_URL: "https://auth.example.com",
-  // TC-03: Stack Auth client config — public by design (publishable key).
-  VITE_STACK_PROJECT_ID: "stack-project-id",
-  VITE_STACK_PUBLISHABLE_CLIENT_KEY: "stack-publishable-key",
 } as unknown as ImportMetaEnv;
 
 describe("getEnv()", () => {
@@ -35,8 +36,6 @@ describe("getEnv()", () => {
     const env = getEnv(validSource);
     expect(env.VITE_BFF_URL).toBe("https://bff.example.com");
     expect(env.VITE_NEON_AUTH_URL).toBe("https://auth.example.com");
-    expect(env.VITE_STACK_PROJECT_ID).toBe("stack-project-id");
-    expect(env.VITE_STACK_PUBLISHABLE_CLIENT_KEY).toBe("stack-publishable-key");
     expect(Object.isFrozen(env)).toBe(true);
   });
 
@@ -65,32 +64,28 @@ describe("getEnv()", () => {
     expect(() => getEnv(source)).toThrow(EnvInvalidError);
   });
 
-  it("throws EnvInvalidError when VITE_STACK_PROJECT_ID is absent (TC-03)", () => {
+  it("throws EnvInvalidError when VITE_NEON_AUTH_URL is not a URL", () => {
     const source = {
       VITE_BFF_URL: "https://bff.example.com",
-      VITE_NEON_AUTH_URL: "https://auth.example.com",
-      VITE_STACK_PUBLISHABLE_CLIENT_KEY: "k",
+      VITE_NEON_AUTH_URL: "not-a-url",
     } as unknown as ImportMetaEnv;
     expect(() => getEnv(source)).toThrow(EnvInvalidError);
   });
 
-  it("throws EnvInvalidError when VITE_STACK_PUBLISHABLE_CLIENT_KEY is absent (TC-03)", () => {
-    const source = {
+  it("validates with ONLY VITE_BFF_URL + VITE_NEON_AUTH_URL (no Stack Auth vars required)", () => {
+    // TC-01 regression guard — the Stack Auth keys were removed and must NOT
+    // be requested by the validator any more.
+    const minimal = {
       VITE_BFF_URL: "https://bff.example.com",
       VITE_NEON_AUTH_URL: "https://auth.example.com",
-      VITE_STACK_PROJECT_ID: "p",
     } as unknown as ImportMetaEnv;
-    expect(() => getEnv(source)).toThrow(EnvInvalidError);
-  });
-
-  it("throws EnvInvalidError when VITE_STACK_PROJECT_ID is empty string (TC-03)", () => {
-    const source = {
-      VITE_BFF_URL: "https://bff.example.com",
-      VITE_NEON_AUTH_URL: "https://auth.example.com",
-      VITE_STACK_PROJECT_ID: "",
-      VITE_STACK_PUBLISHABLE_CLIENT_KEY: "k",
-    } as unknown as ImportMetaEnv;
-    expect(() => getEnv(source)).toThrow(EnvInvalidError);
+    const env = getEnv(minimal);
+    expect(env).toBeDefined();
+    // No Stack Auth fields should be present on the parsed env object.
+    expect((env as unknown as Record<string, unknown>)["VITE_STACK_PROJECT_ID"]).toBeUndefined();
+    expect(
+      (env as unknown as Record<string, unknown>)["VITE_STACK_PUBLISHABLE_CLIENT_KEY"],
+    ).toBeUndefined();
   });
 
   it("EnvInvalidError carries the Zod issues for diagnostics", () => {

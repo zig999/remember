@@ -13,15 +13,28 @@
  *    failure". Non-ingest calls MUST still time out.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { http, EnvelopeError, DEFAULT_TIMEOUT_MS } from "../http";
+import { http, EnvelopeError, DEFAULT_TIMEOUT_MS, __setRedirectForTests } from "../http";
 import { __resetEnvCacheForTests } from "../env";
+import { useAuthStore } from "../../state/auth";
+
+// Mock the Better Auth client so `trySilentRefresh()` is hermetic.
+const mocks = vi.hoisted(() => ({
+  fetchAccessToken: vi.fn(async () => "new.jwt.token"),
+}));
+vi.mock("../../features/auth/api/neon-auth", async () => {
+  const actual = await vi.importActual<typeof import("../../features/auth/api/neon-auth")>(
+    "../../features/auth/api/neon-auth",
+  );
+  return {
+    AuthError: actual.AuthError,
+    signInWithEmail: vi.fn(),
+    fetchAccessToken: mocks.fetchAccessToken,
+  };
+});
 
 const ENV: ImportMetaEnv = {
   VITE_BFF_URL: "https://bff.example.com",
   VITE_NEON_AUTH_URL: "https://auth.example.com",
-  // TC-03: env shape now requires Stack Auth client config (lib/env.ts).
-  VITE_STACK_PROJECT_ID: "stack-project-id",
-  VITE_STACK_PUBLISHABLE_CLIENT_KEY: "stack-publishable-key",
 } as unknown as ImportMetaEnv;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -182,5 +195,110 @@ describe("http()", () => {
       httpStatus: 0,
     });
     expect(abortReason).toBeInstanceOf(DOMException);
+  });
+});
+
+/* ---------- DC silent refresh on BFF 401 (TC-01) ------------------------- */
+
+describe("http() — DC silent refresh on 401", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = import.meta.env;
+  let redirectSpy: ReturnType<typeof vi.fn>;
+  // Import the mocked module reference so we can override per-test behavior.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  let neonAuth: typeof import("../../features/auth/api/neon-auth");
+
+  beforeEach(async () => {
+    __resetEnvCacheForTests();
+    Object.assign(import.meta.env, ENV);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    redirectSpy = vi.fn();
+    __setRedirectForTests(redirectSpy);
+    useAuthStore.getState().clear();
+    neonAuth = await import("../../features/auth/api/neon-auth");
+    mocks.fetchAccessToken.mockReset();
+    mocks.fetchAccessToken.mockResolvedValue("new.jwt.token");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.assign(import.meta.env, originalEnv);
+    __setRedirectForTests(null);
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    useAuthStore.getState().clear();
+  });
+
+  it("on 401: refreshes JWT, stores it, and retries the original request once (success)", async () => {
+    const fetchSpy = vi
+      .fn()
+      // First call → 401
+      .mockResolvedValueOnce(jsonResponse({}, 401))
+      // Retry → 200 envelope
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { hello: "world" } }));
+    globalThis.fetch = fetchSpy;
+
+    const r = await http<{ hello: string }>("/api/v1/q");
+    expect(r).toEqual({ hello: "world" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchAccessToken).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().accessToken).toBe("new.jwt.token");
+    expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
+  it("on 401 + refresh failure: clears store, redirects, throws AUTH_SESSION_EXPIRED", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({}, 401));
+    globalThis.fetch = fetchSpy;
+    mocks.fetchAccessToken.mockRejectedValueOnce(
+      new neonAuth.AuthError("NO_SESSION", "no cookie"),
+    );
+    useAuthStore.getState().setToken("stale.jwt");
+
+    await expect(http("/api/v1/q")).rejects.toMatchObject({
+      code: "AUTH_SESSION_EXPIRED",
+      httpStatus: 401,
+    });
+    expect(useAuthStore.getState().accessToken).toBe(null);
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    expect(redirectSpy).toHaveBeenCalledWith("/sign-in?reason=session_expired");
+  });
+
+  it("does NOT retry more than once: a 2nd consecutive 401 propagates as AUTH_SESSION_EXPIRED-shaped failure", async () => {
+    // First call 401, refresh succeeds, retry ALSO 401 — without __retried
+    // guard this would be an infinite loop. We assert the loop stops.
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, 401))
+      .mockResolvedValueOnce(jsonResponse({}, 401));
+    globalThis.fetch = fetchSpy;
+
+    // The 2nd request is the retry with __retried:true. It returns 401 again,
+    // which falls through the silent-refresh branch and into the normal
+    // envelope-parsing path (which will trip on empty {} not having `ok`).
+    // The shape is the post-retry generic failure — what we care about is
+    // that fetch was called exactly twice (no third attempt).
+    await expect(http("/api/v1/q")).rejects.toBeInstanceOf(EnvelopeError);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT trigger silent refresh on 200, 4xx (non-401), or 5xx", async () => {
+    // 200 OK
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse({ ok: true, result: 1 }),
+    );
+    await expect(http("/api/v1/q")).resolves.toBe(1);
+    // 403 (envelope error)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ ok: false, error: { code: "AUTH_FORBIDDEN", message: "no" } }, 403),
+      );
+    await expect(http("/api/v1/q")).rejects.toMatchObject({ code: "AUTH_FORBIDDEN" });
+    // 500
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(jsonResponse({}, 500));
+    await expect(http("/api/v1/q")).rejects.toBeInstanceOf(EnvelopeError);
+    // fetchAccessToken NEVER called across these three paths.
+    expect(mocks.fetchAccessToken).not.toHaveBeenCalled();
   });
 });

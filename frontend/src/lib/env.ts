@@ -3,10 +3,9 @@
  * (front.back.md BR-02, front.md §3.3).
  *
  * Contract:
- *  - VITE_BFF_URL                       : valid URL — base URL of the Remember BFF.
- *  - VITE_NEON_AUTH_URL                 : valid URL — base URL of Neon Auth (Stack Auth).
- *  - VITE_STACK_PROJECT_ID              : non-empty string — Stack Auth project id (TC-03).
- *  - VITE_STACK_PUBLISHABLE_CLIENT_KEY  : non-empty string — Stack Auth publishable client key (TC-03).
+ *  - VITE_BFF_URL          : valid URL — base URL of the Remember BFF.
+ *  - VITE_NEON_AUTH_URL    : valid URL — base URL of Neon Auth (Better Auth
+ *                            native provider; used directly via raw fetch).
  *
  * Behaviour:
  *  - On a valid pair, `getEnv()` returns a frozen `Env` object cached for
@@ -23,10 +22,10 @@
  *    `z.string().url()`). Using v3-style syntax silently masks runtime
  *    rejections in v4.
  *
- * TC-03 — Stack Auth keys:
- *  - The "publishable client key" is public by design (Stack Auth docs); it
- *    is NOT a secret. We validate "non-empty string" rather than enforcing a
- *    URL/UUID shape because the key format is opaque to the client.
+ * Historical note (TC-01 — Better Auth migration):
+ *  - The previous Stack Auth SDK required VITE_STACK_PROJECT_ID and
+ *    VITE_STACK_PUBLISHABLE_CLIENT_KEY. Both were removed when the auth layer
+ *    moved to raw fetch (no SDK). The schema no longer accepts them.
  */
 
 import { z } from "zod";
@@ -36,12 +35,6 @@ import { z } from "zod";
 const EnvSchema = z.object({
   VITE_BFF_URL: z.url("VITE_BFF_URL must be a valid URL"),
   VITE_NEON_AUTH_URL: z.url("VITE_NEON_AUTH_URL must be a valid URL"),
-  VITE_STACK_PROJECT_ID: z
-    .string("VITE_STACK_PROJECT_ID must be a non-empty string")
-    .min(1, "VITE_STACK_PROJECT_ID must be a non-empty string"),
-  VITE_STACK_PUBLISHABLE_CLIENT_KEY: z
-    .string("VITE_STACK_PUBLISHABLE_CLIENT_KEY must be a non-empty string")
-    .min(1, "VITE_STACK_PUBLISHABLE_CLIENT_KEY must be a non-empty string"),
 });
 
 export type Env = Readonly<z.infer<typeof EnvSchema>>;
@@ -54,7 +47,7 @@ export class EnvInvalidError extends Error {
 
   constructor(issues: z.core.$ZodIssue[]) {
     super(
-      "Frontend env invalid — fix VITE_BFF_URL / VITE_NEON_AUTH_URL / VITE_STACK_PROJECT_ID / VITE_STACK_PUBLISHABLE_CLIENT_KEY: " +
+      "Frontend env invalid — fix VITE_BFF_URL / VITE_NEON_AUTH_URL: " +
         issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; "),
     );
     this.issues = issues;
@@ -76,8 +69,6 @@ export function getEnv(source: ImportMetaEnv = import.meta.env): Env {
   const parsed = EnvSchema.safeParse({
     VITE_BFF_URL: source.VITE_BFF_URL,
     VITE_NEON_AUTH_URL: source.VITE_NEON_AUTH_URL,
-    VITE_STACK_PROJECT_ID: source.VITE_STACK_PROJECT_ID,
-    VITE_STACK_PUBLISHABLE_CLIENT_KEY: source.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   });
 
   if (!parsed.success) {
