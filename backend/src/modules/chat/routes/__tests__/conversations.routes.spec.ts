@@ -25,6 +25,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+import fastifyCors from "@fastify/cors";
 import pino from "pino";
 import type { Pool, PoolClient } from "pg";
 
@@ -148,6 +149,8 @@ interface BuildAppOpts {
   readonly runTurnEvents?: readonly ChatEvent[];
   /** Whether the chat agent factory should throw on first call (BR-21 path). */
   readonly factoryThrows?: boolean;
+  /** Register @fastify/cors (mirrors app.ts) — to assert CORS on the SSE stream. */
+  readonly withCors?: boolean;
 }
 
 async function buildApp(opts: BuildAppOpts = {}): Promise<{
@@ -231,6 +234,15 @@ async function buildApp(opts: BuildAppOpts = {}): Promise<{
     loggerInstance: silentLogger as never,
     disableRequestLogging: true,
   });
+  // Mirror app.ts: register CORS FIRST so its onRequest hook sets the
+  // Access-Control-Allow-Origin header on the reply before the route handler
+  // hijacks the response for the SSE stream.
+  if (opts.withCors) {
+    await app.register(fastifyCors, {
+      origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    });
+  }
   app.setErrorHandler(buildErrorHandler(silentLogger));
 
   // Stub anthropic factory — the route uses it for the utility client only.
@@ -1093,6 +1105,77 @@ describe("POST /conversations/:id/messages — UC-07 idempotent replay (BR-27)",
       tokens_out: 20,
     });
 
+    await app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CORS on the hijacked SSE stream — regression for the fix/bff-cors gap.
+// reply.hijack() + reply.raw.writeHead() bypasses @fastify/cors's onSend phase,
+// so writeSseHeaders must copy the ACAO header the plugin set on the reply —
+// else the browser blocks the chat turn even though the preflight passed.
+// Driven via the UC-07 replay path (no Anthropic call) which also hijacks.
+// ---------------------------------------------------------------------------
+
+describe("POST /conversations/:id/messages — CORS on the SSE stream (fix/bff-cors gap)", () => {
+  function mockIdempotentReplay(): void {
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue({
+      id: "u1",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "hi" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: "claude-opus-4-8",
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.findAssistantSuccessor).mockResolvedValue({
+      id: "a1",
+      conversation_id: CID,
+      role: "assistant",
+      content: [{ type: "text", text: "stored response" }],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 100,
+      tokens_out: 20,
+      latency_ms: 500,
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+  }
+
+  it("copies Access-Control-Allow-Origin onto the SSE response for an allowed Origin", async () => {
+    mockIdempotentReplay();
+    const { app } = await buildApp({ withCors: true });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP, origin: "http://localhost:5173" },
+      payload: { content: "hi", model: "claude-opus-4-8" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
+    expect(res.headers["access-control-allow-origin"]).toBe(
+      "http://localhost:5173"
+    );
+    await app.close();
+  });
+
+  it("does NOT echo a disallowed Origin onto the SSE response", async () => {
+    mockIdempotentReplay();
+    const { app } = await buildApp({ withCors: true });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP, origin: "https://evil.example" },
+      payload: { content: "hi", model: "claude-opus-4-8" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
     await app.close();
   });
 });

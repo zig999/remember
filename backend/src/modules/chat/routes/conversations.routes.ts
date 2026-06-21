@@ -973,11 +973,20 @@ function computeMissingToolNames(mcp: McpServer): string[] {
 }
 
 function writeSseHeaders(reply: FastifyReply): void {
+  // @fastify/cors sets Access-Control-Allow-Origin (and Vary) on the reply in
+  // its onRequest hook, but reply.hijack() + reply.raw.writeHead() bypasses the
+  // onSend phase that would normally flush them — so without copying them here
+  // the browser blocks the SSE stream with a CORS error even though the
+  // preflight passed. Credentials are off, so only ACAO + Vary are relevant.
+  const acao = reply.getHeader("access-control-allow-origin");
+  const vary = reply.getHeader("vary");
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
+    ...(acao !== undefined ? { "Access-Control-Allow-Origin": String(acao) } : {}),
+    ...(vary !== undefined ? { Vary: String(vary) } : {}),
   });
 }
 
