@@ -47,10 +47,16 @@ vi.mock("../../../../lib/env", () => ({
   }),
 }));
 
-import { useSendMessage, type SendMessageResult } from "../useSendMessage";
+import {
+  useSendMessage,
+  mapWireToGraphDelta,
+  type SendMessageResult,
+} from "../useSendMessage";
 import { useChatTurnStore } from "../../state/chat-turn";
 import { conversationKeys } from "../keys";
 import { useAuthStore } from "../../../../state/auth";
+import { useGraphStore } from "../../../graph";
+import type { ChatSSEFrameGraphDelta } from "../chat-stream";
 
 /* ---------- rig ---------- */
 
@@ -127,6 +133,7 @@ const CONVO_ID = "11111111-1111-1111-1111-111111111111";
 
 beforeEach(() => {
   useChatTurnStore.getState().reset();
+  useGraphStore.getState().clear();
   useAuthStore.setState({ accessToken: null, claims: null });
   // crypto.randomUUID is available in modern jsdom; sanity-check.
   if (typeof crypto?.randomUUID !== "function") {
@@ -137,6 +144,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   useChatTurnStore.getState().reset();
+  useGraphStore.getState().clear();
 });
 
 /* ---------- tests ---------- */
@@ -387,6 +395,434 @@ describe("useSendMessage — error path", () => {
       expect(result?.stopReason).toBeNull();
       // Even on error frame, post-turn invalidation runs so usage refetches.
       expect(spy).toHaveBeenCalled();
+    } finally {
+      unmountHarness(h);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * TC-FE-04 — graph_delta dispatching, chatStatus state machine, GraphStatus
+ * coupling, conversation-change clear. The tests below pin the contract
+ * described in the Task Contract's validation criteria + the plan §7.3 / §12.
+ * ------------------------------------------------------------------------- */
+
+describe("mapWireToGraphDelta — pure mapper", () => {
+  // The mapper is exported on the dispatcher module (lives next to it
+  // because the graph feature must stay unaware of chat — REQ-6). Testing
+  // it in isolation here keeps the assertions tight.
+
+  it("maps a wire frame into surface GraphDelta (nodes + links)", () => {
+    const frame: ChatSSEFrameGraphDelta = {
+      type: "graph_delta",
+      sourceTool: "traverse",
+      nodes: [
+        {
+          id: "n1",
+          node_type: "person",
+          canonical_name: "Rodrigo",
+          status: "active",
+        },
+        {
+          id: "n2",
+          node_type: "project",
+          canonical_name: "Remember",
+          status: "needs_review",
+        },
+      ],
+      links: [
+        {
+          id: "l1",
+          source_node_id: "n1",
+          target_node_id: "n2",
+          link_type: "participates_in",
+          is_temporal: true,
+        },
+      ],
+    };
+    const delta = mapWireToGraphDelta(frame);
+    expect(delta.sourceTool).toBe("traverse");
+    expect(delta.nodes).toHaveLength(2);
+    expect(delta.nodes[0]).toEqual({
+      id: "n1",
+      type: "person",
+      label: "Rodrigo",
+      state: "accepted",
+    });
+    expect(delta.nodes[1]).toEqual({
+      id: "n2",
+      type: "project",
+      label: "Remember",
+      state: "uncertain",
+    });
+    expect(delta.links).toHaveLength(1);
+    expect(delta.links[0]).toMatchObject({
+      id: "l1",
+      source: "n1",
+      target: "n2",
+      label: "participates_in",
+      isTemporal: true,
+      state: "accepted",
+    });
+  });
+
+  it("filters out merged/deleted nodes (I-2) and orphan links", () => {
+    const frame: ChatSSEFrameGraphDelta = {
+      type: "graph_delta",
+      sourceTool: "list_nodes",
+      nodes: [
+        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
+        { id: "n2", node_type: "person", canonical_name: "B", status: "merged" },
+        { id: "n3", node_type: "person", canonical_name: "C", status: "deleted" },
+      ],
+      links: [
+        // n1→n2 — orphan (n2 filtered): drop
+        { id: "l1", source_node_id: "n1", target_node_id: "n2", link_type: "x", is_temporal: false },
+        // n2→n3 — both filtered: drop
+        { id: "l2", source_node_id: "n2", target_node_id: "n3", link_type: "x", is_temporal: false },
+      ],
+    };
+    const delta = mapWireToGraphDelta(frame);
+    expect(delta.nodes.map((n) => n.id)).toEqual(["n1"]);
+    expect(delta.links).toHaveLength(0);
+  });
+
+  it("falls back to 'concept' for unknown node_type slugs (G-B)", () => {
+    const frame: ChatSSEFrameGraphDelta = {
+      type: "graph_delta",
+      sourceTool: "get_node",
+      nodes: [
+        {
+          id: "n1",
+          node_type: "mystery_type_not_in_union",
+          canonical_name: "X",
+          status: "active",
+        },
+      ],
+      links: [],
+    };
+    const delta = mapWireToGraphDelta(frame);
+    expect(delta.nodes[0]?.type).toBe("concept");
+  });
+
+  it("preserves inEffect when present and elides it when absent (exactOptional)", () => {
+    const frame: ChatSSEFrameGraphDelta = {
+      type: "graph_delta",
+      sourceTool: "traverse",
+      nodes: [
+        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
+        { id: "n2", node_type: "person", canonical_name: "B", status: "active" },
+      ],
+      links: [
+        // with explicit is_in_effect: false
+        {
+          id: "l1",
+          source_node_id: "n1",
+          target_node_id: "n2",
+          link_type: "x",
+          is_temporal: true,
+          is_in_effect: false,
+        },
+        // without is_in_effect — must not appear on the surface link
+        {
+          id: "l2",
+          source_node_id: "n1",
+          target_node_id: "n2",
+          link_type: "x",
+          is_temporal: false,
+        },
+      ],
+    };
+    const delta = mapWireToGraphDelta(frame);
+    expect(delta.links[0]?.inEffect).toBe(false);
+    expect("inEffect" in (delta.links[1] ?? {})).toBe(false);
+  });
+});
+
+describe("useSendMessage — graph_delta dispatch (TC-FE-04)", () => {
+  it("addNodes is called once per graph_delta with the mapped delta (AC-F.7)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":"id=n1"}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[{"id":"n1","node_type":"person","canonical_name":"R","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const addNodesSpy = vi.spyOn(useGraphStore.getState(), "addNodes");
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "quem é R?",
+        } as never);
+      });
+      expect(addNodesSpy).toHaveBeenCalledTimes(1);
+      const arg = addNodesSpy.mock.calls[0]?.[0];
+      expect(arg?.sourceTool).toBe("traverse");
+      expect(arg?.nodes).toHaveLength(1);
+      expect(arg?.nodes[0]?.id).toBe("n1");
+      // The store has the node visible after the dispatch.
+      expect(useGraphStore.getState().nodes.has("n1")).toBe(true);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("tool_start with graph tool flips GraphStatus to 'loading' (AC-F.8)", async () => {
+    // We can't easily snapshot mid-stream (the dispatcher runs synchronously
+    // between pulls and we'd race), so spy on `setStatus` and assert the
+    // sequence of calls — "loading" must appear before any terminal flip.
+    const setStatusCalls: Array<{ s: string; m: string | undefined }> = [];
+    const realSetStatus = useGraphStore.getState().setStatus;
+    useGraphStore.setState({
+      setStatus: (status, message) => {
+        setStatusCalls.push({ s: status, m: message });
+        realSetStatus(status, message);
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      // Restore for downstream tests in the file (afterEach also clears).
+      useGraphStore.setState({ setStatus: realSetStatus });
+      // tool_start fired setStatus("loading") — pin the call.
+      const loadingCalls = setStatusCalls.filter((c) => c.s === "loading");
+      expect(loadingCalls).toHaveLength(1);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("tool_start with NON-graph tool leaves GraphStatus unchanged (AC-F.8)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"list_node_types","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"list_node_types","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().status).toBe("empty");
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      // No graph_delta arrived and no graph tool ran → status remains "empty".
+      expect(useGraphStore.getState().status).toBe("empty");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("done with receivedDeltaThisTurn=false leaves GraphStatus 'empty' (AC-F.21)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: llm_start\ndata: {"iteration":1}\n\n',
+          'event: text_delta\ndata: {"delta":"olá"}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().status).toBe("empty");
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "olá",
+        } as never);
+      });
+      // Chat-only turn — no graph delta, status must NOT flip to "ready".
+      expect(useGraphStore.getState().status).toBe("empty");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("error with no graph tool in flight leaves GraphStatus untouched (AC-F.21, I-7)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: error\ndata: {"code":"BUSINESS_CHAT_PROVIDER_UNAVAILABLE","message":"boom"}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().status).toBe("empty");
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      // No graph tool was in flight → GraphStatus stays "empty" (not "error").
+      expect(useGraphStore.getState().status).toBe("empty");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("done with a graph delta promotes GraphStatus to 'ready'", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[{"id":"n1","node_type":"person","canonical_name":"R","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      expect(useGraphStore.getState().status).toBe("ready");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+});
+
+describe("useSendMessage — chatStatus state machine (TC-FE-04)", () => {
+  /**
+   * Helper — wrap `setChatStatus` with a recording proxy. The dispatcher
+   * resolves actions through a ref captured at mount time (see
+   * `useSendMessage.ts` `actionsRef`), so the wrap MUST happen BEFORE the
+   * harness mounts. Returns the call list and a cleanup that restores the
+   * original. We use this rather than mid-stream pull snapshots because the
+   * pull callback runs BEFORE the dispatcher consumes the chunk, leaving a
+   * race window where snapshots arrive too early.
+   */
+  function recordChatStatusCalls(): {
+    calls: string[];
+    restore: () => void;
+  } {
+    const calls: string[] = [];
+    const realSet = useChatTurnStore.getState().setChatStatus;
+    useChatTurnStore.setState({
+      setChatStatus: (next) => {
+        calls.push(next);
+        realSet(next);
+      },
+    });
+    return { calls, restore: () => useChatTurnStore.setState({ setChatStatus: realSet }) };
+  }
+
+  it("llm_start → 'thinking', text_delta → 'streaming', done → 'idle'", async () => {
+    const rec = recordChatStatusCalls();
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: llm_start\ndata: {"iteration":1}\n\n',
+          'event: text_delta\ndata: {"delta":"a"}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      rec.restore();
+      // Each frame records exactly one setChatStatus call in order.
+      expect(rec.calls).toEqual(["thinking", "streaming", "idle"]);
+      expect(useChatTurnStore.getState().chatStatus).toBe("idle");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("tool_start → 'tool_running'; tool_result → back to 'streaming'", async () => {
+    const rec = recordChatStatusCalls();
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"search","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"search","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      rec.restore();
+      expect(rec.calls).toEqual(["tool_running", "streaming", "idle"]);
+      expect(useChatTurnStore.getState().chatStatus).toBe("idle");
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("error frame sets chatStatus to 'error' (sticky banner)", async () => {
+    const rec = recordChatStatusCalls();
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: error\ndata: {"code":"SYSTEM_UPSTREAM","message":"boom"}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      rec.restore();
+      expect(rec.calls).toEqual(["error"]);
+      expect(useChatTurnStore.getState().chatStatus).toBe("error");
     } finally {
       unmountHarness(h);
     }

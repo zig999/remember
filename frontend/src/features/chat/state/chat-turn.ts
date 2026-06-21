@@ -26,6 +26,35 @@
 import { create } from "zustand";
 import type { ToolCallData } from "../types";
 
+/**
+ * `chatStatus` — fine-grained derived state of the chat pane (TC-FE-04).
+ *
+ * Drives the `ChatStatusIndicator` waiting hint (REQ-2) — the indicator UI is
+ * delivered by TC-FE-09; this slice only owns the state machine.
+ *
+ * Transitions (plan §12.2):
+ *
+ *   idle ──user sends──▶ idle ──llm_start──▶ thinking
+ *                              ──text_delta──▶ streaming ──done──▶ idle
+ *                              ──tool_start──▶ tool_running
+ *                                ──tool_result──▶ streaming
+ *   (any) ──error frame──▶ error ──(new send/reset)──▶ idle
+ *   (any) ──Stop/abort──▶ idle (caller resets the store)
+ *
+ * Why a sticky `error` (rather than `error → idle`):
+ *   The plan diagram pins `error` until the next user action — the UI uses
+ *   it to surface a discreet error banner. The TC validation criterion
+ *   shorthand `"done/error → idle"` is read as "done → idle; error → error
+ *   (cleared on next send via `reset()`)" — this matches §12.2 and avoids
+ *   the banner vanishing instantly. Documented in delivery spec_divergences.
+ */
+export type ChatStatus =
+  | "idle"
+  | "thinking"
+  | "streaming"
+  | "tool_running"
+  | "error";
+
 export interface ChatTurnState {
   /** Accumulated assistant text from `text_delta` frames. */
   streamingText: string;
@@ -44,6 +73,12 @@ export interface ChatTurnState {
   idempotencyKey: string | null;
   /** True while the SSE stream is open (`fetch` opened, no terminal frame yet). */
   isStreaming: boolean;
+  /**
+   * Fine-grained chat phase derived from the SSE lifecycle (TC-FE-04).
+   * `idle` is the resting state; the dispatcher transitions on every
+   * incoming frame (see `ChatStatus` for the full state machine).
+   */
+  chatStatus: ChatStatus;
 
   /** Clear all turn state — called on conversation switch and on terminal frame. */
   reset: () => void;
@@ -64,6 +99,13 @@ export interface ChatTurnState {
    * latest pending chip is always the one being settled.
    */
   updateLastToolChip: (ok: boolean) => void;
+  /**
+   * Set the chat phase (TC-FE-04). Idempotent — calling with the current
+   * value is a no-op-equivalent (still a `set()` call but no observable
+   * change). The orchestrator hook owns the transitions; the indicator
+   * component reads the value via a Zustand selector (TC-FE-09).
+   */
+  setChatStatus: (next: ChatStatus) => void;
 }
 
 const initialState = {
@@ -72,6 +114,7 @@ const initialState = {
   abortController: null as AbortController | null,
   idempotencyKey: null as string | null,
   isStreaming: false,
+  chatStatus: "idle" as ChatStatus,
 };
 
 export const useChatTurnStore = create<ChatTurnState>((set) => ({
@@ -101,4 +144,6 @@ export const useChatTurnStore = create<ChatTurnState>((set) => ({
       next[lastIdx] = { ...last, ok };
       return { toolChips: next };
     }),
+
+  setChatStatus: (chatStatus) => set({ chatStatus }),
 }));

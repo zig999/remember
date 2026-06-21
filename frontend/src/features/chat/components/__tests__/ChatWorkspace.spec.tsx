@@ -54,6 +54,7 @@ vi.mock("@/lib/http", async (importOriginal) => {
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatWorkspace } from "../ChatWorkspace";
+import { useGraphStore } from "../../../graph";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -154,5 +155,34 @@ describe("ChatWorkspace", () => {
     expect(
       container.querySelector('[data-testid="conversation-view-empty"]'),
     ).toBeNull();
+  });
+
+  it("calls useGraphStore.clear() on mount and on conversation change (TC-FE-04, EV-CG-05)", () => {
+    // Seed the store with a node so we can observe `clear()` flush it.
+    const id1 = "22222222-2222-2222-2222-222222222222";
+    mockUseSearch.mockReturnValue({ conversation: id1 });
+    useGraphStore.getState().addNodes({
+      sourceTool: "list_nodes",
+      nodes: [{ id: "n-seed", type: "concept", label: "S", state: "accepted" }],
+      links: [],
+    });
+    expect(useGraphStore.getState().nodes.size).toBe(1);
+
+    // Mount once — the effect runs and clears the seed.
+    renderWS();
+    expect(useGraphStore.getState().nodes.size).toBe(0);
+
+    // Seed again and re-render with a DIFFERENT conversation id; the effect
+    // must fire again because `conversation` changed.
+    useGraphStore.getState().addNodes({
+      sourceTool: "list_nodes",
+      nodes: [{ id: "n-seed-2", type: "concept", label: "S2", state: "accepted" }],
+      links: [],
+    });
+    expect(useGraphStore.getState().nodes.size).toBe(1);
+    const id2 = "33333333-3333-3333-3333-333333333333";
+    mockUseSearch.mockReturnValue({ conversation: id2 });
+    renderWS();
+    expect(useGraphStore.getState().nodes.size).toBe(0);
   });
 });

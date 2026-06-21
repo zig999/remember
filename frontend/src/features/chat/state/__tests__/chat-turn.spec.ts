@@ -31,6 +31,7 @@ describe("useChatTurnStore — initial state", () => {
     expect(s.abortController).toBeNull();
     expect(s.idempotencyKey).toBeNull();
     expect(s.isStreaming).toBe(false);
+    expect(s.chatStatus).toBe("idle");
   });
 });
 
@@ -94,6 +95,7 @@ describe("useChatTurnStore — actions", () => {
     s.setStreaming(true);
     s.appendText("hi");
     s.addToolChip({ tool: "search", argsSummary: "", ok: null });
+    s.setChatStatus("thinking");
     s.reset();
     const after = useChatTurnStore.getState();
     expect(after.streamingText).toBe("");
@@ -101,6 +103,21 @@ describe("useChatTurnStore — actions", () => {
     expect(after.abortController).toBeNull();
     expect(after.idempotencyKey).toBeNull();
     expect(after.isStreaming).toBe(false);
+    expect(after.chatStatus).toBe("idle");
+  });
+
+  it("setChatStatus stores each phase verbatim (TC-FE-04)", () => {
+    const { setChatStatus } = useChatTurnStore.getState();
+    setChatStatus("thinking");
+    expect(useChatTurnStore.getState().chatStatus).toBe("thinking");
+    setChatStatus("streaming");
+    expect(useChatTurnStore.getState().chatStatus).toBe("streaming");
+    setChatStatus("tool_running");
+    expect(useChatTurnStore.getState().chatStatus).toBe("tool_running");
+    setChatStatus("error");
+    expect(useChatTurnStore.getState().chatStatus).toBe("error");
+    setChatStatus("idle");
+    expect(useChatTurnStore.getState().chatStatus).toBe("idle");
   });
 });
 

@@ -23,9 +23,10 @@
  *  - Composer (TC-09, lives inside ConversationView)
  *  - Graph rendering (later wave — placeholder only here)
  */
-import type { FC } from "react";
+import { useEffect, type FC } from "react";
 import { chatRoute } from "@/router/routes";
 import { GlassSurface } from "@/components/ds/GlassSurface";
+import { useGraphStore } from "@/features/graph";
 import { ConversationView } from "./ConversationView";
 
 export const ChatWorkspace: FC = () => {
@@ -33,6 +34,17 @@ export const ChatWorkspace: FC = () => {
   // the param is absent or empty, the validator yields `{}` — destructuring
   // gives `undefined`, which drives the UI-01 empty state in ConversationView.
   const { conversation } = chatRoute.useSearch();
+
+  // EV-CG-05 (plan §8.2 / TC-FE-04): when the active conversation changes —
+  // including the `undefined → uuid` transition on first selection and the
+  // `uuid → undefined` transition on leaving — the subgraph must be cleared.
+  // Leaking the previous conversation's nodes into a new one would be a
+  // coherence (and privacy) bug. We call `getState().clear()` directly to
+  // avoid subscribing the workspace to the entire store (re-renders would
+  // dwarf the actual mutation cost).
+  useEffect(() => {
+    useGraphStore.getState().clear();
+  }, [conversation]);
 
   return (
     // `@container` marks the workspace as the query container and `flex-1`
