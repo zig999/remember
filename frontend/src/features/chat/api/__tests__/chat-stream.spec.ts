@@ -114,6 +114,101 @@ describe("parseSSEFrame", () => {
     );
     expect(out).toEqual({ type: "llm_start" });
   });
+
+  /* ----- graph_delta (TC-FE-03, AC-F.6) -----
+   *
+   * Pin the wire-to-surface mapping (snake `source_tool` → camel `sourceTool`)
+   * and the shallow-only validation contract: malformed top-level fields
+   * collapse to `null` (parser must not throw), but item-level malformation
+   * is intentionally tolerated — the mapping layer (`features/graph/lib/map`)
+   * owns item validation. Tying those tests here would couple the parser to
+   * the graph schema, exactly the leak the plan §7.3 forbids.
+   */
+
+  it("parses a graph_delta frame, mapping source_tool → sourceTool (AC-F.6)", () => {
+    const wire = {
+      source_tool: "traverse",
+      nodes: [
+        {
+          id: "n-1",
+          node_type: "Person",
+          canonical_name: "Rodrigo",
+          status: "active",
+        },
+      ],
+      links: [
+        {
+          id: "l-1",
+          source_node_id: "n-1",
+          target_node_id: "n-2",
+          link_type: "participates_in",
+          is_temporal: true,
+        },
+      ],
+    };
+    const out = parseSSEFrame(`event: graph_delta\ndata: ${JSON.stringify(wire)}`);
+    expect(out).toEqual({
+      type: "graph_delta",
+      sourceTool: "traverse",
+      nodes: wire.nodes,
+      links: wire.links,
+    });
+  });
+
+  it("parses a graph_delta with empty nodes/links arrays (AC-F.6, UC-CG-05)", () => {
+    // Empty-result tools (search/list_nodes/traverse with no hits) still emit
+    // a graph_delta — the dispatcher transitions to the "empty" branch on
+    // settle. The parser must NOT reject empty arrays.
+    const out = parseSSEFrame(
+      'event: graph_delta\ndata: {"source_tool":"search","nodes":[],"links":[]}',
+    );
+    expect(out).toEqual({
+      type: "graph_delta",
+      sourceTool: "search",
+      nodes: [],
+      links: [],
+    });
+  });
+
+  it("returns null when graph_delta omits source_tool", () => {
+    expect(
+      parseSSEFrame(
+        'event: graph_delta\ndata: {"nodes":[],"links":[]}',
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when graph_delta source_tool is not a string", () => {
+    expect(
+      parseSSEFrame(
+        'event: graph_delta\ndata: {"source_tool":42,"nodes":[],"links":[]}',
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when graph_delta nodes field is not an array", () => {
+    expect(
+      parseSSEFrame(
+        'event: graph_delta\ndata: {"source_tool":"traverse","nodes":{},"links":[]}',
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when graph_delta links field is not an array", () => {
+    expect(
+      parseSSEFrame(
+        'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[],"links":"oops"}',
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when graph_delta omits nodes entirely", () => {
+    expect(
+      parseSSEFrame(
+        'event: graph_delta\ndata: {"source_tool":"traverse","links":[]}',
+      ),
+    ).toBeNull();
+  });
 });
 
 /* ---------- streamChat ---------- */
@@ -185,6 +280,50 @@ describe("streamChat", () => {
     const frames = await collect(streamChat("https://bff/x", { content: "hi" }));
     expect(frames).toEqual<ChatSSEFrame[]>([
       { type: "text_delta", delta: "streamed" },
+      { type: "done", stop_reason: "end_turn" },
+    ]);
+    fetchSpy.mockRestore();
+  });
+
+  it("yields a graph_delta frame between tool_result and done (AC-F.6 wire path)", async () => {
+    // Integration check: graph_delta lands as a normal SSE frame in the
+    // generator output, in the order the BFF emitted it (after the matching
+    // tool_result, before any subsequent text_delta or done). Regressions
+    // here would mean the new union variant breaks the streaming loop.
+    const graphPayload = {
+      source_tool: "traverse",
+      nodes: [
+        {
+          id: "n-1",
+          node_type: "Person",
+          canonical_name: "Rodrigo",
+          status: "active",
+        },
+      ],
+      links: [],
+    };
+    const sse = [
+      'event: llm_start\ndata: {"iteration":1}\n\n',
+      'event: tool_start\ndata: {"tool":"traverse","args_summary":"start=n-1"}\n\n',
+      'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+      `event: graph_delta\ndata: ${JSON.stringify(graphPayload)}\n\n`,
+      'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+    ];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeSSEResponse(sse));
+
+    const frames = await collect(streamChat("https://bff/x", { content: "hi" }));
+    expect(frames).toEqual<ChatSSEFrame[]>([
+      { type: "llm_start" },
+      { type: "tool_start", tool: "traverse", argsSummary: "start=n-1" },
+      { type: "tool_result", ok: true },
+      {
+        type: "graph_delta",
+        sourceTool: "traverse",
+        nodes: graphPayload.nodes,
+        links: [],
+      },
       { type: "done", stop_reason: "end_turn" },
     ]);
     fetchSpy.mockRestore();

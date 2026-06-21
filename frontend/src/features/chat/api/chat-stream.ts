@@ -45,6 +45,8 @@
 
 /* ---------- public types ---------- */
 
+import type { GraphLinkWire, GraphNodeWire } from "@/features/graph";
+
 /** `llm_start` — emitted at the start of each agentic iteration. */
 export interface ChatSSEFrameLLMStart {
   readonly type: "llm_start";
@@ -82,14 +84,35 @@ export interface ChatSSEFrameError {
   readonly message: string;
 }
 
-/** Discriminated union of all 6 SSE frame variants. */
+/**
+ * `graph_delta` — knowledge-graph slice emitted after each graph-producing
+ * `tool_result` (TC-BE-02, plan §4.1). Aditive frame: turns without a graph
+ * tool never emit one. The dispatcher in `useSendMessage` maps the wire
+ * payload through `mapWireToGraphDelta` and pushes it into `useGraphStore`.
+ *
+ * Field mapping: the wire field `source_tool` (snake) becomes `sourceTool`
+ * (camel), mirroring the `args_summary` → `argsSummary` precedent on
+ * `tool_start`. Node/link items keep their snake-case wire shape and are
+ * forwarded as-is to the mapping layer (`features/graph/lib/map.ts`) —
+ * item-level validation is the dispatcher's responsibility, not the
+ * parser's (parser stays lightweight per plan §7.3).
+ */
+export interface ChatSSEFrameGraphDelta {
+  readonly type: "graph_delta";
+  readonly sourceTool: string;
+  readonly nodes: readonly GraphNodeWire[];
+  readonly links: readonly GraphLinkWire[];
+}
+
+/** Discriminated union of all 7 SSE frame variants. */
 export type ChatSSEFrame =
   | ChatSSEFrameLLMStart
   | ChatSSEFrameTextDelta
   | ChatSSEFrameToolStart
   | ChatSSEFrameToolResult
   | ChatSSEFrameDone
-  | ChatSSEFrameError;
+  | ChatSSEFrameError
+  | ChatSSEFrameGraphDelta;
 
 export interface StreamChatOptions {
   readonly headers?: Record<string, string>;
@@ -168,6 +191,25 @@ export function parseSSEFrame(block: string): ChatSSEFrame | null {
       const message = p["message"];
       if (typeof code !== "string" || typeof message !== "string") return null;
       return { type: "error", code, message };
+    }
+    case "graph_delta": {
+      // Wire shape (plan §4.1): { source_tool, nodes[], links[] }.
+      // We shallow-validate the three top-level fields here. Item-level
+      // validation (node_type slug, status enum, link endpoints, …) is the
+      // mapping layer's job (`features/graph/lib/map.ts`) — keeping it out of
+      // the parser avoids tying the SSE transport to the graph schema.
+      const sourceTool = p["source_tool"];
+      const nodes = p["nodes"];
+      const links = p["links"];
+      if (typeof sourceTool !== "string") return null;
+      if (!Array.isArray(nodes)) return null;
+      if (!Array.isArray(links)) return null;
+      return {
+        type: "graph_delta",
+        sourceTool,
+        nodes: nodes as readonly GraphNodeWire[],
+        links: links as readonly GraphLinkWire[],
+      };
     }
     default:
       return null;
