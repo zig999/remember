@@ -1,10 +1,12 @@
 # Chat -- Back-end Spec
 
-> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 3 tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` | Version: 2.0.0 | Status: draft | Layer: permanent
+> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 3 tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` | Version: 2.1.0 | Status: draft | Layer: permanent
 > Business spec: `../chat.spec.md` (v2.0.0)
-> REST contract: `../openapi.yaml` (v2.0.0)
+> REST contract: `../openapi.yaml` (v2.1.0)
 > Migration spec artifact: `./0004_chat_persistence.sql`
 > Normative deviation: this domain is an ADDITIVE deviation from `/remember-modelagem-v7.md` (which does not specify a chat surface). The inegociable rule of v7 §2 holds: the LLM never reaches the database directly; every tool opens its own short `BEGIN READ ONLY` transaction. The chat domain itself OWNS its own writes (conversation CRUD + message persistence) — those run via `withTransaction` on the BFF, NOT via tools. The v7 §11 compliance flow does NOT walk into chat tables (BR-37 of `.spec.md` / §6 of `.spec.md` "Compliance §11 note"). Reconcile via a future `/u-improve` pass that amends v7 §2 with the stateful chat transport.
+>
+> **v2.1 additive deviation (Chat-Graph projection).** The `sendMessage` SSE stream now emits a 7th frame, `graph_delta`, ONLY after a `tool_result` whose tool is one of the four graph-producing query tools (`traverse`, `get_node`, `list_nodes`, `search`). The frame carries a normalized subgraph projection (`{source_tool, nodes[], links[]}`) consumed by the SPA `GraphSpace`. The projection is route-owned (synthesised AFTER the `tool_result` event yielded by the agentic loop) — the agent service does NOT see this frame and the LLM is not aware of it. Frame is OBSERVATIONAL only — it carries no instructions and no new data beyond what the `tool_result` already produced. See BR-41. The `search` projector hydrates `items(kind=node).id` via `findNodesByIds` (one batched read; §4.1 G-A) to supply `node_type` + `canonical_name` — fields the `search` envelope itself does not carry. Source plan: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 / §9 Fase B / AC-B.7.
 
 ---
 
@@ -171,6 +173,23 @@ backend/src/modules/chat/
                                #   next Anthropic iteration. The persisted
                                #   chat_tool_call.result column carries the FULL
                                #   untruncated body (BR-32).
+    graph-normalizer.ts        # v2.1 (NEW): pure projection from a graph-
+                               #   producing tool_result envelope into
+                               #   GraphDeltaWire ({source_tool, nodes[],
+                               #   links[]}). Dispatches by tool name:
+                               #     - traverse / get_node / list_nodes: direct
+                               #       passthrough + is_temporal resolved via
+                               #       the catalog snapshot (fallback false on
+                               #       miss).
+                               #     - search: hydrates items(kind=node).id via
+                               #       findNodesByIds (ONE batched read, no N+1)
+                               #       to supply node_type + canonical_name —
+                               #       absent from the search envelope itself.
+                               #       Fragment/link items are NOT projected.
+                               #   Returns null for non-graph tools. Consumed
+                               #   by the route drain loop (BR-41); NEVER by
+                               #   the agent service. See `back-spec` boundary
+                               #   widening note below.
     output-guard.ts            # System-prompt marker scrubber (BR-20).
     turn-registry.ts           # In-process Map<conversation_id, AbortController>.
                                #   register(convId, controller), get(convId),
@@ -208,10 +227,14 @@ backend/src/modules/chat/
 
 > The boundary is enforced by import direction: `routes/` imports `service/`
 > and `repository/`; `service/` imports `repository/` and `prompts/`. Nothing
-> inside `chat/` imports from `query-retrieval` or `knowledge-graph` directly
-> — the only coupling is the `McpServer` registry (passed via `deps`) and the
-> resolved `McpTool` references it returns. The repository imports `pg` (PoolClient)
-> only; it never invokes higher-level services.
+> inside `chat/` imports from `query-retrieval` directly. The only allowed
+> `knowledge-graph` imports are READ-ONLY: the `CatalogSnapshot` type and the
+> `findNodesByIds` repository helper — both required by `graph-normalizer.ts`
+> (v2.1, BR-41) for catalog-driven `is_temporal` resolution and search
+> hydration. The `McpServer` registry (passed via `deps`) and the resolved
+> `McpTool` references it returns remain the only coupling to other domains
+> for tool dispatch. The chat repository imports `pg` (PoolClient) only; it
+> never invokes higher-level services.
 
 ### 1.2 ChatAgentService contract
 
@@ -226,6 +249,16 @@ export type ChatEvent =
                             arguments: unknown; result: unknown | null;
                             is_error: boolean; error_message: string | null;
                             duration_ms: number }
+  // NEW in v2.1 — route-owned synthesis after a graph-producing tool_result
+  // (BR-41). The agent service NEVER yields this variant; the route handler
+  // synthesises it in-place from the prior `tool_result.result` and writes
+  // it through the same `projectSseFrame` switch so the union stays
+  // exhaustively typed. Persistence: NONE — graph_delta is NOT persisted
+  // to chat_tool_call (that row is owned by the originating tool_result;
+  // BR-32 is the audit trail).
+  | { type: "graph_delta"; source_tool: string;
+                           nodes: ReadonlyArray<GraphNodeWire>;
+                           links: ReadonlyArray<GraphLinkWire> }
   | { type: "done";        stop_reason: DoneStopReason; model: string;
                            tokens_in: number; tokens_out: number;
                            // NEW in v2: assistant content blocks for BR-29 persistence.
@@ -236,6 +269,26 @@ export type ChatEvent =
                            content: ReadonlyArray<unknown>;
                            tokens_in: number; tokens_out: number;
                            synthetic_stop_reason: "provider_error" | "internal_error" };
+
+// NEW in v2.1 — wire shape of nodes/links carried inside the `graph_delta`
+// SSE frame. snake_case to match the rest of the SSE envelope (BR-41 §4.1
+// of `temp/chat-graphspace-plan.md`).
+export interface GraphNodeWire {
+  readonly id: string;                       // UUID
+  readonly node_type: string;                // catalog slug ("person", "organization", …)
+  readonly canonical_name: string;
+  readonly status: "active" | "needs_review" | "merged" | "deleted";
+}
+export interface GraphLinkWire {
+  readonly id: string;
+  readonly source_node_id: string;
+  readonly target_node_id: string;
+  readonly link_type: string;                // catalog slug
+  readonly is_temporal: boolean;             // resolved via the catalog snapshot
+  readonly is_in_effect?: boolean;
+  readonly status?: string;                  // assertion_status
+  readonly flags?: ReadonlyArray<"uncertain" | "disputed" | "low_confidence">;
+}
 
 export type DoneStopReason =
   | "end_turn" | "max_tokens" | "stop_sequence"
@@ -911,6 +964,26 @@ SELECT
 Conversation absence (BR-22) -> 404 BEFORE the query.
 **Error returned:** HTTP 404 (absent); 200 otherwise.
 
+### BR-41 -- `graph_delta` SSE frame projection (Chat-Graph)
+**Related UC:** UC-02 (variant: a graph-producing tool is invoked) — referenced as **UC-CG-01..UC-CG-04** in the front-side feature plan (`temp/chat-graphspace-plan.md` §11).
+**Where to validate:** route handler (`sendMessage`) — inside the drain loop, immediately AFTER writing the SSE `tool_result` frame for the current `ChatEvent.tool_result`. The projection is route-owned; the agent service does NOT yield this variant (the `graph_delta` arm of the `ChatEvent` union exists ONLY so the `projectSseFrame` switch stays exhaustive at compile time — §1.2).
+**Description:**
+
+1. **Trigger.** The drain loop receives a `ChatEvent.tool_result` with `ok === true`. If `evt.tool` is one of `{traverse, get_node, list_nodes, search}` AND a `CatalogSnapshot` is available on `ChatRouteDeps`, the route invokes `normalizeToolResult(evt.tool, evt.result, catalog, client?)` from `service/graph-normalizer.ts`. Failed tool calls (`ok === false`) NEVER produce a `graph_delta` — by construction, `evt.result` is `null` on failure and the projector is gated behind `evt.ok` to avoid surfacing a misleading "graph data arrived" signal (consistent with `chat-graphspace-plan.md` §8.2 EV-CG-03 / UC-CG-06).
+2. **Normalization (per tool).**
+   - `traverse`: `{starting_node_id, nodes[], links[]}` -> `{source_tool:"traverse", nodes: nodes.map(pickNodeWire), links: links.map(pickLinkWire)}`. `is_temporal` for each link is resolved by looking up `link_type` in the `CatalogSnapshot.linkTypeByName`; a catalog miss falls back to `is_temporal: false` (defensive default; never throws).
+   - `get_node`: `{node, aliases[], attributes[]}` -> `{source_tool:"get_node", nodes:[pickNodeWire(node)], links:[]}`.
+   - `list_nodes`: `{nodes[]} (paginated)` -> `{source_tool:"list_nodes", nodes: nodes.map(pickNodeWire), links:[]}`.
+   - `search` (G-A, hydration): `{items[]} (kind in {node, link, fragment})`. Step (a) collect `items.filter(i => i.kind === "node").map(i => i.id)` deduped, in first-seen order. Step (b) if non-empty, call `findNodesByIds(client, ids)` ONCE (no N+1; the function uses `WHERE id = ANY($1::uuid[])` per `backend/src/modules/knowledge-graph/repository/graph.repository.ts:346`). Step (c) hydrate ids -> `NodeSummary` and emit `{source_tool:"search", nodes: hydrated, links: []}`. Items of `kind in {link, fragment}` are NOT projected — they remain visible only in the assistant text-channel. Node ids absent from the hydration result (rare race: deleted between `search` and the hydration) are dropped silently. With zero `kind:node` items the projector issues NO SQL (early return) and emits an empty delta.
+3. **Wire emission.** The projector returns `GraphDeltaWire | null`. When non-null AND the catalog snapshot is available, the route synthesises a `ChatEvent.graph_delta` and writes it through `projectSseFrame` as `event: graph_delta\ndata: <JSON>\n\n`. Frame ordering is contractual: the `graph_delta` ALWAYS follows its originating `tool_result` in the SAME drain-loop iteration. When the catalog snapshot is absent (degraded mode — e.g. boot raced ahead of the catalog), the path is silently skipped; `tool_result` still emits normally.
+4. **Defensive guard.** The route wraps `normalizeToolResult` in a `try/catch` and logs WARN `chat.graph_delta_normalize_failure` on exception (e.g. `findNodesByIds` rejection); the SSE stream is NOT terminated — only the optional projection is dropped. Rationale: the `tool_result` already emitted (the user has the answer in the text channel); aborting the entire turn because the optional graph projection failed would be disproportionate.
+5. **Persistence.** `graph_delta` is NOT persisted to `chat_tool_call`. The audit trail for the underlying tool invocation lives on the originating `chat_tool_call` row inserted in step 6 of BR-29 — BR-32 is the single source of truth for tool-call persistence. Re-running the same conversation cannot reproduce the `graph_delta` (no replay path for it). Refresh requires re-issuing the tool call.
+6. **Idempotent replay (UC-07).** The replay path described in BR-27 emits `llm_start{1}` + `text_delta(<stored>)` + `done{stored}` and closes — NO `tool_result`, NO `graph_delta`. The SPA's `useGraphStore` is responsible for ignoring the replay path (no tool_start signal), per `chat-graphspace-plan.md` §8 sequence.
+
+**Error returned:** none (observational frame). Projector exceptions are absorbed (WARN); the SSE stream remains healthy.
+
+> **Search hydration deviation (G-A).** The `search` tool envelope does NOT carry `node_type` / `canonical_name` per the existing query-retrieval contract. Surfacing those fields on a `graph_delta` would otherwise require changing the `search` envelope schema (a breaking change touching every existing client of `query-retrieval`). The chosen alternative — hydrating `search` ids server-side INSIDE the chat domain — is a controlled deviation from the chat-module boundary rule (cf. §1.1 boundary note above): `chat/service/graph-normalizer.ts` imports `findNodesByIds` from `knowledge-graph/repository/graph.repository.ts`. The deviation is approved (`temp/chat-graphspace-plan.md` §10 G-A) and explicitly preserves the `query-retrieval` boundary (no imports from there); it should be revisited if/when `search` evolves to carry `NodeSummary` natively.
+
 ---
 
 ## 5. State Machine (ST)
@@ -950,8 +1023,8 @@ Mirrors the business state machine of `.spec.md` §5.2. Technical guards added b
 | `llm_streaming(i)` | `llm_streaming(i)` | SDK `text_delta` | `delta.length >= 1` (BR-08), passes BR-20 guard | UC-02 |
 | `llm_streaming(i)` | `tool_pending(i,t)` | SDK stop = `tool_use` | tool name in resolved catalog (BR-05) | UC-02 |
 | `tool_pending(i,t)` | `tool_running(i,t)` | service yields `tool_start{t}` | redacted summary (BR-09) | UC-02 |
-| `tool_running(i,t)` | `iteration_completed(i)` | tool returns `{ok}` | `INSERT chat_tool_call` (BR-32) | UC-02 |
-| `tool_running(i,t)` | `iteration_completed(i)` | tool timeout | wall-clock > `TOOL_TIMEOUT_MS` (BR-17); persist with `is_error=true` (BR-32) | UC-02 |
+| `tool_running(i,t)` | `iteration_completed(i)` | tool returns `{ok}` | `INSERT chat_tool_call` (BR-32); if `t in {traverse,get_node,list_nodes,search}` and `ok=true` and catalog available, emit `graph_delta` AFTER `tool_result` (BR-41) | UC-02 |
+| `tool_running(i,t)` | `iteration_completed(i)` | tool timeout | wall-clock > `TOOL_TIMEOUT_MS` (BR-17); persist with `is_error=true` (BR-32); NO `graph_delta` (BR-41) | UC-02 |
 | `iteration_completed(i)` | `llm_streaming(i+1)` | next iteration begins | `i+1 <= MAX_ITERATIONS` (BR-15); truncate prior result (BR-13) | UC-02 |
 | `iteration_completed(i)` | `done_max_iterations` | ceiling hit | `i+1 > MAX_ITERATIONS` (BR-15) | UC-03 |
 | any active | `done_error` | SDK error / loop exception | error mapped to `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` / `SYSTEM_INTERNAL_ERROR` (BR-11, BR-23) | UC-02 (`10a`/`12a`) |
@@ -982,6 +1055,7 @@ Mirrors the business state machine of `.spec.md` §5.2. Technical guards added b
 | Neon (PostgreSQL 17) — chat tables | Owned datastore | Conversation CRUD, message persistence, tool-call persistence, summary/title updates. Uses the existing BFF `pg` pool (`min=2, max=10`, `sslmode=require`). | pg statement timeout: process-wide default (none set today). | Repository errors propagate to the route; routes map known pg `23505` (UNIQUE PARTIAL conflict on idempotency_key) into the BR-27 recovery path. Other DB errors -> 500 `SYSTEM_INTERNAL_ERROR` (REST envelope pre-stream; SSE `error` in-stream when already hijacked). |
 | In-process `McpServer` registry (consumed) | Tool catalog source | Resolve the 13 read-only `query`-toolset tools (BR-05). | n/a (in-process). | Resolution failure -> route family not mounted; ERROR log at boot. |
 | `query-retrieval` + `knowledge-graph` services (consumed) | DB read via existing tool handlers | Each agentic tool invocation calls into the existing service code, which opens its OWN `BEGIN READ ONLY` transaction (`withReadOnly`). | Per-tool wall-clock: `TOOL_TIMEOUT_MS` (default 15s, BR-17). | On timeout -> failed `tool_result` fed back + persisted as `chat_tool_call` with `is_error=true`. Underlying SQL is NOT cancelled in v2 (limitation carried from v1). |
+| `knowledge-graph.repository.findNodesByIds` (consumed, v2.1 — BR-41) | DB read for `graph_delta` `search` hydration (G-A) | After a successful `search` `tool_result`, the route's drain loop calls `withReadOnly(pool, client => normalizeToolResult("search", evt.result, catalog, client))` — a SINGLE batched `SELECT ... WHERE id = ANY($1::uuid[])` to hydrate `items(kind=node).id` into `NodeSummary` so the wire frame can carry `node_type` + `canonical_name`. No N+1; zero `kind:node` items -> NO SQL. | Inherits the per-turn wall-clock (BR-16); no dedicated timeout. | Hydration failure -> WARN `chat.graph_delta_normalize_failure`, `graph_delta` frame skipped, SSE stream stays healthy (BR-41 step 4). |
 
 ---
 
@@ -1054,6 +1128,7 @@ WARN log shapes:
 - `chat.summary_refresh_failure` (BR-33 background failure).
 - `chat.title_distillation_failure` (BR-34 background failure).
 - `chat.output_guard_drop` (BR-20).
+- `chat.graph_delta_normalize_failure` (BR-41 — projector or `search` hydration failed; the SSE stream is NOT terminated, only the optional `graph_delta` is dropped).
 
 ---
 
@@ -1098,6 +1173,7 @@ Reused codes (already registered in the global catalog — no new code needed):
 - **Conversation listing p95:** < 50 ms — single index range scan on `idx_chat_conversation_created_at_id_desc` with `LIMIT 21`.
 - **Message listing p95:** < 80 ms — index scan on `(conversation_id, created_at)` with `LIMIT 51`.
 - **Distillation latency (background):** off the request path; budget governed by the utility model's response time + a single `UPDATE`. Failures logged WARN, do not block the next turn.
+- **`graph_delta` projection (v2.1, BR-41) p95:** < 50 ms — `traverse`/`get_node`/`list_nodes` are pure passthrough + catalog lookup (in-process map). `search` adds ONE batched `findNodesByIds` round-trip (single index scan on `node_pkey`, expected 1-3 ms on Neon). The projection runs inline in the drain loop AFTER the `tool_result` is on the wire; the user-visible latency cost is added to the inter-frame gap between `tool_result` and the subsequent `text_delta` of the next iteration.
 
 ---
 
@@ -1115,6 +1191,8 @@ Reused codes (already registered in the global catalog — no new code needed):
 - **Distillation jobs are fire-and-forget IN-PROCESS.** No queue, no retry, no persistence of failed attempts. Acceptable in v1: single-owner, low-throughput. If the BFF crashes between the terminal frame and the distillation kickoff, the summary/title is simply not refreshed for that turn — the next turn re-checks the conditions (BR-33 step 1, BR-34 step 1) and runs the job again.
 - **`(content, model)` comparison for idempotent replay.** BR-27 compares the persisted single-text-block jsonb to the incoming string by unwrapping `content[0].text` and comparing the strings literally. The model-side `model` column is compared as the literal value (NULL == NULL). Any future change to the persisted shape (e.g. multi-block user messages) requires this comparator to evolve.
 - **Boot diagnostic for missing tools.** Carried from v1: when `buildChatToolCatalog(mcp)` fails to resolve, the entire chat route family is not mounted — all 9 endpoints return 404. The BFF logs ERROR with the resolved-vs-expected diff at boot.
+- **`graph_delta` requires the catalog snapshot (v2.1, BR-41).** The route reads the `CatalogSnapshot` from `ChatRouteDeps` (forwarded by `app.ts` at boot). When the snapshot is unavailable (degraded mode — e.g. boot raced ahead of the catalog loader), the route silently SKIPS `graph_delta` emission while keeping `tool_result` intact. This is a degraded UX, NOT a turn failure. There is no automatic recovery path other than restart; the BFF should log ERROR at boot if the catalog fails to load (existing `knowledge-graph` invariant).
+- **`graph_delta` is not persisted; not replayable.** Per BR-41 step 5, the frame is observational only — the audit trail for the originating tool call lives on the existing `chat_tool_call` row (BR-32). The idempotent-replay path (UC-07, BR-27) does NOT re-emit `graph_delta`; clients reconstructing the visual graph from a replay must re-issue the tool call (out of scope for v2.1).
 
 ---
 
@@ -1145,3 +1223,4 @@ Reused codes (already registered in the global catalog — no new code needed):
 | 1.1.0 | 2026-06-19 | Back Spec Agent | refine | Added §1.1 file layout, §1.2 `ChatAgentService` contract; added BR-23/BR-24 invariants; added §8 env table, §9 pino schema, §10 error catalog, §11 budgets. | -- |
 | 1.1.1 | 2026-06-19 | Back Spec Agent | patch | Corrected `VALIDATION_INVALID_FORMAT` pre-stream HTTP status from 400 to 422. | REPAIR-1 |
 | 2.0.0 | 2026-06-20 | Back Spec Agent | major (breaking) | **Stateful conversations.** Adopts `.spec.md` v2.0.0 / `openapi.yaml` v2.0.0. (a) §2 Data Model is no longer empty: 3 owned tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` (spec artifact at `./0004_chat_persistence.sql`; DB Safety Rule — NOT applied at spec time). NO `user_id` column anywhere (single-owner). Compliance §11 exclusion is intentional (BR-37). (b) NEW §3 Repository Layer documenting the `chat.repository.ts` contract (raw `pg` parameterized, `PoolClient`-based, reusing `withTransaction`/`withReadOnly` from `modules/curation/service/transaction.ts`). (c) §1.1 file layout extended: added `repository/chat.repository.ts`, `service/conversation.service.ts`, `service/context-builder.ts`, `service/distillation.service.ts`, `service/turn-registry.ts`; the existing `chat-agent.service.ts` keeps its scope (agentic loop only — DB reads now come from `context-builder`). (d) §1.2 `ChatEvent.tool_result` enriched with full per-call payload (arguments, result, is_error, error_message, duration_ms) and `ChatEvent.done` / `ChatEvent.error` carry the `content` blocks + token sums for BR-29 persistence. (e) §4 Business Rules: BR-01..BR-24 preserved (turn semantics unchanged) with edits to "Where to validate" reflecting the new repository + service split; added BR-25..BR-40 (archived = no-write, Idempotency-Key required, idempotent replay, single in-flight turn, persistence sequencing, conversation create body, context reconstruction, tool-call persistence, rolling summary, title distillation, conversation listing pagination, patch body, cascade delete + compliance exclusion, cancel endpoint, message listing pagination, usage aggregation). (f) §5 State machine extended: added ST-01 conversation lifecycle; ST-02 turn lifecycle now includes the `user_row_persisted`, `replay_open`, and `assistant_row_persisted` states. (g) §7 External Integrations: added the utility-model call (`CHAT_UTILITY_MODEL` for distillation jobs) and the chat-owned Neon writes. (h) §8 env table adds five additive optional vars (`CHAT_UTILITY_MODEL`, `CHAT_SUMMARY_AFTER_TURNS`, `CHAT_RECENT_WINDOW`, `CHAT_TITLE_ENABLED`, `CHAT_SUMMARY_ENABLED`). (i) §9 pino schema gains `conversation_id`, `message_id`, `idempotent_replay`; new counters/histograms for replay, in-progress conflict, summary refresh, title distillation. (j) §10 error catalog: 3 new business codes (`BUSINESS_CONVERSATION_ARCHIVED`, `BUSINESS_TURN_IN_PROGRESS`, `BUSINESS_IDEMPOTENCY_MISMATCH`) registered in `service/errors.ts`. (k) §11 budgets refined with the chat-table DB cost; §12 constraints add the in-process turn registry, distillation fire-and-forget model, `(content, model)` comparator caveat; §13 out-of-scope reaffirms the BACKEND-ONLY scope and the migration-not-applied stance. (l) PRESERVED from v1: agentic loop semantics, READ-ONLY tool catalog, SSE framing, sanity ceilings, abort semantics, pino observability shape (extended). | -- |
+| 2.1.0 | 2026-06-21 | Back Spec Agent | minor (additive) | **Chat-Graph projection (additive 7th SSE frame).** Adopts `openapi.yaml` v2.1.0. Source: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 wire format + §9 Fase B + AC-B.7. (a) Header amended with the v2.1 additive deviation paragraph documenting the route-owned `graph_delta` projection. (b) §1.1 file layout extended with `service/graph-normalizer.ts` (pure projection + dispatcher; consumes `CatalogSnapshot.linkTypeByName` and `findNodesByIds` from `knowledge-graph`). (c) §1.1 boundary note rewritten: the chat module is now permitted READ-ONLY imports of `CatalogSnapshot` (type) and `findNodesByIds` (value) from `knowledge-graph`; the `query-retrieval` boundary remains intact. (d) §1.2 `ChatEvent` union extended with a `graph_delta` variant (route-owned synthesis — the agent service NEVER yields it); new wire types `GraphNodeWire` / `GraphLinkWire` (snake_case). (e) NEW §4 BR-41 documents the projection contract end-to-end: trigger (`ok=true` + graph tool name), per-tool normalization (traverse / get_node / list_nodes / search-with-hydration), wire emission ordering (always AFTER the originating `tool_result`), defensive WARN-and-skip on exception, non-persistence, and non-replay. (f) §5 ST-02 transition row `tool_running -> iteration_completed (ok)` annotated with the `graph_delta` emission contract. (g) §7 External Integrations: new row for `findNodesByIds` consumption (search hydration / G-A); same Neon pool, no new connection. (h) §9 WARN log shapes: added `chat.graph_delta_normalize_failure`. (i) §11 budgets: new `graph_delta projection p95 < 50 ms` line. (j) §12 known constraints: catalog-snapshot dependency, non-persistence, non-replay. (k) Search hydration G-A deviation registered as a normative note inline in BR-41 (chat module imports `findNodesByIds`; `query-retrieval` boundary preserved). PRESERVED from v2.0: all existing BRs (no renumbering, no removals), data model unchanged, no new env var, no migration. | -- |

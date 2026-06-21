@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.0.0"
+  version: "2.1.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -289,11 +289,21 @@ paths:
 
         ## Streaming contract
 
-        SSE frame schemas (identical to v1; see `chat.spec.md` §5.2):
+        SSE frame schemas (v2.1 — 7 frames total; the `graph_delta` frame is
+        ADDITIVE since v2.0 documented 6 frames; see `chat.back.md` BR-41 and
+        `chat.spec.md` §5.2):
           - `llm_start`     -> { iteration: int >= 1 }
           - `text_delta`    -> { delta: string (>= 1 char) }
           - `tool_start`    -> { tool: string (one of the 13), args_summary: string (<= 200 chars, redacted) }
           - `tool_result`   -> { tool: string, ok: boolean }
+          - `graph_delta`   -> { source_tool: "traverse"|"get_node"|"list_nodes"|"search",
+                                 nodes:  [ { id: uuid, node_type: string, canonical_name: string,
+                                             status: "active"|"needs_review"|"merged"|"deleted" }, ... ],
+                                 links:  [ { id: uuid, source_node_id: uuid, target_node_id: uuid,
+                                             link_type: string, is_temporal: bool,
+                                             is_in_effect?: bool, status?: string,
+                                             flags?: ("uncertain"|"disputed"|"low_confidence")[] }, ... ] }
+                                 # (additive in v2.1, BR-41 — see "graph_delta semantics" below)
           - `done`          -> { stop_reason: "end_turn" | "max_tokens" | "stop_sequence"
                                               | "max_iterations" | "turn_timeout"
                                               | "cancelled",
@@ -305,10 +315,44 @@ paths:
         Frame ordering invariants:
           1. At least one `llm_start` (iteration = 1) before any `text_delta` or `tool_start`.
           2. Every `tool_start` is followed by exactly one `tool_result` for the same `tool`.
-          3. The stream ALWAYS terminates with EITHER one `done` frame OR one
+          3. When the `tool_result.tool` is one of `{traverse, get_node, list_nodes, search}`
+             AND `tool_result.ok === true`, the stream MAY emit exactly one `graph_delta`
+             frame IMMEDIATELY AFTER the `tool_result` (same iteration, before any
+             subsequent `llm_start` / `text_delta` / `tool_start`). The `graph_delta` is
+             dropped silently when the catalog snapshot is unavailable at the BFF or when
+             the projector raises an exception (degraded mode; see BR-41 step 4).
+          4. Turns with no graph-producing tool calls emit no `graph_delta` frame.
+          5. The stream ALWAYS terminates with EITHER one `done` frame OR one
              `error` frame, then closes. There is no other final frame
              (chat.spec.md BR-24).
-          4. After `error`, no further frames are emitted.
+          6. After `error`, no further frames are emitted.
+
+        ## graph_delta semantics (v2.1, additive — BR-41)
+
+        The `graph_delta` frame projects a normalized subgraph derived from the
+        immediately preceding `tool_result`. It is OBSERVATIONAL: it carries no
+        instructions and no new data beyond what the `tool_result` already
+        produced server-side. The SPA `GraphSpace` consumes it to render the
+        visual graph incrementally, deduping nodes by `id` and revealing only
+        the inéditos (chat-graphspace-plan §6.4).
+
+        Per-tool projection rules:
+          - `traverse`: nodes + links from the traversal envelope; `is_temporal`
+            on each link is resolved via the BFF's `CatalogSnapshot` (lookup by
+            `link_type`; catalog miss -> `is_temporal: false` defensive default).
+          - `get_node`: one node, zero links.
+          - `list_nodes`: nodes of the current page, zero links.
+          - `search`: ONLY `items(kind=node).id`; the BFF hydrates the ids
+            server-side via a single batched `findNodesByIds` to supply
+            `node_type` + `canonical_name` (the `search` envelope itself does
+            not carry these fields — registered deviation G-A; see BR-41 search
+            normalization). Items of `kind in {link, fragment}` are NOT
+            projected — they remain visible in the assistant text channel only.
+
+        The frame is NOT persisted to `chat_tool_call` (BR-32 owns audit for
+        the originating tool invocation). The idempotent-replay path (BR-27,
+        UC-07) does NOT re-emit `graph_delta` — clients reconstructing the
+        visual graph from a replay must re-issue the tool call.
 
         ## Pre-stream errors (no SSE opened yet)
 
@@ -399,7 +443,7 @@ paths:
               schema: { $ref: "#/components/schemas/SSEStream" }
               examples:
                 happyPath:
-                  summary: "Two-iteration turn with one tool call, then end_turn"
+                  summary: "Two-iteration turn with one graph tool call (search hydrated), then end_turn — includes the v2.1 graph_delta frame"
                   value: |
                     event: llm_start
                     data: {"iteration":1}
@@ -409,6 +453,9 @@ paths:
 
                     event: tool_result
                     data: {"tool":"search","ok":true}
+
+                    event: graph_delta
+                    data: {"source_tool":"search","nodes":[{"id":"33333333-3333-3333-3333-333333333333","node_type":"person","canonical_name":"Rodrigo","status":"active"}],"links":[]}
 
                     event: llm_start
                     data: {"iteration":2}
@@ -421,6 +468,49 @@ paths:
 
                     event: done
                     data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1234,"tokens_out":78}
+                graphDeltaTraverse:
+                  summary: "Turn whose graph tool is `traverse` — graph_delta carries nodes + links with is_temporal"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"traverse","args_summary":"starting_node_id=\"33333333-...\", depth=2"}
+
+                    event: tool_result
+                    data: {"tool":"traverse","ok":true}
+
+                    event: graph_delta
+                    data: {"source_tool":"traverse","nodes":[{"id":"33333333-3333-3333-3333-333333333333","node_type":"person","canonical_name":"Rodrigo","status":"active"},{"id":"44444444-4444-4444-4444-444444444444","node_type":"project","canonical_name":"Apollo","status":"active"}],"links":[{"id":"55555555-5555-5555-5555-555555555555","source_node_id":"33333333-3333-3333-3333-333333333333","target_node_id":"44444444-4444-4444-4444-444444444444","link_type":"works_at","is_temporal":true,"is_in_effect":true}]}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"Rodrigo trabalha no projeto Apollo desde 2025."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1500,"tokens_out":42}
+                noGraphTool:
+                  summary: "Turn with a catalog tool — no graph_delta is emitted"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"list_node_types","args_summary":"limit=20"}
+
+                    event: tool_result
+                    data: {"tool":"list_node_types","ok":true}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"Os tipos de nó disponíveis são: pessoa, organização, projeto, evento, documento, ..."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":900,"tokens_out":35}
                 idempotentReplay:
                   summary: "Same Idempotency-Key + identical body -> replay"
                   value: |
@@ -1248,7 +1338,122 @@ components:
       type: string
       description: |
         Server-Sent Events stream. Each frame is `event: <name>\ndata: <JSON>\n\n`.
-        Possible `<name>` values: `llm_start`, `text_delta`, `tool_start`,
-        `tool_result`, `done`, `error`. The JSON payload schemas are
-        `LlmStartEvent`, `TextDeltaEvent`, `ToolStartEvent`, `ToolResultEvent`,
-        `DoneEvent`, `ErrorEvent` respectively.
+        Possible `<name>` values (v2.1): `llm_start`, `text_delta`, `tool_start`,
+        `tool_result`, `graph_delta`, `done`, `error`. The JSON payload schemas
+        are `LlmStartEvent`, `TextDeltaEvent`, `ToolStartEvent`,
+        `ToolResultEvent`, `GraphDeltaEvent`, `DoneEvent`, `ErrorEvent`
+        respectively. The `graph_delta` frame is ADDITIVE in v2.1 (chat.back.md
+        BR-41) — clients written against v2.0 keep working: they will simply
+        not parse the new frame name (SSE clients ignore unknown event names by
+        default).
+
+    GraphNodeWire:
+      type: object
+      description: |
+        Shape of a node inside a `graph_delta` frame (chat.back.md BR-41 / §1.2).
+        snake_case is intentional — consistent with the rest of the SSE
+        envelope. The fields mirror the BFF's internal `NodeSummary` shape
+        without exposing the catalog id of `node_type` (the catalog slug name
+        is carried instead so the SPA can look up icon/color from its own
+        catalog snapshot).
+      required: [id, node_type, canonical_name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "33333333-3333-3333-3333-333333333333"
+        node_type:
+          type: string
+          description: "Catalog slug, e.g. `person`, `organization`, `project`."
+          example: "person"
+        canonical_name:
+          type: string
+          example: "Rodrigo"
+        status:
+          type: string
+          enum: [active, needs_review, merged, deleted]
+          example: "active"
+
+    GraphLinkWire:
+      type: object
+      description: |
+        Shape of a link inside a `graph_delta` frame (chat.back.md BR-41 / §1.2).
+        `is_temporal` is resolved server-side via the `CatalogSnapshot` (catalog
+        miss -> `false` defensive default — the link will render with the
+        non-temporal style, which is harmless for an unknown catalog entry).
+        Optional fields (`is_in_effect`, `status`, `flags`) are omitted when the
+        underlying `traverse` envelope did not carry them.
+      required: [id, source_node_id, target_node_id, link_type, is_temporal]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "55555555-5555-5555-5555-555555555555"
+        source_node_id:
+          type: string
+          format: uuid
+          example: "33333333-3333-3333-3333-333333333333"
+        target_node_id:
+          type: string
+          format: uuid
+          example: "44444444-4444-4444-4444-444444444444"
+        link_type:
+          type: string
+          description: "Catalog slug, e.g. `works_at`, `located_in`."
+          example: "works_at"
+        is_temporal:
+          type: boolean
+          description: |
+            Resolved server-side from the catalog. `true` -> the SPA renders a
+            solid edge; `false` -> dashed (front-spec design-system tokens.md §7).
+          example: true
+        is_in_effect:
+          type: boolean
+          description: |
+            Optional. When present, the SPA may fade the edge if `false` (link
+            is recorded but not in effect today). Derived in the BFF from the
+            `link.is_in_effect` view column.
+          example: true
+        status:
+          type: string
+          description: "Optional assertion status of the link."
+          example: "accepted"
+        flags:
+          type: array
+          description: |
+            Optional confidence flags on the link. Map to the SPA's
+            `StateBadge` ConfidenceState in the GraphSpace.
+          items:
+            type: string
+            enum: [uncertain, disputed, low_confidence]
+          example: ["uncertain"]
+
+    GraphDeltaEvent:
+      type: object
+      description: |
+        Payload of the v2.1 `graph_delta` SSE frame (chat.back.md BR-41). Emitted
+        exactly once IMMEDIATELY AFTER a successful `tool_result` whose tool is
+        one of `{traverse, get_node, list_nodes, search}`. Turns with no graph
+        tool calls emit no `graph_delta`. `nodes` MAY be empty (e.g. `search`
+        with no `kind:node` items, or a `traverse` that returned no neighbors).
+        `links` MAY be empty independently of `nodes`.
+      required: [source_tool, nodes, links]
+      properties:
+        source_tool:
+          type: string
+          enum: [traverse, get_node, list_nodes, search]
+          description: |
+            Identifies the originating tool. The SPA uses this to choose the
+            consolidation strategy (e.g. `traverse` carries links; the others
+            do not).
+          example: "traverse"
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/GraphNodeWire" }
+        links:
+          type: array
+          description: |
+            Always `[]` for `source_tool in {get_node, list_nodes, search}` —
+            those tools project nodes only. Populated by `traverse` from the
+            traversal envelope.
+          items: { $ref: "#/components/schemas/GraphLinkWire" }
