@@ -12,6 +12,7 @@
 // is built — TC-01 only delivers the shell.
 
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import fastifyCors from "@fastify/cors";
 import type { Logger } from "pino";
 import type { Pool } from "pg";
 
@@ -94,6 +95,24 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     bodyLimit: 11 * 1024 * 1024,
     disableRequestLogging: false,
     trustProxy: env.NODE_ENV === "production",
+  });
+
+  // CORS — registered FIRST so its `onRequest` hook runs before the `/api/v1`
+  // auth preHandler. That ordering is what makes preflight work: a browser
+  // OPTIONS request is answered (and `Access-Control-Allow-Origin` set) by the
+  // plugin before the JWT check would otherwise reject it. The header is also
+  // attached to error responses (e.g. a 401 on an expired token), so the SPA
+  // can read the status and trigger its silent-refresh retry. The SPA sends a
+  // Bearer `Authorization` header and no cookies, so credentials are off; the
+  // allowed request headers (Authorization, Content-Type, Idempotency-Key, …)
+  // are reflected from the preflight request.
+  const corsOrigins = env.CORS_ORIGINS ?? [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ];
+  await app.register(fastifyCors, {
+    origin: corsOrigins,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   // Global error handler — must be set before any route registers.

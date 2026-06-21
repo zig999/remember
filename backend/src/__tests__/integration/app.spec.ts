@@ -237,4 +237,75 @@ describe("Fastify app (integration)", () => {
       await app.close();
     }
   });
+
+  // CORS — without this the SPA (a different origin than the BFF) is blocked by
+  // the browser at the preflight before any request reaches a handler. The
+  // failure is invisible server-side (no ACAO header), so we pin the contract.
+  describe("CORS", () => {
+    const ORIGIN = "http://localhost:5173";
+
+    function buildCorsApp() {
+      return buildApp({
+        env: envFixture, // CORS_ORIGINS absent at runtime -> app.ts fallback
+        logger: silentLogger,
+        pool: fakePool(),
+        auth: buildNeonAuth(envFixture, async () =>
+          ({ type: "public", algorithm: "RS256", ...fixture.publicJwk }) as never
+        ),
+        mcp: buildMcpServer(silentLogger),
+      });
+    }
+
+    it("answers a preflight on a protected route WITHOUT auth and echoes the origin", async () => {
+      // The exact browser scenario: OPTIONS preflight to /api/v1/* must be
+      // answered by the CORS layer before the JWT preHandler would reject it.
+      const app = await buildCorsApp();
+      try {
+        const res = await app.inject({
+          method: "OPTIONS",
+          url: "/api/v1/conversations",
+          headers: {
+            origin: ORIGIN,
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "authorization,content-type",
+          },
+        });
+        expect(res.statusCode).toBeLessThan(400); // 204, not a 401
+        expect(res.headers["access-control-allow-origin"]).toBe(ORIGIN);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("attaches the ACAO header even to a 401 so the SPA can read the status", async () => {
+      // On an expired token the SPA reads the 401 to trigger silent refresh —
+      // it can only do that if the error response carries the CORS header.
+      const app = await buildCorsApp();
+      try {
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/_self",
+          headers: { origin: ORIGIN },
+        });
+        expect(res.statusCode).toBe(401);
+        expect(res.headers["access-control-allow-origin"]).toBe(ORIGIN);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("does NOT echo an origin that is not on the allow-list", async () => {
+      const app = await buildCorsApp();
+      try {
+        const res = await app.inject({
+          method: "GET",
+          url: "/health",
+          headers: { origin: "https://evil.example.com" },
+        });
+        expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+      } finally {
+        await app.close();
+      }
+    });
+  });
 });

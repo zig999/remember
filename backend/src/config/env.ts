@@ -26,6 +26,21 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
+  // Browser origins allowed to call the BFF (CORS). The SPA runs on a different
+  // origin than the BFF (Vite dev on :5173 vs Fastify on :3000), so without
+  // this the browser blocks every cross-origin fetch at the preflight. Comma-
+  // separated list; each entry is matched exactly and echoed back in
+  // `Access-Control-Allow-Origin`. Default covers the Vite dev server on both
+  // localhost and 127.0.0.1; set the real SPA origin(s) in production.
+  CORS_ORIGINS: z
+    .string()
+    .default("http://localhost:5173,http://127.0.0.1:5173")
+    .transform((v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    ),
 
   // PostgreSQL (Neon — managed Postgres)
   DATABASE_URL: z
