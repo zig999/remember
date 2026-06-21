@@ -1,7 +1,7 @@
 # Front-end Spec — Global (Remember)
 
 > Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP
-> Version: 1.3.0 | Status: draft | Layer: permanent
+> Version: 1.4.0 | Status: draft | Layer: permanent
 
 > This is the global frontend architecture document for the Remember SPA — written once, updated as the project evolves. Per-feature configurations (data fetching, error mapping, transforms) go in each `.feature.spec.md`. The foundation of the design system lives in `design-system/`. This wave specifies **the foundation only**; the five functional areas (Graph / Search / Ingest / Curation / History) are out of scope here and will be specified in subsequent `/u-spec` waves.
 
@@ -303,10 +303,18 @@ frontend/src/
       StateBadge/               # confidence-state badge (this wave)
       GlassSurface/             # glass container (this wave)
   features/                     # one folder per route / area
-    graph/
-      api/                      # TanStack Query hooks + key factory
-      components/               # feature-local components (no sister-feature import)
-      hooks/
+    chat/                       # chat workspace (EPIC-FE-03 — primary view at /chat)
+      api/                      # useSendMessage, useListMessages, chat-stream, etc.
+      components/               # ChatWorkspace, MessageStream, Composer, ChatStatusIndicator…
+      state/                    # useChatTurnStore (ephemeral streaming state)
+      types.ts
+    graph/                      # chat right-column graph panel (EPIC-FE-03)
+      api/                      # useNodeDetail (getNodeById)
+      components/               # GraphSpace, GraphCanvas, GraphNodeAdapter, GraphEdgeAdapter,
+                                # GraphStatusOverlay, GraphEmptyState, NodeDetailPanel
+      hooks/                    # useForceLayout, useGraphReveal
+      state/                    # useGraphStore (ephemeral subgraph state)
+      lib/                      # map.ts (mapWireToGraphDelta, mapNodeType, deriveState)
       types.ts
     auth/
       api/                      # useSignIn mutation hook
@@ -379,6 +387,27 @@ This stack is correct **for the project's regime**: hundreds of documents, **doz
 - DOM-direct mutation of node positions (must go through React Flow's controlled API).
 - Inline `style=""` for colors / borders — node and edge styles consume **only** the semantic tokens declared in `design-system/tokens.md §5–§7`.
 - Animating `width` / `height` / `padding` — only `transform` and `opacity` (see `tokens.md §11`).
+
+### 7.4 Current realization — chat right-column GraphSpace (EPIC-FE-03)
+
+The first live consumer of the `@xyflow/react` v12 + `d3-force` stack is the **chat right-column GraphSpace** built under EPIC-FE-03 (TC-FE-01..TC-FE-11) and documented in `features/chat.feature.spec.md §2 UI-11..UI-14`, §3 (graph transitions), §10 (components), and §11 (UC-CG-01..UC-CG-13). It lives at `frontend/src/features/graph/` and is mounted by `ChatWorkspace` in the 60% right pane of `/chat`.
+
+| Element | File | Role |
+|---|---|---|
+| `GraphSpace` | `features/graph/components/GraphSpace/` | Container — receives `nodes`/`links`/`status` props from `useGraphStore`, owns the `ReactFlowProvider`, exposes `GraphSpaceHandle` (view-only ref: `focusNode`, `fitView`, `recenter`). See `components/GraphSpace.component.spec.md`. |
+| `GraphCanvas` | `features/graph/components/GraphCanvas/` | Internal `<ReactFlow>` wrapper; registers `nodeTypes` + `edgeTypes`; applies `useForceLayout` (`d3-force` with `fx`/`fy` pinning of existing nodes — D5). |
+| `GraphNodeAdapter` | `features/graph/components/GraphNodeAdapter/` | Custom React Flow node — wraps the presentational `components/ds/GraphNode` with `<Handle>` ports + `useGraphReveal` Framer Motion entrance. |
+| `GraphEdgeAdapter` | `features/graph/components/GraphEdgeAdapter/` | Custom React Flow edge: solid (`is_temporal=true`) / dashed (`is_temporal=false`); color from `--color-link-*`. See `components/GraphEdge.component.spec.md`. |
+| `GraphStatusOverlay` | `features/graph/components/GraphStatusOverlay/` | `aria-live="polite"` overlay for `loading` and `error` states; no retry button (panel-local affordance). |
+| `GraphEmptyState` | `features/graph/components/GraphEmptyState/` | UI-11 centered copy. |
+| `NodeDetailPanel` | `features/graph/components/NodeDetailPanel/` | Inline detail view that **replaces** `GraphSpace` in the right column while open (never modal, drawer, or `/graph` route). Consumes `getNodeById`. See `components/NodeDetailPanel.component.spec.md`. |
+| `useGraphStore` | `features/graph/state/graph-store.ts` | Zustand store — single source of truth for the subgraph (nodes, links, positions, revealQueue, status). Ephemeral per session (D4). |
+| `useForceLayout` | `features/graph/hooks/useForceLayout.ts` | `d3-force` simulation with pinned positions for already-placed nodes. |
+| `useGraphReveal` | `features/graph/hooks/useGraphReveal.ts` | Drains `revealQueue` at `revealStaggerMs` ticks; respects `prefers-reduced-motion`. |
+
+**Driver:** the chat SSE pipeline. The BFF emits a 7th frame `graph_delta { sourceTool, nodes[], links[] }` after each `tool_result` for a graph-producing tool (`traverse`, `get_node`, `list_nodes`, `search`). `features/chat/api/useSendMessage.ts` dispatches it to `useGraphStore.addNodes(delta)`. Source of truth for the wire format: `domains/chat/openapi.yaml` (sendMessage SSE event schemas) and `temp/chat-graphspace-plan.md §4.1`.
+
+**Unidirectionality:** the graph column is a **sink** (chat → graph only). Graph components do not import any action from `useChatTurnStore` or any mutation from `features/chat/api/*`. This is verified by `import/no-restricted-paths` lint rules.
 
 ---
 
@@ -533,3 +562,4 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 | 1.2.0 | 2026-06-20 | Front Spec Agent | minor | §3 — root route changed from `/graph` to `/chat` (owner decision: chat workspace is the primary view); route map updated with `/chat` (primary) and `/graph` (standalone later wave); `?conversation` search param added to §3.2 URL state table. §4.3 — registered `useChatTurnStore` (ephemeral streaming turn state, no persistence). | chat-wave |
 | 1.2.1 | 2026-06-20 | Front Spec Agent | patch | §3.1 — noted `ChatWorkspace` 40%/60% container-query split in route map entry for `/chat`. | chat-wave |
 | 1.3.0 | 2026-06-20 | Front Spec Agent | minor | Auth/sign-in wave: §3 routing deviation note (guard moved to `protectedLayoutRoute`; `AmbientBackdrop` moved to `__root`; `/sign-in` direct child of root without chrome); §3.1 route map `/sign-in` updated from stub to specified; §6.1 folder structure updated (auth feature, `transitionCrtPowerOn` in motion.ts); §11 `@stackframe/react` added as approved exception; §12 sign-in removed from out-of-scope. | sdd_front |
+| 1.4.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | EPIC-FE-03 chat ↔ graph wave: §7 adds §7.4 documenting the live realization of the React Flow + d3-force stack as the chat right-column GraphSpace (was a static stub in v1.3.0). Lists the 7 graph components (`GraphSpace`, `GraphCanvas`, `GraphNodeAdapter`, `GraphEdgeAdapter`, `GraphStatusOverlay`, `GraphEmptyState`, `NodeDetailPanel`), the 3 hooks/stores (`useGraphStore`, `useForceLayout`, `useGraphReveal`), and the unidirectionality invariant (REQ-6). §6.1 folder structure updated (adds `features/chat/` and `features/graph/` with their subfolders). Normative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21. | EPIC-FE-03 |

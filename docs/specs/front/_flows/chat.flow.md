@@ -1,7 +1,7 @@
 # Flow Spec — Chat (`chat.flow.md`)
 
 > Feature: `/chat` — primary view
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.1.0 | Status: draft | Layer: permanent
 
 ---
 
@@ -43,8 +43,45 @@
 3. SSE opened; streaming assistant bubble appears (UI-04).
 4. `text_delta` frames accumulate text; `StreamingCursor` blinks.
 5. `tool_start` / `tool_result` frames add/settle `ToolCallChip`s.
-6. `done` frame received; `isStreaming` → false; Composer returns to send mode.
-7. Cache invalidated; persisted assistant row appears in history (UI-03).
+   - **If the tool is graph-producing** (`traverse`, `get_node`, `list_nodes`, `search`): right-column transitions to UI-12 (graph loading) — see Sub-flow D.
+6. **NEW (v1.1.0): `graph_delta` frame received** (only when a graph tool ran in this turn) — see Sub-flow D, steps D2–D5. Runs in **parallel** with the text streaming on the left.
+7. `done` frame received; `isStreaming` → false; Composer returns to send mode.
+8. Cache invalidated; persisted assistant row appears in history (UI-03).
+
+### Sub-flow D — Graph reveal during a turn (new — EPIC-FE-03)
+
+> Driver: the SSE pipeline of Sub-flow C. Independent of (and parallel to) the chat-column transitions. Right-column states are UI-11..UI-14 (`chat.feature.spec.md §2`).
+
+1. **D1 — `tool_start { tool ∈ graph-producing }`:** `useSendMessage` dispatcher inspects `frame.tool`; if it is `traverse` / `get_node` / `list_nodes` / `search`, calls `useGraphStore.setStatus("loading")`. Right column transitions UI-11 → UI-12. `GraphStatusOverlay` shows "Buscando na memória…" with `aria-live="polite"`. A previously-loaded subgraph (UI-14) stays visible **underneath** the overlay (no clear).
+2. **D2 — `tool_result { ok: true }`:** chip settles; no graph state change yet (the data arrives in the next frame).
+3. **D3 — `graph_delta { source_tool, nodes[], links[] }`** (7th SSE frame, added in this revision): dispatcher calls `mapWireToGraphDelta(frame)` → `useGraphStore.addNodes(delta)`:
+   - Merge nodes/links by `id` (re-affirmation consolidates, never duplicates).
+   - Enqueue only **new** ids into `revealQueue`.
+   - `setStatus("revealing")`; `receivedDeltaThisTurn = true`.
+   - Right column transitions UI-12 → UI-13.
+4. **D4 — reveal loop:** `useGraphReveal` dequeues one id every `revealStaggerMs` (default 90 ms), marking it revealed in `useGraphStore.revealedIds`. Each newly-revealed node animates in via Framer Motion (`opacity 0→1` + `scale 0.85→1`, ~180 ms). An edge is mounted only when **both** its endpoints are revealed. Existing nodes are pinned (`fx`/`fy`) — no layout jump.
+   - `prefers-reduced-motion: reduce`: all nodes reveal in one tick (opacity-only, no stagger / no scale).
+5. **D5 — `done`:** `useGraphStore.settleTurn("done")` → `status = "ready"` (UI-14) because `receivedDeltaThisTurn === true`. Graph is fully interactive (pan/zoom/select). The dispatcher then performs the chat invalidations (Sub-flow C step 8).
+
+**Failure variants:**
+
+- **D6 — `tool_result { ok: false }`** while a graph tool is in flight: `useGraphStore.setStatus("error", message)`. Right column → UI-14-error. A subgraph loaded before the error stays visible underneath.
+- **D7 — `error` frame** while a graph tool is in flight: `useGraphStore.settleTurn("error")`. UI-14-error.
+- **D8 — Abort during D2–D4:** SSE terminates; `useGraphStore.settleTurn("done")`. Already-revealed nodes remain visible; reveal queue closes without freezing (UC-CG-10).
+
+**Empty result variant:**
+
+- **D9 — `graph_delta` with `nodes: []`:** `addNodes` does nothing (no merge, no enqueue). `receivedDeltaThisTurn` is **not** set. On `done`, `settleTurn("done")` keeps the panel in UI-11 (no error — empty result is a valid outcome, UC-CG-05).
+
+### Sub-flow E — Click a node to show inline detail (new — EPIC-FE-03)
+
+1. User is on `/chat?conversation=<uuid>` with a populated graph (UI-14).
+2. User clicks a `GraphNodeAdapter` in the React Flow canvas.
+3. `GraphSpace` fires `onNodeSelect(nodeId)` → `ChatWorkspace` sets local state `selectedNode = { id, label }`.
+4. `ChatWorkspace` unmounts `<GraphSpace>` and mounts `<NodeDetailPanel nodeId={…} nodeLabel={…} onClose={…} />` in the same right-column slot.
+5. `useNodeDetail(nodeId)` (TanStack Query → `GET /api/v1/nodes/:id`) fetches aliases + current attributes.
+6. The chat column (left) is **untouched**: same messages, same scroll position, same `chatStatus`. No mutation fires.
+7. User clicks the close action → `selectedNode = null` → `<GraphSpace>` re-mounts in the right column at UI-14 (with `useGraphStore` data preserved across the swap — the store is independent of the panel mount).
 
 ---
 
@@ -57,23 +94,35 @@ User opens browser
  [/] beforeLoad
         │ redirect
         ▼
- [/chat] — UI-01 (no conversation)
+ [/chat] — UI-01 (no conversation) / UI-11 (graph empty)
         │
         │  User opens ConversationMenu → selects a conversation
         ▼
- [/chat?conversation=<id>] — UI-02 (loading)
+ [/chat?conversation=<id>] — UI-02 (loading) / UI-11 (graph empty)
+        │                                            │
+        │  listMessages resolves                     │
+        ▼                                            ▼
+ [/chat?conversation=<id>] — UI-03 (success) / UI-11 (graph empty)
         │
-        │  listMessages resolves (messages exist)
-        ▼
- [/chat?conversation=<id>] — UI-03 (success)
-        │
-        │  User types and submits Composer
+        │  User types a "quem trabalha em X?" and submits Composer
         ▼
  [/chat?conversation=<id>] — UI-04 (streaming)
         │
-        │  done frame received
+        │  llm_start                  → ChatStatusIndicator "pensando…"
+        │  tool_start{traverse}       → ChatStatusIndicator "consultando a memória…"
+        │                                           ↓
+        │                                       UI-12 (graph loading overlay)
+        │  tool_result{ok:true}       → chip ok
+        │  graph_delta{nodes, links}                ↓
+        │                                       UI-13 (graph revealing — nodes 1×1)
+        │  text_delta…                → assistant bubble streams text in parallel
+        │  done                                     ↓
+        ▼                                       UI-14 (graph ready, interactive)
+ [/chat?conversation=<id>] — UI-03 (success, new messages) / UI-14 (graph ready)
+        │
+        │  Optional: user clicks a node in the graph
         ▼
- [/chat?conversation=<id>] — UI-03 (success, with new messages)
+ [/chat?conversation=<id>] — UI-03 (unchanged) / right column shows NodeDetailPanel
 ```
 
 ---
@@ -121,6 +170,10 @@ User enters `/chat?conversation=<uuid>` directly in the browser. `__root` JWT gu
 | FL-05 | `onArchive` on the active conversation | Navigate to `/chat` (drop `?conversation` param) | — |
 | FL-06 | JWT absent / expired on `__root` beforeLoad | Redirect to `/sign-in?reason=session_expired` (global rule, `front.md §5`) | `/sign-in` page stub |
 | FL-07 | Navigation away from `/chat` while streaming | `MessageStream` unmounts; `useEffect` cleanup calls `abortController.abort()` | SSE reader resolves with AbortError cleanly; no zombie fetch |
+| FL-08 | SSE `tool_start { tool ∈ graph-producing }` received | Right column transitions UI-11 → UI-12; `useGraphStore.setStatus("loading")` | If `tool_result { ok: false }` follows → UI-14-error (overlay) |
+| FL-09 | SSE `graph_delta` frame received | `useGraphStore.addNodes(delta)` merges by id, enqueues new ids; UI-12 → UI-13 | If `nodes: []` → no state change (UI stays where it was); `done` later resolves to UI-11 if no delta arrived |
+| FL-10 | URL `?conversation=` changes | `useGraphStore.clear()` resets nodes/links/positions; right column → UI-11 | — |
+| FL-11 | User clicks a node in `GraphSpace` (UI-14) | `onNodeSelect(nodeId)` → `ChatWorkspace` mounts `<NodeDetailPanel>` in the right column (swap with `<GraphSpace>`) | Closing the detail panel re-mounts `<GraphSpace>` at UI-14 (store survives the swap); chat column unaffected |
 
 ---
 
@@ -141,6 +194,8 @@ User enters `/chat?conversation=<uuid>` directly in the browser. `__root` JWT gu
 | Active conversation id | UUID string | URL `?conversation` search param | On navigation away or explicit removal |
 | Streaming turn accumulators (`streamingText`, `toolChips`) | Ephemeral | `useChatTurnStore` (Zustand, no persistence) | On `useChatTurnStore.reset()` — called on conversation switch, on `useSendMessage` terminal frame |
 | `AbortController` reference | In-memory | `useChatTurnStore.abortController` | On `setAbortController(null)` — called on terminal frame or abort |
+| Subgraph (nodes, links, positions, revealQueue, status) | Ephemeral per session (D4) | `useGraphStore` (Zustand, no persistence) | On conversation switch (`clear()` in `ChatWorkspace`); on page reload (volatile by design) |
+| Selected node id (for `NodeDetailPanel`) | UUID string \| null | Local `useState` in `ChatWorkspace` | On panel close, on conversation switch |
 | `includeArchived` toggle | Boolean | Local `useState` in `HeaderConversationMenu` | On component unmount (navigating away from `/chat`) |
 | Selected theme | `"dark"` / `"light"` | `useThemeStore`, persisted in `localStorage` | Never (permanent user preference) |
 
@@ -163,3 +218,4 @@ When the user navigates away from `/chat` (or changes `?conversation`) while a t
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Regenerated from implemented code. Root redirect FL-01, 7 navigation rules, 3 sub-flows, streaming teardown. |
+| 1.1.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | EPIC-FE-03 chat ↔ graph wave: Sub-flow C step 5 documents the graph-tool branch and step 6 the `graph_delta` frame; new **Sub-flow D — Graph reveal during a turn** (D1..D9: `tool_start` → loading, `graph_delta` → revealing, reveal loop, `done` → ready, plus failure/empty/abort variants); new **Sub-flow E — Click a node to show inline detail** (replace `GraphSpace` with `NodeDetailPanel` in the same slot; chat column untouched); Happy Path diagram updated with the parallel graph track (UI-11→UI-12→UI-13→UI-14); Navigation Rules expanded with FL-08..FL-11 (graph dispatch + reveal + conversation-clear + node-click); Data Persisted table adds `useGraphStore` (ephemeral per session) and `selectedNode` (local state). Normative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21 §8.1 (turn sequence), §8.2 (event/effect table), §12.3 (GraphStatus state machine). |
