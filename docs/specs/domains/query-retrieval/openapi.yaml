@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Query / Retrieval API"
-  version: "1.0.0"
+  version: "1.2.0"
   description: |
     Read-side retrieval contract: the deterministic full-text + graph pipeline of section 7
     and the cross-layer provenance walk of section 14.3.
@@ -49,6 +49,24 @@ info:
 
     Transport rule (ADR A28): `query` toolset is mirrored in REST and MCP over a single
     service layer. This file is the REST surface; MCP carries identical contracts.
+
+    **REST response envelope (BR-19, v1.2.0).** Every 2xx success body is wrapped as
+    `{ ok: true, result: <payload> }`; every 4xx/5xx error body is sent as
+    `{ ok: false, error: { code, message, details? } }`. Both halves are symmetric --
+    a discriminating consumer reads `body.ok` to branch. This aligns the entire REST
+    surface with the CLAUDE.md "Architecture / Backend" convention
+    ("REST devolve esse envelope direto, com HTTP status") and with the chat /
+    conversations / ingestion / knowledge-graph REST modules. Prior to v1.1.0 the read
+    paths of this domain returned the resource body BARE on success while already
+    enveloping errors -- a documented asymmetry that broke shared HTTP clients in the
+    SPA and was fixed atomically with the matching knowledge-graph v1.5.0 change and
+    the frontend revert of the `envelope:false` workaround (CLAUDE.md "Known Gotchas" /
+    kg-rest-bare-success-envelope memory).
+
+    The envelope is REST-only: the MCP transports (HTTP `POST /api/v1/mcp/query` and
+    the local stdio transport) render the same logical outcome as MCP 2025-06-18
+    `content` / `isError` and do NOT wrap responses in `{ ok, result }`
+    (back-spec BR-23, BR-24; see spec.md BR-19 for the full REST-only scope).
 
 servers:
   - url: "http://localhost:3000"
@@ -122,6 +140,8 @@ paths:
         paraphrases that do not share characters with the query string return zero results.
         This is a CONTRACT, not a bug. The escape valve is curation (`entity_match` queue) --
         owned by the `curation` domain.
+
+        Success body shape (BR-19): `{ ok: true, result: SearchResponse }`.
       parameters:
         - in: query
           name: query
@@ -229,11 +249,11 @@ paths:
           description: "Pagination offset. Default 0."
       responses:
         "200":
-          description: "Ranked, paginated, deduplicated retrieval result"
+          description: "Ranked, paginated, deduplicated retrieval result (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SearchResponse"
+                $ref: "#/components/schemas/SearchResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422":
           description: "Invalid search input"
@@ -243,6 +263,7 @@ paths:
               examples:
                 emptyQueryAfterParse:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_INVALID_SEARCH_QUERY"
                       message: "query parsed by websearch_to_tsquery is empty"
@@ -251,6 +272,7 @@ paths:
                         parsed: ""
                 queryTooLong:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_INVALID_SEARCH_QUERY"
                       message: "query exceeds 1000 characters"
@@ -259,6 +281,7 @@ paths:
                         max: 1000
                 badLayer:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_INVALID_SEARCH_LAYER"
                       message: "layers[] contains an unsupported value"
@@ -267,6 +290,7 @@ paths:
                         allowed: ["fragment", "node", "chunk"]
                 badDepth:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_INVALID_TRAVERSE_DEPTH"
                       message: "expand_depth must be between 1 and 3"
@@ -275,6 +299,7 @@ paths:
                         max: 3
                 unknownLinkType:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_UNKNOWN_LINK_TYPE"
                       message: "link_type 'Foo' is not registered in the catalog"
@@ -282,6 +307,7 @@ paths:
                         link_type: "Foo"
                 badAsOf:
                   value:
+                    ok: false
                     error:
                       code: "VALIDATION_INVALID_FORMAT"
                       message: "as_of is not a valid ISO date"
@@ -289,6 +315,7 @@ paths:
                         as_of: "2026-13-40"
                 badRange:
                   value:
+                    ok: false
                     error:
                       code: "VALIDATION_OUT_OF_RANGE"
                       message: "limit must be between 1 and 100"
@@ -332,13 +359,15 @@ paths:
 
         The excerpt of each chunk is computed from `RawChunk.text[offset_start:offset_end)`
         using Unicode code-point indexing (ADR A22).
+
+        Success body shape (BR-19): `{ ok: true, result: ProvenanceResponse }`.
       responses:
         "200":
-          description: "Full provenance chain"
+          description: "Full provenance chain (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProvenanceResponse"
+                $ref: "#/components/schemas/ProvenanceResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Link not found"
@@ -348,6 +377,7 @@ paths:
               examples:
                 notFound:
                   value:
+                    ok: false
                     error:
                       code: "RESOURCE_NOT_FOUND"
                       message: "KnowledgeLink with id 9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
@@ -361,6 +391,7 @@ paths:
               examples:
                 rawDeleted:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_RAW_INFORMATION_DELETED"
                       message: "underlying RawInformation was deleted by compliance_delete"
@@ -384,13 +415,15 @@ paths:
         Mirrors the `attribute_id` shape of `get_provenance` (section 14.3). Same semantics
         as `getProvenanceByLink` with the anchor being a `NodeAttribute` row instead of a
         `KnowledgeLink` row.
+
+        Success body shape (BR-19): `{ ok: true, result: ProvenanceResponse }`.
       responses:
         "200":
-          description: "Full provenance chain"
+          description: "Full provenance chain (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProvenanceResponse"
+                $ref: "#/components/schemas/ProvenanceResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Attribute not found"
@@ -400,6 +433,7 @@ paths:
               examples:
                 notFound:
                   value:
+                    ok: false
                     error:
                       code: "RESOURCE_NOT_FOUND"
                       message: "NodeAttribute with id a11c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
@@ -413,6 +447,7 @@ paths:
               examples:
                 rawDeleted:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_RAW_INFORMATION_DELETED"
                       message: "underlying RawInformation was deleted by compliance_delete"
@@ -444,13 +479,15 @@ paths:
         `BUSINESS_FRAGMENT_NOT_ACCEPTED`. We do not surface the row's reason here because
         the lifecycle of a non-accepted fragment belongs to the `ingestion` domain
         (`status in {proposed, rejected, deleted}`).
+
+        Success body shape (BR-19): `{ ok: true, result: ProvenanceResponse }`.
       responses:
         "200":
-          description: "Fragment with its full chunk/raw chain"
+          description: "Fragment with its full chunk/raw chain (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProvenanceResponse"
+                $ref: "#/components/schemas/ProvenanceResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Fragment not found or not accepted"
@@ -460,6 +497,7 @@ paths:
               examples:
                 notFound:
                   value:
+                    ok: false
                     error:
                       code: "RESOURCE_NOT_FOUND"
                       message: "InformationFragment with id ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
@@ -467,6 +505,7 @@ paths:
                         fragment_id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
                 notAccepted:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_FRAGMENT_NOT_ACCEPTED"
                       message: "InformationFragment is not in 'accepted' status"
@@ -481,6 +520,7 @@ paths:
               examples:
                 rawDeleted:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_RAW_INFORMATION_DELETED"
                       message: "underlying RawInformation was deleted by compliance_delete"
@@ -504,19 +544,21 @@ components:
 
   responses:
     Unauthorized:
-      description: "Missing or invalid JWT"
+      description: "Missing or invalid JWT (enveloped error)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           examples:
             missingToken:
               value:
+                ok: false
                 error:
                   code: "AUTH_UNAUTHORIZED"
                   message: "Authorization header missing"
                   details: {}
             expiredToken:
               value:
+                ok: false
                 error:
                   code: "AUTH_TOKEN_EXPIRED"
                   message: "JWT expired at 2026-06-11T19:00:00Z"
@@ -524,18 +566,20 @@ components:
                     expired_at: "2026-06-11T19:00:00Z"
             invalidToken:
               value:
+                ok: false
                 error:
                   code: "AUTH_TOKEN_INVALID"
                   message: "JWT signature could not be verified"
                   details: {}
     InternalError:
-      description: "Unexpected internal error"
+      description: "Unexpected internal error (enveloped)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           examples:
             internal:
               value:
+                ok: false
                 error:
                   code: "SYSTEM_INTERNAL_ERROR"
                   message: "Unexpected internal error"
@@ -548,6 +592,7 @@ components:
           examples:
             dbUnavailable:
               value:
+                ok: false
                 error:
                   code: "SYSTEM_SERVICE_UNAVAILABLE"
                   message: "Database read timed out against Neon"
@@ -558,15 +603,43 @@ components:
   schemas:
 
     # -------------------------------------------------------------------------
-    # Error envelope (kept identical across REST + MCP, per ADR A28)
+    # Response envelopes (BR-19, v1.2.0)
+    # ---
+    # All 2xx success bodies are wrapped as `{ ok: true, result: <payload> }`.
+    # All 4xx/5xx error bodies are wrapped as `{ ok: false, error: { code, message, details? } }`.
+    # The MCP transports do NOT use these envelopes (they render as MCP `content`/`isError`);
+    # see spec.md BR-19 for the REST-only scope; back-spec BR-23 / BR-24 for per-transport framing rules.
     # -------------------------------------------------------------------------
+
+    # Discriminator field on success.
+    OkTrue:
+      type: boolean
+      enum: [true]
+      example: true
+      description: |
+        Success discriminator (BR-19). Always `true` on 2xx bodies. Consumers should
+        branch on `body.ok` to choose between `body.result` and `body.error`.
+
+    # Discriminator field on error.
+    OkFalse:
+      type: boolean
+      enum: [false]
+      example: false
+      description: |
+        Error discriminator (BR-19). Always `false` on 4xx/5xx bodies. Consumers should
+        branch on `body.ok` to choose between `body.result` and `body.error`.
+
+    # Error wire shape (the full body of any non-2xx response in this domain).
+    # Identical shape across REST and MCP source for the inner `error` object, per ADR A28.
     ErrorResponse:
       type: object
-      required: [error]
+      required: [ok, error]
       properties:
+        ok:
+          $ref: "#/components/schemas/OkFalse"
         error:
           type: object
-          description: "Standard error envelope. Identical shape across REST and MCP (ADR A28)."
+          description: "Standard error envelope. Inner shape identical across REST and MCP source (ADR A28)."
           required: [code, message]
           properties:
             code:
@@ -800,6 +873,22 @@ components:
                 received_at: "2026-06-11T18:30:00Z"
                 excerpt: "...respondera pelo Projeto Apollo..."
 
+    SearchResponseEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/SearchResponse" }
+      description: "REST success envelope for `searchKnowledge` (BR-19)."
+      example:
+        ok: true
+        result:
+          query: "reuniao implantacao apollo"
+          total: 0
+          limit: 20
+          offset: 0
+          items: []
+
     # -------------------------------------------------------------------------
     # PROVENANCE response (cross-layer walk).
     # -------------------------------------------------------------------------
@@ -938,3 +1027,36 @@ components:
                   metadata:
                     title: "Ata da reuniao Apollo"
                     document_date: "2026-06-11"
+
+    ProvenanceResponseEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/ProvenanceResponse" }
+      description: |
+        REST success envelope for `getProvenanceByLink`, `getProvenanceByAttribute`
+        and `getProvenanceByFragment` (BR-19). Single envelope shared across the
+        three anchor-kind endpoints because the inner body shape is identical.
+      example:
+        ok: true
+        result:
+          fragments:
+            - id: "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+              text: "Maria Oliveira coordenara a implantacao do Projeto Apollo."
+              confidence: 0.92
+              status: "accepted"
+              chunks:
+                - id: "cc1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                  chunk_index: 0
+                  offset_start: 0
+                  offset_end: 1742
+                  excerpt: "Aos onze dias do mes de junho de 2026, reuniram-se ..."
+                  locator: { page: 1 }
+                  raw_information:
+                    id: "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+                    source_type: "ata"
+                    received_at: "2026-06-11T18:30:00Z"
+                    metadata:
+                      title: "Ata da reuniao Apollo"
+                      document_date: "2026-06-11"

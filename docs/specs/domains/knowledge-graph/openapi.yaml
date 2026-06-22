@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Knowledge Graph API"
-  version: "1.0.1"
+  version: "1.5.0"
   description: |
     Read-side and direct-management HTTP contract for the knowledge-graph domain.
 
@@ -26,6 +26,23 @@ info:
     documents the REST surface of the `query`-style operations bound to the knowledge-graph entities
     (`get_node`, `traverse`, `get_history`). MCP exposure of the same operations is identical-by-contract
     over the BFF service layer (section 2).
+
+    **REST response envelope (BR-27, v1.5.0).** Every 2xx success body is wrapped as
+    `{ ok: true, result: <payload> }`; every 4xx/5xx error body is sent as
+    `{ ok: false, error: { code, message, details? } }`. Both halves are symmetric --
+    a discriminating consumer reads `body.ok` to branch. This aligns the entire REST
+    surface with the CLAUDE.md "Architecture / Backend" convention
+    ("REST devolve esse envelope direto, com HTTP status") and with the chat /
+    conversations / ingestion REST modules. Prior to v1.5.0 the read paths of this
+    domain returned the resource body BARE on success while already enveloping
+    errors -- a documented asymmetry that broke the SPA NodeDetailPanel and was
+    fixed atomically with the frontend revert of the `envelope:false` workaround
+    (CLAUDE.md "Known Gotchas" / kg-rest-bare-success-envelope memory).
+
+    The envelope is REST-only: the MCP transports (HTTP `POST /api/v1/mcp/query` and
+    the local stdio transport) render the same logical outcome as MCP 2025-06-18
+    `content` / `isError` and do NOT wrap responses in `{ ok, result }`
+    (back-spec BR-23, BR-24, BR-27).
 
 servers:
   - url: "http://localhost:3000"
@@ -62,13 +79,15 @@ paths:
       description: |
         Returns the full catalog of NodeTypes (section 15.1). Read-only: catalog mutation
         is migration-only (section 12).
+
+        Success body shape (BR-27): `{ ok: true, result: NodeTypeList }`.
       responses:
         "200":
-          description: "Catalog of NodeTypes"
+          description: "Catalog of NodeTypes (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NodeTypeList"
+                $ref: "#/components/schemas/NodeTypeListEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -82,6 +101,8 @@ paths:
         Returns the full catalog of LinkTypes with flags `is_temporal`,
         `allows_multiple_current`, `requires_valid_from`, `requires_valid_to_on_change`
         (section 15.2). Read-only: catalog mutation is migration-only (section 12).
+
+        Success body shape (BR-27): `{ ok: true, result: LinkTypeList }`.
       parameters:
         - in: query
           name: include_rules
@@ -92,11 +113,11 @@ paths:
           description: "When true, embeds the `LinkTypeRule` rows currently valid for each LinkType (section 3.4)."
       responses:
         "200":
-          description: "Catalog of LinkTypes"
+          description: "Catalog of LinkTypes (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LinkTypeList"
+                $ref: "#/components/schemas/LinkTypeListEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -111,6 +132,8 @@ paths:
         by `node_type_id` and declares `value_type`, `is_temporal`,
         `allows_multiple_current`, `requires_valid_from`. Read-only: catalog mutation is
         migration-only (section 12).
+
+        Success body shape (BR-27): `{ ok: true, result: AttributeKeyList }`.
       parameters:
         - in: query
           name: node_type
@@ -124,11 +147,11 @@ paths:
             name is not in the catalog.
       responses:
         "200":
-          description: "Catalog of AttributeKeys"
+          description: "Catalog of AttributeKeys (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AttributeKeyList"
+                $ref: "#/components/schemas/AttributeKeyListEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422":
           description: "Filter references an unknown node_type"
@@ -138,6 +161,7 @@ paths:
               examples:
                 unknownNodeType:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_UNKNOWN_NODE_TYPE"
                       message: "node_type 'Foo' is not registered in the catalog"
@@ -163,6 +187,8 @@ paths:
         node_type scope (section 4.2 "always within the same node_type").
 
         Pagination: cursor-less offset/limit. Default limit = 20, max limit = 100.
+
+        Success body shape (BR-27): `{ ok: true, result: NodeList }`.
       parameters:
         - in: query
           name: node_type
@@ -198,11 +224,11 @@ paths:
           schema: { type: integer, minimum: 0, default: 0 }
       responses:
         "200":
-          description: "Paginated list of nodes"
+          description: "Paginated list of nodes (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NodeList"
+                $ref: "#/components/schemas/NodeListEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422":
           description: "Unknown filter value"
@@ -236,6 +262,8 @@ paths:
           `BUSINESS_NODE_DELETED` (compliance_delete, section 11).
         - Derived fields `is_current`, `is_in_effect`, `effective_status` are computed
           ON READ from the underlying view (section 5.4); they are NEVER stored.
+
+        Success body shape (BR-27): `{ ok: true, result: NodeDetail }`.
       parameters:
         - in: query
           name: as_of
@@ -262,11 +290,11 @@ paths:
             (section 7.3); when false, they are omitted. Default true per section 7.3.
       responses:
         "200":
-          description: "Node with aliases and attributes"
+          description: "Node with aliases and attributes (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NodeDetail"
+                $ref: "#/components/schemas/NodeDetailEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Node not found"
@@ -276,6 +304,7 @@ paths:
               examples:
                 notFound:
                   value:
+                    ok: false
                     error:
                       code: "RESOURCE_NOT_FOUND"
                       message: "KnowledgeNode with id 9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001 not found"
@@ -289,6 +318,7 @@ paths:
               examples:
                 gone:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_NODE_DELETED"
                       message: "KnowledgeNode is marked as deleted"
@@ -327,6 +357,8 @@ paths:
         - The traversal NEVER follows `merged_into_node_id`. A merged node is treated as
           its surviving successor; the response substitutes the survivor transparently
           (section 4.4).
+
+        Success body shape (BR-27): `{ ok: true, result: TraversalResult }`.
       parameters:
         - in: query
           name: direction
@@ -365,11 +397,11 @@ paths:
           description: "Restrict to links whose `is_in_effect` is true (section 5.4)."
       responses:
         "200":
-          description: "Nodes and links reached from the starting node"
+          description: "Nodes and links reached from the starting node (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TraversalResult"
+                $ref: "#/components/schemas/TraversalResultEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Starting node not found"
@@ -384,6 +416,7 @@ paths:
               examples:
                 invalidDepth:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_INVALID_TRAVERSE_DEPTH"
                       message: "depth must be between 1 and 3"
@@ -392,6 +425,7 @@ paths:
                         max: 3
                 unknownLinkType:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_UNKNOWN_LINK_TYPE"
                       message: "link_type 'Foo' is not registered in the catalog"
@@ -419,13 +453,15 @@ paths:
         derived flags `is_current`, `is_in_effect`, `effective_status` computed on read.
         Includes the `Provenance` rows that justify the link (section 3.3 accumulating
         invariant, section 13 anti-hallucination rule).
+
+        Success body shape (BR-27): `{ ok: true, result: LinkDetail }`.
       responses:
         "200":
-          description: "Link payload"
+          description: "Link payload (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LinkDetail"
+                $ref: "#/components/schemas/LinkDetailEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Link not found"
@@ -453,13 +489,15 @@ paths:
         Returns a single row from `node_attribute_resolved` (section 5.4 view), with the
         derived flags `is_current`, `is_in_effect`, `effective_status` computed on read.
         Includes the `Provenance` rows that justify the attribute.
+
+        Success body shape (BR-27): `{ ok: true, result: AttributeDetail }`.
       responses:
         "200":
-          description: "Attribute payload"
+          description: "Attribute payload (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AttributeDetail"
+                $ref: "#/components/schemas/AttributeDetailEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Attribute not found"
@@ -492,13 +530,15 @@ paths:
         `(recorded_at, superseded_at)`.
         Visibility of the chain is independent of the deferred query (c) (section 5.3, A25):
         `recorded_at` is recorded on every row.
+
+        Success body shape (BR-27): `{ ok: true, result: LinkHistoryResponse }`.
       responses:
         "200":
-          description: "Ordered lineage chain"
+          description: "Ordered lineage chain (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LinkHistoryResponse"
+                $ref: "#/components/schemas/LinkHistoryResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Link not found"
@@ -521,13 +561,15 @@ paths:
       description: |
         Returns all versions of the lineage chain anchored at this attribute, ordered
         ASC by `recorded_at`. See `getLinkHistory` for the chain semantics.
+
+        Success body shape (BR-27): `{ ok: true, result: AttributeHistoryResponse }`.
       responses:
         "200":
-          description: "Ordered lineage chain"
+          description: "Ordered lineage chain (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AttributeHistoryResponse"
+                $ref: "#/components/schemas/AttributeHistoryResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Attribute not found"
@@ -559,13 +601,15 @@ paths:
         Covers successions, corrections, disputes, and consolidations - the FULL
         evolution of that key on that node. Equivalent to the
         `{ node_id, key }` shape of `get_history` (section 14.3).
+
+        Success body shape (BR-27): `{ ok: true, result: AttributeHistoryResponse }`.
       responses:
         "200":
-          description: "Ordered lineage chain for the (node, key) pair"
+          description: "Ordered lineage chain for the (node, key) pair (enveloped)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AttributeHistoryResponse"
+                $ref: "#/components/schemas/AttributeHistoryResponseEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: "Node or attribute key not found"
@@ -575,6 +619,7 @@ paths:
               examples:
                 unknownKey:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"
                       message: "AttributeKey 'foo' is not registered for NodeType 'Project'"
@@ -589,6 +634,7 @@ paths:
               examples:
                 gone:
                   value:
+                    ok: false
                     error:
                       code: "BUSINESS_NODE_DELETED"
                       message: "KnowledgeNode is marked as deleted"
@@ -616,44 +662,48 @@ components:
 
   responses:
     Unauthorized:
-      description: "Missing or invalid JWT"
+      description: "Missing or invalid JWT (enveloped error)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           examples:
             missingToken:
               value:
+                ok: false
                 error:
                   code: "AUTH_UNAUTHORIZED"
                   message: "Authorization header missing"
                   details: {}
             expiredToken:
               value:
+                ok: false
                 error:
                   code: "AUTH_TOKEN_EXPIRED"
                   message: "JWT expired at 2026-06-11T19:00:00Z"
                   details:
                     expired_at: "2026-06-11T19:00:00Z"
     InternalError:
-      description: "Unexpected internal error"
+      description: "Unexpected internal error (enveloped)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           examples:
             internal:
               value:
+                ok: false
                 error:
                   code: "SYSTEM_INTERNAL_ERROR"
                   message: "Unexpected internal error"
                   details: {}
     ServiceUnavailable:
-      description: "Neon database unavailable or timed out"
+      description: "Neon database unavailable or timed out (enveloped)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           examples:
             unavailable:
               value:
+                ok: false
                 error:
                   code: "SYSTEM_SERVICE_UNAVAILABLE"
                   message: "Database connection timed out"
@@ -662,12 +712,39 @@ components:
   schemas:
 
     # -------------------------------------------------------------------------
-    # Error envelope (CLAUDE.md / section 14 - kept identical across REST + MCP)
+    # Response envelopes (BR-27, v1.5.0)
+    # ---
+    # All 2xx success bodies are wrapped as `{ ok: true, result: <payload> }`.
+    # All 4xx/5xx error bodies are wrapped as `{ ok: false, error: { code, message, details? } }`.
+    # The MCP transports do NOT use these envelopes (they render as MCP `content`/`isError`);
+    # see back-spec BR-23 / BR-24 / BR-27 for the per-transport framing rules.
     # -------------------------------------------------------------------------
+
+    # Discriminator field on success.
+    OkTrue:
+      type: boolean
+      enum: [true]
+      example: true
+      description: |
+        Success discriminator (BR-27). Always `true` on 2xx bodies. Consumers should
+        branch on `body.ok` to choose between `body.result` and `body.error`.
+
+    # Discriminator field on error.
+    OkFalse:
+      type: boolean
+      enum: [false]
+      example: false
+      description: |
+        Error discriminator (BR-27). Always `false` on 4xx/5xx bodies. Consumers should
+        branch on `body.ok` to choose between `body.result` and `body.error`.
+
+    # Error wire shape (the full body of any non-2xx response in this domain).
     ErrorResponse:
       type: object
-      required: [error]
+      required: [ok, error]
       properties:
+        ok:
+          $ref: "#/components/schemas/OkFalse"
         error:
           type: object
           required: [code, message]
@@ -682,6 +759,11 @@ components:
               type: object
               additionalProperties: true
               example: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
+      description: |
+        Standard error envelope (BR-27). The wire body is `{ ok: false, error: { code, message, details? } }`.
+        The `code` follows the namespaced `DOMINIO_MOTIVO` convention
+        (`AUTH_*`, `BUSINESS_*`, `RESOURCE_*`, `SYSTEM_*`, `VALIDATION_*`) -- see
+        `backend/src/shared/error-mapping.ts` and the per-module `errors.ts` for the canonical registry.
 
     # -------------------------------------------------------------------------
     # Enums (mirror the DB enums of migration 0001)
@@ -755,6 +837,14 @@ components:
             description: "Projeto/iniciativa com objetivo e ciclo de vida"
             version: 1
 
+    NodeTypeListEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/NodeTypeList" }
+      description: "REST success envelope for `listNodeTypes` (BR-27)."
+
     # -------------------------------------------------------------------------
     # Catalog: LinkType + LinkTypeRule
     # -------------------------------------------------------------------------
@@ -821,6 +911,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/LinkType" }
 
+    LinkTypeListEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/LinkTypeList" }
+      description: "REST success envelope for `listLinkTypes` (BR-27)."
+
     # -------------------------------------------------------------------------
     # Catalog: AttributeKey
     # -------------------------------------------------------------------------
@@ -861,6 +959,14 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/AttributeKey" }
+
+    AttributeKeyListEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/AttributeKeyList" }
+      description: "REST success envelope for `listAttributeKeys` (BR-27)."
 
     # -------------------------------------------------------------------------
     # KnowledgeNode + NodeAlias
@@ -908,6 +1014,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/NodeSummary" }
 
+    NodeListEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/NodeList" }
+      description: "REST success envelope for `listNodes` (BR-27)."
+
     NodeDetail:
       type: object
       required: [node, aliases, attributes]
@@ -954,6 +1068,25 @@ components:
             flags: []
             supersedes_attribute_id: null
             provenance: []
+
+    NodeDetailEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/NodeDetail" }
+      description: "REST success envelope for `getNodeById` (BR-27)."
+      example:
+        ok: true
+        result:
+          node:
+            id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001"
+            node_type: "Project"
+            canonical_name: "Projeto Apollo"
+            status: "active"
+            merged_into_node_id: null
+          aliases: []
+          attributes: []
 
     # -------------------------------------------------------------------------
     # Provenance (read-nested - the writing surface lives in ingestion/curation)
@@ -1069,6 +1202,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/ProvenanceEntry" }
 
+    AttributeDetailEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/AttributeDetail" }
+      description: "REST success envelope for `getAttributeById` (BR-27)."
+
     # -------------------------------------------------------------------------
     # KnowledgeLink
     # -------------------------------------------------------------------------
@@ -1138,6 +1279,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/ProvenanceEntry" }
 
+    LinkDetailEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/LinkDetail" }
+      description: "REST success envelope for `getLinkById` (BR-27)."
+
     # -------------------------------------------------------------------------
     # Traversal
     # -------------------------------------------------------------------------
@@ -1173,6 +1322,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/TraversalLink" }
 
+    TraversalResultEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/TraversalResult" }
+      description: "REST success envelope for `traverseNode` (BR-27)."
+
     # -------------------------------------------------------------------------
     # History (lineage chain via supersedes_*)
     # -------------------------------------------------------------------------
@@ -1193,6 +1350,14 @@ components:
           description: "Ordered ASC by `recorded_at` (oldest first)."
           items: { $ref: "#/components/schemas/LinkHistoryEntry" }
 
+    LinkHistoryResponseEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/LinkHistoryResponse" }
+      description: "REST success envelope for `getLinkHistory` (BR-27)."
+
     AttributeHistoryResponse:
       type: object
       required: [versions]
@@ -1201,3 +1366,11 @@ components:
           type: array
           description: "Ordered ASC by `recorded_at` (oldest first)."
           items: { $ref: "#/components/schemas/AttributeHistoryEntry" }
+
+    AttributeHistoryResponseEnvelope:
+      type: object
+      required: [ok, result]
+      properties:
+        ok: { $ref: "#/components/schemas/OkTrue" }
+        result: { $ref: "#/components/schemas/AttributeHistoryResponse" }
+      description: "REST success envelope for `getAttributeHistory` and `getAttributeKeyHistory` (BR-27)."

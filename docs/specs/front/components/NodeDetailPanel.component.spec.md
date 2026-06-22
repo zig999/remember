@@ -1,7 +1,7 @@
 # Component Spec — NodeDetailPanel
 
 > File: `frontend/src/features/graph/components/NodeDetailPanel.tsx`
-> Version: 1.0.0 | Status: draft
+> Version: 1.1.0 | Status: draft
 
 > `NodeDetailPanel` is an inline detail view that renders inside the graph pane (the 60% right column
 > of `ChatWorkspace`) when the user clicks a node in `GraphSpace`. It fetches node aliases and
@@ -154,18 +154,28 @@
 Defined in `features/graph/api/useNodeDetail.ts`.
 
 ```ts
-export function useNodeDetail(nodeId: string | undefined) {
+export function useNodeDetail(id: string | null | undefined): UseQueryResult<NodeDetailView> {
   return useQuery({
-    queryKey: graphNodeKeys.detail(nodeId ?? ""),
-    queryFn: () => fetchNodeDetail(nodeId!),
-    enabled: !!nodeId,
-    staleTime: 5 * 60 * 1000,    // 5 min — node detail is stable data
+    queryKey: graphNodeKeys.detail(id ?? "__noop__"),
+    queryFn: async () => {
+      const wire = await http<NodeDetailWire>(
+        `/api/v1/nodes/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toNodeDetail(wire);
+    },
+    enabled: typeof id === "string" && id.length > 0,
+    staleTime: 5 * 60_000,    // 5 min — node detail is stable data
     refetchOnWindowFocus: false,
   });
 }
 ```
 
-`fetchNodeDetail` calls `GET /api/v1/nodes/:id` (domain: knowledge-graph, operationId: `getNodeById`). Response shape: `NodeDetail` from `knowledge-graph/openapi.yaml` (node + aliases[] + attributes[]).
+The hook calls `GET /api/v1/nodes/:id` (domain: knowledge-graph, operationId: `getNodeById`) via the standard `http<T>()` wrapper from `lib/http.ts`.
+
+**Wire response shape (as of BR-27):** the backend returns `{ ok: true, result: NodeDetail }` on success. The `http<T>()` wrapper parses this envelope and returns `result` directly — the hook receives a `NodeDetailWire` (the unwrapped `NodeDetail` object) and passes it through `toNodeDetail()` to produce the view model. No custom envelope-bypass flags are needed or permitted.
+
+**Error path:** when the backend returns `{ ok: false, error: { code, message } }`, `http<T>()` throws an `EnvelopeError`. The hook surfaces this via `query.error`; the panel branches on `error.code` per §3.
 
 ### Response transforms
 
@@ -180,4 +190,5 @@ The `NodeDetail` API response is used near-verbatim. Minor adaptations:
 
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
+| 1.1.0 | 2026-06-22 | Front Spec Agent | spec-change | §9 updated: `useNodeDetail` code snippet aligned with actual implementation (direct `http<NodeDetailWire>()` call, no `fetchNodeDetail` wrapper). Documented that the BFF now returns `{ ok: true, result: NodeDetail }` on success (BR-27) and that `http()` unwraps the envelope — no `envelope:false` workaround. |
 | 1.0.0 | 2026-06-21 | Front Spec Agent | initial | GraphSpace wave. Inline node detail panel mounted by `ChatWorkspace` inside the graph pane on node click. Fetches `getNodeById`; shows aliases + attributes; 5 states; 5 BDD scenarios; full a11y contract. |

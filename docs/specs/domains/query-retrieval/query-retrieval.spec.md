@@ -1,6 +1,6 @@
 # Query / Retrieval -- Business Specification
 
-> Version: 1.1.0 | Status: draft | Layer: permanent
+> Version: 1.2.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/remember-modelagem-v7.md` (sections 7, 13, 16, 17, 20 + ADRs A2, A3, A4, A15, A16, A21, A22, A23, A24, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
@@ -33,6 +33,8 @@
 
 ## 3. Use Cases
 
+> **Wire envelope (since v1.2.0 / BR-19).** Every 2xx success response in this domain is wrapped as `{ ok: true, result: <Payload> }` -- symmetric with the existing error envelope `{ ok: false, error: { code, message, details? } }` (unchanged). The Use Cases below name the inner `Payload` (`SearchResponse`, `ProvenanceResponse`); the wrapping is uniform across all four endpoints. The MCP transports render the same logical outcome as MCP 2025-06-18 `content` / `isError`; the `{ ok, result }` wrap is REST-only (see BR-19).
+
 ### UC-01 -- Free-text search across all three layers (happy path)
 
 **Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT; the catalog and at least one accepted `InformationFragment` exist. | **Post:** Owner receives a ranked, paginated, deduplicated list of items spanning the three layers, each with a non-empty `provenance[]`.
@@ -49,13 +51,13 @@
 6. Service layer performs graph expansion when `expand=true` (default): for each `node` hit, traverse via the knowledge-graph `traverse` service (`knowledge-graph` UC-06 with `depth = expand_depth`, `direction = both`, `as_of` / `in_effect_only` propagated, `link_types = expand_link_types`); reached `KnowledgeLink` rows enter the result with `kind = "link"`, `hop = h`, `score = 0.5^h * node_score` (BR-06).
 7. Service layer assembles `provenance[]` for every item: for `link` -> the `Provenance` rows attached; for `fragment` -> the fragment itself; for `node` -> the union over the matching aliases' provenances. Every item MUST end with `provenance.length >= 1` (BR-13).
 8. Service layer sorts by `score` DESC, then `recorded_at` DESC (BR-07), and applies `limit` / `offset`.
-9. BFF returns `200` with `SearchResponse` (echo of `query`, `total`, `limit`, `offset`, `items`).
+9. BFF returns `200` with envelope `{ ok: true, result: SearchResponse }` -- where `SearchResponse = { query, total, limit, offset, items }` (BR-19).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`.
 - `3a` `query` is empty (after `btrim`), exceeds 1000 chars, or `websearch_to_tsquery` parses to an empty `tsquery` (only stopwords / only operators) -> 422 `BUSINESS_INVALID_SEARCH_QUERY`.
 - `4a` `layers[]` contains a value outside `{fragment, node, chunk}` -> 422 `BUSINESS_INVALID_SEARCH_LAYER`.
-- `4b` Full-text returns zero rows in every layer -> 200 with `total = 0`, `items = []` (NOT an error; covers cenario C11).
+- `4b` Full-text returns zero rows in every layer -> 200 with envelope `{ ok: true, result: { total: 0, items: [], ... } }` (NOT an error; covers cenario C11).
 - `6a` `expand_depth` outside `[1, 3]` -> 422 `BUSINESS_INVALID_TRAVERSE_DEPTH`.
 - `6b` `expand_link_types[]` contains a name not in `link_type.name` -> 422 `BUSINESS_UNKNOWN_LINK_TYPE`.
 - `8a` `limit` outside `[1, 100]` or `offset` < 0 -> 422 `VALIDATION_OUT_OF_RANGE`.
@@ -76,7 +78,7 @@
    - the `link` filters used during expansion (BR-06): `(valid_from IS NULL OR valid_from <= as_of) AND (valid_to IS NULL OR valid_to > as_of)` plus `superseded_at IS NULL` (query (b), section 5.3 / `knowledge-graph` BR-08);
    - the `knowledge-graph traverse` call (passing `as_of` parameter through).
 4. Direct full-text hits (`fragment`, `chunk`, `node`) are NOT date-filtered (the full-text data is timeless from the validity-axis perspective; fragments are anchored to documents, not to validity intervals). Their `provenance.received_at` is informational.
-5. BFF returns `200` with `SearchResponse`.
+5. BFF returns `200` with envelope `{ ok: true, result: SearchResponse }` (BR-19).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -96,7 +98,7 @@
 2. BFF middleware validates the JWT.
 3. Service layer skips the chunk SQL query entirely; runs fragment + node queries.
 4. Dedup step (UC-01 step 5) still runs against the remaining set; expansion (step 6) still runs from `node` hits when `expand=true`.
-5. BFF returns `200` with `SearchResponse` where every `item.layer` is in the requested subset.
+5. BFF returns `200` with envelope `{ ok: true, result: SearchResponse }` where every `item.layer` is in the requested subset (BR-19).
 
 **Alternative flows:**
 - `3a` `layers[]` contains a value outside `{fragment, node, chunk}` -> 422 `BUSINESS_INVALID_SEARCH_LAYER`.
@@ -115,7 +117,7 @@
 2. BFF middleware validates the JWT.
 3. Service layer adds, on the link filters and on the expansion: `is_in_effect = true` (which the views `knowledge_link_resolved` / `node_attribute_resolved` already compute -- section 5.4 / `knowledge-graph` BR-09).
 4. Direct full-text hits on `fragment` and `chunk` are NOT filtered (they have no validity axis).
-5. BFF returns `200` with `SearchResponse`.
+5. BFF returns `200` with envelope `{ ok: true, result: SearchResponse }` (BR-19).
 
 **Alternative flows:**
 - (As UC-01.)
@@ -126,13 +128,13 @@
 
 ### UC-05 -- Search that produces zero results due to permanent lexical limitation (cenario C11)
 
-**Actor:** Owner | **Pre:** Owner is authenticated; the query has no character overlap with any indexed text. | **Post:** Owner receives `200` with `total = 0`, `items = []`.
+**Actor:** Owner | **Pre:** Owner is authenticated; the query has no character overlap with any indexed text. | **Post:** Owner receives `200` with `result.total = 0`, `result.items = []`.
 
 **Main flow:**
 1. Owner calls `GET /api/v1/search?query=Iniciativa%20Lunar` while the corpus is the Apollo dataset (cenario C1).
 2. BFF middleware validates the JWT.
 3. Service layer parses the query. `websearch_to_tsquery` produces a valid (non-empty) `tsquery`; the three SQL queries return zero rows because no character bridge exists between "lunar / iniciativa" and "Apollo / implantacao" / "projeto".
-4. BFF returns `200` with `total = 0`, `items = []`. THIS IS THE CONTRACT (BR-11 / section 20.1 / ADR A24): synonym / paraphrase without character overlap returns zero. The escape valve is curation (`entity_match`) -- belongs to the `curation` domain.
+4. BFF returns `200` with envelope `{ ok: true, result: { total: 0, items: [], query, limit, offset } }` (BR-19). THIS IS THE CONTRACT (BR-11 / section 20.1 / ADR A24): synonym / paraphrase without character overlap returns zero. The escape valve is curation (`entity_match`) -- belongs to the `curation` domain.
 
 **Alternative flows:**
 - (As UC-01.)
@@ -153,7 +155,7 @@
    - `status = 'disputed'` -> add `"disputed"` to `flags[]` (independent of `include_uncertain`).
    - `kind = 'fragment'` AND the fragment's original `confidence < 0.40` AND it was later promoted via corroboration (cenario C14) -> add `"low_confidence"` to `flags[]`. (ADR A26 / section 7.3.)
 4. Rows with `status IN ('superseded', 'deleted')` are NEVER returned by `search` (history walks belong to `knowledge-graph` `getLinkHistory` / `getAttributeHistory` -- BR-08).
-5. BFF returns `200`.
+5. BFF returns `200` with envelope `{ ok: true, result: SearchResponse }` (BR-19).
 
 **Alternative flow `1a`:** Owner calls with `include_uncertain=false`. Service layer excludes rows with `status = 'uncertain'` entirely; `disputed` rows still appear flagged.
 
@@ -175,7 +177,7 @@
 4. Service layer joins `provenance` (where `link_id = $1`) -> `information_fragment` -> `fragment_source` -> `raw_chunk` -> `raw_information`.
 5. Service layer checks each `raw_information.status`: if ANY is `deleted` (compliance_delete tombstone, section 11) -> 410 `BUSINESS_RAW_INFORMATION_DELETED` (BR-11).
 6. Service layer computes `excerpt = chunk.text[offset_start:offset_end)` using Unicode code-point indexing (BR-12 / ADR A22).
-7. BFF returns `200` with `ProvenanceResponse`.
+7. BFF returns `200` with envelope `{ ok: true, result: ProvenanceResponse }` (BR-19).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -195,7 +197,8 @@
 1. Owner calls `GET /api/v1/provenance/attributes/{attribute_id}`.
 2. BFF middleware validates the JWT.
 3. Service layer joins `provenance` (where `attribute_id = $1`) through the same chain as UC-07 step 4.
-4. Steps 5-7 of UC-07 apply identically.
+4. Steps 5-6 of UC-07 apply identically (raw deletion check, excerpt slicing).
+5. BFF returns `200` with envelope `{ ok: true, result: ProvenanceResponse }` (BR-19).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -216,7 +219,8 @@
 2. BFF middleware validates the JWT.
 3. Service layer reads `information_fragment` by id. If absent -> 404 `RESOURCE_NOT_FOUND`. If present but `status != 'accepted'` -> 404 `BUSINESS_FRAGMENT_NOT_ACCEPTED` (BR-10).
 4. Service layer joins `fragment_source` -> `raw_chunk` -> `raw_information`. The result has at least 1 chunk (DB constraint: `propose_fragment` requires `chunk_ids: uuid[] (>= 1)`).
-5. Steps 5-7 of UC-07 apply identically (raw deletion check, excerpt slicing, response shape).
+5. Steps 5-6 of UC-07 apply identically (raw deletion check, excerpt slicing).
+6. BFF returns `200` with envelope `{ ok: true, result: ProvenanceResponse }` (BR-19).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -352,6 +356,18 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 
 **Tied to:** UC-01.
 
+### BR-19 -- REST success responses are wrapped in `{ ok: true, result: <payload> }`
+
+Every 2xx response served by this domain's REST surface MUST be a JSON object of the shape `{ "ok": true, "result": <Payload> }`, where `<Payload>` is the inner shape named by the corresponding UC (`SearchResponse` for UC-01 through UC-06; `ProvenanceResponse` for UC-07 through UC-09). This restores symmetry with the error path -- every 4xx/5xx response is already enveloped as `{ "ok": false, "error": { "code", "message", "details? } }` via the shared `mapErrorToHttpResponse` -- so a single discriminator `body.ok` covers both halves of the contract. Aligns with the CLAUDE.md "Architecture / Backend" wording (*"REST devolve esse envelope direto, com HTTP status"*) and with the chat / conversations / ingestion / knowledge-graph REST modules that already comply. Mirrors the analogous `knowledge-graph.spec.md` BR-21 introduced in the same atomic change (workflow `kg-rest-success-envelope`).
+
+**Scope.** REST-only. The MCP transports (`POST /api/v1/mcp/query` and the stdio mirror) keep the MCP 2025-06-18 `content` / `isError` framing -- they do NOT wrap responses in `{ ok, result }` (see §8 out-of-scope and `back/query-retrieval.back.md` for the per-transport rendering rules). Extending the wrap to MCP would require a v7 amendment and is explicitly out of scope.
+
+**Atomic landing contract.** The SPA's shared `lib/http.ts` parser requires `body.ok === true` on 2xx; the temporary frontend workaround that shipped on 2026-06-22 (`envelope:false` opt-in flag + `getKnowledgeGraph` reader) MUST be reverted in the SAME change that lands this BR -- otherwise the SPA reads the inner `wire.<field>` off the envelope and breaks every QR-driven view. Recorded in CLAUDE.md "Known Gotchas" / `kg-rest-bare-success-envelope` memory; reconciled in `back/query-retrieval.back.md` (mirror BR) and `openapi.yaml` v1.2.0 (same atomic change).
+
+**Cross-reference note (BR numbering).** The companion `openapi.yaml` (v1.1.0+) repeatedly cites *"BR-15"* as the envelope rule in its `description` blocks (Overview, `searchKnowledge` description, each provenance endpoint description, the `SearchResponseEnvelope` / `ProvenanceResponseEnvelope` schema descriptions, and the `OkTrue` / `OkFalse` discriminators). In this spec.md, however, **BR-15 is "Search inputs are clamped and validated server-side"** -- a different, pre-existing rule. The envelope rule in this spec.md is **BR-19** (this rule). The reviewer / Spec Validator MUST treat BR-19 as the authoritative envelope rule for cross-checks; a follow-up edit may align the `openapi.yaml` numbering to BR-19 (mechanical wording-only change, no contract change). Until then, both numbers point at the SAME wire shape; BR-19 is normative, BR-15 in the openapi descriptions is a stale citation.
+
+**Tied to:** UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-08, UC-09 (all nine UCs / all four REST endpoints).
+
 ---
 
 ## 5. State Machine
@@ -365,6 +381,8 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 ## 6. Error Behaviors
 
 > Every code below is registered in the global error-codes catalog (`docs/specs/_global/error-codes.md`).
+
+> **Wire envelope (BR-19).** Every error response carries the envelope `{ "ok": false, "error": { "code", "message", "details? } }` -- symmetric with the success envelope `{ "ok": true, "result": <Payload> }` (since v1.2.0). The `error.code` values listed below are the canonical discriminators -- `error.message` is for humans, `error.details` is optional and structured.
 
 | Situation | HTTP | error.code | Description |
 |-----------|------|------------|-------------|
@@ -392,7 +410,7 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 | Domain | Type | Description |
 |--------|------|-------------|
 | `ingestion` | consumes | This domain reads `RawInformation`, `RawChunk`, `InformationFragment`, `FragmentSource` rows written by `ingestion`. It also relies on the `text_search` STORED `tsvector` columns and on the partial GIN index `WHERE status = 'accepted'` -- both populated/maintained by ingestion writes. |
-| `knowledge-graph` | consumes | This domain reads `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink`, `Provenance` rows. Expansion (BR-06) calls the same service layer as `knowledge-graph` `traverseNode` (UC-06 of that domain). Derived fields (`is_current`, `is_in_effect`, `effective_status`) come from the shared views `knowledge_link_resolved` / `node_attribute_resolved`. |
+| `knowledge-graph` | consumes | This domain reads `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink`, `Provenance` rows. Expansion (BR-06) calls the same service layer as `knowledge-graph` `traverseNode` (UC-06 of that domain). Derived fields (`is_current`, `is_in_effect`, `effective_status`) come from the shared views `knowledge_link_resolved` / `node_attribute_resolved`. The REST envelope rule (BR-19) is mirrored from `knowledge-graph.spec.md` BR-21 -- both domains landed the wrap in the same atomic change (workflow `kg-rest-success-envelope`). |
 | `curation` | synchronizes | The lifecycle transitions `uncertain -> active`, `disputed -> active / deleted`, etc. are triggered by curation. This domain READS the post-curation state. The `entity_match` queue is the EXPLICIT escape valve for the lexical limitation surfaced by BR-11 / UC-05. |
 | `compliance` | synchronizes | `compliance_delete` sets `RawInformation.status = 'deleted'` and tombstones content; this domain checks for it on every provenance walk and returns 410. |
 | `auth` | synchronizes | Owner authentication via Neon Auth (Stack Auth). The middleware that validates the JWT (JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`) is the same one used by all REST/MCP transports (sections 2.5, A29). This domain consumes the resulting `actor_context = owner` claim. |
@@ -410,6 +428,7 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 - **Cursor-based pagination, infinite scroll, streaming responses** -- offset/limit only. The corpus scale (section 16) makes cursor pagination unnecessary; revisiting is a future ADR.
 - **Multi-user / role-based authorization** -- PERMANENT non-goal in v7 (ADR A20). The `actor_context` is implicit (owner).
 - **Free-form regex / SQL injection passthrough** -- the only query language accepted is `websearch_to_tsquery` (which itself supports `"phrase"`, `-exclusion`, `OR`). Raw SQL or regex from the user is rejected at the BFF input layer.
+- **Extending the `{ ok, result }` REST envelope to the MCP transports** -- MCP wire framing stays `content` / `isError` per MCP 2025-06-18 (BR-19 scope). A future revision unifying the wire framing would require a v7 amendment and is not in scope.
 
 ---
 
@@ -433,6 +452,7 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 | Tombstone | The state set by `compliance_delete` on `RawInformation` (section 11). Triggers 410 `BUSINESS_RAW_INFORMATION_DELETED` in provenance walks (BR-14). |
 | Expansion | The graph traversal step (UC-01 step 6) that grows the result set from `node` hits via `KnowledgeLink` edges, capped by `expand_depth` and decayed by `0.5^hop`. |
 | Excerpt | The slice `raw_chunk.text[offset_start:offset_end)` indexed in Unicode code points (BR-12 / ADR A22). Always semi-open `[start, end)`. |
+| Envelope (REST) | The uniform JSON wrapper for every 2xx and 4xx/5xx response (BR-19). Success: `{ "ok": true, "result": <Payload> }`. Error: `{ "ok": false, "error": { "code", "message", "details? } }`. A single discriminator `body.ok` lets a consumer branch without inspecting the HTTP status. REST-only -- the MCP transports use `content` / `isError` per MCP 2025-06-18. Mirrors `knowledge-graph.spec.md` "Envelope (REST)" / BR-21. |
 
 ---
 
@@ -442,3 +462,4 @@ Mirrors the `search` MCP tool contract of section 14.3. Default page is 20 items
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the query-retrieval domain. Forward-generated from remember-modelagem-v7.md (sections 7, 13, 16, 17, 20) and migrations/0001_schema.sql + 0002_seed.sql. Covers `searchKnowledge` (section 7.2 pipeline: two FTS configs, three layers with weights 1.0/0.9/0.6, dedup, graph expansion with depth 1-3 and decay 0.5, temporal filters, flags) and the three `getProvenanceBy*` endpoints (cross-layer walk to RawInformation with tombstone short-circuit). Reaffirms the permanent ban on embeddings (ADR A24 / section 20.1) -- cenario C11 is the binding contract. | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in §2 Owner actor description, UC-01 pre-condition (the only UC that named the auth provider), BR-16 (heading + body -- JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`, `DATABASE_URL` for DB credentials), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by 'Postgres RLS not used on Neon for this BFF'). No use cases, error codes, state transitions, or business invariants changed. Schema and remember-modelagem-v7.md are untouched. | migrate-neon |
+| 1.2.0 | 2026-06-22 | Back Spec Agent | change | **REST success-envelope alignment (new BR-19).** Documents the wire-shape change applied atomically across the `knowledge-graph` and `query-retrieval` REST surfaces -- every 2xx success response is now wrapped as `{ ok: true, result: <Payload> }`, symmetric with the existing error envelope `{ ok: false, error: { code, message, details? } }` (unchanged). Reworded every UC main-flow success step to spell out the envelope wrap (UC-01 step 9, UC-02 step 5, UC-03 step 5, UC-04 step 5, UC-05 step 4, UC-06 step 5, UC-07 step 7, UC-08 step 5, UC-09 step 6 -- all four REST endpoints), added a normative §3 lead-in note, added §6 envelope note over the error table, added an "Envelope (REST)" glossary entry, added an explicit §8 out-of-scope bullet clarifying that the MCP transports keep their `content` / `isError` framing per MCP 2025-06-18 (the wrap is REST-only), and added a §7 cross-domain note that BR-19 mirrors `knowledge-graph.spec.md` BR-21. **Cross-check note for the Spec Validator:** the companion `openapi.yaml` (v1.1.0) repeatedly cites *"BR-15"* in its envelope descriptions; in this spec.md BR-15 is the pre-existing input-validation rule. The authoritative envelope rule is **BR-19** -- the `openapi.yaml` citation is stale wording (no contract change), to be aligned in a mechanical follow-up edit. No new use case, no new state transition, no schema change, no new error code, no DDL. Atomic with the frontend reconciliation that drops the `envelope:false` workaround introduced on 2026-06-22 (the temporary frontend patch documented in CLAUDE.md "Known Gotchas" / `kg-rest-bare-success-envelope` memory). Coordinated with `knowledge-graph.spec.md` v1.2.0 (mirror change, same envelope alignment) and `back/query-retrieval.back.md` (mirror BR). | kg-rest-success-envelope |

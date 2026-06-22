@@ -1,6 +1,6 @@
 # Knowledge Graph -- Business Specification
 
-> Version: 1.1.0 | Status: draft | Layer: permanent
+> Version: 1.2.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/remember-modelagem-v7.md` (sections 3, 4, 5, 6, 15 + ADRs A1, A6, A7, A8, A9, A10, A11, A12, A14, A16, A19, A20, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
@@ -33,6 +33,8 @@
 
 ## 3. Use Cases
 
+> **Wire envelope (since v1.2.0 / BR-21).** Every 2xx success response in this domain is wrapped as `{ ok: true, result: <Payload> }` -- symmetric with the existing error envelope `{ ok: false, error: { code, message, details? } }` (unchanged). The Use Cases below name the inner `Payload` (`NodeDetail`, `TraversalResult`, `LinkHistoryResponse`, etc.); the wrapping is uniform across all eleven endpoints. The MCP transports render the same logical outcome as MCP 2025-06-18 `content` / `isError`; the `{ ok, result }` wrap is REST-only (see BR-21).
+
 ### UC-01 -- List NodeType catalog
 
 **Actor:** Owner | **Pre:** Owner is authenticated with a valid Neon Auth JWT. | **Post:** Owner has the full list of registered `NodeType` rows.
@@ -41,7 +43,7 @@
 1. Owner calls `GET /api/v1/node-types`.
 2. BFF middleware validates the JWT (section 2.5).
 3. Service layer reads `node_type` rows (currently 9: the 8 of seed §15.1 — `Person`, `Organization`, `Project`, `Event`, `Role`, `Category`, `Concept`, `Location` — plus `Document` added by migration `0002_catalog_tier1.sql`).
-4. BFF returns `200` with `total = 9` and the items.
+4. BFF returns `200` with envelope `{ ok: true, result: { total: 9, items: NodeType[] } }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401 `AUTH_UNAUTHORIZED` or `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`.
@@ -59,7 +61,7 @@
 1. Owner calls `GET /api/v1/link-types?include_rules=true`.
 2. BFF middleware validates the JWT.
 3. Service layer reads `link_type` rows (13: 10 of seed §15.2 + `concerns`/`delivered_to`/`sponsors` via `0002`) and, when `include_rules=true`, joins `link_type_rule` (28: 22 of seed §15.2 + 6 via `0002`).
-4. BFF returns `200`.
+4. BFF returns `200` with envelope `{ ok: true, result: { items: LinkType[] } }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -77,7 +79,7 @@
 1. Owner calls `GET /api/v1/attribute-keys?node_type=Project`.
 2. BFF middleware validates the JWT.
 3. Service layer reads `attribute_key` rows joined to `node_type` filtered by name.
-4. BFF returns `200` with the matching rows (4 for `Project` per seed §15.3: `deadline`, `start_date`, `status_text`, `budget`).
+4. BFF returns `200` with envelope `{ ok: true, result: { items: AttributeKey[] } }` (4 rows for `Project` per seed §15.3: `deadline`, `start_date`, `status_text`, `budget`).
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -96,7 +98,7 @@
 1. Owner calls `GET /api/v1/nodes?node_type=Project&name_prefix=Apollo&limit=20&offset=0`.
 2. BFF middleware validates the JWT.
 3. Service layer joins `knowledge_node` with `node_alias`, applies `alias_norm LIKE norm('Apollo') || '%'` and the `node_type` filter (section 4.2 "always within the same node_type"). Default `status` filter = `active`.
-4. BFF returns `200` with `total`, `limit`, `offset`, `items`.
+4. BFF returns `200` with envelope `{ ok: true, result: { total, limit, offset, items: KnowledgeNode[] } }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -121,7 +123,7 @@
    - when `as_of` provided: query (b) (section 5.3);
    - when `in_effect_only=true`: requires `is_in_effect`;
    - when `include_uncertain=false`: omit rows with `status = 'uncertain'`.
-5. BFF returns `200` with `NodeDetail` payload.
+5. BFF returns `200` with envelope `{ ok: true, result: NodeDetail }` -- where `NodeDetail = { node, aliases, attributes }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -149,7 +151,7 @@
    - stop at `depth`.
 5. Path-compress merged nodes on read: when a traversed endpoint has `status = 'merged'`, the service substitutes `merged_into_node_id` (section 4.4 invariant, points to an active node).
 6. Each link entry receives `hop` = hop number and `score = 0.5^hop` (ADR A16).
-7. BFF returns `200` with `TraversalResult`.
+7. BFF returns `200` with envelope `{ ok: true, result: TraversalResult }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -172,7 +174,7 @@
 1. Owner calls `GET /api/v1/links/{link_id}`.
 2. BFF middleware validates the JWT.
 3. Service layer reads `knowledge_link_resolved` (section 5.4) and joins `provenance` -> `information_fragment` -> `fragment_source` -> `raw_chunk` -> `raw_information` to assemble the `ProvenanceEntry[]`.
-4. BFF returns `200` with `LinkDetail`.
+4. BFF returns `200` with envelope `{ ok: true, result: LinkDetail }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -191,7 +193,7 @@
 1. Owner calls `GET /api/v1/attributes/{attribute_id}`.
 2. BFF middleware validates the JWT.
 3. Service layer reads `node_attribute_resolved` (section 5.4) and joins provenance as in UC-07.
-4. BFF returns `200` with `AttributeDetail`.
+4. BFF returns `200` with envelope `{ ok: true, result: AttributeDetail }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -212,7 +214,7 @@
 3. Service layer computes the closure of the lineage chain: starting from `link_id`, walk both up (`supersedes_link_id`) and down (rows where `supersedes_link_id = current`); collect all rows.
 4. Sort ASC by `recorded_at`.
 5. For each version, embed the `ProvenanceEntry[]` as in UC-07.
-6. BFF returns `200` with `LinkHistoryResponse`.
+6. BFF returns `200` with envelope `{ ok: true, result: LinkHistoryResponse }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -233,7 +235,7 @@
 3. Service layer walks the chain via `supersedes_attribute_id` (same algorithm as UC-09).
 4. Sort ASC by `recorded_at`.
 5. Embed provenance.
-6. BFF returns `200` with `AttributeHistoryResponse`.
+6. BFF returns `200` with envelope `{ ok: true, result: AttributeHistoryResponse }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -254,7 +256,7 @@
 3. Service layer reads the node to discover its `node_type_id`; looks up the `attribute_key` row for `(node_type_id, key)`.
 4. Service layer reads all `node_attribute` rows with `node_id` and `attribute_key_id`, ordered ASC by `recorded_at`.
 5. Embed provenance per row.
-6. BFF returns `200` with `AttributeHistoryResponse`.
+6. BFF returns `200` with envelope `{ ok: true, result: AttributeHistoryResponse }`.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.
@@ -410,6 +412,19 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 
 **Tied to:** UC-01 through UC-11.
 
+### BR-21 -- REST success responses are wrapped in `{ ok: true, result: <payload> }`
+
+Every 2xx response served by this domain's REST surface MUST be a JSON object of the shape `{ "ok": true, "result": <Payload> }`, where `<Payload>` is the inner shape named by the corresponding UC (`{ items: NodeType[] }` for UC-01; `NodeDetail` for UC-05; `TraversalResult` for UC-06; etc.). This restores symmetry with the error path -- every 4xx/5xx response is already enveloped as `{ "ok": false, "error": { "code", "message", "details? } }` via the shared `mapErrorToHttpResponse` -- so a single discriminator `body.ok` covers both halves of the contract. Aligns with the CLAUDE.md "Architecture / Backend" wording (*"REST devolve esse envelope direto, com HTTP status"*) and with the chat / conversations / ingestion REST modules that already comply.
+
+**Scope and exclusions:**
+- Applies to all eleven success sends in this domain (`listNodeTypes`, `listLinkTypes`, `listAttributeKeys`, `listNodes`, `getNodeById`, `getLinkById`, `getAttributeById`, `traverseNode`, `getLinkHistory`, `getAttributeHistory`, `getAttributeKeyHistory`).
+- Does NOT apply to the MCP transports (HTTP `POST /api/v1/mcp/query` and the local stdio transport). They render the same logical outcome as MCP 2025-06-18 `content` / `isError` via `backend/src/mcp/sdk-http-transport.ts` + `shared/error-mapping.ts`; the `{ ok, result }` wrap is REST-only. REST↔MCP parity is measured on the SERVICE-LAYER return value after stripping the per-transport framing.
+- Does NOT change any error code, schema, SQL, view, or DDL. The change is purely the route-layer wire shape.
+
+**Atomic landing contract.** The SPA's shared `lib/http.ts` parser requires `body.ok === true` on 2xx; the temporary frontend workaround that shipped on 2026-06-22 (`envelope:false` opt-in flag + `getKnowledgeGraph` reader) MUST be reverted in the SAME change that lands this BR -- otherwise the SPA reads the inner `wire.node` off the envelope and the `NodeDetailPanel` breaks on every node click. Recorded in CLAUDE.md "Known Gotchas" / `kg-rest-bare-success-envelope` memory; reconciled in `back/knowledge-graph.back.md` v1.5.0 (BR-27) and `openapi.yaml` v1.5.0 (same atomic change).
+
+**Tied to:** UC-01 through UC-11.
+
 ---
 
 ## 5. State Machine
@@ -502,6 +517,8 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 ## 6. Error Behaviors
 
 > Every code below is registered in the global error-codes catalog (`docs/specs/_global/error-codes.md`).
+>
+> **Wire envelope (BR-21).** Every error response carries the envelope `{ "ok": false, "error": { "code", "message", "details? } }` -- symmetric with the success envelope `{ "ok": true, "result": <Payload> }` (since v1.2.0). The `error.code` values listed below are the canonical discriminators -- `error.message` is for humans, `error.details` is optional and structured.
 
 | Situation | HTTP | error.code | Description |
 |-----------|------|------------|-------------|
@@ -548,6 +565,7 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 - Multi-user / role-based authorization (ADR A20) -- PERMANENT non-goal in v7. The `actor_context` is implicit (owner).
 - Synonym/paraphrase matching ("Iniciativa Lunar" vs. "Projeto Apollo") -- by design `listNodes` will not surface such matches (BR-03). The valve is curation (`entity_match` queue), owned by the `curation` domain (acceptance scenario C11).
 - Write endpoints for `KnowledgeNode`, `NodeAlias`, `NodeAttribute`, `KnowledgeLink` -- they originate from `ingestion` / `curation`. This domain is READ-ONLY.
+- Extending the `{ ok, result }` REST envelope to the MCP transports -- MCP wire framing stays `content` / `isError` per MCP 2025-06-18 (BR-21 scope). A future revision unifying the wire framing would require a v7 amendment and is not in scope.
 
 ---
 
@@ -564,6 +582,7 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 | Consolidation | Re-affirmation of the same `(source, target, link_type)` or `(node, key, value)` triggers accumulation of `Provenance` rows on the existing item, NOT a new row. Performed by the `ingestion` domain; visible here as `provenance[]` with N entries. |
 | Correction (6.5-B) | A specific kind of supersession: `superseded_at` is set on the predecessor but `valid_to` is NOT touched (the world did not change; the system recorded incorrectly). Requires an explicit signal (errata or curator action). |
 | Effective status | The derived status field computed by the view (BR-09). Maps `active + past valid_to` to `inactive`. |
+| Envelope (REST) | The uniform JSON wrapper for every 2xx and 4xx/5xx response (BR-21). Success: `{ "ok": true, "result": <Payload> }`. Error: `{ "ok": false, "error": { "code", "message", "details? } }`. A single discriminator `body.ok` lets a consumer branch without inspecting the HTTP status. REST-only -- the MCP transports use `content` / `isError` per MCP 2025-06-18. |
 | `is_current` / `is_in_effect` | Derived booleans per section 5.4 (BR-09). Never stored. |
 | Lineage chain | The transitive closure of versions linked by `supersedes_*` pointers. Walked by `getLinkHistory` / `getAttributeHistory` / `getAttributeKeyHistory`. |
 | `merged_into_node_id` | The forward pointer used by path compression (section 4.4). Always points to an ACTIVE node. |
@@ -586,3 +605,4 @@ Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth / Stack A
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the knowledge-graph domain. Forward-generated from remember-modelagem-v7.md (sections 3, 4, 5, 6, 15) and migrations/0001_schema.sql + 0002_seed.sql. Covers KnowledgeNode/NodeAlias/NodeAttribute/KnowledgeLink reads, entity-resolution invariants, semi-open temporal model, lifecycle/lineage, and seed catalog access. | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in actor descriptions, every UC pre-condition, BR-20 (JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by "Postgres RLS not used on Neon"). No use cases, error codes, state transitions, or business invariants changed. Schema and remember-modelagem-v7.md are untouched. | migrate-neon |
+| 1.2.0 | 2026-06-22 | Back Spec Agent | change | **REST success-envelope alignment (new BR-21).** Documents the wire-shape change implemented in `back/knowledge-graph.back.md` v1.5.0 (BR-27) and `openapi.yaml` v1.5.0 -- every 2xx success response in this domain is now wrapped as `{ ok: true, result: <Payload> }`, symmetric with the existing error envelope `{ ok: false, error: { code, message, details? } }` (unchanged). Reworded every UC main-flow success step to spell out the envelope wrap (UC-01 through UC-11, all eleven endpoints), added a normative §3 lead-in note, added §6 envelope note over the error table, added a "Envelope (REST)" glossary entry, and added an explicit out-of-scope bullet clarifying the MCP transports keep their `content` / `isError` framing per MCP 2025-06-18 (the wrap is REST-only). No new use case, no new state transition, no schema change, no new error code, no DDL. Atomic with the frontend reconciliation that drops the `envelope:false` workaround introduced on 2026-06-22 (the temporary frontend patch documented in CLAUDE.md "Known Gotchas" / `kg-rest-bare-success-envelope` memory). Coordinated with `query-retrieval.spec.md` (mirror change, same envelope alignment). | kg-rest-success-envelope |
