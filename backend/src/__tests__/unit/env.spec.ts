@@ -150,7 +150,8 @@ describe("loadEnv", () => {
       const env = loadEnv(baseEnv);
       expect(env.CHAT_ENABLED).toBe(true);
       expect(env.CHAT_MODEL).toBe("claude-opus-4-8");
-      expect(env.CHAT_PROMPT_VERSION).toBe("v1");
+      // TC-02 / BR-18 v2.4: default bumped from `v1` to `v2`.
+      expect(env.CHAT_PROMPT_VERSION).toBe("v2");
       expect(env.MAX_HISTORY_MESSAGES).toBe(40);
       expect(env.MAX_ITERATIONS).toBe(8);
       expect(env.TURN_TIMEOUT_MS).toBe(90_000);
@@ -237,6 +238,27 @@ describe("loadEnv", () => {
           CHAT_UTILITY_MODEL: "claude-haiku-9",
         });
         expect(env.CHAT_UTILITY_MODEL).toBe("claude-haiku-9");
+      });
+
+      // --- v2.4 / BR-44 — CHAT_INGEST_ENABLED feature flag -------------
+      it("defaults CHAT_INGEST_ENABLED to false (BR-44)", () => {
+        // BR-44: boot-time catalog gate. Default OFF means the async-ingestion
+        // capability is opt-in — the v2.0 13-tool read-only catalog continues
+        // to be the safe default behaviour.
+        const env = loadEnv(baseEnv);
+        expect(env.CHAT_INGEST_ENABLED).toBe(false);
+      });
+
+      it("coerces CHAT_INGEST_ENABLED='true' to the boolean true", () => {
+        // BR-44 step 1: enabling the flag swells the catalog to 15 tools at
+        // boot. The env loader is the single source of truth for the gate.
+        const env = loadEnv({ ...baseEnv, CHAT_INGEST_ENABLED: "true" });
+        expect(env.CHAT_INGEST_ENABLED).toBe(true);
+      });
+
+      it("coerces CHAT_INGEST_ENABLED='false' to the boolean false", () => {
+        const env = loadEnv({ ...baseEnv, CHAT_INGEST_ENABLED: "false" });
+        expect(env.CHAT_INGEST_ENABLED).toBe(false);
       });
 
       it("preserves legacy MAX_HISTORY_MESSAGES alongside the new MAX_CONTENT_LENGTH", () => {
