@@ -16,6 +16,7 @@
 //      rather than serving the wrong prompt.
 
 import * as v1 from "./v1.js";
+import * as v2 from "./v2.js";
 
 /** Slice of a prompt module the chat orchestrator consumes. */
 export interface ChatPromptModule {
@@ -33,11 +34,27 @@ const V1: ChatPromptModule = {
   marker: v1.CHAT_PROMPT_MARKER_V1,
 };
 
-/** Recommended default for NEW deployments — used when env is unset. */
-export const DEFAULT_CHAT_PROMPT_VERSION: string = v1.PROMPT_VERSION;
+// v2 (BR-18 v2.4): adds three pt-BR ingestion directives on top of v1. The
+// marker is the SAME as v1 (BR-20 stable across versions) — `output-guard.ts`
+// scrubs against the single canary regardless of which prompt module the env
+// selected.
+const V2: ChatPromptModule = {
+  version: v2.PROMPT_VERSION,
+  system: v2.system,
+  marker: v2.CHAT_PROMPT_MARKER_V1,
+};
+
+/**
+ * Recommended default for NEW deployments — used when env is unset. v2.4
+ * bumps this from `v1` to `v2` so that fresh deployments pick up the
+ * ingestion directives (BR-18 v2.4). `v1` continues to resolve through the
+ * registry for backward-compatibility.
+ */
+export const DEFAULT_CHAT_PROMPT_VERSION: string = v2.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, ChatPromptModule>> = {
   [v1.PROMPT_VERSION]: V1,
+  [v2.PROMPT_VERSION]: V2,
 };
 
 /**
