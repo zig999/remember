@@ -168,3 +168,24 @@ export const IdempotencyKeyHeader = z.string().uuid();
 /** `:id` path parameter for conversation-scoped endpoints. */
 export const ConversationIdParam = z.object({ id: z.string().uuid() });
 export type ConversationIdInput = z.infer<typeof ConversationIdParam>;
+
+// ---------------------------------------------------------------------------
+// Graph view persistence (BR-42)
+// ---------------------------------------------------------------------------
+
+/** Position record for a single graph node. */
+const NodePosition = z.object({ x: z.number(), y: z.number() });
+
+/**
+ * `PUT /conversations/:id/graph` request body.
+ * Snapshot shape: { version, nodes, links, positions, user_pinned }.
+ * Size cap on nodes/links (max 2000 each) bounds the JSONB blob.
+ */
+export const SaveGraphViewRequest = z.object({
+  version: z.literal(1),
+  nodes: z.array(z.any()).max(2000, "nodes must contain at most 2000 entries"),
+  links: z.array(z.any()).max(2000, "links must contain at most 2000 entries"),
+  positions: z.record(z.string(), NodePosition),
+  user_pinned: z.array(z.string()),
+});
+export type SaveGraphViewRequestType = z.infer<typeof SaveGraphViewRequest>;

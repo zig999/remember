@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.1.0"
+  version: "2.2.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -72,6 +72,13 @@ tags:
   - name: "Conversation Operations"
     description: |
       Read-side aggregates and cooperative cancellation for an in-flight turn.
+
+  - name: "Conversation Graph View"
+    description: |
+      Per-conversation graph-view snapshot (memento pattern). REST-only, JWT-gated.
+      One JSONB row per conversation, upserted (last version wins — snapshot-as-memento).
+      Snapshot is NOT re-projected from the KG on load; it records the last version
+      presented to the user. chat.back.md BR-42.
 
 security:
   - bearerAuth: []
@@ -756,6 +763,113 @@ paths:
                     error:
                       code: "BUSINESS_CONVERSATION_ARCHIVED"
                       message: "conversation is archived"
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+
+
+  # =========================================================================
+  # Conversation Graph View (per-conversation snapshot — BR-42)
+  # =========================================================================
+  /api/v1/conversations/{id}/graph:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: ["Conversation Graph View"]
+      operationId: getConversationGraphView
+      summary: Get the saved graph-view snapshot for a conversation.
+      description: |
+        Returns the last graph-view snapshot saved for this conversation.
+        Returns 200 with `result: null` when the conversation exists but no
+        snapshot has been saved yet — null means "nothing to restore", NOT an
+        error. Returns 404 only when the conversation itself does not exist.
+        (chat.back.md BR-42)
+      responses:
+        "200":
+          description: "Snapshot returned (or null if none saved yet)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphViewResponse" }
+              examples:
+                withSnapshot:
+                  summary: "Snapshot present"
+                  value:
+                    ok: true
+                    result:
+                      version: 1
+                      nodes: []
+                      links: []
+                      positions: {}
+                      user_pinned: []
+                noSnapshot:
+                  summary: "No snapshot saved yet"
+                  value:
+                    ok: true
+                    result: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Conversation not found."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    ok: false
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "conversation not found"
+        "503": { $ref: "#/components/responses/ChatUnavailable" }
+    put:
+      tags: ["Conversation Graph View"]
+      operationId: saveConversationGraphView
+      summary: Upsert the graph-view snapshot for a conversation.
+      description: |
+        Saves (upserts) the current graph-view snapshot for this conversation.
+        If a snapshot already exists it is overwritten (last version wins —
+        snapshot-as-memento pattern). Returns 404 when the conversation does
+        not exist. Validates the body; size cap: nodes and links each max 2000
+        items. (chat.back.md BR-42)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveGraphViewRequest" }
+      responses:
+        "200":
+          description: "Snapshot saved."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphViewSaveResponse" }
+              examples:
+                saved:
+                  value:
+                    ok: true
+                    result:
+                      updated_at: "2026-06-22T00:00:00.000Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "Conversation not found."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notFound:
+                  value:
+                    ok: false
+                    error:
+                      code: "RESOURCE_NOT_FOUND"
+                      message: "conversation not found"
+        "422":
+          description: "Validation error — malformed snapshot or size cap exceeded."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                tooManyNodes:
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "nodes: Array must contain at most 2000 element(s)"
         "503": { $ref: "#/components/responses/ChatUnavailable" }
 
 # =============================================================================
@@ -1457,3 +1571,78 @@ components:
             those tools project nodes only. Populated by `traverse` from the
             traversal envelope.
           items: { $ref: "#/components/schemas/GraphLinkWire" }
+
+    GraphViewSnapshot:
+      type: object
+      description: |
+        A point-in-time snapshot of the graph-view state for one conversation.
+        Treated as a view memento — not re-projected from the KG on load.
+        The positions map holds the last user-dragged coordinates per node id.
+      required: [version, nodes, links, positions, user_pinned]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+          description: "Schema version — always 1."
+        nodes:
+          type: array
+          maxItems: 2000
+          items: { $ref: "#/components/schemas/GraphNodeWire" }
+          description: "All nodes currently visible in the graph."
+        links:
+          type: array
+          maxItems: 2000
+          items: { $ref: "#/components/schemas/GraphLinkWire" }
+          description: "All links currently visible in the graph."
+        positions:
+          type: object
+          additionalProperties:
+            type: object
+            required: [x, y]
+            properties:
+              x: { type: number }
+              y: { type: number }
+          description: "Map of node id -> {x, y} coordinates (last drag position per node)."
+        user_pinned:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: "Node ids the user has explicitly pinned."
+
+    SaveGraphViewRequest:
+      allOf:
+        - $ref: "#/components/schemas/GraphViewSnapshot"
+      description: "Request body for PUT /conversations/{id}/graph. Identical shape to GraphViewSnapshot."
+
+    GraphViewResponse:
+      type: object
+      required: [ok, result]
+      description: "Response for GET /conversations/{id}/graph."
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        result:
+          nullable: true
+          description: "The saved snapshot, or null if no snapshot has been saved yet."
+          allOf:
+            - $ref: "#/components/schemas/GraphViewSnapshot"
+
+    GraphViewSaveResponse:
+      type: object
+      required: [ok, result]
+      description: "Response for PUT /conversations/{id}/graph."
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        result:
+          type: object
+          required: [updated_at]
+          properties:
+            updated_at:
+              type: string
+              format: date-time
+              description: "Timestamp when the snapshot was last upserted."
+

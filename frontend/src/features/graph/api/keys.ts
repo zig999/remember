@@ -23,3 +23,19 @@ export const graphNodeKeys = {
   /** Single node detail (canonical name + aliases + attributes). */
   detail: (id: string) => ["nodes", id] as const,
 } as const;
+
+/**
+ * Graph view persistence — query key factory (BR-42).
+ *
+ * Used by `use-graph-persistence.ts` for the GET /conversations/:id/graph
+ * cache key (if TanStack Query is used for the GET in the future) and
+ * mutation invalidation.
+ */
+export const graphViewKeys = {
+  /** Root prefix — invalidates ALL graph-view-scoped queries. */
+  all: ["graphView"] as const,
+
+  /** Per-conversation saved snapshot. */
+  forConversation: (conversationId: string) =>
+    ["graphView", conversationId] as const,
+} as const;

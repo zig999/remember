@@ -88,6 +88,7 @@ import {
   type GraphSpaceHandle,
 } from "@/features/graph";
 import { ConversationView } from "./ConversationView";
+import { useGraphPersistence } from "@/features/graph/api/use-graph-persistence";
 
 export const ChatWorkspace: FC = () => {
   // TC-01 chatRoute.validateSearch returns `{ conversation?: string }`. When
@@ -149,6 +150,12 @@ export const ChatWorkspace: FC = () => {
     useGraphStore.getState().clear();
     setSelectedNode(null);
   }, [conversation]);
+
+  // BR-42: restore the saved graph view when the conversation changes,
+  // and save it whenever nodes/positions/layoutNonce change.
+  // The hook runs AFTER the clear() effect above (declared later in the
+  // same component — React fires effects in declaration order).
+  useGraphPersistence(conversation);
 
   // `onNodeSelect` is fired by GraphSpace when the user clicks a node. We
   // capture the id AND the click-time label so NodeDetailPanel can show it

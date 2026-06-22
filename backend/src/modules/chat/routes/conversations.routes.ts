@@ -103,6 +103,7 @@ import {
   IdempotencyKeyHeader,
   ListConversationsQuery,
   ListMessagesQuery,
+  SaveGraphViewRequest,
   UpdateConversationRequest,
   buildSendMessageRequestSchema,
 } from "./chat.schemas.js";
@@ -433,6 +434,63 @@ export async function registerChatRoutes(
         return sendNotFound(reply, id);
       }
       return reply.code(200).send({ ok: true, result: usage });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // GET /:id/graph — getConversationGraph (BR-42)
+  // -------------------------------------------------------------------------
+  scoped.get(
+    "/:id/graph",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      if (killSwitchTripped(deps.env)) {
+        return sendKillSwitch(reply);
+      }
+      const { id } = ConversationIdParam.parse(request.params ?? {});
+      const result = await withReadOnly(deps.pool, async (client) => {
+        const conversation = await chatRepo.getConversationById(client, id);
+        if (conversation === null) return null;
+        const graphView = await chatRepo.getConversationGraphView(client, id);
+        return { found: true as const, snapshot: graphView?.snapshot ?? null };
+      });
+      if (result === null) {
+        return sendNotFound(reply, id);
+      }
+      return reply.code(200).send({ ok: true, result: result.snapshot });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // PUT /:id/graph — saveConversationGraph (BR-42)
+  // -------------------------------------------------------------------------
+  scoped.put(
+    "/:id/graph",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      if (killSwitchTripped(deps.env)) {
+        return sendKillSwitch(reply);
+      }
+      const { id } = ConversationIdParam.parse(request.params ?? {});
+      const bodyParsed = SaveGraphViewRequest.safeParse(request.body ?? {});
+      if (!bodyParsed.success) {
+        return reply.code(422).send({
+          ok: false,
+          error: {
+            code: "VALIDATION_INVALID_FORMAT",
+            message: "invalid graph view snapshot",
+            details: bodyParsed.error.flatten(),
+          },
+        });
+      }
+      const snapshot = bodyParsed.data;
+      const row = await withTransaction(deps.pool, async (client) => {
+        const conversation = await chatRepo.getConversationById(client, id);
+        if (conversation === null) return null;
+        return chatRepo.upsertConversationGraphView(client, id, snapshot);
+      });
+      if (row === null) {
+        return sendNotFound(reply, id);
+      }
+      return reply.code(200).send({ ok: true, result: { updated_at: row.updated_at } });
     }
   );
 

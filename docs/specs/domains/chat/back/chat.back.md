@@ -1,14 +1,16 @@
 # Chat -- Back-end Spec
 
-> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 3 tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` | Version: 2.2.0 | Status: draft | Layer: permanent
+> Stack: Node.js 20 LTS + TypeScript strict + Fastify | DB: PostgreSQL 17 (Neon) — owns 4 tables (`chat_conversation`, `chat_message`, `chat_tool_call`, `chat_graph_view`) + 1 enum (`chat_message_role`) via migrations `0004_chat_persistence.sql` + `0005_chat_graph_view.sql` | Version: 2.3.0 | Status: draft | Layer: permanent
 > Business spec: `../chat.spec.md` (v2.0.0)
-> REST contract: `../openapi.yaml` (v2.1.0)
+> REST contract: `../openapi.yaml` (v2.2.0)
 > Migration spec artifact: `./0004_chat_persistence.sql`
 > Normative deviation: this domain is an ADDITIVE deviation from `/remember-modelagem-v7.md` (which does not specify a chat surface). The inegociable rule of v7 §2 holds: the LLM never reaches the database directly; every tool opens its own short `BEGIN READ ONLY` transaction. The chat domain itself OWNS its own writes (conversation CRUD + message persistence) — those run via `withTransaction` on the BFF, NOT via tools. The v7 §11 compliance flow does NOT walk into chat tables (BR-37 of `.spec.md` / §6 of `.spec.md` "Compliance §11 note"). Reconcile via a future `/u-improve` pass that amends v7 §2 with the stateful chat transport.
 >
 > **v2.1 additive deviation (Chat-Graph projection).** The `sendMessage` SSE stream now emits a 7th frame, `graph_delta`, ONLY after a `tool_result` whose tool is one of the four graph-producing query tools (`traverse`, `get_node`, `list_nodes`, `search`). The frame carries a normalized subgraph projection (`{source_tool, nodes[], links[]}`) consumed by the SPA `GraphSpace`. The projection is route-owned (synthesised AFTER the `tool_result` event yielded by the agentic loop) — the agent service does NOT see this frame and the LLM is not aware of it. Frame is OBSERVATIONAL only — it carries no instructions and no new data beyond what the `tool_result` already produced. See BR-41. The `search` projector hydrates `items(kind=node).id` via `findNodesByIds` (one batched read; §4.1 G-A) to supply `node_type` + `canonical_name` — fields the `search` envelope itself does not carry. Source plan: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 / §9 Fase B / AC-B.7.
 >
 > **v2.2 bugfix (Faithful multi-row persistence of the agentic turn).** Owner-approved 2026-06-21. v2.0 / v2.1 persisted an agentic turn as ONE assistant `chat_message` row whose `content` carried the accumulated text + raw `tool_use` blocks but NOT the matching `tool_result` blocks (those lived only in audit `chat_tool_call` rows). The `context-builder` (BR-31) maps each persisted row 1:1 to an Anthropic `MessageParam` with `content` passed verbatim — so on the NEXT turn the rebuilt history contained an assistant `tool_use` with no following `tool_result`, and Anthropic rejected the request with HTTP 400 (`tool_use ids were found without tool_result blocks immediately after`). The stream rejected mid-flight via BR-11 and the user saw `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`. The same bug broke fire-and-forget title/summary distillation (BR-33 / BR-34) — identical 400 surfaced as `chat.title_distillation_failure`. The fix changes BR-29 sequencing: each agentic iteration now persists as the correct Anthropic message sequence ACROSS SEPARATE `chat_message` rows — assistant `[optional text, tool_use(s)]`, then user `[tool_result block(s)]`, repeated once per tool-bearing iteration, followed by a final assistant `[text]` row. Replaying rows 1:1 (BR-31) and slicing the older window for distillation (BR-33) now yield a VALID Anthropic sequence by construction. The model also sees its own tool-calling history on later turns. NO migration required — `chat_message.content jsonb` is already polymorphic enough to carry `tool_use` and `tool_result` content blocks; the `chat_message_role` enum stays `{user, assistant}` (BR-02). BR-32 (`chat_tool_call` audit trail) is preserved as-is — the audit row is no longer the SOLE persistence surface for tool calls but stays as the structured per-call payload (full input/result/timing) for `getConversationUsage` (BR-40) and audit dumps. Tests gap that let it ship: existing coverage was single-turn or text-only multi-turn; v2.2 mandates a multi-turn regression test where turn 1 invokes a tool and turn 2 then succeeds (§1 Testing row).
+
+> **v2.3 additive deviation (Per-conversation graph-view snapshot).** The `GET/PUT /conversations/:id/graph` endpoints persist and restore the graph-view snapshot for each conversation. Snapshot is a **view memento** (last version shown to the user) — NOT re-projected from the knowledge graph on load. New table `chat_graph_view` (migration `0005`); new repository functions `getConversationGraphView`/`upsertConversationGraphView`; REST-only, JWT-gated, outside §11 compliance. See BR-42.
 
 ---
 
@@ -406,9 +408,10 @@ Anthropic history.
 
 ## 2. Data Model
 
-> **This domain owns 3 tables and 1 enum** introduced by migration
-> `0004_chat_persistence.sql` (spec artifact: `./0004_chat_persistence.sql`).
-> NO `user_id` column on any of the three — single-owner (v7 §2.3 / ADR A20).
+> **This domain owns 4 tables and 1 enum** introduced by migrations
+> `0004_chat_persistence.sql` (spec artifact: `./0004_chat_persistence.sql`) and
+> `migrations/0005_chat_graph_view.sql` (spec artifact: `migrations/0005_chat_graph_view.sql`).
+> NO `user_id` column on any of the four — single-owner (v7 §2.3 / ADR A20).
 > Chat tables are OUTSIDE the v7 §11 compliance flow — see `.spec.md` §6
 > "Compliance §11 note" and BR-37.
 
@@ -1126,6 +1129,92 @@ Conversation absence (BR-22) -> 404 BEFORE the query.
 
 > **Search hydration deviation (G-A).** The `search` tool envelope does NOT carry `node_type` / `canonical_name` per the existing query-retrieval contract. Surfacing those fields on a `graph_delta` would otherwise require changing the `search` envelope schema (a breaking change touching every existing client of `query-retrieval`). The chosen alternative — hydrating `search` ids server-side INSIDE the chat domain — is a controlled deviation from the chat-module boundary rule (cf. §1.1 boundary note above): `chat/service/graph-normalizer.ts` imports `findNodesByIds` from `knowledge-graph/repository/graph.repository.ts`. The deviation is approved (`temp/chat-graphspace-plan.md` §10 G-A) and explicitly preserves the `query-retrieval` boundary (no imports from there); it should be revisited if/when `search` evolves to carry `NodeSummary` natively.
 
+
+### BR-42 -- Per-conversation graph-view snapshot (persistence)
+
+**Related UC:** none in the existing catalog — this is a SPA view-state feature, not an agentic or curation flow.  
+**Where to validate:** route handler (`GET /conversations/:id/graph`, `PUT /conversations/:id/graph`) — Zod parse of `SaveGraphViewRequest` body + `getConversationById` existence check before any DB write.  
+**Description:**
+
+The SPA maintains a visual graph of knowledge nodes for each conversation. This graph is built up turn by turn (via `graph_delta` SSE frames, BR-41) and can be rearranged by the user (drag, Reorganizar). To avoid losing that work on page reload, the SPA saves and restores the graph state per conversation.
+
+**Snapshot contract:**
+
+The persisted snapshot records the **last version presented to the user** — it is a **view memento**, NOT a re-projection of the knowledge graph. On restore, the SPA uses it as-is; any knowledge-graph change (node rename / deletion) since the last save will appear stale until the next turn refreshes it. This is intentional.
+
+Snapshot shape (JSON / `chat_graph_view.snapshot`):
+```json
+{
+  "version": 1,
+  "nodes":      [<GraphNodeWire>],
+  "links":      [<GraphLinkWire>],
+  "positions":  { "<node_id>": { "x": <number>, "y": <number> } },
+  "user_pinned": ["<uuid>", ...]
+}
+```
+
+**DB table:**
+
+```sql
+CREATE TABLE chat_graph_view (
+  conversation_id uuid        PRIMARY KEY
+                              REFERENCES chat_conversation(id) ON DELETE CASCADE,
+  snapshot        jsonb       NOT NULL,
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+```
+
+One row per conversation, cascade-deleted with the conversation (`ON DELETE CASCADE`). The PK `conversation_id` is the only index needed — all access is by exact conversation. Outside §11 compliance (cascade-only erasure path, same as the other chat tables; BR-37).
+
+**Migration:** `migrations/0005_chat_graph_view.sql`. DB Safety Rule — NOT applied at spec time; owner applies via the one-off `pg` script after approval, then restarts the BFF.
+
+**Repository additions (`repository/chat.repository.ts`):**
+
+```typescript
+// New types
+type GraphViewRow = { snapshot: unknown; updated_at: Date }
+
+// New functions added to the existing ChatRepository interface
+getConversationGraphView(client: PoolClient, conversationId: string): Promise<GraphViewRow | null>
+upsertConversationGraphView(client: PoolClient, conversationId: string, snapshot: unknown): Promise<{ updated_at: Date }>
+```
+
+- `getConversationGraphView`: `SELECT snapshot, updated_at FROM chat_graph_view WHERE conversation_id = $1`.
+- `upsertConversationGraphView`: `INSERT INTO chat_graph_view (...) VALUES (...) ON CONFLICT (conversation_id) DO UPDATE SET snapshot = $2::jsonb, updated_at = now()`.
+
+**Route contract (`routes/conversations.routes.ts`):**
+
+| Method | Path | Success | 404 | 422 | Description |
+|--------|------|---------|-----|-----|-------------|
+| `GET` | `/conversations/:id/graph` | 200 `{ok:true, result: <snapshot \| null>}` | conversation absent | — | Returns snapshot or `result:null` (no snapshot yet — null is NOT an error) |
+| `PUT` | `/conversations/:id/graph` | 200 `{ok:true, result:{updated_at}}` | conversation absent | snapshot Zod invalid or `nodes/links.length > 2000` | Upserts snapshot |
+
+Both routes:
+1. Check kill-switch (BR-14).
+2. Verify `ConversationIdParam` (Zod UUID).
+3. Call `getConversationById` — 404 via `sendNotFound` if absent.
+4. GET: `withReadOnly` → `getConversationGraphView`.
+5. PUT: validate `SaveGraphViewRequest` (Zod, size cap 2000 per array) → `withTransaction` → `upsertConversationGraphView`.
+6. Return `{ok: true, result: ...}`.
+
+No service file is needed (CRUD-only, like conversation CRUD — route calls repo directly).
+
+**Zod schema (`routes/chat.schemas.ts`):**
+
+```typescript
+export const SaveGraphViewRequest = z.object({
+  version: z.literal(1),
+  nodes:   z.array(GraphNodeWireSchema).max(2000),
+  links:   z.array(GraphLinkWireSchema).max(2000),
+  positions: z.record(z.string().uuid(), z.object({ x: z.number(), y: z.number() })),
+  user_pinned: z.array(z.string().uuid()),
+});
+```
+
+Size cap (2000) bounds the JSONB blob to the regime of dozens of nodes with substantial headroom. No new error codes — reuses `RESOURCE_NOT_FOUND` (404) and `VALIDATION_INVALID_FORMAT` (422).
+
+**Error returned:** 404 (`RESOURCE_NOT_FOUND`) when conversation is absent; 422 (`VALIDATION_INVALID_FORMAT`) for malformed body or size cap exceeded. Both via the standard REST envelope.
+
 ---
 
 ## 5. State Machine (ST)
@@ -1373,3 +1462,4 @@ Reused codes (already registered in the global catalog — no new code needed):
 | 2.0.0 | 2026-06-20 | Back Spec Agent | major (breaking) | **Stateful conversations.** Adopts `.spec.md` v2.0.0 / `openapi.yaml` v2.0.0. (a) §2 Data Model is no longer empty: 3 owned tables (`chat_conversation`, `chat_message`, `chat_tool_call`) + 1 enum (`chat_message_role`) via migration `0004_chat_persistence.sql` (spec artifact at `./0004_chat_persistence.sql`; DB Safety Rule — NOT applied at spec time). NO `user_id` column anywhere (single-owner). Compliance §11 exclusion is intentional (BR-37). (b) NEW §3 Repository Layer documenting the `chat.repository.ts` contract (raw `pg` parameterized, `PoolClient`-based, reusing `withTransaction`/`withReadOnly` from `modules/curation/service/transaction.ts`). (c) §1.1 file layout extended: added `repository/chat.repository.ts`, `service/conversation.service.ts`, `service/context-builder.ts`, `service/distillation.service.ts`, `service/turn-registry.ts`; the existing `chat-agent.service.ts` keeps its scope (agentic loop only — DB reads now come from `context-builder`). (d) §1.2 `ChatEvent.tool_result` enriched with full per-call payload (arguments, result, is_error, error_message, duration_ms) and `ChatEvent.done` / `ChatEvent.error` carry the `content` blocks + token sums for BR-29 persistence. (e) §4 Business Rules: BR-01..BR-24 preserved (turn semantics unchanged) with edits to "Where to validate" reflecting the new repository + service split; added BR-25..BR-40 (archived = no-write, Idempotency-Key required, idempotent replay, single in-flight turn, persistence sequencing, conversation create body, context reconstruction, tool-call persistence, rolling summary, title distillation, conversation listing pagination, patch body, cascade delete + compliance exclusion, cancel endpoint, message listing pagination, usage aggregation). (f) §5 State machine extended: added ST-01 conversation lifecycle; ST-02 turn lifecycle now includes the `user_row_persisted`, `replay_open`, and `assistant_row_persisted` states. (g) §7 External Integrations: added the utility-model call (`CHAT_UTILITY_MODEL` for distillation jobs) and the chat-owned Neon writes. (h) §8 env table adds five additive optional vars (`CHAT_UTILITY_MODEL`, `CHAT_SUMMARY_AFTER_TURNS`, `CHAT_RECENT_WINDOW`, `CHAT_TITLE_ENABLED`, `CHAT_SUMMARY_ENABLED`). (i) §9 pino schema gains `conversation_id`, `message_id`, `idempotent_replay`; new counters/histograms for replay, in-progress conflict, summary refresh, title distillation. (j) §10 error catalog: 3 new business codes (`BUSINESS_CONVERSATION_ARCHIVED`, `BUSINESS_TURN_IN_PROGRESS`, `BUSINESS_IDEMPOTENCY_MISMATCH`) registered in `service/errors.ts`. (k) §11 budgets refined with the chat-table DB cost; §12 constraints add the in-process turn registry, distillation fire-and-forget model, `(content, model)` comparator caveat; §13 out-of-scope reaffirms the BACKEND-ONLY scope and the migration-not-applied stance. (l) PRESERVED from v1: agentic loop semantics, READ-ONLY tool catalog, SSE framing, sanity ceilings, abort semantics, pino observability shape (extended). | -- |
 | 2.1.0 | 2026-06-21 | Back Spec Agent | minor (additive) | **Chat-Graph projection (additive 7th SSE frame).** Adopts `openapi.yaml` v2.1.0. Source: `temp/chat-graphspace-plan.md` (rev. 2026-06-21) §4.1 wire format + §9 Fase B + AC-B.7. (a) Header amended with the v2.1 additive deviation paragraph documenting the route-owned `graph_delta` projection. (b) §1.1 file layout extended with `service/graph-normalizer.ts` (pure projection + dispatcher; consumes `CatalogSnapshot.linkTypeByName` and `findNodesByIds` from `knowledge-graph`). (c) §1.1 boundary note rewritten: the chat module is now permitted READ-ONLY imports of `CatalogSnapshot` (type) and `findNodesByIds` (value) from `knowledge-graph`; the `query-retrieval` boundary remains intact. (d) §1.2 `ChatEvent` union extended with a `graph_delta` variant (route-owned synthesis — the agent service NEVER yields it); new wire types `GraphNodeWire` / `GraphLinkWire` (snake_case). (e) NEW §4 BR-41 documents the projection contract end-to-end: trigger (`ok=true` + graph tool name), per-tool normalization (traverse / get_node / list_nodes / search-with-hydration), wire emission ordering (always AFTER the originating `tool_result`), defensive WARN-and-skip on exception, non-persistence, and non-replay. (f) §5 ST-02 transition row `tool_running -> iteration_completed (ok)` annotated with the `graph_delta` emission contract. (g) §7 External Integrations: new row for `findNodesByIds` consumption (search hydration / G-A); same Neon pool, no new connection. (h) §9 WARN log shapes: added `chat.graph_delta_normalize_failure`. (i) §11 budgets: new `graph_delta projection p95 < 50 ms` line. (j) §12 known constraints: catalog-snapshot dependency, non-persistence, non-replay. (k) Search hydration G-A deviation registered as a normative note inline in BR-41 (chat module imports `findNodesByIds`; `query-retrieval` boundary preserved). PRESERVED from v2.0: all existing BRs (no renumbering, no removals), data model unchanged, no new env var, no migration. | -- |
 | 2.2.0 | 2026-06-21 | Back Spec Agent | patch (bugfix) | **Faithful multi-row persistence of the agentic turn.** Owner-approved fix for the multi-turn provider_error bug: turn 1 succeeds, turn 2 fails with `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` whenever turn 1 invoked a tool. Root cause: the agentic turn persisted as ONE assistant `chat_message` row whose `content` carried raw `tool_use` blocks but NOT the matching `tool_result` blocks (those lived only in audit `chat_tool_call` rows); BR-31 mapped each row 1:1 to an Anthropic `MessageParam` verbatim, so the rebuilt history on turn 2 contained an assistant `tool_use` with no following `tool_result` — Anthropic 400 `tool_use ids were found without tool_result blocks immediately after` surfaced via BR-11 as `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`. Same bug broke title/summary distillation (BR-33 / BR-34). Changes: (a) Header amended with the v2.2 bugfix paragraph. (b) §1 Testing row: added regression items (xiii) multi-turn test where turn 1 invokes a tool and turn 2 succeeds (the coverage gap that let it ship) + (xiv) distillation regression on tool-bearing older slices. (c) §1 Transaction policy row: added a fourth shape — per-iteration `(assistant, synthetic_user)` pair `withTransaction`. (d) §1.1 chat.routes.ts blurb: replaced the SSE-drain persistence pseudocode with the per-iteration pair logic. (e) §1.1 chat-agent.service.ts blurb: agent now yields `tool_use_id` on `tool_start` + `tool_result` AND a new `iteration_end{iteration, assistant_content, tool_results}` event at each iteration boundary. (f) §1.2 `ChatEvent` union extended: `tool_start` carries `tool_use_id` + `input`; `tool_result` carries `tool_use_id` + `model_visible_content`; NEW `iteration_end` variant yielded by the agent and consumed by the route to drive BR-29 step 6.d persistence (internal event — NOT written to the SSE wire). (g) §1.2 contract narrative gained a v2.2 "persistence partnership" subsection. (h) §2.1 enum prose: replaced the v2.0 / v2.1 "transient tool_use / tool_result blocks NEVER persisted as their own rows" wording with the v2.2 multi-row sequencing rule: each tool-bearing iteration persists ONE assistant `[text + tool_use]` row + ONE synthetic user `[tool_result]` row, plus a final assistant `[text]` row at turn end. (i) BR-02 rewritten to reflect persisted `tool_use` / `tool_result` content blocks on the existing `{user, assistant}` enum; `chat_message.content jsonb` is already polymorphic — NO migration. (j) BR-29 rewritten end-to-end: pre-stream insert of the user natural-language row (unchanged); per-iteration `(assistant, synthetic_user)` pair atomically inserted in step 6.d INSIDE the same `withTransaction`; final assistant row inserted in the post-stream transaction (step 8.a) carrying the closing text + `stop_reason` + token sums + latency; ALL `chat_tool_call` audit rows attached to the FINAL assistant row in step 8.b. Atomicity of each iteration pair is non-negotiable; crash recovery is documented. (k) BR-31 rewritten to note that the 1:1 verbatim replay now yields a VALID Anthropic sequence by construction (because BR-29 v2.2 persists the matching `tool_result` row in lock-step); added a row-classification table (natural-language user / synthetic tool_result user / assistant). (l) BR-32 rewritten to clarify the audit-only role of `chat_tool_call` (no longer the SOLE persistence surface for tool calls); attachment now anchors to the FINAL assistant row, not the per-iteration ones. (m) BR-33 amended: `countUserTurns` filters to natural-language user rows only (`idempotency_key IS NOT NULL`); `listOlderMessagesForSummary` cuts on TURN boundaries to avoid splitting tool_use / tool_result pairs (otherwise the distillation request hits the same Anthropic 400). (n) BR-34 amended: `getFirstUserAndAssistant` filters to the first natural-language user row + the first text-bearing assistant row (skipping leading per-iteration assistant rows that carry only `tool_use` blocks). (o) BR-39 amended: route returns ALL `chat_message` rows verbatim; SPA filters synthetic rows (assistant rows with no `text` block; user rows with no `text` block) by content-block inspection. (p) §5 ST-02 updated: new `iteration_persisted(i)` state between `iteration_completed(i)` and `llm_streaming(i+1)`; new `done_internal_error` transition on per-iteration transaction failure. (q) §11 budgets: new bullet on per-iteration persistence cost (< 30 ms per pair on Neon). (r) §12 known constraints: three new entries (multi-row persistence per iteration with atomicity caveat; `chat_message.content` jsonb polymorphism; surface filtering at the SPA boundary). NO migration. NO new env var. NO new error code. PRESERVED from v2.1: `graph_delta` projection (BR-41) — unaffected by the fix (lives on `tool_result` events, which still arrive in the same order). PRESERVED from v2.0: all CRUD endpoints, all error codes, OpenAPI v2.1.0 (no wire changes for the SPA). | sdd_improve_1_spec-back |
+| 2.3.0 | 2026-06-22 | Back Spec Agent | minor (additive) | **Per-conversation graph-view snapshot (view memento).** Adopts `openapi.yaml` v2.2.0. (a) §2 header amended: domain now owns 4 tables; new `migrations/0005_chat_graph_view.sql` (DDL only — DB Safety Rule, NOT applied at spec time). (b) NEW §4 BR-42 documents the graph-view snapshot contract end-to-end: `chat_graph_view` DDL (PK = `conversation_id`, JSONB `snapshot`, cascade-delete, outside §11), `SaveGraphViewRequest` Zod schema (size cap 2000/array), `getConversationGraphView` / `upsertConversationGraphView` repository functions, `GET` 200+null / `PUT` 200 route contract. Snapshot is a VIEW MEMENTO (not a KG re-projection). (c) Header amended with the v2.3 additive deviation paragraph. PRESERVED from v2.2: all existing BRs (no renumbering, no removals); multi-row persistence semantics; `graph_delta` projection (BR-41). NO new env var. NO new error code. | sdd_improve_2_spec-back |

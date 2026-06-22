@@ -250,6 +250,18 @@ export interface ChatRepository {
     client: PoolClient,
     conversation_id: string
   ): Promise<ConversationUsage>;
+
+  // ---- Graph view persistence (BR-42) ---------------------------------------
+  getConversationGraphView(
+    client: PoolClient,
+    conversationId: string
+  ): Promise<GraphViewRow | null>;
+
+  upsertConversationGraphView(
+    client: PoolClient,
+    conversationId: string,
+    snapshot: unknown
+  ): Promise<{ updated_at: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -860,4 +872,52 @@ export const chatRepository: ChatRepository = {
   insertToolCall,
   attachToolCallsToMessage,
   getConversationUsage,
+  getConversationGraphView,
+  upsertConversationGraphView,
 };
+
+// ---------------------------------------------------------------------------
+// Graph view persistence (BR-42)
+// ---------------------------------------------------------------------------
+
+export interface GraphViewRow {
+  readonly conversation_id: string;
+  readonly snapshot: unknown;
+  readonly updated_at: string;
+}
+
+const GRAPH_VIEW_COLS = "conversation_id, snapshot, updated_at";
+
+// BR-42: read the last-saved graph snapshot for a conversation. Returns null
+// when no snapshot has been saved yet (normal path for new conversations).
+export async function getConversationGraphView(
+  client: PoolClient,
+  conversationId: string
+): Promise<GraphViewRow | null> {
+  const res = await client.query<GraphViewRow>(
+    `SELECT ${GRAPH_VIEW_COLS}
+       FROM chat_graph_view
+      WHERE conversation_id = $1`,
+    [conversationId]
+  );
+  return res.rows[0] ?? null;
+}
+
+// BR-42: upsert the last-presented graph snapshot. ON CONFLICT overwrites
+// (single-row-per-conversation memento). Returns the updated_at timestamp.
+export async function upsertConversationGraphView(
+  client: PoolClient,
+  conversationId: string,
+  snapshot: unknown
+): Promise<{ updated_at: string }> {
+  const res = await client.query<{ updated_at: string }>(
+    `INSERT INTO chat_graph_view (conversation_id, snapshot)
+     VALUES ($1, $2::jsonb)
+     ON CONFLICT (conversation_id) DO UPDATE
+       SET snapshot   = EXCLUDED.snapshot,
+           updated_at = now()
+     RETURNING updated_at`,
+    [conversationId, JSON.stringify(snapshot)]
+  );
+  return res.rows[0]!;
+}

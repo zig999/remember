@@ -146,6 +146,30 @@ export interface GraphState {
    *
    *  In either case, the per-turn delta flag is reset for the next turn. */
   settleTurn: (frame: "done" | "error") => void;
+
+  // ---- Graph view persistence (BR-42) ---------------------------------------
+
+  /** Snapshot shape written to / read from the BFF persistence endpoint. */
+  getSnapshot: () => {
+    version: 1;
+    nodes: GraphNodeData[];
+    links: GraphLinkData[];
+    positions: Record<string, { x: number; y: number }>;
+    user_pinned: string[];
+  };
+
+  /**
+   * Restore a saved snapshot (BR-42). Sets nodes/links/positions/userPinned
+   * from the saved data and makes all nodes immediately visible — NO 1-by-1
+   * reveal animation (snapshot = "ultima versão apresentada", shown instantly).
+   */
+  hydrate: (snapshot: {
+    version: 1;
+    nodes: GraphNodeData[];
+    links: GraphLinkData[];
+    positions: Record<string, { x: number; y: number }>;
+    user_pinned: string[];
+  }) => void;
 }
 
 /** A graph tool was active iff the status reflects an in-flight subgraph
@@ -337,5 +361,56 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     } else {
       set({ receivedDeltaThisTurn: false });
     }
+  },
+
+  // ---- Graph view persistence (BR-42) ---------------------------------------
+
+  getSnapshot: () => {
+    const { nodes, links, positions, userPinned } = get();
+    const posObj: Record<string, { x: number; y: number }> = {};
+    for (const [id, pos] of positions) {
+      posObj[id] = { x: pos.x, y: pos.y };
+    }
+    return {
+      version: 1 as const,
+      nodes: Array.from(nodes.values()),
+      links: Array.from(links.values()),
+      positions: posObj,
+      user_pinned: Array.from(userPinned),
+    };
+  },
+
+  hydrate: (snapshot) => {
+    // Restore is instant — all nodes appear immediately (no 1-by-1 reveal).
+    // snapshot is a "last presented version" memento: exactly what the user
+    // last saw, including positions and pins.
+    const nextNodes = new Map<string, GraphNodeData>();
+    const nextLinks = new Map<string, GraphLinkData>();
+    const nextPositions = new Map<string, GraphPosition>();
+    const allNodeIds: string[] = [];
+
+    for (const node of snapshot.nodes) {
+      nextNodes.set(node.id, node);
+      allNodeIds.push(node.id);
+    }
+    for (const link of snapshot.links) {
+      nextLinks.set(link.id, link);
+    }
+    for (const [id, pos] of Object.entries(snapshot.positions)) {
+      nextPositions.set(id, { x: pos.x, y: pos.y });
+    }
+
+    set({
+      nodes: nextNodes,
+      links: nextLinks,
+      positions: nextPositions,
+      userPinned: new Set<string>(snapshot.user_pinned),
+      // All nodes are already "revealed" — no animation queue.
+      revealedIds: new Set<string>(allNodeIds),
+      revealQueue: [],
+      status: "ready",
+      receivedDeltaThisTurn: false,
+      errorMessage: undefined,
+    });
   },
 }));
