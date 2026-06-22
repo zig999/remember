@@ -78,6 +78,50 @@ export type IngestMcpToolName = (typeof INGEST_TOOL_NAMES)[number];
 // enum is the per-proposal `tool_call` audit surface).
 // --------------------------------------------------------------------------
 
+/**
+ * `start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for
+ * caller symmetry. The only difference is the new-run return semantics
+ * (immediate vs. awaited) — see the handler. We keep the schema as a separate
+ * symbol (not a re-export) so a future divergence stays surgical, and so the
+ * `inputSchema` advertised on `tools/list` carries the tool-specific
+ * descriptions in `describe(…)`.
+ */
+export const StartAsyncIngestionMcpInputSchema = z.object({
+  content: z
+    .string()
+    .min(1, "content must not be empty")
+    .max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+    .describe(
+      "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary."
+    ),
+  source_type: SourceTypeSchema.describe(
+    "What kind of source this is. One of: pdf, email, ata, chat, artigo, transcricao, outro."
+  ),
+  metadata: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Optional free-form metadata (e.g. title, author, url). Set `document_date` (ISO-8601) when the document states its own date — it justifies temporal validity during extraction."
+    ),
+  model: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional Anthropic model id the SERVER uses to extract. Defaults server-side; override to trade cost for quality."
+    ),
+  prompt_version: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional extraction prompt version. Defaults to the current server default."
+    ),
+});
+export type StartAsyncIngestionMcpInput = z.infer<
+  typeof StartAsyncIngestionMcpInputSchema
+>;
+
 export const IngestDocumentMcpInputSchema = z.object({
   content: z
     .string()

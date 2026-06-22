@@ -180,6 +180,12 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // (discover a run after a client-side timeout — the server keeps
       // extracting after the socket drops). They let an MCP client confirm the
       // BFF is up and recover the run id/state without re-sending the document.
+      // BR-32: `start_async_ingestion` is gated on `CHAT_INGEST_ENABLED`. The
+      // toolset registrar skips `mcp.registerTool` when the flag is false, so
+      // we likewise omit the name from the transport whitelist — `tools/list`
+      // must NOT advertise a tool the registry cannot dispatch.
+      const chatIngestEnabled =
+        (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true;
       await registerIngestMcpTransport(scoped, {
         logger,
         mcp,
@@ -189,6 +195,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
           "health",
           "get_ingestion_status",
           "list_recent_ingestions",
+          ...(chatIngestEnabled ? (["start_async_ingestion"] as const) : []),
         ],
       });
     }
@@ -341,9 +348,13 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // `ingest_document` drives the server-side extraction orchestrator, which
       // is the sole LLM caller of the BFF (BR-29) — it needs the Anthropic key
       // and the default extraction model (INGEST_MODEL, default Sonnet 4.6).
+      // CHAT_INGEST_ENABLED (BR-32) gates `start_async_ingestion` registration;
+      // it is read defensively until TC-02 declares it in env.ts (default false).
       env: {
         ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
         INGEST_MODEL: env.INGEST_MODEL,
+        CHAT_INGEST_ENABLED:
+          (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true,
       },
     });
   }

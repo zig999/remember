@@ -53,6 +53,7 @@ import {
   ingestDocumentHandler,
   type IngestDocumentDeps,
 } from "./ingest-document.handler.js";
+import { startAsyncIngestionHandler } from "./start-async-ingestion.handler.js";
 import { ValidationFailure } from "../validation/errors.js";
 import {
   GetIngestionStatusMcpInputSchema,
@@ -64,6 +65,7 @@ import {
   ProposeFragmentMcpInputSchema,
   ProposeLinkMcpInputSchema,
   ProposeNodeMcpInputSchema,
+  StartAsyncIngestionMcpInputSchema,
   type IngestMcpToolName,
 } from "./mcp-schemas.js";
 
@@ -89,6 +91,15 @@ export interface IngestToolsetDeps {
     readonly ANTHROPIC_API_KEY: string;
     /** Default model for the `ingest_document` server-side extraction. */
     readonly INGEST_MODEL: string;
+    /**
+     * Rollout flag for `start_async_ingestion` (BR-32). When `true`, the tool
+     * is registered on the `ingest` toolset; when `false` or absent, the
+     * registration is skipped at boot — `tools/list` then omits the tool and
+     * `mcp.getTool('ingest', 'start_async_ingestion')` returns `undefined`.
+     * Boot-only — there is no per-call gate after registration. Wired from
+     * `env.CHAT_INGEST_ENABLED` (default `false`, added by TC-02).
+     */
+    readonly CHAT_INGEST_ENABLED?: boolean;
   };
   /** Clock source — defaults to `() => new Date()`. Tests inject deterministic clocks. */
   readonly now?: () => Date;
@@ -267,6 +278,48 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
+  // ----- start_async_ingestion (BR-32) — async sibling of ingest_document -----
+  // Rollout flag: registered ONLY when env.CHAT_INGEST_ENABLED === true. When
+  // the flag is off (default), `mcp.registerTool` is skipped — the tool is
+  // absent from `tools/list` over both MCP transports and `getTool` returns
+  // `undefined`. Boot-only gate (no per-call check after registration).
+  if (deps.env.CHAT_INGEST_ENABLED === true) {
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: IngestToolDescriptions.start_async_ingestion,
+      inputSchema: StartAsyncIngestionMcpInputSchema as unknown as z.ZodTypeAny,
+      handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+        const parsed = StartAsyncIngestionMcpInputSchema.safeParse(rawInput);
+        if (!parsed.success) {
+          return {
+            ok: false,
+            error: {
+              code: "STRUCTURAL_INVALID",
+              message: "start_async_ingestion arguments failed validation.",
+              details: {
+                issues: parsed.error.issues.map((i) => ({
+                  path: i.path.map((seg) => String(seg)).join("."),
+                  message: i.message,
+                })),
+              },
+            },
+          };
+        }
+        return await startAsyncIngestionHandler(parsed.data, {
+          pool,
+          logger,
+          catalog,
+          anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
+          ingestModel: deps.env.INGEST_MODEL,
+          now,
+          ...(deps.anthropicFactory !== undefined
+            ? { anthropicFactory: deps.anthropicFactory }
+            : {}),
+        });
+      },
+    });
+  }
+
   // ----- health — liveness + DB ping (read-only, no args) -----
   // Always succeeds at the MCP level: a DB failure surfaces inside `result`
   // (`{ ok: false, database: "unreachable" }`) rather than as an error
@@ -323,15 +376,21 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     "list_recent_ingestions",
   ] as const;
 
+  const asyncTools =
+    deps.env.CHAT_INGEST_ENABLED === true ? (["start_async_ingestion"] as const) : ([] as const);
+
   logger.info(
     {
       component: "mcp.ingest",
-      tools_registered: INGEST_TOOL_NAMES.length + 1 + READ_ONLY_TOOL_NAMES.length,
+      tools_registered:
+        INGEST_TOOL_NAMES.length + 1 + READ_ONLY_TOOL_NAMES.length + asyncTools.length,
       tool_names: [
         ...INGEST_TOOL_NAMES,
         "ingest_document",
         ...READ_ONLY_TOOL_NAMES,
+        ...asyncTools,
       ],
+      chat_ingest_enabled: deps.env.CHAT_INGEST_ENABLED === true,
     },
     "ingest_toolset_registered"
   );

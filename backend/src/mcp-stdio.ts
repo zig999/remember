@@ -207,21 +207,32 @@ async function main(): Promise<void> {
     // BR-29: `ingest_document` drives the server-side extraction orchestrator,
     // which is the sole LLM caller of the BFF. The same key the HTTP boot
     // consumes is forwarded here so the stdio transport's `ingest_document`
-    // tool can call Anthropic.
+    // tool can call Anthropic. CHAT_INGEST_ENABLED (BR-32) gates the
+    // `start_async_ingestion` registration symmetrically over stdio — same
+    // env, same handler — and is read defensively until TC-02 declares it
+    // in env.ts (default false).
     env: {
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
       INGEST_MODEL: env.INGEST_MODEL,
+      CHAT_INGEST_ENABLED:
+        (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true,
     },
   });
 
-  // Step 6 — closed tool set (18 tools = 9 KG + 4 QR + 4 propose_* + ingest_document).
-  // Order is purely cosmetic (tools/list sorts by registry insertion); we
-  // group by toolset for readability when inspecting the descriptor list.
+  // Step 6 — closed tool set (18 tools = 9 KG + 4 QR + 4 propose_* + ingest_document;
+  // +1 when BR-32 `start_async_ingestion` is enabled). Order is purely cosmetic
+  // (tools/list sorts by registry insertion); we group by toolset for
+  // readability when inspecting the descriptor list.
+  const chatIngestEnabledForStdio =
+    (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true;
   const toolCoordinates: readonly ToolCoordinate[] = [
     ...QUERY_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
     ...QUERY_RETRIEVAL_TOOL_NAMES.map((name) => ({ toolset: "query" as const, name })),
     ...INGEST_TOOL_NAMES.map((name) => ({ toolset: "ingest" as const, name })),
     { toolset: "ingest" as const, name: "ingest_document" },
+    ...(chatIngestEnabledForStdio
+      ? ([{ toolset: "ingest" as const, name: "start_async_ingestion" }] as const)
+      : []),
   ];
   const tools = resolveStdioTools(registry, toolCoordinates);
   logger.info({ tool_count: tools.length }, "tools_resolved");
