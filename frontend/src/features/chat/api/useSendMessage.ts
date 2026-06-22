@@ -252,6 +252,13 @@ export function useSendMessage(): UseMutationResult<
       let stopReason: string | null = null;
       let errorCode: string | null = null;
       let errorMessage: string | null = null;
+      // Turn-scoped: has THIS response already reset the graph pane? The first
+      // graph result of a response REPLACES the prior response's graph
+      // (non-cumulative — owner decision 2026-06-22); later graph results in
+      // the SAME response compose onto it via `addNodes`. This lives in the
+      // turn closure because it is per-response state the stateless, per-frame
+      // `dispatchFrame` cannot hold.
+      let graphReplacedThisTurn = false;
 
       try {
         const stream = streamChat(url, body, {
@@ -259,6 +266,26 @@ export function useSendMessage(): UseMutationResult<
           signal: controller.signal,
         });
         for await (const frame of stream) {
+          if (frame.type === "graph_delta") {
+            // Non-cumulative dispatch (see `graphReplacedThisTurn` above).
+            // Within a response, re-affirmation still consolidates and only
+            // newly-seen ids enter the reveal queue (addNodes/replaceNodes).
+            const delta = mapWireToGraphDelta(frame);
+            // A 0-node result (empty search, or every node filtered as
+            // merged/deleted) is NOT "a new graph": leave the current graph
+            // untouched (UC-CG-05) and do NOT consume the response's one-shot
+            // replace — a later non-empty result this response still replaces.
+            if (delta.nodes.length > 0) {
+              const gs = useGraphStore.getState();
+              if (graphReplacedThisTurn) {
+                gs.addNodes(delta);
+              } else {
+                gs.replaceNodes(delta);
+                graphReplacedThisTurn = true;
+              }
+            }
+            continue;
+          }
           dispatchFrame(frame, actions);
           if (frame.type === "done") {
             stopReason = frame.stop_reason;
@@ -443,15 +470,13 @@ function dispatchFrame(frame: ChatSSEFrame, actions: TurnActions): void {
       // back to `streaming` covers the gap before the next `text_delta`.
       actions.setChatStatus("streaming");
       return;
-    case "graph_delta": {
-      // Map wire payload → surface delta and push into the graph store.
-      // The store will merge by id (re-affirmation consolidates, never
-      // duplicates — project principle) and enqueue only newly-seen ids
-      // for the reveal pipeline (TC-FE-08).
-      const delta = mapWireToGraphDelta(frame);
-      useGraphStore.getState().addNodes(delta);
+    case "graph_delta":
+      // Handled in the stream loop (mutationFn), NOT here: the non-cumulative
+      // replace-vs-add decision needs turn-scoped state ("has THIS response
+      // already reset the graph?"), and dispatchFrame is stateless/per-frame.
+      // The loop intercepts graph_delta before calling dispatchFrame, so this
+      // case is a documented no-op.
       return;
-    }
     case "done":
       // I-7 — only flips status to `ready` if a graph delta actually landed
       // this turn; a chat-only `done` leaves the pane untouched.

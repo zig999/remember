@@ -130,6 +130,54 @@ describe("useGraphStore.addNodes — AC-F.1 (new ids enter queue)", () => {
   });
 });
 
+describe("useGraphStore.replaceNodes — non-cumulative (owner decision 2026-06-22)", () => {
+  it("clears the prior graph and shows ONLY the new delta's nodes/links", () => {
+    const store = useGraphStore.getState();
+    store.addNodes(
+      makeDelta([makeNode("old1"), makeNode("old2")], [makeLink("ol", "old1", "old2")]),
+    );
+    store.setNodePosition("old1", { x: 10, y: 20 }); // a prior position + pin
+
+    store.replaceNodes(
+      makeDelta([makeNode("new1"), makeNode("new2")], [makeLink("nl", "new1", "new2")]),
+    );
+
+    const s = useGraphStore.getState();
+    expect([...s.nodes.keys()].sort()).toEqual(["new1", "new2"]);
+    expect([...s.links.keys()]).toEqual(["nl"]);
+    // The prior response's positions and pins are discarded — each response
+    // re-lays out from scratch (no carry-over).
+    expect(s.positions.size).toBe(0);
+    expect(s.userPinned.size).toBe(0);
+  });
+
+  it("re-reveals every node in the replacement (revealedIds reset, all enqueued)", () => {
+    const store = useGraphStore.getState();
+    store.addNodes(makeDelta([makeNode("old1")]));
+    // Simulate old1 having already animated in.
+    useGraphStore.setState({ revealedIds: new Set(["old1"]), revealQueue: [] });
+
+    store.replaceNodes(makeDelta([makeNode("a"), makeNode("b")]));
+
+    const s = useGraphStore.getState();
+    expect(s.revealedIds.size).toBe(0);
+    expect(s.revealQueue).toEqual(["a", "b"]);
+    expect(s.receivedDeltaThisTurn).toBe(true);
+  });
+
+  it("drops links whose endpoints are not among the replacement's nodes (no orphans)", () => {
+    useGraphStore.getState().replaceNodes(
+      makeDelta(
+        [makeNode("n1"), makeNode("n2")],
+        [makeLink("orphan", "n1", "ghost"), makeLink("ok", "n1", "n2")],
+      ),
+    );
+    const s = useGraphStore.getState();
+    expect(s.links.has("orphan")).toBe(false);
+    expect(s.links.has("ok")).toBe(true);
+  });
+});
+
 describe("useGraphStore.addNodes — AC-F.2 (re-affirmation consolidates)", () => {
   it("does NOT duplicate an existing id in nodes Map", () => {
     useGraphStore.getState().addNodes(makeDelta([makeNode("n1", "first")]));

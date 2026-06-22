@@ -167,12 +167,13 @@ export interface GraphSpaceHandle {
 **And** an edge between node A and node B only becomes visible after both A and B are in `revealedIds`  
 **And** after all 5 are revealed, `status` becomes `"ready"` (driven by caller via `settleTurn`)  
 
-### Scenario 4 — Existing nodes do not jump (pin invariant)
+### Scenario 4 — Existing nodes do not jump within a response (pin invariant)
 
 **Given** `GraphSpace` shows 3 nodes in stable positions  
-**When** a new `graph_delta` adds 2 more nodes  
+**When** another `graph_delta` in the **same response** adds 2 more nodes (`addNodes`)  
 **Then** the 3 existing nodes retain their positions (no layout change)  
 **And** only the 2 new nodes are placed by `d3-force`  
+**Note** A *new* response instead `replaceNodes`: the graph is cleared and re-laid out fresh — non-cumulative, pins do not carry over (owner decision 2026-06-22; see chat.feature `UC-CG-02`).  
 
 ### Scenario 5 — Error state preserves prior graph
 

@@ -100,6 +100,16 @@ export interface GraphState {
    *  whenever it runs — even if every id was already known, the fact
    *  that a graph tool produced output is what I-7 cares about. */
   addNodes: (delta: GraphDelta) => void;
+  /** Replace the whole visible graph with a single delta — the
+   *  non-cumulative counterpart to `addNodes`. Used for the FIRST
+   *  `graph_delta` of a chat response so each response shows ONLY its own
+   *  graph: clears the prior response's nodes/links/positions/pins and
+   *  enqueues every node in the delta for a fresh 1-by-1 reveal. Links whose
+   *  endpoints are not among THIS delta's own nodes are dropped (no orphan
+   *  strokes). Leaves `status` untouched so the in-flight `"loading"` set on
+   *  `tool_start` flows into the reveal. Sets `receivedDeltaThisTurn = true`;
+   *  later deltas in the SAME response use `addNodes` to compose onto it. */
+  replaceNodes: (delta: GraphDelta) => void;
   /** Remove a set of node ids and any link whose `source` or `target`
    *  references one of them (orphan cleanup). The positions entry and
    *  revealed-ids membership for the removed nodes are dropped too. */
@@ -242,6 +252,39 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         nodes: nextNodes,
         links: nextLinks,
         revealQueue: nextRevealQueue,
+        receivedDeltaThisTurn: true,
+      };
+    });
+  },
+
+  replaceNodes: (delta) => {
+    // Non-cumulative reset: each chat response starts from a blank canvas so
+    // the graph reflects ONLY that response's result. Mirrors `addNodes`'
+    // merge but from an empty base, dropping the prior response's
+    // positions/pins/reveal state. Links whose endpoints are not among THIS
+    // delta's nodes are dropped — no orphan stroke into empty space.
+    set(() => {
+      const nextNodes = new Map<string, GraphNodeData>();
+      const nextLinks = new Map<string, GraphLinkData>();
+      const revealQueue: string[] = [];
+
+      for (const node of delta.nodes) {
+        nextNodes.set(node.id, node);
+        revealQueue.push(node.id);
+      }
+      for (const link of delta.links) {
+        if (nextNodes.has(link.source) && nextNodes.has(link.target)) {
+          nextLinks.set(link.id, link);
+        }
+      }
+
+      return {
+        nodes: nextNodes,
+        links: nextLinks,
+        positions: new Map<string, GraphPosition>(),
+        userPinned: new Set<string>(),
+        revealedIds: new Set<string>(),
+        revealQueue,
         receivedDeltaThisTurn: true,
       };
     });

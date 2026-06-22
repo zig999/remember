@@ -488,9 +488,9 @@ Validation is realized by `composerSchema` (Zod `z.object({ content: z.string().
 
 | ID | Title | Trigger | Effect |
 |---|---|---|---|
-| **UC-CG-01** | Load subgraph from a query | User sends a message; the LLM calls a graph tool (e.g., `traverse`). | Bubble appears → `chatStatus=thinking` → `tool_start` flips graph to UI-12 → `tool_result{ok}` settles chip → `graph_delta` → `addNodes(delta)` → UI-13 (`revealing`) → nodes reveal 1×1 (Framer Motion) → `done` → UI-14 (`ready`). Edges only appear after both endpoints are revealed. |
-| **UC-CG-02** | Progressive expansion | A subsequent turn (or another tool in the same turn) returns nodes that overlap the current subgraph. | `addNodes` merges by `id` (no duplicate, no re-animation). Existing nodes stay pinned (no layout jump, D5). Only inédito ids enter the reveal queue. |
-| **UC-CG-03** | Detail a specific node (`get_node`) | The LLM calls `get_node`. | `graph_delta` arrives with 1 node + 0 links; reveals 1 node; merges if already present. |
+| **UC-CG-01** | Load subgraph from a query | User sends a message; the LLM calls a graph tool (e.g., `traverse`). | Bubble appears → `chatStatus=thinking` → `tool_start` flips graph to UI-12 → `tool_result{ok}` settles chip → `graph_delta` → `replaceNodes(delta)` (first graph result of the response — replaces any prior graph; **non-cumulative**) → UI-13 (`revealing`) → nodes reveal 1×1 (Framer Motion) → `done` → UI-14 (`ready`). Edges only appear after both endpoints are revealed. |
+| **UC-CG-02** | Compose within a response · replace across responses | Another graph tool in the **same** response returns more nodes; OR a **subsequent** response returns a graph. | **Same response:** later results `addNodes` — merge by `id` (no duplicate, no re-animation); existing nodes stay pinned (no layout jump, D5); only inédito ids reveal. **New response:** the first graph result calls `replaceNodes` — the prior response's graph is **cleared** and re-laid out fresh (non-cumulative — owner decision 2026-06-22; dragged pins/positions do not carry over). |
+| **UC-CG-03** | Detail a specific node (`get_node`) | The LLM calls `get_node`. | `graph_delta` arrives with 1 node + 0 links; if it is the response's first graph result it `replaceNodes` (graph becomes just that node); a later result in the same response merges if already present. |
 | **UC-CG-04** | Textual search with hydration (`search`) | The LLM calls `search`. | BFF hydrates `items(kind=node)` → `NodeSummary` server-side before emitting the `graph_delta`. `kind=fragment`/`link` items do NOT enter the graph (they still appear in the textual response). |
 | **UC-CG-05** | Empty result | Graph tool returns `ok: true` with 0 nodes. | No new nodes; if panel was UI-11 it stays at UI-11; if subgraph was already populated, it stays unchanged. NOT an error. |
 | **UC-CG-06** | Graph tool failure | `tool_result { ok: false }` while a graph tool was in flight. | Transition to UI-14-error; subgraph (if any) remains visible underneath the overlay (`fail loud`). |
@@ -559,7 +559,7 @@ SSE frame discriminated union (`ChatSSEFrame`):
 - `text_delta { delta }` — accumulated by `appendText`
 - `tool_start { tool, argsSummary }` — creates a pending chip; if `tool` is graph-producing (`traverse` | `get_node` | `list_nodes` | `search`), also flips `useGraphStore.status` to `loading`
 - `tool_result { ok }` — settles the last chip; if `ok === false` AND a graph tool was in flight, `useGraphStore.settleTurn("error")` is invoked
-- `graph_delta { sourceTool, nodes[], links[] }` — **(7th frame, added in this revision)** consumed by the SSE dispatcher in `useSendMessage`, mapped via `mapWireToGraphDelta()` and applied via `useGraphStore.addNodes(delta)`. Wire shape is snake_case (`source_tool`, `node_type`, `canonical_name`, `is_temporal`); the front-end transform renames to camelCase. Emitted by the BFF immediately after the `tool_result` for a graph-producing tool. Idempotent: re-arrival of the same node id is merged (no duplicate, no re-animation). See `temp/chat-graphspace-plan.md §4.1` for the full wire schema.
+- `graph_delta { sourceTool, nodes[], links[] }` — **(7th frame)** consumed by the SSE dispatcher in `useSendMessage` and mapped via `mapWireToGraphDelta()`. **Non-cumulative (owner decision 2026-06-22):** the **first** graph result of a response is applied via `useGraphStore.replaceNodes(delta)` (clears the prior response's graph and re-lays out fresh); **later** results in the **same** response use `addNodes(delta)` (compose by id). A 0-node result is skipped — the current graph is left unchanged (UC-CG-05) and the response's one-shot replace is not consumed. Wire shape is snake_case (`source_tool`, `node_type`, `canonical_name`, `is_temporal`); the front-end transform renames to camelCase. Emitted by the BFF immediately after the `tool_result` for a graph-producing tool. Within a response, re-arrival of the same node id is merged (no duplicate, no re-animation). See `temp/chat-graphspace-plan.md §4.1` for the full wire schema.
 - `done { stop_reason }` — terminal success; `useGraphStore.settleTurn("done")` decides `ready` vs. `empty` based on `receivedDeltaThisTurn`
 - `error { code, message }` — terminal failure; `useGraphStore.settleTurn("error")` if a graph tool was in flight
 
@@ -592,11 +592,12 @@ Fields:
 - `revealedIds: Set<string>` — already-visible ids.
 - `status: GraphStatus` — `"empty" | "loading" | "revealing" | "ready" | "error"`.
 - `errorMessage?: string` — set by `settleTurn("error", msg)`.
-- `receivedDeltaThisTurn: boolean` — set by `addNodes`, cleared on `tool_start` of a new turn; consumed by `settleTurn("done")` to decide `ready` vs. `empty`.
+- `receivedDeltaThisTurn: boolean` — set by `addNodes`/`replaceNodes`; reset by `settleTurn`; consumed by `settleTurn("done")` to decide `ready` vs. `empty` (I-7).
 
 Actions (chat → graph only; the graph pane never writes here from user interaction — REQ-6):
 
-- `addNodes(delta: GraphDelta)` — merge nodes/links by id; enqueue only **new** ids into `revealQueue`.
+- `addNodes(delta: GraphDelta)` — merge nodes/links by id; enqueue only **new** ids into `revealQueue`. Used for **later** graph results within the same response (compose).
+- `replaceNodes(delta: GraphDelta)` — **non-cumulative** reset (owner decision 2026-06-22): clear the prior graph (nodes/links/positions/pins/revealed set), load only this delta, drop orphan links, and re-enqueue every node for a fresh 1×1 reveal. Used for the **first** graph result of each response. The replace-vs-add choice is made per response in the `useSendMessage` stream loop (`graphReplacedThisTurn`).
 - `removeNodes(ids: string[])` — remove nodes AND their orphaned links.
 - `clear()` — zero everything (called on `?conversation=` change).
 - `setStatus(status, errorMessage?)` — set status; idempotent.

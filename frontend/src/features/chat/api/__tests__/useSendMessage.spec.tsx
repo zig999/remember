@@ -540,7 +540,15 @@ describe("mapWireToGraphDelta — pure mapper", () => {
 });
 
 describe("useSendMessage — graph_delta dispatch (TC-FE-04)", () => {
-  it("addNodes is called once per graph_delta with the mapped delta (AC-F.7)", async () => {
+  it("first graph_delta of a response REPLACES any prior graph (non-cumulative)", async () => {
+    // Seed a stale node as if left by a previous response.
+    useGraphStore.getState().addNodes({
+      sourceTool: "list_nodes",
+      nodes: [{ id: "stale", type: "concept", label: "old", state: "accepted" }],
+      links: [],
+    });
+    expect(useGraphStore.getState().nodes.has("stale")).toBe(true);
+
     vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
       Promise.resolve(
         makeSSEResponse([
@@ -552,7 +560,6 @@ describe("useSendMessage — graph_delta dispatch (TC-FE-04)", () => {
       ),
     );
 
-    const addNodesSpy = vi.spyOn(useGraphStore.getState(), "addNodes");
     const h = mountHarness();
     try {
       await act(async () => {
@@ -561,13 +568,129 @@ describe("useSendMessage — graph_delta dispatch (TC-FE-04)", () => {
           content: "quem é R?",
         } as never);
       });
-      expect(addNodesSpy).toHaveBeenCalledTimes(1);
-      const arg = addNodesSpy.mock.calls[0]?.[0];
-      expect(arg?.sourceTool).toBe("traverse");
-      expect(arg?.nodes).toHaveLength(1);
-      expect(arg?.nodes[0]?.id).toBe("n1");
-      // The store has the node visible after the dispatch.
+      const nodes = useGraphStore.getState().nodes;
+      // The response's graph is shown …
+      expect(nodes.has("n1")).toBe(true);
+      // … and it REPLACED the prior graph — the stale node is gone.
+      expect(nodes.has("stale")).toBe(false);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("composes multiple graph_delta WITHIN one response (later results add, not replace)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"list_nodes","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"list_nodes","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"list_nodes","nodes":[{"id":"n1","node_type":"person","canonical_name":"A","status":"active"}],"links":[]}\n\n',
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":"id=n1"}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[{"id":"n2","node_type":"person","canonical_name":"B","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "explore",
+        } as never);
+      });
+      // The 2nd graph result of the SAME response composed onto the 1st
+      // (added, not replaced) — both nodes are present.
+      const nodes = useGraphStore.getState().nodes;
+      expect(nodes.has("n1")).toBe(true);
+      expect(nodes.has("n2")).toBe(true);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("a new response REPLACES the previous response's graph (non-cumulative across turns)", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    // Response 1 — node n1.
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[{"id":"n1","node_type":"person","canonical_name":"A","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+    // Response 2 — node n2 only.
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"traverse","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"traverse","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"traverse","nodes":[{"id":"n2","node_type":"person","canonical_name":"B","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "first",
+        } as never);
+      });
       expect(useGraphStore.getState().nodes.has("n1")).toBe(true);
+
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "second",
+        } as never);
+      });
+      // The second response's graph fully replaces the first's — n1 is gone.
+      const nodes = useGraphStore.getState().nodes;
+      expect(nodes.has("n2")).toBe(true);
+      expect(nodes.has("n1")).toBe(false);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("a 0-node graph result leaves the existing graph unchanged (UC-CG-05)", async () => {
+    // Seed a node, then run a response whose graph result is empty.
+    useGraphStore.getState().addNodes({
+      sourceTool: "list_nodes",
+      nodes: [{ id: "kept", type: "concept", label: "keep me", state: "accepted" }],
+      links: [],
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"search","args_summary":""}\n\n',
+          'event: tool_result\ndata: {"tool":"search","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"search","nodes":[],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "nada encontrado",
+        } as never);
+      });
+      // An empty result is not "a new graph" — the prior node survives
+      // (the response's one-shot replace was not consumed).
+      expect(useGraphStore.getState().nodes.has("kept")).toBe(true);
     } finally {
       unmountHarness(h);
     }
