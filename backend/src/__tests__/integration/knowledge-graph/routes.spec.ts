@@ -34,6 +34,15 @@ import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/knowledge-graph/catalog/catalog.js";
 import { norm } from "../../../modules/knowledge-graph/service/norm.js";
 
+/**
+ * Unwrap the `{ ok: true, result }` success envelope returned by the KG REST
+ * read endpoints (openapi v1.5.0; CLAUDE.md "REST devolve o envelope direto").
+ * Success bodies are read through this; ERROR bodies stay raw
+ * (`res.json() as { error: { code } }`) — the error envelope has no `result`.
+ */
+const okResult = (res: { json: () => unknown }): unknown =>
+  (res.json() as { ok: true; result: unknown }).result;
+
 // ---------------------------------------------------------------------------
 // Test fixture — fake DB
 // ---------------------------------------------------------------------------
@@ -738,7 +747,7 @@ describe("Knowledge Graph — Catalog endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { total: number; items: { name: string }[] };
+      const body = okResult(res) as { total: number; items: { name: string }[] };
       expect(body.total).toBe(8);
       expect(body.items.map((i) => i.name).sort()).toEqual(
         [
@@ -768,7 +777,7 @@ describe("Knowledge Graph — Catalog endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         total: number;
         items: { name: string; rules?: unknown[] }[];
       };
@@ -799,7 +808,7 @@ describe("Knowledge Graph — Catalog endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { items: { rules?: unknown[] }[] };
+      const body = okResult(res) as { items: { rules?: unknown[] }[] };
       for (const item of body.items) {
         expect(item.rules).toBeUndefined();
       }
@@ -839,7 +848,7 @@ describe("Knowledge Graph — Catalog endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         items: { key: string; node_type: string }[];
       };
       expect(body.items.every((i) => i.node_type === "Project")).toBe(true);
@@ -923,7 +932,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         total: number;
         items: { id: string; canonical_name: string }[];
       };
@@ -946,7 +955,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         items: { canonical_name: string }[];
       };
       expect(body.items.length).toBe(1);
@@ -1024,7 +1033,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         node: { status: string; merged_into_node_id: string | null };
       };
       expect(body.node.status).toBe("merged");
@@ -1110,7 +1119,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(current.statusCode).toBe(200);
-      const currentBody = current.json() as {
+      const currentBody = okResult(current) as {
         attributes: { value: string }[];
       };
       expect(currentBody.attributes.length).toBe(1);
@@ -1123,7 +1132,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(past.statusCode).toBe(200);
-      const pastBody = past.json() as { attributes: { value: string }[] };
+      const pastBody = okResult(past) as { attributes: { value: string }[] };
       expect(pastBody.attributes.length).toBe(1);
       expect(pastBody.attributes[0]?.value).toBe("2025-09-01");
     } finally {
@@ -1163,7 +1172,7 @@ describe("Knowledge Graph — Node endpoints", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { attributes: { value: string }[] };
+      const body = okResult(res) as { attributes: { value: string }[] };
       expect(body.attributes.length).toBe(0);
     } finally {
       await app.close();
@@ -1222,7 +1231,7 @@ describe("Knowledge Graph — Links & Attributes point reads", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         id: string;
         provenance: { fragment_id: string }[];
         link_type: string;
@@ -1291,7 +1300,7 @@ describe("Knowledge Graph — Links & Attributes point reads", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         attribute_key: string;
         provenance: { fragment_id: string }[];
       };

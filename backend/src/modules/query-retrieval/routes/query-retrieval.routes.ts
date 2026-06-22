@@ -72,7 +72,7 @@ export async function registerQueryRetrievalRoutes(
           },
           deps.logger
         );
-        return reply.status(200).send(body);
+        return reply.status(200).send({ ok: true, result: body });
       });
     } catch (err) {
       return handleSearchError(err, reply);
@@ -93,7 +93,7 @@ export async function registerQueryRetrievalRoutes(
             params.link_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleProvenanceError(err, reply, { link_id: params.link_id });
@@ -115,7 +115,7 @@ export async function registerQueryRetrievalRoutes(
             params.attribute_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleProvenanceError(err, reply, {
@@ -139,7 +139,7 @@ export async function registerQueryRetrievalRoutes(
             params.fragment_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleProvenanceError(err, reply, {

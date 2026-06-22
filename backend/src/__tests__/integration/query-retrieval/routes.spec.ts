@@ -29,6 +29,15 @@ import { buildMcpServer } from "../../../mcp/server.js";
 import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/knowledge-graph/catalog/catalog.js";
 
+/**
+ * Unwrap the `{ ok: true, result }` success envelope returned by the QR REST
+ * read endpoints (openapi v1.2.0; CLAUDE.md "REST devolve o envelope direto").
+ * Success bodies are read through this; ERROR bodies stay raw
+ * (`res.json() as { error: { code } }`) — the error envelope has no `result`.
+ */
+const okResult = (res: { json: () => unknown }): unknown =>
+  (res.json() as { ok: true; result: unknown }).result;
+
 // ---------------------------------------------------------------------------
 // Fixture: fake DB store (minimal, scoped to the four scenarios we cover)
 // ---------------------------------------------------------------------------
@@ -376,7 +385,7 @@ describe("query-retrieval — GET /api/v1/search", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         query: string;
         total: number;
         items: unknown[];
@@ -597,7 +606,7 @@ describe("query-retrieval — GET /api/v1/provenance/fragments/:fragment_id", ()
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         fragments: {
           id: string;
           status: string;

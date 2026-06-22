@@ -540,7 +540,7 @@ describe("MCP query transport (KG) — get_node REST↔MCP parity (BR-26)", () =
         headers: { authorization: `Bearer ${token}` },
       });
       expect(rest.statusCode).toBe(200);
-      const restBody = rest.json() as unknown;
+      const restBody = (rest.json() as { ok: true; result: unknown }).result;
 
       const mcp = await app.inject({
         method: "POST",
@@ -617,7 +617,7 @@ describe("MCP query transport (KG) — traverse REST↔MCP parity (BR-26)", () =
         headers: { authorization: `Bearer ${token}` },
       });
       expect(rest.statusCode).toBe(200);
-      const restBody = rest.json() as unknown;
+      const restBody = (rest.json() as { ok: true; result: unknown }).result;
 
       const mcp = await app.inject({
         method: "POST",
@@ -679,7 +679,7 @@ describe("MCP query transport (KG) — list_nodes REST↔MCP parity (BR-26)", ()
         headers: { authorization: `Bearer ${token}` },
       });
       expect(rest.statusCode).toBe(200);
-      const restBody = rest.json() as { total: number; items: unknown[] };
+      const restBody = (rest.json() as { ok: true; result: { total: number; items: unknown[] } }).result;
       expect(restBody.total).toBe(2);
 
       const mcp = await app.inject({

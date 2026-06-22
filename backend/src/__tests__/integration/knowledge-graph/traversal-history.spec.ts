@@ -29,6 +29,15 @@ import { buildMcpServer } from "../../../mcp/server.js";
 import { buildNeonAuth } from "../../../middleware/auth.js";
 import { buildSnapshot } from "../../../modules/knowledge-graph/catalog/catalog.js";
 
+/**
+ * Unwrap the `{ ok: true, result }` success envelope returned by the KG REST
+ * read endpoints (openapi v1.5.0; CLAUDE.md "REST devolve o envelope direto").
+ * Success bodies are read through this; ERROR bodies stay raw
+ * (`res.json() as { error: { code } }`) — the error envelope has no `result`.
+ */
+const okResult = (res: { json: () => unknown }): unknown =>
+  (res.json() as { ok: true; result: unknown }).result;
+
 // ---------------------------------------------------------------------------
 // In-memory store
 // ---------------------------------------------------------------------------
@@ -585,7 +594,7 @@ describe("Knowledge Graph — traversal (TC-05)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as {
+      const body = okResult(res) as {
         starting_node_id: string;
         nodes: { id: string; status: string }[];
         links: { target_node_id: string; hop: number; score: number }[];
@@ -639,7 +648,7 @@ describe("Knowledge Graph — traversal (TC-05)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { links: { id: string }[] };
+      const body = okResult(res) as { links: { id: string }[] };
       const ids = body.links.map((l) => l.id);
       expect(new Set(ids).size).toBe(ids.length);
     } finally {
@@ -760,7 +769,7 @@ describe("Knowledge Graph — history endpoints (TC-05)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { versions: { id: string }[] };
+      const body = okResult(res) as { versions: { id: string }[] };
       expect(body.versions.map((v) => v.id)).toEqual([V1, V2]);
     } finally {
       await app.close();
@@ -867,7 +876,7 @@ describe("Knowledge Graph — history endpoints (TC-05)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { versions: { id: string; value: string }[] };
+      const body = okResult(res) as { versions: { id: string; value: string }[] };
       expect(body.versions.map((v) => v.id)).toEqual([OLD, NEW]);
     } finally {
       await app.close();
@@ -954,7 +963,7 @@ describe("Knowledge Graph — history endpoints (TC-05)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as { versions: { id: string }[] };
+      const body = okResult(res) as { versions: { id: string }[] };
       expect(body.versions.map((v) => v.id)).toEqual([A1, A2]);
     } finally {
       await app.close();

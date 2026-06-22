@@ -385,7 +385,7 @@ describe("MCP query transport (QR) — search REST↔MCP parity (BR-25)", () => 
         headers: { authorization: `Bearer ${token}` },
       });
       expect(rest.statusCode).toBe(200);
-      const restBody = rest.json() as unknown;
+      const restBody = (rest.json() as { ok: true; result: unknown }).result;
 
       const mcp = await app.inject({
         method: "POST",

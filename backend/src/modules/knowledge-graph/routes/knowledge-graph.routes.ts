@@ -79,7 +79,7 @@ export async function registerKnowledgeGraphRoutes(
   app.get("/node-types", async (_req, reply) =>
     withReadOnly(deps.pool, async (client) => {
       const body = await listNodeTypesService(client);
-      return reply.status(200).send(body);
+      return reply.status(200).send({ ok: true, result: body });
     })
   );
 
@@ -91,7 +91,7 @@ export async function registerKnowledgeGraphRoutes(
         const body = await listLinkTypesService(client, {
           include_rules: query.include_rules,
         });
-        return reply.status(200).send(body);
+        return reply.status(200).send({ ok: true, result: body });
       });
     }
   );
@@ -107,7 +107,7 @@ export async function registerKnowledgeGraphRoutes(
             deps.catalog,
             { node_type: query.node_type }
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         if (err instanceof UnknownNodeTypeError) {
@@ -142,7 +142,7 @@ export async function registerKnowledgeGraphRoutes(
           },
           "knowledge_graph_list_nodes_ok"
         );
-        return reply.status(200).send(body);
+        return reply.status(200).send({ ok: true, result: body });
       });
     } catch (err) {
       if (err instanceof UnknownNodeTypeError) {
@@ -170,7 +170,7 @@ export async function registerKnowledgeGraphRoutes(
             },
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleReadError(err, reply, { node_id: params.node_id });
@@ -192,7 +192,7 @@ export async function registerKnowledgeGraphRoutes(
             params.link_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleReadError(err, reply, { link_id: params.link_id });
@@ -211,7 +211,7 @@ export async function registerKnowledgeGraphRoutes(
             params.attribute_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleReadError(err, reply, {
@@ -255,7 +255,7 @@ export async function registerKnowledgeGraphRoutes(
             },
             "knowledge_graph_traverse_ok"
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleTraversalError(err, reply, { node_id: params.node_id });
@@ -277,7 +277,7 @@ export async function registerKnowledgeGraphRoutes(
             params.link_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleReadError(err, reply, { link_id: params.link_id });
@@ -296,7 +296,7 @@ export async function registerKnowledgeGraphRoutes(
             params.attribute_id,
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleReadError(err, reply, {
@@ -318,7 +318,7 @@ export async function registerKnowledgeGraphRoutes(
             { nodeId: params.node_id, key: params.key },
             deps.logger
           );
-          return reply.status(200).send(body);
+          return reply.status(200).send({ ok: true, result: body });
         });
       } catch (err) {
         return handleAttributeKeyHistoryError(err, reply, {
