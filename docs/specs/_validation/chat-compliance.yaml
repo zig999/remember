@@ -1,16 +1,17 @@
 # =============================================================================
 # chat-compliance.yaml
 # Compliance scan output — u-spec-compliance
-# Domain: chat | Regulations: lgpd | Spec version: 2.0.0
-# Generated: 2026-06-20T12:29:00Z
+# Domain: chat | Regulations: lgpd | Spec version: 2.3.0
+# Generated: 2026-06-22T20:51:00Z
+# Supersedes: scan CMP-20260620-122900 (spec version 2.0.0)
 # =============================================================================
 
 scan:
-  id: CMP-20260620-122900
+  id: CMP-20260622-205100
   reviewed_by: u-spec-compliance
   domain: chat
-  spec_version: "2.0.0"
-  timestamp: "2026-06-20T12:29:00Z"
+  spec_version: "2.3.0"
+  timestamp: "2026-06-22T20:51:00Z"
   layer: permanent
   regulations_checked:
     - lgpd
@@ -35,50 +36,67 @@ verdict: compliant
 # Compliance scan notes (informational — not part of the schema)
 # =============================================================================
 #
+# Scope of this re-scan: chat domain v2.3.0 (back-spec v2.4 additive deviation —
+# async ingestion via start_async_ingestion + get_ingestion_status, gated by
+# CHAT_INGEST_ENABLED). Covers all previously evaluated LGPD rules plus the
+# two new tool entries and UCs UC-10 / UC-11.
+#
 # LGPD rules evaluated and PASSED (no blocking or CR-requiring gaps):
 #
 # 1. missing_data_retention_policy
 #    PASS — No schema field matches known PII name patterns (email, name, phone,
-#    cpf, address, birth_date, ip_address). Chat tables store synthesised queries
-#    and model responses, not personal facts. Single-owner system; the owner's
-#    content is their own. No retention period BR is structurally required under
-#    this detection rule.
+#    cpf, address, birth_date, ip_address). The new start_async_ingestion tool
+#    parameters (content, source_type, meta, model, prompt_version) are all
+#    functional fields, not PII columns. RawInformation created by the ingestion
+#    pipeline is governed by the ingestion domain's own compliance scope (v7 §11
+#    compliance_delete flow). No new retention-period BR is structurally required
+#    in the chat domain.
 #
 # 2. missing_consent_mechanism
 #    PASS — Single-owner system (v7 §2.3 / ADR A20); no User entity; no multi-
-#    tenant personal data collection. No consent mechanism BR is required for
-#    self-referential single-owner data processing.
+#    tenant personal data collection. The new UC-10 (ingest via chat) collects
+#    document content as data, not personal data from third parties. No consent
+#    mechanism BR is required for self-referential single-owner data processing.
 #
 # 3. missing_audit_log
-#    PASS — chat_tool_call provides an auditable record of every tool dispatch
-#    (BR-32). Pino structured logs record every turn (BR-19). The chat tables
-#    store synthesised conversational data, not facts subject to v7 §11 compliance
-#    audit trail. No sensitive-data endpoint creates/modifies/deletes PII fields
-#    (no PII field names match in the schemas).
+#    PASS — Every start_async_ingestion tool call generates a chat_tool_call audit
+#    row (BR-32) AND a LLMRun record in the ingestion pipeline (ingestion.back.md
+#    BR-03 / v7 §3.5 LLMRun audit layer). Background extraction failures are
+#    logged via the .catch handler declared in BR-43 step 6. The audit trail is
+#    structurally documented for both the chat and ingestion layers.
 #
 # 4. pii_field_undeclared
-#    PASS — No field in any OpenAPI schema matches the PII name pattern list
-#    (email, name, phone, cpf, address, birth_date, ip_address). All column names
-#    in chat_conversation, chat_message, and chat_tool_call are structural
-#    (id, role, content, stop_reason, tokens_in, tokens_out, etc.).
+#    PASS — No field in any OpenAPI schema (new or existing) matches the PII name
+#    pattern list (email, name, phone, cpf, address, birth_date, ip_address).
+#    The field canonical_name in GraphNodeWire is a knowledge-graph entity slug,
+#    not a personal-data field; the detection rule applies to exact name patterns.
+#    The start_async_ingestion response fields (run_id, raw_information_id,
+#    status, outcome, chunk_count) carry no PII names.
 #
 # 5. missing_right_to_erasure
-#    PASS — Erasure mechanism is documented: DELETE /api/v1/conversations/:id
-#    triggers ON DELETE CASCADE for all associated chat_message and chat_tool_call
-#    rows (BR-37). The §11 exclusion is explicitly justified in chat.spec.md §6,
-#    chat.back.md §2.5, and the openapi.yaml description: chat stores synthesised
-#    answers, not facts anchored to raw_information; the cascade DELETE is
-#    permanent and sufficient.
+#    PASS — RawInformation created by start_async_ingestion is owned by the
+#    ingestion domain and is subject to the v7 §11 compliance_delete flow
+#    (documented in compliance-audit.spec.md UC-01). The chat layer's own erasure
+#    path (DELETE /api/v1/conversations/:id cascading via ON DELETE CASCADE, BR-37)
+#    is unchanged. No new erasure gap introduced by v2.4.
 #
 # 6. missing_data_minimization
-#    PASS — All stored fields in the three chat tables serve a documented functional
-#    purpose (conversation management, context reconstruction, idempotency, audit,
-#    performance metrics). No excess fields detected structurally.
+#    PASS — All fields on start_async_ingestion (content, source_type, meta,
+#    model, prompt_version) serve a documented functional purpose for the ingestion
+#    pipeline (UC-01 of ingestion). No excess fields detected structurally.
+#
+# 7. hardcoded_pii_in_spec_example
+#    WARNING (CFND-001, carried forward from CMP-20260620-122900) — "Rodrigo"
+#    remains in SSE stream examples and the ChatContentBlock text example in
+#    openapi.yaml. No new hardcoded PII examples were introduced in the v2.3/v2.4
+#    additions: the startAsyncIngestion and getIngestionStatus SSE examples use
+#    only opaque identifiers (c0c0c0c0-...) and metadata strings (content_len=12453).
 #
 # Single-owner model note (v7 §2.3 / ADR A20):
 #    The chat domain carries NO user_id column on any table. Authentication is a
 #    network-access gate; the Owner is the sole data subject and the sole operator.
 #    LGPD obligations relating to third-party data subjects do not arise in this
-#    context. The compliance §11 exclusion for chat tables is deliberately documented
-#    and justified in spec artifacts; reconciliation with v7 is deferred to a
-#    future /u-improve pass as noted in BR-37 and §6.
+#    context. The v2.4 ingestion capability dispatches through the audited ingestion
+#    pipeline (5-layer validation + anti-hallucination per ingestion.back.md BR-26);
+#    the LLM never writes raw SQL (v7 §2 inviolable). No new LGPD compliance gaps
+#    are introduced by the async ingestion capability.

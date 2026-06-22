@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.2.0"
+  version: "2.3.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -14,8 +14,42 @@ info:
     NORMATIVE DEVIATION: this domain is an ADDITIVE deviation from
     `remember-modelagem-v7.md` (which does NOT specify a chat surface). Registered
     in `chat.spec.md` §1 and `back/chat.back.md` §1. The inegociable rule of v7
-    §2 holds: the LLM never reaches the database directly — each tool keeps its
-    own `BEGIN READ ONLY` transaction.
+    §2 holds: the LLM never reaches the database directly — each tool dispatch
+    is mediated by the BFF (read tools open their own `BEGIN READ ONLY`; the
+    write path `start_async_ingestion` invokes the audited ingestion pipeline,
+    NEVER raw SQL).
+
+    ## v2.3 — Async ingestion capability (additive, feature-flagged)
+
+    The chat catalog grows from 13 to 15 tools. The two new entries are gated by
+    the boot-time env flag `CHAT_INGEST_ENABLED` (default `false`):
+
+      - `start_async_ingestion` — one-shot intake. Persists `RawInformation` +
+        chunks + a `running` `LLMRun` (composes `ingestion` UC-01,
+        `ingestRawInformation`, completes in < 1 s) and fires the in-process
+        LLM extraction orchestrator (`runLlmExtraction`, `ingestion` UC-12) as
+        BACKGROUND fire-and-forget. Returns immediately
+        `{ run_id, raw_information_id, status: "running" }`. The asynchronous
+        model is FORCED by the existing chat budgets: `TOOL_TIMEOUT_MS = 15 s`
+        (BR-17) and `TURN_TIMEOUT_MS = 90 s` (BR-16) versus a typical extraction
+        latency of ~67 s per chunk. The chat agent therefore CANNOT wait
+        synchronously for extraction to complete.
+      - `get_ingestion_status` — read-only operational tool reused verbatim from
+        the `ingest` toolset (`ingestion.back.md` BR-31). The chat catalog
+        resolves it via `mcp.getTool('ingest', 'get_ingestion_status')` exactly
+        like the 13 `query` tools (BR-05). The model uses it to poll a run
+        started in an earlier turn.
+
+    BR-05 of `chat.spec.md` ("13 read-only `query` tools") is REVOKED in v2.3
+    and rewritten to authorise this fixed 15-tool catalog. The chat domain now
+    DEPENDS on `ingestion` for service-layer dispatch (chat.spec.md §7).
+
+    Anti-prompt-injection: a new `CHAT_PROMPT_VERSION` (default `v2`) instructs
+    the model to (a) only call `start_async_ingestion` when the Owner has
+    EXPLICITLY asked to ingest, (b) treat the document body as DATA, never as
+    instruction (v7 §13), (c) optionally call `get_ingestion_status` after
+    starting a run. The system prompt is the only place the new behaviour is
+    described — document text is not parsed for control commands.
 
     ## Scope (v2, STATEFUL — supersedes the v1 stateless `POST /api/v1/chat`)
 
@@ -399,11 +433,16 @@ paths:
         In both paths the assistant row is persisted with `stop_reason =
         "cancelled"` and the partial accumulated text (BR-29).
 
-        ## Tools (READ-ONLY)
+        ## Tools
 
-        Same 13-tool catalog as v1. Each tool invocation opens its own short
-        `BEGIN READ ONLY` transaction (`withReadOnly`). The LLM never reaches
-        the database directly. Tool inputs and results are persisted in
+        Resolved chat tool catalog (chat.spec.md BR-05 v2.3): always the 13
+        read-only `query`-toolset entries; plus `start_async_ingestion`
+        (write-bearing, dispatches the `ingestion` pipeline via BR-43) and
+        `get_ingestion_status` (read-only, BR-45) when `CHAT_INGEST_ENABLED=true`
+        at boot (BR-44). The `query`-toolset invocations open their own short
+        `BEGIN READ ONLY` transaction (`withReadOnly`); `start_async_ingestion`
+        invokes the audited `ingestion` service (never raw SQL). The LLM never
+        reaches the database directly. Tool inputs and results are persisted in
         `chat_tool_call` (BR-32) for audit.
       parameters:
         - in: header
@@ -498,6 +537,46 @@ paths:
 
                     event: done
                     data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1500,"tokens_out":42}
+                startAsyncIngestion:
+                  summary: "Owner asks to ingest a document — start_async_ingestion fires the run (CHAT_INGEST_ENABLED=true)"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"start_async_ingestion","args_summary":"source_type=\"document\" content_len=12453"}
+
+                    event: tool_result
+                    data: {"tool":"start_async_ingestion","ok":true}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"Comecei a ingestao do documento. Posso consultar o status a seguir."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":820,"tokens_out":31}
+                getIngestionStatus:
+                  summary: "Owner polls the running ingestion via get_ingestion_status"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"get_ingestion_status","args_summary":"llm_run_id=\"c0c0c0c0-...\""}
+
+                    event: tool_result
+                    data: {"tool":"get_ingestion_status","ok":true}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"A ingestao ainda esta em execucao (status: running). Volto a verificar em breve."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":640,"tokens_out":22}
                 noGraphTool:
                   summary: "Turn with a catalog tool — no graph_delta is emitted"
                   value: |
@@ -985,6 +1064,13 @@ components:
                 error:
                   code: "BUSINESS_CHAT_DISABLED"
                   message: "chat surface is disabled by CHAT_ENABLED=false"
+            ingestKillSwitch:
+              summary: "CHAT_INGEST_ENABLED=false — the ingestion tools are NOT advertised in the chat catalog. The pre-stream 503 is NEVER emitted by the chat routes themselves (the flag only filters the catalog). Documented here for completeness — see chat.spec.md BR-44."
+              value:
+                ok: false
+                error:
+                  code: "BUSINESS_CHAT_INGEST_DISABLED"
+                  message: "the chat ingestion capability is disabled by CHAT_INGEST_ENABLED=false"
             providerUnavailable:
               summary: "Anthropic client failed to initialise (pre-stream)"
               value:
@@ -1376,6 +1462,15 @@ components:
             - list_node_types
             - list_link_types
             - list_attribute_keys
+            - start_async_ingestion
+            - get_ingestion_status
+          description: |
+            Resolved tool name from the chat catalog. The 13 first names are the
+            read-only `query` toolset (chat.spec.md BR-05). The last two
+            (`start_async_ingestion`, `get_ingestion_status`) are the v2.3
+            ingestion capability gated by `CHAT_INGEST_ENABLED` (chat.spec.md
+            BR-44). When the flag is `false`, those two names are NOT advertised
+            in the resolved catalog and the model cannot emit them.
           example: "search"
         args_summary:
           type: string
@@ -1531,7 +1626,7 @@ components:
         status:
           type: string
           description: "Optional assertion status of the link."
-          example: "accepted"
+          example: "active"
         flags:
           type: array
           description: |

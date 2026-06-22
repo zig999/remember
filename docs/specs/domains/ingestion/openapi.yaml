@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember — Ingestion Domain API"
-  version: "1.2.1"
+  version: "1.2.2"
   description: |
     REST contract for the ingestion domain of the Remember system.
 
@@ -40,6 +40,20 @@ info:
     Authentication (§2.5, A29): every endpoint requires a valid Neon Auth (Stack Auth)
     JWT, verified in the BFF middleware. The service key never leaves the BFF.
     Single-owner model — no `User` entity, no role-based authorization.
+
+    MCP-only siblings (no REST mirror — described here for cross-reference,
+    not part of this OpenAPI surface): `ingest_document` (BR-30, synchronous
+    composition of UC-01 + UC-12 — awaits the full extraction), the read-only
+    operational tools `health` / `get_ingestion_status` / `list_recent_ingestions`
+    (BR-31, polling channel after a client timeout), and the new
+    `start_async_ingestion` (BR-32, UC-13 — fires extraction as a detached
+    background promise and returns immediately with `run_status: 'running'`,
+    rollout-flag-guarded by `env.CHAT_INGEST_ENABLED`). These five MCP tools
+    are advertised by `POST /api/v1/mcp/ingest` and by the local stdio MCP
+    transport; their REST equivalents are UC-01 + UC-12 + the polling reads
+    on the LLMRun endpoints below. A REST caller that wants async ingestion
+    simply calls `POST /api/v1/ingest/raw-information` and skips the
+    `POST /api/v1/ingest/llm-runs/:id/run` step.
 
 servers:
   - url: "http://localhost:3000"

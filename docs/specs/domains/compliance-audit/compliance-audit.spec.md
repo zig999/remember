@@ -4,7 +4,7 @@
 > Technical contract: `openapi.yaml` (REST) + MCP toolset `curation` (`compliance_delete` only — §14.4 of `remember-modelagem-v7.md`)
 >
 > Normative source: `remember-modelagem-v7.md` (§2.3, §2.5, §3.5, §10.2, §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29).
-> Schema reference: `migrations/0001_schema.sql` lines 217-243 (`llm_run`, `tool_call` — read-only here), 439-473 (`curation_action`, `compliance_deletion`). `migrations/0002_seed.sql` (no seed in this domain).
+> Schema reference: `migrations/0001_init.sql` lines 452-462 (`curation_action`), 465-473 (`compliance_deletion`). `migrations/0001_seed.sql` (no seed in this domain).
 
 ---
 
