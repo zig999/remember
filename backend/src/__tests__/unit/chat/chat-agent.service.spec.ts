@@ -75,7 +75,9 @@ function buildMcpWithAllChatTools(): McpServer {
 function buildCatalog(): ResolvedChatToolCatalog {
   __resetChatToolCatalogForTests();
   const mcp = buildMcpWithAllChatTools();
-  const catalog = buildChatToolCatalog(mcp);
+  // TC-04: buildChatToolCatalog now requires an env arg (BR-44). These tests
+  // exercise the 13-tool baseline so we pass CHAT_INGEST_ENABLED=false.
+  const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: false });
   if (catalog === undefined) {
     throw new Error("test setup: catalog should resolve");
   }
@@ -567,7 +569,7 @@ describe("chat-agent.service.runTurn", () => {
       });
     }
     __resetChatToolCatalogForTests();
-    const catalog = buildChatToolCatalog(mcp);
+    const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: false });
     if (catalog === undefined) throw new Error("catalog should resolve");
 
     const { client } = buildStubClient([
