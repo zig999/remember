@@ -339,8 +339,12 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       logger,
       catalog: ingestionCatalog,
       // `ingest_document` drives the server-side extraction orchestrator, which
-      // is the sole LLM caller of the BFF (BR-29) — it needs the Anthropic key.
-      env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
+      // is the sole LLM caller of the BFF (BR-29) — it needs the Anthropic key
+      // and the default extraction model (INGEST_MODEL, default Sonnet 4.6).
+      env: {
+        ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
+        INGEST_MODEL: env.INGEST_MODEL,
+      },
     });
   }
 

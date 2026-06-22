@@ -84,6 +84,15 @@ const envSchema = z.object({
     .string()
     .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),
 
+  // INGEST_MODEL: default Anthropic model for SERVER-SIDE extraction — the
+  //   `ingest_document` one-shot when the caller omits `model`. Cost-optimized
+  //   to Sonnet 4.6: extraction is structured tool-calling steered by the closed
+  //   catalog, so it rarely needs Opus-tier reasoning (Opus 4.8 was the original
+  //   functional-E2E-validated model). Flip back to `claude-opus-4-8` here with
+  //   no recompile if extraction quality regresses. The REST
+  //   `/ingest/raw-information` path takes `model` per request and is unaffected.
+  INGEST_MODEL: z.string().min(1).default("claude-sonnet-4-6"),
+
   // Chat surface (modules/chat). All sanity ceilings, not hard product limits;
   // defaults match chat.back.md §8. All optional — missing values fall back to
   // the defaults below so a deployment can boot without chat-specific config.

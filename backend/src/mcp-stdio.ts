@@ -208,7 +208,10 @@ async function main(): Promise<void> {
     // which is the sole LLM caller of the BFF. The same key the HTTP boot
     // consumes is forwarded here so the stdio transport's `ingest_document`
     // tool can call Anthropic.
-    env: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
+    env: {
+      ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
+      INGEST_MODEL: env.INGEST_MODEL,
+    },
   });
 
   // Step 6 — closed tool set (18 tools = 9 KG + 4 QR + 4 propose_* + ingest_document).

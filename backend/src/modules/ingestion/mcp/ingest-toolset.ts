@@ -85,7 +85,11 @@ export interface IngestToolsetDeps {
    * drives the server-side extraction orchestrator. The four `propose_*` tools
    * do not need it (they are called BY an LLM, not the other way around).
    */
-  readonly env: { readonly ANTHROPIC_API_KEY: string };
+  readonly env: {
+    readonly ANTHROPIC_API_KEY: string;
+    /** Default model for the `ingest_document` server-side extraction. */
+    readonly INGEST_MODEL: string;
+  };
   /** Clock source — defaults to `() => new Date()`. Tests inject deterministic clocks. */
   readonly now?: () => Date;
   /** Test seam — forwarded to the `ingest_document` orchestrator. Production omits it. */
@@ -254,6 +258,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
         logger,
         catalog,
         anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
+        ingestModel: deps.env.INGEST_MODEL,
         now,
         ...(deps.anthropicFactory !== undefined
           ? { anthropicFactory: deps.anthropicFactory }
