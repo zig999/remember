@@ -714,14 +714,15 @@ After all syntheses, re-read state.
 
 #### 5.1 — Select batch
 
-From the ready queue (sorted by tier priority then creation seq), select up to the batch ceiling **returned by the state machine** (A6-F2 — the cap is Python-owned, not a prose literal):
+From the ready queue (sorted by tier priority then creation seq), select up to the batch ceiling **returned by the state machine** (A6-F2 — the cap is Python-owned, not a prose literal). The ceiling is **config-driven** (SIEGARD-02): load `dispatch_policy` from `.orch/config.json` and pass it into the SM inputs; the SM clamps to ≥ 1 and defaults to 2 when unset.
 
 ```bash
-MAX_CONCURRENT=$(python3 .claude/lib/sm_runner.py --machine dev --state select_batch --inputs '{}' \
+DISPATCH_POLICY=$(python3 -c "import sys,json; sys.path.insert(0,'.claude/lib'); from orch_core import load_config; print(json.dumps(load_config().get('dispatch_policy', {})))")
+MAX_CONCURRENT=$(python3 .claude/lib/sm_runner.py --machine dev --state select_batch --inputs "{\"dispatch_policy\": $DISPATCH_POLICY}" \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['params']['max_concurrent'])")
 ```
 
-Select up to `$MAX_CONCURRENT` tasks.
+Select up to `$MAX_CONCURRENT` tasks. To raise dev parallelism for independent Task Contracts, set `dispatch_policy.dev.max_concurrent` in `.orch/config.json` (validate against the runtime's real subagent cap).
 
 Look up worker (D9 — state machine resolves task_stack vs project_stack fallback, then `select_worker.py` resolves the actual subagent name):
 
@@ -784,7 +785,7 @@ Use `estimated_prompt_chars ≈ 1500` (the dev spawn prompt template length). In
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type dispatch_decision \
-  --data '{"phase":"dev","batch":[{"task_id":"<task_id>","worker_type":"<worker>","tier":"<tier>","stack":"<task.stack>"}],"rationale":"ready queue order, tier priority, per-task stack routing","constraints":{"max_batch":2,"nesting_depth":<nesting_depth>,"context_estimate":[{"task_id":"<task_id>","total_chars":<total_chars>,"over_threshold":<bool>,"mitigation":"<none|split_spec|summarize_spec|inline_excerpt>"}]}}'
+  --data '{"phase":"dev","batch":[{"task_id":"<task_id>","worker_type":"<worker>","tier":"<tier>","stack":"<task.stack>"}],"rationale":"ready queue order, tier priority, per-task stack routing","constraints":{"max_batch":<max_concurrent>,"nesting_depth":<nesting_depth>,"context_estimate":[{"task_id":"<task_id>","total_chars":<total_chars>,"over_threshold":<bool>,"mitigation":"<none|split_spec|summarize_spec|inline_excerpt>"}]}}'
 ```
 
 Then for each task, emit `task_claimed` before any spawn:
@@ -803,9 +804,23 @@ Register worker:
 python3 -c "
 import sys; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
-register_worker('<worker_id>', '<task_id>', <attempt>, phase='dev', stack='<stack>', task_type='<task.task_type>')
+register_worker('<worker_id>', '<task_id>', <attempt>, phase='dev', stack='<stack>', task_type='<task.task_type>', spawn_context_chars=<total_chars>)
 "
 ```
+
+`<total_chars>` is this task's `context_estimate[].total_chars` computed in Step 5.2 above (SIEGARD-01 follow-up — lets `on_subagent_stop._infer_cause` attribute a worker death to `context_limit`).
+
+#### 5.2b — Create the per-TC branch and worktree (SIEGARD-04)
+
+The Orchestrator-Dev owns the branch/worktree lifecycle (workers only confirm they are on the right branch — `u-be-developer`/`u-fe-developer` Step 2B). Before spawning, create one isolated worktree + branch per claimed task so parallel workers never collide and integration (Step 5.6) has a clean target. Worktrees live under `.orch/worktrees/<task_id>`; `.orch/` is gitignored, so the main tree stays clean for the `all_branches_integrated_to_main` gate.
+
+```bash
+# Branch prefix by Task Contract type: feat/ (feature, enhancement), fix/ (QA fix), refactor/.
+git -C "$ORCH_PROJECT_DIR" worktree add -b feat/TC-<task_id> \
+  "$ORCH_PROJECT_DIR/.orch/worktrees/<task_id>" main
+```
+
+Idempotent on retry: if the branch/worktree already exists for this `<task_id>`, reuse it (skip creation). The worker edits code inside its worktree; `ORCH_PROJECT_DIR` stays the **main** repo root so the shared event log and session artifacts (`.orch/sessions/...`) remain in one place.
 
 #### 5.3 — Spawn batch in parallel
 
@@ -823,7 +838,9 @@ For each claimed task:
     SPECS_DIR=<specs_dir>
     ORCH_PROJECT_DIR=<actual absolute path — value of $ORCH_PROJECT_DIR>
     SESSION_DIR=<session_dir>
+    WORKTREE_DIR=<actual absolute path>/.orch/worktrees/<task_id>
   Set these as shell env vars before any emit.py call.
+  Make ALL code edits inside WORKTREE_DIR (your feat/TC-<task_id> branch is checked out there). Keep using ORCH_PROJECT_DIR (the main repo root) for emit.py, SPECS_DIR and SESSION_DIR paths — the event log and session artifacts live there, not in the worktree. Do NOT merge to main; the Orchestrator integrates your branch at the end of dev.
   nesting_depth: <nesting_depth + 1>
   Task spec: <task.spec>
   Delivery path:   <session_dir>/delivery/<task_id>-delivery.md
@@ -872,16 +889,8 @@ For each task in batch:
     --data '{"phase":"dev","reason":"delivery_artifact_missing","retryable":false,"missing_artifact":"<missing>","synthesized_by":"orchestrator-dev"}'
   ```
   Then unregister and proceed to 5.5.
-- `running` (no terminal) → synthesize `task_failed`:
-  ```bash
-  python3 .claude/skills/orch-log/scripts/append.py \
-    --agent orchestrator-dev \
-    --event-type task_failed \
-    --task-id <task_id> \
-    --attempt <attempt> \
-    --data '{"phase":"dev","reason":"worker_exited_without_terminal","retryable":true,"synthesized_by":"orchestrator-dev"}'
-  ```
-- Unregister:
+- `running` (no terminal) → **do NOT synthesize a terminal here (F-03).** A worker still `running` may be mid-finalization; declaring it dead spawns a retry that races the original. Death is decided ONLY by `stale_threshold_seconds` — via `check_stale.py` (Step 5.0, already run, and at session end) and the SubagentStop hook. Leave the task `running` and re-read state on the next cycle; the reaper will reap it once it is silent past its task-type threshold.
+- Unregister (only for tasks that reached a terminal state):
   ```bash
   python3 -c "
   import sys; sys.path.insert(0,'.claude/lib')
@@ -933,15 +942,49 @@ Return to 5.0.
 
 ---
 
+### Step 5.6 — Integrate qa_ready branches into main (SIEGARD-04)
+
+Reached once the dispatch loop has no ready tasks left and all impl tasks are terminal. The Orchestrator-Dev integrates the completed, `qa_ready` work into the integration branch (`main`) so review/QA runs on the **integrated head** (SIEGARD-06), not on an isolated per-TC branch. Each TC was built on its own `feat/TC-*` / `fix/TC-*` / `refactor/TC-*` branch+worktree created by the Orchestrator at dispatch (Step 5.2b); workers commit there but **never merge to `main`** — this step is the sole integration point.
+
+Re-read state. Build the integration list: every dev task with `status == "completed"` whose `delivery.md` has `qa_ready: true`, ordered by dependency (`deps` before dependents — a stacked TC may build on a sibling's branch).
+
+```bash
+git -C "$ORCH_PROJECT_DIR" checkout main
+```
+
+For each TC in dependency order, merge its branch (prefix by Task Contract type — `feat/`, `fix/`, `refactor/`):
+
+```bash
+git -C "$ORCH_PROJECT_DIR" merge --no-ff -m "integrate <task_id>" feat/TC-<task_id>
+```
+
+On a merge conflict: `git merge --abort`, emit `task_failed(reason=integration_conflict, retryable=false)` for that TC, escalate `E04_critical_task_dlq`, and stop — do not hand a partial integration to review.
+
+After all merges, remove the per-TC worktrees, delete the merged branches, and confirm the tree is clean and on `main`:
+
+```bash
+# remove any per-TC worktree created during dispatch (.orch/worktrees/<task_id>)
+git -C "$ORCH_PROJECT_DIR" worktree list --porcelain
+# git worktree remove <path>   # for each leftover worktree
+git -C "$ORCH_PROJECT_DIR" branch --merged main   # then delete merged feat/TC-* branches
+git -C "$ORCH_PROJECT_DIR" status --porcelain      # must be empty
+```
+
+The end state (HEAD on `main`, clean tree, no unmerged `feat/TC-*` branch, no leftover worktree) is enforced deterministically by the `all_branches_integrated_to_main` exit criterion in Step 6 — it blocks the transition if integration is incomplete.
+
+---
+
 ### Step 6 — Exit criteria evaluation
 
 ```bash
 python3 .claude/skills/phase-dev-rules/scripts/check_all_impl_tasks_terminal.py
 python3 .claude/skills/phase-dev-rules/scripts/check_all_deliveries_qa_ready.py
 python3 .claude/skills/phase-dev-rules/scripts/check_no_open_prohibitions.py
+python3 .claude/skills/phase-dev-rules/scripts/check_all_branches_integrated.py
+python3 .claude/skills/phase-dev-rules/scripts/check_acceptance_criteria_covered.py
 ```
 
-If all three return `"met": true`:
+If all five return `"met": true`:
 
 ```bash
 python3 .claude/skills/orch-log/scripts/append.py \
@@ -961,8 +1004,18 @@ python3 .claude/skills/orch-log/scripts/append.py \
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
+  --event-type phase_exit_criterion_met \
+  --data '{"phase":"dev","criterion":"all_branches_integrated_to_main"}'
+
+python3 .claude/skills/orch-log/scripts/append.py \
+  --agent orchestrator-dev \
+  --event-type phase_exit_criterion_met \
+  --data '{"phase":"dev","criterion":"acceptance_criteria_covered"}'
+
+python3 .claude/skills/orch-log/scripts/append.py \
+  --agent orchestrator-dev \
   --event-type phase_exit_approved \
-  --data '{"phase":"dev","criteria_met":["all_impl_tasks_terminal","all_deliveries_qa_ready","no_open_prohibitions"],"next_phase":"review","workflow_id":"<workflow_id>"}'
+  --data '{"phase":"dev","criteria_met":["all_impl_tasks_terminal","all_deliveries_qa_ready","no_open_prohibitions","all_branches_integrated_to_main","acceptance_criteria_covered"],"next_phase":"review","workflow_id":"<workflow_id>"}'
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
@@ -986,6 +1039,7 @@ Stop.
 Re-read state. Determine:
 - Non-terminal tasks remain → return to Step 5
 - All tasks terminal but `all_impl_tasks_terminal.met == false` → impossible (reduce inconsistency); output `{"status": "error", "last_seq": <last_seq>, "summary": "reduce inconsistency: tasks terminal but criterion disagrees"}` and stop
+- All tasks terminal but `all_branches_integrated_to_main.met == false` → integration did not complete (off `main`, dirty tree, or an unmerged `feat/TC-*` branch). Return to **Step 5.6** and finish integration; do not escalate as a delivery problem
 - All tasks terminal but delivery criteria not met → escalate:
   ```bash
   python3 .claude/skills/orch-log/scripts/append.py \
@@ -1028,5 +1082,5 @@ Re-read state. Determine:
 | Backlog artifact not found after planning | Escalate E07 |
 | `append.py` exit 1 on `task_claimed` | Skip task, continue |
 | `reduce.py` exit 1 | Emit E12 via `append.py` (does not require reduce output), return `{status: "escalated", summary: "reduce_failed — see E12"}` |
-| Worker exits without terminal | Synthesize `task_failed` in Step 5.4 |
+| Worker exits without terminal | Do NOT synthesize in Step 5.4 (F-03). The SubagentStop hook fails it if it is the sole stopping worker; otherwise the deterministic reaper (`check_stale.py`, Step 5.0) fails it once silent past its task-type threshold. Leave it `running` and re-read state. |
 | Circuit tripped during loop | Return `{status: "error", summary: "circuit_tripped"}` |

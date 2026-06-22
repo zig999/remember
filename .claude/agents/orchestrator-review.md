@@ -165,6 +165,29 @@ python3 .claude/skills/orch-log/scripts/append.py \
 
 ---
 
+### Step 1.5 — Confirm QA runs on the integrated head (SIEGARD-06)
+
+QA must run on the integration branch (`main`), not on an isolated per-TC branch. The dev phase (SIEGARD-04, Step 5.6) merges all `qa_ready` work into `main` before transitioning here; this guard confirms it before any QA task is created. Reviewing an isolated branch produces false positives — e.g. a TC that references a symbol introduced by a later, stacked TC fails typecheck in isolation but is correct on the integrated head.
+
+```bash
+python3 .claude/skills/phase-review-rules/scripts/check_qa_on_integrated_main.py
+```
+
+**If it returns `blocked`** (HEAD not on `main`, dirty tree, or an unmerged `feat/TC-*` branch remains): dev integration did not complete. Do NOT create or dispatch QA tasks against partial state — escalate and stop:
+
+```bash
+python3 .claude/skills/orch-log/scripts/append.py \
+  --agent orchestrator-review \
+  --event-type escalation \
+  --data '{"code":"E21_qa_not_on_integrated_main","severity":"critical","reason":"review entered but the repo is not on the integrated head (dev integration incomplete) — QA would test an isolated/partial branch","evidence":[<last_seq>],"suggested_actions":["re-invoke orchestrator-dev to complete Step 5.6 (integrate qa_ready branches into main)","verify: git -C $ORCH_PROJECT_DIR status --porcelain and git branch --no-merged main"]}'
+```
+
+Output `{"status": "escalated", "last_seq": <last_seq>, "summary": "qa_not_on_integrated_main — dev integration incomplete (E21)"}` and stop.
+
+When it returns `ok`, proceed to Step 2.
+
+---
+
 ### Step 2 — Detect stack
 
 ```bash
@@ -612,17 +635,17 @@ After all workers return, re-read state:
 python3 .claude/skills/orch-state/scripts/reduce.py
 ```
 
+**Liveness rule (F-03):** never declare a `running` worker dead from the prompt — it may be mid-finalization, and a premature terminal spawns a retry that races the original. Run the deterministic reaper first; it fails only tasks silent past their task-type threshold (`stale_threshold_seconds`):
+
+```bash
+python3 .claude/scripts/check_stale.py
+```
+
 For each task in batch:
 - `completed` or `dlq` → unregister and proceed to 4.5
-- `running` → synthesize `task_failed`:
-  ```bash
-  python3 .claude/skills/orch-log/scripts/append.py \
-    --agent orchestrator-review \
-    --event-type task_failed \
-    --task-id <task_id> --attempt <attempt> \
-    --data '{"phase":"review","reason":"worker_exited_without_terminal","retryable":true,"synthesized_by":"orchestrator-review"}'
-  ```
-- Unregister:
+- `failed` (reaped just now, or terminal from the SubagentStop hook) → unregister and proceed to 4.5
+- `running` (not reaped — still within its liveness window) → do NOT synthesize. Leave it `running` and re-read state next cycle; the reaper (here and at session end) and the SubagentStop hook are the only paths allowed to declare it dead.
+- Unregister (only for tasks that reached a terminal state):
   ```bash
   python3 -c "
   import sys; sys.path.insert(0,'.claude/lib')
@@ -981,7 +1004,7 @@ Stop.
 | No dev delivery artifacts | Return `{status: "blocked"}` |
 | `append.py` exit 1 on `task_claimed` | Skip task, continue |
 | `reduce.py` exit 1 | Emit E12 via `append.py` (does not require reduce output), return `{status: "escalated", summary: "reduce_failed — see E12"}` |
-| Worker exits without terminal | Synthesize `task_failed` in Step 4.4 |
+| Worker exits without terminal | Do NOT synthesize in Step 4.4 (F-03). The SubagentStop hook fails it if it is the sole stopping worker; otherwise the deterministic reaper (`check_stale.py`) fails it once silent past its task-type threshold. Leave it `running` and re-read state. |
 | Circuit tripped during loop | Return `{status: "error", summary: "circuit_tripped"}` |
 | `human_response` action unknown | Treat as no response; re-emit escalation on next invocation |
 | Review task in DLQ at Step 6 | Emit E08 critical (`review_tasks_in_dlq`), return `{status: "blocked"}`; do not evaluate criterion scripts |

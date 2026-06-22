@@ -14,7 +14,14 @@ Exit codes:
 Output: single JSON object on stdout. All other output on stderr.
 """
 import argparse
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows — fcntl is POSIX-only; msvcrt fallback below
+    fcntl = None
+    try:
+        import msvcrt
+    except ImportError:
+        msvcrt = None
 import json
 import os
 import platform
@@ -87,27 +94,72 @@ def check_python_version() -> CheckResult:
     return _timed(_run)
 
 
+def check_bash_available() -> CheckResult:
+    """Probes that a Bash shell can execute a command.
+
+    The orchestrator dispatches every infrastructure step, log append, and worker
+    through the Bash tool. A meta-orchestrator spawned in background runs in a
+    reduced-permission sandbox WITHOUT Bash and with no interactive approval path
+    (see F-01): it stalls for minutes and then asks for Bash permission instead of
+    failing fast. This check surfaces a missing/unusable Bash as a structured
+    E_NO_BASH failure so the infra gate blocks the cycle immediately. Orchestrators
+    MUST run in foreground; background is only for read-only leaf workers.
+    """
+    def _run() -> CheckResult:
+        bash = shutil.which("bash")
+        if bash is None:
+            return CheckResult(
+                ok=False,
+                reason="E_NO_BASH: bash not found in PATH",
+                detail={"hint": "orchestrators require foreground (Bash tool); never spawn in background"},
+            )
+        try:
+            r = subprocess.run([bash, "-c", "echo ok"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip() == "ok":
+                return CheckResult(ok=True, reason="bash executes", detail={"path": bash})
+            return CheckResult(
+                ok=False,
+                reason="E_NO_BASH: bash probe returned unexpected output",
+                detail={"stdout": r.stdout[:100], "stderr": r.stderr[:100]},
+            )
+        except subprocess.TimeoutExpired:
+            return CheckResult(ok=False, reason="E_NO_BASH: bash probe timed out after 5s")
+        except OSError as exc:
+            return CheckResult(ok=False, reason=f"E_NO_BASH: bash probe failed: {exc}")
+    return _timed(_run)
+
+
 def check_flock_works() -> CheckResult:
     def _run() -> CheckResult:
+        if fcntl is None and msvcrt is None:
+            return CheckResult(
+                ok=False, reason="no file-locking mechanism available (fcntl and msvcrt both missing)"
+            )
         try:
             with tempfile.NamedTemporaryFile(suffix=".lock", delete=False) as tf:
                 lock_path = tf.name
             try:
                 with open(lock_path, "w") as f:
-                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                return CheckResult(ok=True, reason="POSIX flock works")
+                    if fcntl is not None:
+                        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(f, fcntl.LOCK_UN)
+                        return CheckResult(ok=True, reason="POSIX flock works")
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                    return CheckResult(ok=True, reason="msvcrt file locking works (Windows)")
             finally:
                 try:
                     os.unlink(lock_path)
                 except OSError:
                     pass
         except (ImportError, AttributeError):
-            return CheckResult(ok=False, reason="fcntl not available (non-POSIX system)")
+            return CheckResult(ok=False, reason="file-locking module not available")
         except BlockingIOError:
-            return CheckResult(ok=False, reason="flock returned EWOULDBLOCK unexpectedly")
+            return CheckResult(ok=False, reason="lock returned EWOULDBLOCK unexpectedly")
         except OSError as exc:
-            return CheckResult(ok=False, reason=f"flock failed: {exc}")
+            return CheckResult(ok=False, reason=f"file locking failed: {exc}")
     return _timed(_run)
 
 
@@ -213,6 +265,7 @@ def check_agent_references() -> CheckResult:
 
 
 LOCAL_CHECKS: list[tuple[str, Callable[[], CheckResult]]] = [
+    ("bash_available", check_bash_available),
     ("python_version", check_python_version),
     ("flock_works", check_flock_works),
     ("filesystem_writable", check_filesystem_writable),

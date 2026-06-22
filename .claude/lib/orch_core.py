@@ -6,7 +6,13 @@ Zero external dependencies — Python 3.10+ stdlib only.
 """
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover — Windows (fcntl is POSIX-only)
+    fcntl = None  # type: ignore[assignment]
+    _HAS_FCNTL = False
+    import msvcrt
 import hashlib
 import json
 import os
@@ -112,9 +118,37 @@ def ensure_dirs() -> None:
 # Locking
 # ---------------------------------------------------------------------------
 
+def _lock_acquire_nb(fd: int) -> None:
+    """Acquire an exclusive non-blocking lock on fd.
+
+    Cross-platform seam: POSIX flock when available, msvcrt byte-range lock
+    on Windows. Raises BlockingIOError on both platforms when the lock is
+    already held, so the LogLock polling loop is platform-agnostic.
+    """
+    if _HAS_FCNTL:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:  # pragma: no cover — exercised via fake-msvcrt subprocess test
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            # msvcrt raises plain OSError/PermissionError when the byte is
+            # locked elsewhere; normalize to BlockingIOError for the caller.
+            raise BlockingIOError(str(exc)) from exc
+
+
+def _lock_release(fd: int) -> None:
+    """Release the lock acquired by _lock_acquire_nb."""
+    if _HAS_FCNTL:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    else:  # pragma: no cover — exercised via fake-msvcrt subprocess test
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+
 class LogLock:
     """
-    Exclusive POSIX lock on the log lock file.
+    Exclusive lock on the log lock file (POSIX flock; msvcrt on Windows).
 
     Non-blocking with polling loop and timeout.
     Releases automatically on context exit, even on exception.
@@ -139,7 +173,7 @@ class LogLock:
         start = time.monotonic()
         while True:
             try:
-                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _lock_acquire_nb(self._fd)
                 return self
             except BlockingIOError:
                 if time.monotonic() - start >= self._timeout_s:
@@ -152,7 +186,7 @@ class LogLock:
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         if self._fd is not None:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            _lock_release(self._fd)
             os.close(self._fd)
             self._fd = None
 
@@ -177,12 +211,92 @@ def parse_iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
+def _elapsed_seconds(now: str, then: str) -> float:
+    """Seconds between two ISO timestamps, tolerant of a tz-naive operand.
+
+    All engine timestamps are UTC, but a legacy / hand-edited / externally-injected
+    event may carry a last_event_at with no 'Z'/offset. Subtracting a naive from an
+    aware datetime raises TypeError, which on the SubagentStop hot path would crash
+    the hook (and the reaper). Coerce any naive operand to UTC before subtracting.
+    """
+    a = parse_iso(now)
+    b = parse_iso(then)
+    if a.tzinfo is None:
+        a = a.replace(tzinfo=timezone.utc)
+    if b.tzinfo is None:
+        b = b.replace(tzinfo=timezone.utc)
+    return (a - b).total_seconds()
+
+
 def _safe_parse_iso(ts: str) -> datetime | None:
     """Parses ISO 8601 timestamp; returns None on any parse failure (never raises)."""
     try:
         return datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except (ValueError, AttributeError, TypeError):
         return None
+
+
+_WORKFLOW_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def slugify_workflow_id(raw: str | None) -> str | None:
+    """Returns a sanitized human-readable workflow_id, or None if unusable (F-04).
+
+    A usable id is a non-empty string of [A-Za-z0-9._-] with no path separators
+    (a workflow_id keys a session directory `.orch/sessions/<id>/`, so it must be a
+    single safe path segment). The id is lowercased: targets run on a Windows
+    case-insensitive filesystem, so 'Chat-UI' and 'chat-ui' would otherwise be two
+    distinct log ids resolving to the SAME session dir — silently clobbering one
+    run's artifacts (a P1 'log is the truth' violation). Lowercasing is also the
+    project's domain-slug convention. UUIDs pass this filter — they are valid ids —
+    but the engine should only MINT a UUID-like opaque id when nothing readable was
+    requested; see resolve_workflow_id.
+    """
+    if not isinstance(raw, str):
+        return None
+    raw = raw.strip().lower()
+    if not raw or "/" in raw or "\\" in raw or raw in (".", ".."):
+        return None
+    if not _WORKFLOW_ID_RE.fullmatch(raw):
+        return None
+    return raw
+
+
+def resolve_workflow_id(
+    requested: str | None,
+    today: str,
+    existing: "Iterator[str] | tuple" = (),
+) -> tuple[str, bool]:
+    """Resolves the effective workflow_id for a first-run workflow (F-04).
+
+    The engine used to mint an opaque uuid4 unconditionally, discarding the
+    readable id the operator passed to /u-spec — sessions became unreachable by
+    name. This honors a usable requested id verbatim, and otherwise falls back to
+    a READABLE slug `spec-<YYYYMMDD>` (disambiguated with `-2`, `-3`, … against
+    existing session ids), never an opaque UUID.
+
+    Args:
+        requested: the workflow_id from the invocation prompt (may be None/empty/invalid).
+        today:     compact date stamp `YYYYMMDD` for the fallback slug.
+        existing:  already-used workflow ids (e.g. `.orch/sessions/*` names) to avoid collisions.
+
+    Returns:
+        (workflow_id, diverged) where `diverged` is True only when a non-empty id
+        was requested but could not be used (so the caller logs the divergence
+        instead of silently substituting).
+    """
+    existing = set(existing or ())
+    slug = slugify_workflow_id(requested)
+    if slug is not None:
+        return slug, False
+    base = f"spec-{today}"
+    candidate = base
+    n = 2
+    while candidate in existing:
+        candidate = f"{base}-{n}"
+        n += 1
+    diverged = bool(requested and str(requested).strip())
+    return candidate, diverged
 
 
 def sha256_hex(data: bytes) -> str:
@@ -332,6 +446,13 @@ class Tier(str, Enum):
     @property
     def default_base_delay_s(self) -> float:
         return {"critical": 15.0, "standard": 30.0, "bulk": 0.0}[self.value]
+
+
+# Heartbeat-staleness threshold for an active orchestrator (seconds). An active
+# phase with non-terminal tasks but no orchestrator_heartbeat within this window
+# is treated as a stalled orchestrator. Single source of truth: detect_stale_orchestrator
+# defaults to it; monitor.py imports it; on_stop.py reaches it via detect_stale_orchestrator.
+ORCHESTRATOR_STALE_SECONDS = 900  # 15 minutes
 
 
 # ---------------------------------------------------------------------------
@@ -1110,6 +1231,15 @@ def append_event(
                 if _reason:
                     raise PreconditionViolation(f"{event_type} rejected: {_reason}")
         last = last_event()
+        # SIEGARD-03: refuse to chain onto a corrupted tail. If the last event no
+        # longer matches its own hash, the log is already corrupt — fail HERE (at
+        # append) instead of propagating an invalid prev_hash into every following
+        # event (the cascade that forces recovery to truncate N valid events).
+        # Cost: one hash recompute per append (cheap).
+        if last is not None and last.compute_hash() != last.hash:
+            raise CorruptedLogError(
+                f"refusing to append onto corrupted tail: seq={last.seq} hash mismatch"
+            )
         seq = (last.seq + 1) if last else 1
         prev_hash = last.hash if last else "GENESIS"
 
@@ -1140,12 +1270,23 @@ def append_event(
         )
         event.hash = event.compute_hash()
 
-        line = json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+        line_bytes = (
+            json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            + "\n"
+        ).encode("utf-8")
 
-        with open(LOG_PATH, "ab") as f:
-            f.write(line.encode("utf-8"))
-            f.flush()
-            os.fsync(f.fileno())
+        # SIEGARD-03: append in a single os.write on an O_APPEND fd. Under LogLock
+        # there are no concurrent cooperating writers; the win is shrinking the
+        # "partial line" window if the process is killed mid-append (the dominant
+        # corruption vector, correlated with worker kills). fsync preserves
+        # durability. Blobs (MAX_INLINE_PAYLOAD) keep the line small, so it
+        # typically fits in a single atomic write (<= PIPE_BUF).
+        fd = os.open(LOG_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, line_bytes)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
     return event
 
@@ -1489,9 +1630,6 @@ def _handle_task_claimed(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
-    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
-    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
-        return
     if task.status != TaskStatus.READY:
         raise IllegalTransition(
             f"task_claimed: task {task_id!r} is {task.status!r}, expected ready"
@@ -1512,10 +1650,14 @@ def _handle_task_completed(state: OrchState, event: Event) -> None:
     # on_subagent_stop hook and orchestrator Step 6.4 racing on the same task.
     if task.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED, TaskStatus.DLQ):
         return
-    # C2b: Hook-synthesized false-positive recovery — if the on_subagent_stop hook
-    # emitted task_failed before the actual task_completed arrived (same attempt),
-    # allow the completion to supersede the hook-synthesized failure.
-    if task.status not in (TaskStatus.RUNNING, TaskStatus.FAILED):
+    # Superseded-attempt straggler: a task_retried already advanced this task to a
+    # newer attempt (task.attempts). A task_completed carrying an OLDER event.attempt
+    # is residue from the previous attempt's worker → idempotent no-op, not fatal.
+    # `task.attempts` defaults to 0 and is only set on failure/retry, so the happy
+    # path (attempts=0, event.attempt=1) evaluates `1 < 1` → False and proceeds.
+    if event.attempt < (task.attempts or 1):
+        return
+    if task.status != TaskStatus.RUNNING:
         raise IllegalTransition(
             f"task_completed: task {task_id!r} is {task.status!r}, expected running"
         )
@@ -1559,6 +1701,12 @@ def _handle_task_failed(state: OrchState, event: Event) -> None:
     # from on_subagent_stop hook and orchestrator Step 6.4 racing on the same task.
     if task.status in (TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.DLQ):
         return
+    # Superseded-attempt straggler: task_retried already advanced this task to a newer
+    # attempt. A task_failed carrying an OLDER event.attempt is residue from the prior
+    # attempt's worker → idempotent no-op. Placed before the RUNNING check so a late
+    # failed for attempt N cannot corrupt a task currently RUNNING on attempt N+1.
+    if event.attempt < (task.attempts or 1):
+        return
     if task.status != TaskStatus.RUNNING:
         raise IllegalTransition(
             f"task_failed: task {task_id!r} is {task.status!r}, expected running"
@@ -1579,9 +1727,6 @@ def _handle_task_scheduled_retry(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
-    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
-    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
-        return
     if task.status != TaskStatus.FAILED:
         raise IllegalTransition(
             f"task_scheduled_retry: task {task_id!r} is {task.status!r}, expected failed"
@@ -1597,9 +1742,6 @@ def _handle_task_retried(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
-    # Idempotency: if task already completed (hook-synthesized retry recovery), no-op.
-    if task.status in (TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED):
-        return
     if task.status != TaskStatus.SCHEDULED:
         raise IllegalTransition(
             f"task_retried: task {task_id!r} is {task.status!r}, expected scheduled"
@@ -1795,37 +1937,233 @@ def reduce_all_tolerant() -> tuple[OrchState, list[Violation]]:
     return state, violations
 
 
-def stale_tasks(state: OrchState, now: str) -> list[TaskState]:
-    """
-    Returns tasks in `running` status whose last activity exceeds the tier's
-    stale threshold.
+def reduce_workflow(workflow_id: str) -> OrchState:
+    """Reduce ONLY the events belonging to `workflow_id` into a fresh OrchState.
 
-    A task is stale when (now - last_event_at) > tier.default_stale_seconds.
+    Workflow isolation (strategy B — derive on reduction; compatible with existing
+    logs, no back-fill). Task events do NOT carry `workflow_id`; association is
+    derived exactly as monitor.py's `_collect_workflow_index` does: every event
+    between one `phase_declared` and the next is attributed to the workflow named
+    by that `phase_declared`. An explicit `data.workflow_id` on an event always
+    wins over the tracked boundary. Events before any `phase_declared` (no tracked
+    workflow and no embedded id) belong to no workflow and are skipped.
+
+    Why this exists: `reduce_all` is global — a single illegal transition in ONE
+    workflow aborts reduction for the WHOLE log, stalling every other workflow.
+    Reducing per-workflow scopes that failure to its own workflow. The decision
+    engine still defaults to the strict `reduce_all`; this is the scoped variant a
+    caller uses to keep healthy workflows derivable when a sibling is corrupted.
+
+    The reduction itself stays STRICT: an illegal transition inside `workflow_id`
+    still raises `IllegalTransition` (scoped to this workflow). Use
+    `reduce_all_tolerant` for diagnostic, non-raising reduction.
+
+    Raises:
+        IllegalTransition: the target workflow's events contain an illegal transition.
+        CorruptedLogError: log is corrupted (broken hash chain / invalid JSON).
+    """
+    state = OrchState()
+    current_wf: str | None = None
+    for event in read_events():
+        data = event.data
+        if is_blob_ref(data):
+            try:
+                data = load_blob_data(event)
+            except Exception:  # noqa: BLE001
+                data = {}
+        if event.event_type == EventType.PHASE_DECLARED.value:
+            declared = data.get("workflow_id")
+            if declared:
+                current_wf = declared
+        event_wf = data.get("workflow_id") or current_wf
+        if event_wf == workflow_id:
+            apply_event(state, event)
+    return state
+
+
+def detect_stale_orchestrator(
+    state: OrchState,
+    events: list[Event],
+    now: str,
+    threshold: int = ORCHESTRATOR_STALE_SECONDS,
+) -> dict[str, Any] | None:
+    """Detect an orchestrator that stopped with non-terminal tasks remaining.
+
+    Complements `stale_tasks` / `reap_stale_tasks`, which cover only RUNNING tasks
+    hung past their tier threshold. This covers the orthogonal hazard: the active
+    phase has tasks in READY/PENDING/SCHEDULED/RUNNING/FAILED (anything not terminal)
+    but the orchestrator emitted no `orchestrator_heartbeat` within `threshold`
+    seconds — i.e. the orchestrator died/stalled and nobody is dispatching the
+    remaining tasks. `verify_and_recover` is NOT triggered here (it is destructive
+    and manual by design); this is detection + an actionable signal only.
+
+    Pure function (no I/O) so it is unit-testable and reusable by both the on_stop
+    backstop and the live orchestrator's Step 5.0 check (check_stale.py).
+
+    Returns a diagnostic dict (workflow_id, phase, pending_task_ids, command) when
+    stale, else None.
+    """
+    if state.current_phase is None:
+        return None
+    phase = state.phases.get(state.current_phase)
+    phase_status = phase.status.value if phase and hasattr(phase.status, "value") else (phase.status if phase else None)
+    if not phase or phase_status != "active":
+        return None
+
+    _TERMINAL = (TaskStatus.COMPLETED.value, TaskStatus.DLQ.value, TaskStatus.SKIPPED.value)
+    pending = [
+        t for t in state.tasks.values()
+        if t.phase == state.current_phase
+        and (t.status.value if hasattr(t.status, "value") else t.status) not in _TERMINAL
+    ]
+    if not pending:
+        return None
+
+    heartbeats = [
+        e for e in events
+        if e.event_type == "orchestrator_heartbeat"
+        and e.data.get("phase") == state.current_phase
+    ]
+    if heartbeats:
+        last_hb = max(heartbeats, key=lambda e: e.seq)
+        try:
+            age = (parse_iso(now) - parse_iso(last_hb.ts)).total_seconds()
+            if age < threshold:
+                return None
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "stale_orchestrator": state.current_phase,
+        "workflow_id": state.workflow_id,
+        "pending_tasks": len(pending),
+        "pending_task_ids": [t.task_id for t in pending],
+        "last_heartbeat": heartbeats[-1].ts if heartbeats else None,
+        "action_required": (
+            "Orchestrator stopped making progress with non-terminal tasks remaining. "
+            "Re-invoke /u-orchestrator — the log is intact and execution will resume "
+            "from the current state."
+        ),
+        "command": "/u-orchestrator",
+    }
+
+
+def compute_progress(state: "OrchState") -> dict[str, Any]:
+    """Rec #8 — estimable progress for ETA / observability. Pure function of the
+    derived state: overall + per-phase task completion. Terminal counts as
+    completed | dlq | skipped. Orchestrators may emit this in heartbeats; on_stop
+    surfaces it in metrics. No I/O, no time math — safe to call anywhere."""
+    terminal = {TaskStatus.COMPLETED, TaskStatus.DLQ, TaskStatus.SKIPPED}
+
+    def _pct(done: int, total: int) -> float:
+        return round(100.0 * done / total, 1) if total else 0.0
+
+    by_phase: dict[str, dict[str, Any]] = {}
+    total = 0
+    done = 0
+    for t in state.tasks.values():
+        total += 1
+        is_term = t.status in terminal
+        done += 1 if is_term else 0
+        ph = by_phase.setdefault(t.phase, {"total": 0, "terminal": 0})
+        ph["total"] += 1
+        ph["terminal"] += 1 if is_term else 0
+    for ph in by_phase.values():
+        ph["remaining"] = ph["total"] - ph["terminal"]
+        ph["pct_complete"] = _pct(ph["terminal"], ph["total"])
+
+    return {
+        "tasks_total": total,
+        "tasks_terminal": done,
+        "tasks_remaining": total - done,
+        "pct_complete": _pct(done, total),
+        "current_phase": state.current_phase,
+        "by_phase": by_phase,
+    }
+
+
+def stale_threshold_seconds(task: TaskState, config: dict[str, Any] | None = None) -> int:
+    """Resolves the stale threshold (seconds) for a task (F-02).
+
+    Resolution order (single source of truth for both the stale reaper and the
+    SubagentStop liveness window):
+      1. stale_policy.overrides_by_task_type[task.task_type]  — writers drafting
+         large artifacts go silent for minutes; they get a longer window.
+      2. stale_policy.defaults_by_tier[task.tier]             — per-tier default.
+      3. Tier(task.tier).default_stale_seconds                — hard-coded fallback.
+    """
+    cfg = config if config is not None else load_config()
+    sp = cfg.get("stale_policy", {}) if isinstance(cfg, dict) else {}
+    overrides = sp.get("overrides_by_task_type", {}) or {}
+    tt = task.task_type or ""
+    if tt in overrides:
+        try:
+            return int(overrides[tt])
+        except (TypeError, ValueError):
+            pass
+    try:
+        tier = Tier(task.tier)
+    except ValueError:
+        tier = Tier.STANDARD
+    tier_defaults = sp.get("defaults_by_tier", {}) or {}
+    if tier.value in tier_defaults:
+        try:
+            return int(tier_defaults[tier.value])
+        except (TypeError, ValueError):
+            pass
+    return tier.default_stale_seconds
+
+
+def worker_liveness_expired(
+    task: TaskState, now: str, config: dict[str, Any] | None = None
+) -> bool:
+    """True when a worker's task has been silent long enough that the SubagentStop
+    hook may safely synthesize its terminal (F-03).
+
+    SubagentStop fires on ANY subagent's stop and carries no key correlating it to
+    a specific registered worker. Synthesizing a terminal for a worker whose last
+    event is recent would kill a sibling worker still mid-flight and spawn a retry
+    that races the original (latent file/branch corruption). The hook therefore
+    only acts once the worker is silent past its stale threshold — the SAME bound
+    the stale reaper uses (stale_threshold_seconds), so the two never disagree.
+    Genuine deaths still get a terminal: here once expired, or via reap_stale_tasks
+    at orchestrator Step 5.0 / session end.
+
+    A task with no recorded activity at all (last_event_at is None) returns True —
+    there is no evidence of life to protect.
+    """
+    if task.last_event_at is None:
+        return True
+    threshold = stale_threshold_seconds(task, config)
+    return _elapsed_seconds(now, task.last_event_at) > threshold
+
+
+def stale_tasks(state: OrchState, now: str, config: dict[str, Any] | None = None) -> list[TaskState]:
+    """
+    Returns tasks in `running` status whose last activity exceeds their
+    stale threshold (F-02: task-type aware, config-driven).
+
+    A task is stale when (now - last_event_at) > stale_threshold_seconds(task).
     `last_event_at` is updated on every event for the task, including
     task_progress, so recent heartbeats reset the staleness timer.
 
     Args:
-        state: Current OrchState (from reduce_all or reduce_incremental).
-        now:   Current UTC time as ISO 8601 string (e.g. from now_iso()).
+        state:  Current OrchState (from reduce_all or reduce_incremental).
+        now:    Current UTC time as ISO 8601 string (e.g. from now_iso()).
+        config: Optional pre-loaded config; defaults to load_config().
 
     Returns:
         List of TaskState objects that are stale. Empty list if none.
     """
-    now_dt = parse_iso(now)
+    cfg = config if config is not None else load_config()
     result: list[TaskState] = []
     for task in state.tasks.values():
         if task.status != TaskStatus.RUNNING:
             continue
         if task.last_event_at is None:
             continue
-        try:
-            tier = Tier(task.tier)
-        except ValueError:
-            tier = Tier.STANDARD
-        threshold = tier.default_stale_seconds
-        last_dt = parse_iso(task.last_event_at)
-        elapsed = (now_dt - last_dt).total_seconds()
-        if elapsed > threshold:
+        threshold = stale_threshold_seconds(task, cfg)
+        if _elapsed_seconds(now, task.last_event_at) > threshold:
             result.append(task)
     return result
 
@@ -1837,7 +2175,8 @@ def reap_stale_tasks(now: str | None = None) -> list[str]:
     Deterministic runtime enforcement of the timeout invariant (A2-F1): a worker
     that hangs (process alive, emitting no events) is detected and failed by Python,
     not only by a prompt-level check the orchestrator LLM might skip. Thresholds
-    come from Tier.default_stale_seconds — the single source of truth (A2-F6).
+    come from stale_threshold_seconds() — task-type aware, config-driven (F-02),
+    the single source of truth (A2-F6).
     Idempotent: a task already terminal/FAILED is a no-op in the reducer. Callable
     from check_stale.py (orchestrator Step 5.0) and on_stop.py (session-end backstop).
     """
@@ -1911,6 +2250,41 @@ def default_config() -> dict[str, Any]:
             "runtime_threshold_tasks": 10,
             "timeout_seconds": 60,
         },
+        # SIEGARD-02: dev-phase batch ceiling (max parallel impl workers per
+        # dispatch cycle). Was a hardcoded 2 in the dev state machine; now
+        # config-driven so independent Task Contracts can parallelise beyond 2.
+        # The cap stays SM-owned (A6-F2): the orchestrator loads this policy and
+        # passes it into the SM inputs; DevStateMachine clamps to >= 1 (default 2).
+        "dispatch_policy": {
+            "dev": {"max_concurrent": 2},
+        },
+        # F-02: stale-detection thresholds, configurable and task-type aware. A
+        # worker may stay legitimately silent for minutes between semantic
+        # checkpoints (e.g. a spec writer drafting a large artifact between
+        # analysis_complete and draft_written). The flat per-tier thresholds were
+        # too short for writers, producing stale_timeout false positives. Resolution
+        # order in stale_threshold_seconds(): task_type override > tier default > Tier enum.
+        "stale_policy": {
+            # Tier defaults derive from Tier.default_stale_seconds — single source of
+            # truth (A2-F6); editing the enum propagates here automatically.
+            "defaults_by_tier": {t.value: t.default_stale_seconds for t in Tier},
+            # Keys are the task_type values emitted in task_created (see orchestrators).
+            "overrides_by_task_type": {
+                "spec-writer": 1200,
+                "spec-back": 1200,
+                "spec-front": 1200,
+                "spec-reviewer": 900,
+                "spec-validator": 900,
+                "spec-compliance": 900,
+                "spec-triage": 600,
+                "impl": 1200,
+                "planning": 900,
+                "qa": 900,
+                "test-run": 1200,
+                "security-review": 900,
+                "architecture-review": 900,
+            },
+        },
         "phases": {
             "default_workflow": "dev-cycle",
             "workflows": {
@@ -1940,13 +2314,27 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ConfigError(f"Invalid config JSON at {path}: {exc}") from exc
-    # Deep-merge loaded over defaults (top-level keys only for simplicity)
-    for key, val in loaded.items():
-        if isinstance(val, dict) and isinstance(cfg.get(key), dict):
-            cfg[key].update(val)
-        else:
-            cfg[key] = val
+    # Recursive deep-merge: a partial nested override (e.g. stale_policy with only
+    # defaults_by_tier.critical) must not wipe sibling sub-keys (standard/bulk,
+    # overrides_by_task_type). A shallow .update() replaced whole sub-dicts and
+    # silently dropped the writer-protective stale defaults (F-02 regression).
+    _deep_merge(cfg, loaded)
     return cfg
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merges `override` into `base` in place; returns `base`.
+
+    Dict values are merged key-by-key at every level; non-dict values (scalars,
+    lists) replace wholesale. This preserves default sub-keys the operator did not
+    restate, for any nesting depth (stale_policy, retry_policy, phases).
+    """
+    for key, val in override.items():
+        if isinstance(val, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
+    return base
 
 
 # ---------------------------------------------------------------------------
@@ -2346,6 +2734,7 @@ def register_worker(
     phase: str | None = None,
     stack: str | None = None,
     task_type: str | None = None,
+    spawn_context_chars: int | None = None,
 ) -> None:
     """
     Writes a worker registry entry before the orchestrator spawns the agent.
@@ -2382,6 +2771,11 @@ def register_worker(
         entry["stack"] = stack
     if task_type is not None:
         entry["task_type"] = task_type
+    # SIEGARD-01 follow-up: persist the spawn context size so on_subagent_stop's
+    # _infer_cause can attribute a worker death to context_limit (its >150k branch
+    # is otherwise dormant — the registry never carried this signal).
+    if spawn_context_chars is not None:
+        entry["spawn_context_chars"] = spawn_context_chars
     entry_path.write_text(
         json.dumps(entry, separators=(",", ":")),
         encoding="utf-8",
@@ -2608,8 +3002,13 @@ __all__ = [
     # Reducer
     "apply_event",
     "reduce_all",
+    "compute_progress",
     "stale_tasks",
+    "stale_threshold_seconds",
+    "worker_liveness_expired",
     "reap_stale_tasks",
+    "slugify_workflow_id",
+    "resolve_workflow_id",
     "consumed_manifest_ids",
     # Config and retry
     "default_config",
@@ -2851,6 +3250,11 @@ META_TRANSITIONS: dict[tuple[str, Callable[[dict], bool]], Action] = {
         Action("spawn_phase_orchestrator", {"subagent_type": "orchestrator-review"}),
     ("phase_entry", lambda i: i.get("current_phase") == "test"):
         Action("spawn_phase_orchestrator", {"subagent_type": "orchestrator-test"}),
+    # Terminal marker: "done" is the to_phase of the final phase_transitioned
+    # (orchestrator-test exit). It is never a dispatchable phase — re-entering
+    # phase routing with it means the workflow already completed.
+    ("phase_entry", lambda i: i.get("current_phase") == "done"):
+        Action("workflow_complete", {}),
     ("phase_entry", lambda i: True):
         Action("error", {"reason": "unknown_phase"}),  # phase populated by wrapper
 }
@@ -2968,6 +3372,17 @@ DEV_TRANSITIONS: dict[tuple[str, Callable[[dict], bool]], Action] = {
 }
 
 
+def _dev_max_concurrent(dispatch_policy: dict[str, Any]) -> int:
+    """SIEGARD-02 — config-driven dev batch ceiling. Pure: reads the policy dict
+    passed in the SM inputs (the orchestrator loads it via load_config). Falls back
+    to 2 on missing/invalid value; clamps to >= 1."""
+    try:
+        v = int((dispatch_policy or {}).get("dev", {}).get("max_concurrent", 2))
+    except (TypeError, ValueError, AttributeError):
+        return 2
+    return v if v >= 1 else 2
+
+
 class DevStateMachine(StateMachine):
     """Subclass for orchestrator-dev that populates dynamic params for D8/D9."""
 
@@ -2984,6 +3399,14 @@ class DevStateMachine(StateMachine):
             return Action(
                 "select_worker",
                 {"stack": stack, "task_type": inputs.get("task_type")},
+            )
+        # SIEGARD-02: config-driven batch ceiling (mirrors REVIEW R9). The table's
+        # set_max_concurrent default (2) is overridden by dispatch_policy.dev when
+        # the orchestrator passes it in inputs; absent/invalid → unchanged (2).
+        if state == "select_batch" and action.name == "set_max_concurrent":
+            return Action(
+                "set_max_concurrent",
+                {"max_concurrent": _dev_max_concurrent(inputs.get("dispatch_policy", {}))},
             )
         return action
 
