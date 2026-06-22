@@ -56,15 +56,21 @@ export type GlassAccent =
   | 'focus'
   | 'error'
 
+/** Background-fill override, independent of `level` (see §6.6). 'none' keeps the
+ *  level's own bg-surface-glass-<level>; the others swap ONLY the background token. */
+export type GlassFill = 'none' | 'ambient' | 'ambient-accent'
+
 export type GlassSurfaceProps = React.ComponentPropsWithoutRef<'div'> & {
   /** The composition level — drives bg-opacity, backdrop-blur, and shadow. */
   level: GlassLevel
   /** Optional state-borne border accent. Default 'none' = use --color-border-glass. */
   accent?: GlassAccent
+  /** Background-fill override, independent of `level` (see §6.6). Default 'none'. */
+  fill?: GlassFill
   /** Enter / exit animation. Default true. prefers-reduced-motion always wins over true. */
   animate?: boolean
   /** Override the radius from the level default. Use one of the token classes. */
-  radius?: 'rounded-md' | 'rounded-lg' | 'rounded-xl'
+  radius?: 'rounded-sm' | 'rounded-md' | 'rounded-lg' | 'rounded-xl'
   /** ARIA role for the container. Default 'group'. Set to 'dialog' for modals, 'region' for
    *  named landmarks. The atom never sets role="alert"/"status" — that is a live-region concern. */
   role?: 'group' | 'region' | 'dialog' | 'complementary' | 'navigation' | 'contentinfo' | 'banner'
@@ -82,8 +88,9 @@ export type GlassSurfaceProps = React.ComponentPropsWithoutRef<'div'> & {
 |---|---|---|---|---|
 | `level` | `'ambient' \| 'panel' \| 'modal'` | yes | — | Composition level — see `tokens.md §9.1` and §6 below |
 | `accent` | `GlassAccent` | no | `'none'` | Replaces the default `border-border-glass` with a state-borne color (still 1 px thick) |
+| `fill` | `GlassFill` | no | `'none'` | Overrides ONLY the background tint, independent of `level` (see §6.6). `'none'` keeps the level's own fill |
 | `animate` | `boolean` | no | `true` | If `true`, enters/exits with a level-tied motion variant. `prefers-reduced-motion: reduce` disables motion regardless. |
-| `radius` | `'rounded-md' \| 'rounded-lg' \| 'rounded-xl'` | no | per-level default (see §6) | Override the corner radius |
+| `radius` | `'rounded-sm' \| 'rounded-md' \| 'rounded-lg' \| 'rounded-xl'` | no | per-level default (see §6) | Override the corner radius |
 | `role` | (see types) | no | `'group'` | ARIA role for the container |
 | `aria-labelledby` | `string` | no | `undefined` | Standard ARIA — id of the visible title |
 | `aria-label` | `string` | no | `undefined` | Standard ARIA — used when no visible title |
@@ -267,9 +274,24 @@ The seven accents apply over **any** level. They replace the default `border-bor
 | Prop value | When to override |
 |---|---|
 | (omitted) | Use level default (`ambient` → `rounded-none`, `panel` → `rounded-lg`, `modal` → `rounded-xl`) |
+| `rounded-sm` | Smallest standardized scale token (`--radius-sm` = 6px) — e.g. the chat bubble (modal material, minimal corners) |
 | `rounded-md` | Inline glass tiles inside a card (rare) |
 | `rounded-lg` | Force panel-radius on a non-panel level (rare) |
 | `rounded-xl` | Force modal-radius on a panel that visually anchors the area (e.g., the dominant filter panel of the Graph) |
+
+### 6.6 Fill override (background-only, independent of level)
+
+`fill` swaps **only** the background tint of the surface; `level` keeps owning blur, shadow, radius, and the enter/exit motion variant. This lets a consumer mount a level's full material (e.g. the `modal` tier — rounded corners, deep shadow, glass-modal entrance) while painting it with a lighter or tinted background.
+
+| Prop value | Background token | When to use |
+|---|---|---|
+| `none` (default) | the level's own `bg-surface-glass-<level>` | normal case — fill follows level |
+| `ambient` | `bg-surface-glass-ambient` | the plain ambient glass fill on any level (ChatBubble `user` side) |
+| `ambient-accent` | `bg-surface-glass-ambient-accent` | ambient glass + a touch of accent (ChatBubble `assistant` side) — token defined per-theme in `theme.css` |
+
+> **Why a sanctioned axis and not a `className` `bg-*` override.** §11 reserves `bg-*` for the surface itself. The override is emitted from the CVA **after** `level`, so the level's `bg-surface-glass-<level>` is dropped by `tailwind-merge` (it groups `bg-surface-glass-*` as `background-color` and keeps the last writer — verified). The dual-namespace hazard of §10 is **border-color only**; background is safe to override this way. The surface stays glass (the fill tokens are translucent), so the §11.2 lint rule (opaque `bg-*` only) is not in tension.
+
+The component surfaces `data-fill="<value>"` for spec-driven tests.
 
 ---
 
@@ -340,6 +362,9 @@ Beyond §4, two accents have notable behaviors:
 | `Modal/Dark` | `{ level: 'modal' }` | `dark` | Modal composition + `rounded-xl` + deep shadow |
 | `Modal/Light` | `{ level: 'modal' }` | `light` | Light-theme calibration |
 | `Modal/AccentError` | `{ level: 'modal', accent: 'error' }` | `dark` | Destructive-confirm appearance |
+| `Fill/Ambient (modal material)` | `{ level: 'modal', fill: 'ambient' }` | `dark` | §6.6 — modal material, ambient fill (ChatBubble user side) |
+| `Fill/AmbientAccent (assistant bubble)` | `{ level: 'modal', fill: 'ambient-accent' }` | `dark` | §6.6 — accent-tinted ambient fill (ChatBubble assistant side) |
+| `Fill/AmbientAccent/Light` | `{ level: 'modal', fill: 'ambient-accent' }` | `light` | §6.6 — light-theme calibration of the tinted fill |
 | `Motion/PanelEnter` | `{ level: 'panel' }` + play function toggling mount | `dark` | Enter animation plays once (`addon-vitest` browser test) |
 | `Motion/ModalEnter` | `{ level: 'modal' }` + play function toggling mount | `dark` | Modal enter animation plays once |
 | `Motion/ReducedMotion` | `{ level: 'modal' }` | `dark` + `prefers-reduced-motion: reduce` parameter | No motion runs; static render |
@@ -385,8 +410,15 @@ export const glassSurface = cva(
         focus:      'border-border-focus ring-2 ring-border-focus',    // color + inner ring
         error:      'border-border-error',
       },
+      // §6.6 — background-only override; emitted AFTER level so tailwind-merge
+      // drops the level's bg and keeps this one (background-color group).
+      fill: {
+        none:             '',                                  // keep the level's own bg
+        ambient:          'bg-surface-glass-ambient',
+        'ambient-accent': 'bg-surface-glass-ambient-accent',
+      },
     },
-    defaultVariants: { level: 'panel', accent: 'none' },
+    defaultVariants: { level: 'panel', accent: 'none', fill: 'none' },
   },
 )
 ```
@@ -399,7 +431,7 @@ import { glassSurface } from './GlassSurface.variants'
 import { glassPanelMotion, glassModalMotion } from '@/lib/motion'
 
 export function GlassSurface({
-  level, accent = 'none', animate = true, radius, role = 'group', className, ref, children, ...rest
+  level, accent = 'none', fill = 'none', animate = true, radius, role = 'group', className, ref, children, ...rest
 }: GlassSurfaceProps) {
   const reduceMotion = useReducedMotion()
   const variant = !animate || reduceMotion ? undefined
@@ -411,7 +443,7 @@ export function GlassSurface({
     <motion.div
       ref={ref}
       role={role}
-      className={cn(glassSurface({ level, accent }), radius, className)}
+      className={cn(glassSurface({ level, accent, fill }), radius, className)}
       {...(variant ? { initial: 'hidden', animate: 'visible', exit: 'exit', variants: variant } : null)}
       {...rest}
     >

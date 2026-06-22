@@ -290,6 +290,54 @@ describe("GlassSurface — radius override (§6.5)", () => {
     render(<GlassSurface level="modal" />);
     expect(getSurface().classList.contains("rounded-xl")).toBe(true);
   });
+
+  it("override 'rounded-sm' (smallest scale token) wins over the modal default", () => {
+    render(<GlassSurface level="modal" radius="rounded-sm" />);
+    const el = getSurface();
+    expect(el.classList.contains("rounded-sm")).toBe(true);
+    expect(el.classList.contains("rounded-xl")).toBe(false);
+  });
+});
+
+/* ====================================================================== */
+/*  §6.6 — Fill override (background-only, independent of level)            */
+/* ====================================================================== */
+
+describe("GlassSurface — fill override (§6.6)", () => {
+  it("default (no fill) keeps the level's own bg + data-fill='none'", () => {
+    render(<GlassSurface level="modal" />);
+    const el = getSurface();
+    expect(el.classList.contains("bg-surface-glass-modal")).toBe(true);
+    expect(el.getAttribute("data-fill")).toBe("none");
+  });
+
+  it("fill='ambient' swaps the bg to ambient — level's own bg is dropped by merge", () => {
+    render(<GlassSurface level="modal" fill="ambient" />);
+    const el = getSurface();
+    // The fill class wins; the modal bg is removed by tailwind-merge.
+    expect(el.classList.contains("bg-surface-glass-ambient")).toBe(true);
+    expect(el.classList.contains("bg-surface-glass-modal")).toBe(false);
+    expect(el.getAttribute("data-fill")).toBe("ambient");
+  });
+
+  it("fill='ambient-accent' paints the accent-tinted ambient bg", () => {
+    render(<GlassSurface level="modal" fill="ambient-accent" />);
+    const el = getSurface();
+    expect(el.classList.contains("bg-surface-glass-ambient-accent")).toBe(true);
+    expect(el.classList.contains("bg-surface-glass-modal")).toBe(false);
+    expect(el.getAttribute("data-fill")).toBe("ambient-accent");
+  });
+
+  it("fill leaves the level's blur / shadow / radius / border intact (background-only)", () => {
+    render(<GlassSurface level="modal" fill="ambient" />);
+    const el = getSurface();
+    expect(el.classList.contains("backdrop-blur-glass-lg")).toBe(true);
+    expect(el.classList.contains("shadow-lg")).toBe(true);
+    expect(el.classList.contains("shadow-glass")).toBe(true);
+    expect(el.classList.contains("rounded-xl")).toBe(true);
+    expect(el.classList.contains("border")).toBe(true);
+    expect(el.classList.contains("border-border-glass")).toBe(true);
+  });
 });
 
 /* ====================================================================== */

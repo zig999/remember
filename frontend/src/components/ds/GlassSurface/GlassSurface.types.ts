@@ -24,7 +24,20 @@ export type GlassAccent =
   | "focus"
   | "error";
 
-export type GlassRadius = "rounded-md" | "rounded-lg" | "rounded-xl";
+export type GlassRadius =
+  | "rounded-sm"
+  | "rounded-md"
+  | "rounded-lg"
+  | "rounded-xl";
+
+/**
+ * Background-fill override (spec §6.6). Independent of `level`: `none` keeps
+ * the level's own `bg-surface-glass-<level>` tint; the other values swap ONLY
+ * the background token (blur / shadow / radius / motion stay with `level`).
+ *  - `ambient`        — the plain ambient glass fill on any level.
+ *  - `ambient-accent` — ambient glass with a touch of accent mixed in.
+ */
+export type GlassFill = "none" | "ambient" | "ambient-accent";
 
 export type GlassRole =
   | "group"
@@ -38,6 +51,8 @@ export type GlassRole =
 export type GlassSurfaceProps = ComponentPropsWithoutRef<"div"> & {
   level: GlassLevel;
   accent?: GlassAccent;
+  /** Background-fill override, independent of `level` (spec §6.6). */
+  fill?: GlassFill;
   animate?: boolean;
   radius?: GlassRadius;
   role?: GlassRole;

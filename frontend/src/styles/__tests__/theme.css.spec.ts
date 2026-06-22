@@ -116,6 +116,12 @@ describe("theme.css — @theme block presence and shape (tokens.md §2)", () => 
     }
   });
 
+  it("declares the accent-tinted ambient glass fill (ChatBubble assistant side)", () => {
+    // --color-* namespace so Tailwind emits `bg-surface-glass-ambient-accent`,
+    // consumed via GlassSurface fill="ambient-accent".
+    expect(css).toMatch(/--color-surface-glass-ambient-accent\s*:/);
+  });
+
   it("declares the 8-step z-index scale with the canonical values", () => {
     expect(css).toMatch(/--z-backdrop\s*:\s*-1\b/);
     expect(css).toMatch(/--z-base\s*:\s*0\b/);
@@ -189,7 +195,12 @@ describe("theme.css — [data-theme='light'] override block (BR-14)", () => {
   it("overrides the glass-surface tokens for the light backdrop", () => {
     const lightBlockMatch = css.match(/\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/);
     const light = lightBlockMatch?.[1] ?? "";
-    for (const t of ["--color-surface-glass-ambient", "--color-surface-glass-panel", "--color-surface-glass-modal"]) {
+    for (const t of [
+      "--color-surface-glass-ambient",
+      "--color-surface-glass-panel",
+      "--color-surface-glass-modal",
+      "--color-surface-glass-ambient-accent",
+    ]) {
       expect(light).toMatch(new RegExp(`${t.replace(/-/g, "\\-")}\\s*:`));
     }
   });

@@ -140,6 +140,14 @@ export const ChatBubble: FC<ChatBubbleProps> = ({
   // "neutral content surface" by default.
   const glassAccent = error ? "error" : "none";
 
+  // Background fill (spec §6) — the bubble keeps the MODAL material (rounded
+  // corners, deep shadow, glass-modal entrance) but paints the lighter ambient
+  // glass fill via GlassSurface's `fill` override:
+  //  - user (right)      → plain ambient glass.
+  //  - assistant (left)  → ambient glass + a touch of the accent (principal)
+  //                        color (`--color-surface-glass-ambient-accent`).
+  const glassFill = variant === "user" ? "ambient" : "ambient-accent";
+
   return (
     <div
       ref={ref}
@@ -180,6 +188,14 @@ export const ChatBubble: FC<ChatBubbleProps> = ({
       <GlassSurface
         level="modal"
         accent={glassAccent}
+        // Ambient fill on the modal material; assistant side adds the accent
+        // tint (spec §6). Override is the sanctioned GlassSurface axis — the
+        // bg is NOT pushed through className (spec §11).
+        fill={glassFill}
+        // Smallest standardized theme radius (`--radius-sm` = 6px) instead of
+        // the modal default (rounded-xl / 20px). Via the sanctioned `radius`
+        // override prop (§6.5) so tailwind-merge drops the level's rounded-xl.
+        radius="rounded-sm"
         // Pass `animate` through to the GlassSurface — the inner glass plays
         // the `transitionGlassModal` factory automatically when allowed
         // (spec §4 "entering"). We DO NOT inline our own variants; the spec

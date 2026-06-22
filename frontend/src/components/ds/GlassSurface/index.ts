@@ -8,6 +8,7 @@ export type { GlassSurfaceVariants } from "./GlassSurface.variants";
 export type {
   GlassLevel,
   GlassAccent,
+  GlassFill,
   GlassRadius,
   GlassRole,
   GlassSurfaceProps,

@@ -51,10 +51,29 @@ export const glassSurface = cva(
         focus: "border-border-focus ring-2 ring-border-focus",
         error: "border-border-error",
       },
+      // spec §6.6 — `fill` overrides ONLY the background tint, independent of
+      // `level`. The level keeps owning blur / shadow / radius / motion; this
+      // axis swaps the bg token so a consumer can mount, e.g., a modal-tier
+      // bubble (rounded, deep shadow, glass-modal entrance) painted with the
+      // lighter ambient fill. UNLIKE the border-color note above, the bg
+      // override is SAFE to emit as a second `bg-*` class: tailwind-merge
+      // reliably groups `bg-surface-glass-*` as background-color and keeps the
+      // last writer (verified), so the fill class (emitted AFTER `level`) wins.
+      // The dual-namespace hazard is border-color only, not background.
+      fill: {
+        // default — keep the level's own bg-surface-glass-<level> fill.
+        none: "",
+        // plain ambient glass fill (lightest / most translucent tier).
+        ambient: "bg-surface-glass-ambient",
+        // ambient glass + a touch of accent (theme.css token). ChatBubble
+        // assistant side: "ambient, with a bit of the principal color added".
+        "ambient-accent": "bg-surface-glass-ambient-accent",
+      },
     },
     defaultVariants: {
       level: "panel",
       accent: "none",
+      fill: "none",
     },
   },
 );

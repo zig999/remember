@@ -49,6 +49,10 @@ const meta: Meta<typeof GlassSurface> = {
         "error",
       ],
     },
+    fill: {
+      control: "inline-radio",
+      options: ["none", "ambient", "ambient-accent"],
+    },
     animate: { control: "boolean" },
   },
 };
@@ -160,6 +164,42 @@ export const ModalDark: Story = {
 export const ModalLight: Story = {
   name: "Modal/Light",
   args: { level: "modal" },
+  decorators: [withAmbientBackdrop({ theme: "light", padding: "lg" })],
+  render: (args) => (
+    <GlassSurface {...args} className="p-xl">
+      <SampleContent />
+    </GlassSurface>
+  ),
+};
+
+/* ---------- Fill (background-only override, §6.5) ---------------------- */
+// The modal material (rounded, deep shadow) painted with a lighter fill — the
+// ChatBubble pattern: user side = plain ambient, assistant side = accent tint.
+export const FillAmbient: Story = {
+  name: "Fill/Ambient (modal material)",
+  args: { level: "modal", fill: "ambient" },
+  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  render: (args) => (
+    <GlassSurface {...args} className="p-xl">
+      <SampleContent />
+    </GlassSurface>
+  ),
+};
+
+export const FillAmbientAccent: Story = {
+  name: "Fill/AmbientAccent (assistant bubble)",
+  args: { level: "modal", fill: "ambient-accent" },
+  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  render: (args) => (
+    <GlassSurface {...args} className="p-xl">
+      <SampleContent />
+    </GlassSurface>
+  ),
+};
+
+export const FillAmbientAccentLight: Story = {
+  name: "Fill/AmbientAccent/Light",
+  args: { level: "modal", fill: "ambient-accent" },
   decorators: [withAmbientBackdrop({ theme: "light", padding: "lg" })],
   render: (args) => (
     <GlassSurface {...args} className="p-xl">

@@ -10,7 +10,10 @@
 
 `ChatBubble` is the **shared DS atom** for every message in the chat pane — both user and assistant, both persisted history and live streaming. It composes:
 
-- `GlassSurface` at `level="modal"` (heaviest glass tier) as the visible surface. The `level="modal"` picks only the glass material (blur + shadow + radius); z-index is NOT assigned by the bubble — the positioning context (the pane) owns stacking.
+- `GlassSurface` at `level="modal"` (heaviest glass tier) as the visible surface. The `level="modal"` picks only the glass material (blur + shadow); z-index is NOT assigned by the bubble — the positioning context (the pane) owns stacking. The corner radius is overridden to `radius="rounded-sm"` (the smallest standardized theme token, `--radius-sm` = 6px) instead of the modal default `rounded-xl`.
+- A per-variant `GlassSurface fill` override (`GlassSurface §6.6`) that swaps **only** the background tint while keeping the modal material/motion:
+  - `variant="user"` (right) → `fill="ambient"` — the plain ambient glass fill.
+  - `variant="assistant"` (left) → `fill="ambient-accent"` — ambient glass with a touch of the accent (principal) color (`--color-surface-glass-ambient-accent`).
 - `chatBubble` CVA factory for the outer wrapper: controls alignment (`self-end` for user, `self-start` for assistant) and max-width (`max-w-[75ch]`).
 - `transitionGlassModal` factory from `lib/motion.ts` for the entrance animation — the same factory used when a Dialog opens.
 - Optional `ToolCallChip`-compatible stub slots above the text content.

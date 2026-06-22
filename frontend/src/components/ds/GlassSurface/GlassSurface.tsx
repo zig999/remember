@@ -56,6 +56,7 @@ import type { GlassSurfaceProps } from "./GlassSurface.types";
 export const GlassSurface: FC<GlassSurfaceProps> = ({
   level,
   accent = "none",
+  fill = "none",
   animate = true,
   radius,
   role = "group",
@@ -120,13 +121,15 @@ export const GlassSurface: FC<GlassSurfaceProps> = ({
       ref={ref}
       role={role}
       // CVA composes base ("border border-border-glass") + per-level
-      // background/blur/shadow/radius + per-accent border-color overrides.
+      // background/blur/shadow/radius + per-accent border-color overrides +
+      // per-fill background override (emitted after `level`, wins via merge).
       // `radius` (override prop) is applied AFTER the CVA output so
       // tailwind-merge picks it as the last writer for the radius group.
       // `className` (consumer override) wins last — see spec §11.
-      className={cn(glassSurface({ level, accent }), radius, className)}
+      className={cn(glassSurface({ level, accent, fill }), radius, className)}
       data-level={level}
       data-accent={accent}
+      data-fill={fill}
       {...(glassPulseAttr !== undefined
         ? { "data-glass-pulse": glassPulseAttr }
         : {})}

@@ -126,6 +126,33 @@ describe("ChatBubble — variants (§6)", () => {
     render(<ChatBubble variant="assistant" content="x" />);
     expect(getGlass().getAttribute("data-level")).toBe("modal");
   });
+
+  it("variant='user' (right) paints the plain ambient glass fill (§6)", () => {
+    render(<ChatBubble variant="user" content="oi" />);
+    const glass = getGlass();
+    // Modal material, ambient FILL — bg swapped, level kept.
+    expect(glass.getAttribute("data-level")).toBe("modal");
+    expect(glass.getAttribute("data-fill")).toBe("ambient");
+    expect(glass.classList.contains("bg-surface-glass-ambient")).toBe(true);
+    expect(glass.classList.contains("bg-surface-glass-modal")).toBe(false);
+  });
+
+  it("variant='assistant' (left) paints the accent-tinted ambient fill (§6)", () => {
+    render(<ChatBubble variant="assistant" content="resposta" />);
+    const glass = getGlass();
+    expect(glass.getAttribute("data-level")).toBe("modal");
+    expect(glass.getAttribute("data-fill")).toBe("ambient-accent");
+    expect(glass.classList.contains("bg-surface-glass-ambient-accent")).toBe(true);
+    expect(glass.classList.contains("bg-surface-glass-modal")).toBe(false);
+  });
+
+  it("uses the smallest standardized theme radius (rounded-sm, NOT the modal rounded-xl)", () => {
+    render(<ChatBubble variant="assistant" content="x" />);
+    const glass = getGlass();
+    // radius override wins over the level default via tailwind-merge.
+    expect(glass.classList.contains("rounded-sm")).toBe(true);
+    expect(glass.classList.contains("rounded-xl")).toBe(false);
+  });
 });
 
 /* ====================================================================== */
