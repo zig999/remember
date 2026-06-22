@@ -77,7 +77,10 @@ export interface ChatMessageStream {
 /** Request shape passed to `messages.stream(...)` from the chat loop. */
 export interface ChatMessageRequest {
   readonly model: string;
-  readonly system: string;
+  // `string` (route default) OR a content-block array carrying cache_control
+  // (prompt caching, P0). Render order is tools → system, so a cache breakpoint
+  // on the system block caches the whole tools+system prefix.
+  readonly system: string | readonly Anthropic.Messages.TextBlockParam[];
   readonly max_tokens: number;
   readonly tools: readonly Anthropic.Messages.Tool[];
   readonly tool_choice: {
@@ -384,9 +387,25 @@ async function* runTurnGenerator(
       //
       // v2 (chat.back.md §1.2): `system` comes from the route's context-builder
       // (ctx.input.system) — the service no longer assembles the prompt itself.
+      // P0 prompt caching: cache the stable tools+system prefix. Render order
+      // is tools → system, so a single `cache_control` breakpoint on the system
+      // block caches BOTH the 13 tool schemas and the system prompt. The prefix
+      // is byte-identical across every iteration of this turn AND across turns
+      // (static prompt-version + static tool schemas), so reads bill at ~0.1x
+      // after the first write. Cost-only change — no behavior change.
+      const systemParam: Anthropic.Messages.TextBlockParam[] =
+        typeof ctx.input.system === "string"
+          ? [
+              {
+                type: "text",
+                text: ctx.input.system,
+                cache_control: { type: "ephemeral" },
+              },
+            ]
+          : (ctx.input.system as Anthropic.Messages.TextBlockParam[]);
       const stream = ctx.client.messages.stream({
         model: ctx.input.model,
-        system: ctx.input.system,
+        system: systemParam,
         max_tokens: MAX_TOKENS_PER_ITERATION,
         tools: ctx.tools as Anthropic.Messages.Tool[],
         tool_choice: { type: "auto", disable_parallel_tool_use: true },
@@ -527,6 +546,23 @@ async function* runTurnGenerator(
       ctx.accumulator.addTokens(
         finalMessage.usage?.input_tokens ?? 0,
         finalMessage.usage?.output_tokens ?? 0
+      );
+      // P0/P1 — log per-iteration token usage incl. cache hit/write so the
+      // prompt-cache effect is observable (cache_read should dominate after the
+      // first iteration/turn; cache_creation > 0 only on the first write).
+      ctx.logger.info(
+        {
+          event: "chat.iteration_usage",
+          iteration,
+          model: finalMessage.model,
+          input_tokens: finalMessage.usage?.input_tokens ?? 0,
+          output_tokens: finalMessage.usage?.output_tokens ?? 0,
+          cache_read_input_tokens:
+            finalMessage.usage?.cache_read_input_tokens ?? 0,
+          cache_creation_input_tokens:
+            finalMessage.usage?.cache_creation_input_tokens ?? 0,
+        },
+        "chat iteration token usage"
       );
       ctx.publishStats(ctx.accumulator.snapshot());
 

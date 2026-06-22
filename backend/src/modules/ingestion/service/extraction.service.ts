@@ -151,7 +151,9 @@ export class ExtractionFatalError extends Error {
  */
 export interface ExtractionMessageRequest {
   readonly model: string;
-  readonly system: string;
+  // `string` OR a content-block array carrying cache_control (prompt caching,
+  // P0). A breakpoint on the system block caches the tools+system prefix.
+  readonly system: string | readonly Anthropic.Messages.TextBlockParam[];
   readonly tools: readonly Anthropic.Messages.Tool[];
   readonly thinking: { type: "adaptive" };
   readonly max_tokens: number;
@@ -536,6 +538,14 @@ type ChunkLoopOutcome =
 
 async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
   const systemText = input.prompt.system(input.catalog);
+  // P0 prompt caching: cache the stable tools+system prefix. The extraction
+  // system prompt (catalog render + worked examples) + ingest tool schemas are
+  // re-sent on every turn of every chunk; a cache breakpoint on the system
+  // block makes turns 2..N and subsequent chunks read it at ~0.1x. Built once
+  // per chunk and reused each turn. Cost-only change — no behavior change.
+  const systemParam: Anthropic.Messages.TextBlockParam[] = [
+    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+  ];
   const userBlocks = input.prompt.user({
     metadata: input.metadata,
     chunkText: input.chunkText,
@@ -557,13 +567,30 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
   for (let turn = 0; turn < MAX_TURNS_PER_CHUNK; turn += 1) {
     const stream = input.anthropic.messages.stream({
       model: input.model,
-      system: systemText,
+      system: systemParam,
       tools: input.tools as Anthropic.Messages.Tool[],
       thinking: { type: "adaptive" },
       max_tokens: input.prompt.MAX_TOKENS,
       messages,
     });
     const response = await stream.finalMessage();
+    // P0/P1 — log per-turn token usage incl. cache hit/write so the
+    // prompt-cache effect is observable (cache_read should dominate after the
+    // first turn / first chunk; cache_creation > 0 only on the first write).
+    input.logger.info(
+      {
+        event: "extraction.turn_usage",
+        llm_run_id: input.llmRunId,
+        chunk_id: input.chunkId,
+        turn,
+        input_tokens: response.usage?.input_tokens ?? 0,
+        output_tokens: response.usage?.output_tokens ?? 0,
+        cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens:
+          response.usage?.cache_creation_input_tokens ?? 0,
+      },
+      "extraction turn token usage"
+    );
 
     // Append the assistant turn verbatim (preserves tool_use blocks etc).
     messages.push({ role: "assistant", content: response.content });
