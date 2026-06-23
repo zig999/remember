@@ -47,6 +47,7 @@ import type { Pool } from "pg";
 import type { Env } from "../../../config/env.js";
 import type { McpServer } from "../../../mcp/server.js";
 import type { CatalogSnapshot } from "../../knowledge-graph/catalog/catalog.js";
+import { buildSnapshot as buildEmptyKgSnapshot } from "../../knowledge-graph/catalog/catalog.js";
 import type { CatalogSnapshot as IngestionCatalogSnapshot } from "../../ingestion/catalog/catalog.js";
 import {
   withReadOnly,
@@ -117,6 +118,23 @@ import {
 // ---------------------------------------------------------------------------
 // Public surface
 // ---------------------------------------------------------------------------
+
+/**
+ * Empty `CatalogSnapshot` used as a defensive fallback when `deps.catalog` is
+ * absent at the moment the prompt is rendered (TC-01 / chat.back.md v2.5
+ * BR-18 v3). The chat back spec wires `deps.catalog` from the boot-time
+ * snapshot — production never hits this branch — but `ChatRouteDeps.catalog`
+ * is typed optional for tests that exercise the non-SSE endpoints without
+ * loading the catalog. v3's `system(catalog)` then renders an empty ontology
+ * block (still byte-stable; still cache-control friendly); v1/v2 ignore the
+ * argument so this fallback is a no-op for them.
+ */
+const EMPTY_KG_CATALOG_SNAPSHOT: CatalogSnapshot = buildEmptyKgSnapshot({
+  nodeTypes: [],
+  linkTypes: [],
+  linkTypeRules: [],
+  attributeKeys: [],
+});
 
 /**
  * Dependencies wired by `app.ts`. The `anthropicFactory` is intentionally
@@ -779,7 +797,15 @@ export async function registerChatRoutes(
       const modelContext = await buildModelContext({
         pool: deps.pool,
         conversation,
-        systemPrompt: getPromptModuleLazy().system(),
+        // BR-18 v3 (chat.back.md v2.5): widened `system(catalog)` signature.
+        // The catalog is threaded from `deps.catalog` (boot-time snapshot —
+        // SAME reference for the process lifetime, which keeps the rendered
+        // ontology block byte-stable and the Anthropic `cache_control`
+        // prefix valid across turns). v1/v2 modules IGNORE the argument
+        // (backward-compat).
+        systemPrompt: getPromptModuleLazy().system(
+          deps.catalog ?? EMPTY_KG_CATALOG_SNAPSHOT
+        ),
         recentLimit: deps.env.CHAT_RECENT_WINDOW,
       });
 

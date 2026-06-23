@@ -39,8 +39,15 @@ export const CHAT_PROMPT_MARKER_V1 = "__REMEMBER_CHAT_SYS_MARKER_V1__" as const;
  * tool catalog is advertised to Anthropic via the `tools[]` parameter, not
  * via prose). A future version may inline `NodeType` / `AttributeKey` names
  * the same way ingestion's prompts do — out of scope for v1.
+ *
+ * v3 widens `ChatPromptModule.system` to `(catalog: CatalogSnapshot) => string`
+ * (chat.back.md v2.5 BR-18 v3). v1 IGNORES the argument — the output is
+ * unchanged from the v2.0 release (backward-compat contract). The parameter
+ * is intentionally typed `unknown` here so v1 stays decoupled from the
+ * `knowledge-graph` catalog module; the registry's typed wrapper enforces
+ * the public `CatalogSnapshot` shape at the seam.
  */
-export function system(): string {
+export function system(_catalog?: unknown): string {
   return [
     CHAT_PROMPT_MARKER_V1,
     "",

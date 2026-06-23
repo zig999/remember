@@ -111,12 +111,14 @@ const envSchema = z.object({
   CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5"),
   // CHAT_PROMPT_VERSION: prompt module version (BR-18). Unknown value is a boot
   //   error — see modules/chat/prompts/index.ts (UnknownChatPromptVersionError).
-  //   v2.4 (TC-02): default bumped from `v1` → `v2`. The `v2` module (added by
-  //   TC-03) layers three ingestion directives on top of `v1`; the directives
-  //   are inert when `CHAT_INGEST_ENABLED=false` because the two ingestion
-  //   tools are absent from the catalog (BR-18 v2.4 / BR-44 step 1). `v1`
-  //   continues to resolve verbatim for backward-compatibility.
-  CHAT_PROMPT_VERSION: z.string().min(1).default("v2"),
+  //   v2.5 (TC-01): default bumped from `v2` → `v3`. The `v3` module is
+  //   ontology-aware — it renders the boot-time `CatalogSnapshot` into the
+  //   system prompt (block 4A) AND adds search-discipline (4B) + post-
+  //   ingestion playbook (4C) directives. `v1` and `v2` continue to resolve
+  //   verbatim for backward-compatibility (they ignore the catalog argument
+  //   of the widened `system(catalog)` signature). v2.4 (TC-02): default
+  //   bumped from `v1` → `v2` (ingestion directives now part of v3).
+  CHAT_PROMPT_VERSION: z.string().min(1).default("v3"),
   // CHAT_INGEST_ENABLED: feature flag gating the v2.4 async-ingestion capability
   //   on chat (BR-44). Boot-time only — toggling requires a BFF restart; the
   //   chat tool catalog is resolved lazily on the first request and cached for
