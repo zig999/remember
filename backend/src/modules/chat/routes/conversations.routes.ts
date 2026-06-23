@@ -189,7 +189,7 @@ export async function registerChatRoutes(
   function getChatAgentLazy(): ChatAgentServiceWithStats | undefined {
     if (cachedService !== undefined) return cachedService;
     if (catalogState === "missing") return undefined;
-    const catalog = buildChatToolCatalog(deps.mcp);
+    const catalog = buildChatToolCatalog(deps.mcp, deps.env, deps.logger);
     if (catalog === undefined) {
       catalogState = "missing";
       deps.logger.error(
