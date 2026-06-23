@@ -690,4 +690,353 @@ describe("chat-agent.service.runTurn", () => {
       expect(terminals).toHaveLength(1);
     }
   });
+
+  // -------------------------------------------------------------------------
+  // TC-05 — v2.4 dispatch routing for the two new ingestion tools
+  //   - BR-43: `start_async_ingestion` routes through the injected
+  //     `ingestDispatcher` (the chat-side adapter), NOT the catalog handler.
+  //   - BR-45: `get_ingestion_status` routes through the catalog handler
+  //     verbatim (no special path).
+  //   - BR-10: when `ingestDispatcher` is undefined AND the catalog also lacks
+  //     the entry, dispatch falls back to VALIDATION_INVALID_FORMAT.
+  // -------------------------------------------------------------------------
+
+  it("BR-43: start_async_ingestion routes through the ingestDispatcher (NOT the catalog handler)", async () => {
+    // Build an MCP that REGISTERS `start_async_ingestion` on the `ingest`
+    // toolset with a handler that would FAIL the test if invoked. The
+    // dispatcher injection MUST short-circuit it.
+    const mcp = buildMcpWithAllChatTools();
+    let catalogHandlerInvoked = false;
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: "stub start_async_ingestion (catalog handler)",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => {
+        catalogHandlerInvoked = true;
+        return { ok: false, error: { code: "WRONG_PATH", message: "catalog handler should not have been invoked" } };
+      },
+    });
+    mcp.registerTool("ingest", {
+      name: "get_ingestion_status",
+      description: "stub get_ingestion_status",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: { status: "running" } }),
+    });
+    __resetChatToolCatalogForTests();
+    const catalog = buildChatToolCatalog(mcp, buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>));
+    if (catalog === undefined) throw new Error("15-tool catalog should resolve");
+    expect(catalog["start_async_ingestion"]).toBeDefined();
+
+    // The dispatcher returns a success envelope synchronously.
+    const dispatcherInvocations: unknown[] = [];
+    const ingestDispatcher = async (input: unknown) => {
+      dispatcherInvocations.push(input);
+      return {
+        ok: true as const,
+        result: {
+          outcome: "ingested" as const,
+          run_id: "00000000-0000-4000-8000-000000000001",
+          raw_information_id: "00000000-0000-4000-8000-000000000002",
+          status: "running" as const,
+          chunk_count: 3,
+        },
+      };
+    };
+
+    const { client } = buildStubClient([
+      {
+        deltas: [],
+        final: {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_1",
+              name: "start_async_ingestion",
+              input: { source_type: "note", content: "hello" },
+            },
+          ],
+        },
+      },
+      {
+        deltas: [{ kind: "text", text: "ok" }],
+        final: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "ok" }],
+        },
+      },
+    ]);
+    const svc = createChatAgentService({
+      mcp: undefined as unknown as McpServer,
+      logger: silentLogger,
+      env: buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>),
+      anthropicFactory: () => client as any,
+      catalog,
+      ingestDispatcher,
+    });
+    const { input } = buildInput();
+    const events = await collectEvents(svc.runTurn(input));
+
+    // The dispatcher was invoked with the model's input verbatim.
+    expect(dispatcherInvocations).toHaveLength(1);
+    expect(dispatcherInvocations[0]).toEqual({
+      source_type: "note",
+      content: "hello",
+    });
+    // The catalog handler was NEVER invoked — the dispatcher short-circuit
+    // is the BR-43 invariant.
+    expect(catalogHandlerInvoked).toBe(false);
+    // The tool_result frame carries the dispatcher's envelope.
+    const toolResult = events.find((e) => e.type === "tool_result");
+    if (toolResult === undefined || toolResult.type !== "tool_result") {
+      throw new Error("no tool_result emitted");
+    }
+    expect(toolResult.tool).toBe("start_async_ingestion");
+    expect(toolResult.ok).toBe(true);
+    expect(toolResult.result).toMatchObject({
+      outcome: "ingested",
+      status: "running",
+    });
+    // Terminal frame is reached — the loop continues after the adapter call.
+    const terminal = events[events.length - 1];
+    if (terminal.type !== "done") throw new Error("turn did not complete");
+    expect(terminal.stop_reason).toBe("end_turn");
+  });
+
+  it("BR-45: get_ingestion_status routes through the catalog handler verbatim (NOT the dispatcher)", async () => {
+    // Register a recording handler so we can prove the catalog path was taken.
+    const mcp = buildMcpWithAllChatTools();
+    const catalogInvocations: unknown[] = [];
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: "stub start_async_ingestion",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    mcp.registerTool("ingest", {
+      name: "get_ingestion_status",
+      description: "stub get_ingestion_status (catalog handler)",
+      inputSchema: z.object({}).passthrough(),
+      handler: async (input: unknown) => {
+        catalogInvocations.push(input);
+        return {
+          ok: true,
+          result: {
+            llm_run_id: "00000000-0000-4000-8000-000000000001",
+            status: "completed",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "2026-01-01T00:05:00Z",
+            summary: { fragments: 12 },
+            model: "claude-sonnet-4-6",
+            prompt_version: "v3",
+          },
+        };
+      },
+    });
+    __resetChatToolCatalogForTests();
+    const catalog = buildChatToolCatalog(mcp, buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>));
+    if (catalog === undefined) throw new Error("15-tool catalog should resolve");
+
+    // The ingestDispatcher MUST NOT be invoked for `get_ingestion_status`.
+    const dispatcherInvocations: unknown[] = [];
+    const ingestDispatcher = async (input: unknown) => {
+      dispatcherInvocations.push(input);
+      return { ok: false as const, error: { code: "WRONG_PATH", message: "dispatcher should not be invoked for get_ingestion_status" } };
+    };
+
+    const { client } = buildStubClient([
+      {
+        deltas: [],
+        final: {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_2",
+              name: "get_ingestion_status",
+              input: { llm_run_id: "00000000-0000-4000-8000-000000000001" },
+            },
+          ],
+        },
+      },
+      {
+        deltas: [{ kind: "text", text: "done" }],
+        final: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "done" }],
+        },
+      },
+    ]);
+    const svc = createChatAgentService({
+      mcp: undefined as unknown as McpServer,
+      logger: silentLogger,
+      env: buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>),
+      anthropicFactory: () => client as any,
+      catalog,
+      ingestDispatcher,
+    });
+    const { input } = buildInput();
+    const events = await collectEvents(svc.runTurn(input));
+
+    // BR-45 invariant: the catalog handler was invoked; the dispatcher was not.
+    expect(catalogInvocations).toEqual([
+      { llm_run_id: "00000000-0000-4000-8000-000000000001" },
+    ]);
+    expect(dispatcherInvocations).toHaveLength(0);
+    const toolResult = events.find((e) => e.type === "tool_result");
+    if (toolResult === undefined || toolResult.type !== "tool_result") {
+      throw new Error("no tool_result emitted");
+    }
+    expect(toolResult.tool).toBe("get_ingestion_status");
+    expect(toolResult.ok).toBe(true);
+    expect(toolResult.result).toMatchObject({ status: "completed" });
+  });
+
+  it("BR-43 / BR-09: start_async_ingestion tool_start carries a redacted args_summary (NEVER raw content)", async () => {
+    const mcp = buildMcpWithAllChatTools();
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: "stub",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    mcp.registerTool("ingest", {
+      name: "get_ingestion_status",
+      description: "stub",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    __resetChatToolCatalogForTests();
+    const catalog = buildChatToolCatalog(mcp, buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>));
+    if (catalog === undefined) throw new Error("catalog should resolve");
+
+    const ingestDispatcher = async () => ({
+      ok: true as const,
+      result: {
+        outcome: "ingested" as const,
+        run_id: "00000000-0000-4000-8000-000000000001",
+        raw_information_id: "00000000-0000-4000-8000-000000000002",
+        status: "running" as const,
+        chunk_count: 1,
+      },
+    });
+
+    const SECRET = "TOP-SECRET MEMO content that must NEVER appear on the wire";
+    const { client } = buildStubClient([
+      {
+        deltas: [],
+        final: {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_1",
+              name: "start_async_ingestion",
+              input: { source_type: "memo", content: SECRET },
+            },
+          ],
+        },
+      },
+      {
+        deltas: [{ kind: "text", text: "ok" }],
+        final: { stop_reason: "end_turn", content: [] },
+      },
+    ]);
+    const svc = createChatAgentService({
+      mcp: undefined as unknown as McpServer,
+      logger: silentLogger,
+      env: buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>),
+      anthropicFactory: () => client as any,
+      catalog,
+      ingestDispatcher,
+    });
+    const { input } = buildInput();
+    const events = await collectEvents(svc.runTurn(input));
+
+    const toolStart = events.find((e) => e.type === "tool_start");
+    if (toolStart === undefined || toolStart.type !== "tool_start") {
+      throw new Error("no tool_start emitted");
+    }
+    expect(toolStart.tool).toBe("start_async_ingestion");
+    // BR-43 step 5 / BR-09: the summary surfaces ONLY source_type + length.
+    expect(toolStart.args_summary).toBe(
+      `source_type=memo content_len=${[...SECRET].length}`
+    );
+    // Anti-leak: SECRET text MUST NOT appear in args_summary.
+    expect(toolStart.args_summary).not.toContain("TOP-SECRET");
+    expect(toolStart.args_summary).not.toContain("MEMO");
+  });
+
+  it("BR-43 step 2: dispatcher STRUCTURAL_INVALID envelope is fed back to the model; the loop continues", async () => {
+    const mcp = buildMcpWithAllChatTools();
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: "stub",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    mcp.registerTool("ingest", {
+      name: "get_ingestion_status",
+      description: "stub",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    __resetChatToolCatalogForTests();
+    const catalog = buildChatToolCatalog(mcp, buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>));
+    if (catalog === undefined) throw new Error("catalog should resolve");
+
+    const ingestDispatcher = async () => ({
+      ok: false as const,
+      error: {
+        code: "STRUCTURAL_INVALID" as const,
+        message: "source_type is not in the catalog",
+      },
+    });
+
+    const { client } = buildStubClient([
+      {
+        deltas: [],
+        final: {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_1",
+              name: "start_async_ingestion",
+              input: { source_type: "bogus", content: "hi" },
+            },
+          ],
+        },
+      },
+      {
+        deltas: [{ kind: "text", text: "I'll try again" }],
+        final: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "I'll try again" }],
+        },
+      },
+    ]);
+    const svc = createChatAgentService({
+      mcp: undefined as unknown as McpServer,
+      logger: silentLogger,
+      env: buildEnv({ CHAT_INGEST_ENABLED: true } as Partial<Env>),
+      anthropicFactory: () => client as any,
+      catalog,
+      ingestDispatcher,
+    });
+    const { input } = buildInput();
+    const events = await collectEvents(svc.runTurn(input));
+
+    const toolResult = events.find((e) => e.type === "tool_result");
+    if (toolResult === undefined || toolResult.type !== "tool_result") {
+      throw new Error("no tool_result emitted");
+    }
+    expect(toolResult.ok).toBe(false);
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.error_message).toContain("source_type");
+    // BR-43 step 2: the loop CONTINUES — the turn does NOT abort.
+    const terminal = events[events.length - 1];
+    if (terminal.type !== "done") throw new Error("turn aborted on validation failure");
+    expect(terminal.stop_reason).toBe("end_turn");
+  });
 });

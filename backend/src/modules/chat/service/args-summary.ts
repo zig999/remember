@@ -20,6 +20,16 @@
 //   - list_node_types/link_types/
 //     attribute_keys:                ""  (no args)
 //   - get_provenance_*:              id=<uuid>
+//   - start_async_ingestion (v2.4):  source_type=<value> content_len=<n>
+//   - get_ingestion_status  (v2.4):  llm_run_id=<uuid>
+//
+// v2.4 redaction invariant (BR-43 step 5 / BR-09): the `args_summary` for
+// `start_async_ingestion` MUST NEVER include the raw `content` payload — only
+// its code-point length. The audit row (`chat_tool_call.arguments`, BR-32)
+// still carries the FULL untruncated content because the Owner accepted that
+// chat-side content is auditable; the SSE wire frame surfaces ONLY the length
+// so the SPA never re-renders user-pasted documents on the conversation
+// transcript view.
 //
 // Fallback when the input shape is unexpected: `<n keys>` — the dispatcher
 // counts top-level keys and emits that string (e.g. `"3 keys"`). The fallback
@@ -124,6 +134,25 @@ function formatByTool(toolName: string, input: unknown): string {
       const id = readString(obj, "id");
       if (id === undefined) return fallbackSummary(obj);
       return `id=${id}`;
+    }
+
+    // v2.4 ingestion entries (BR-43 step 5 / BR-45 step 5). Content length is
+    // computed in Unicode code points (matches the rest of the BFF) so a
+    // surrogate-pair-heavy payload does not under-report its size.
+    case "start_async_ingestion": {
+      const sourceType = readString(obj, "source_type");
+      const content = readString(obj, "content");
+      if (sourceType === undefined || content === undefined) {
+        return fallbackSummary(obj);
+      }
+      const contentLen = [...content].length;
+      return `source_type=${sourceType} content_len=${contentLen}`;
+    }
+
+    case "get_ingestion_status": {
+      const llmRunId = readString(obj, "llm_run_id");
+      if (llmRunId === undefined) return fallbackSummary(obj);
+      return `llm_run_id=${llmRunId}`;
     }
 
     default:
