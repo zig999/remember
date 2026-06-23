@@ -537,6 +537,24 @@ describe("normalizeToolResult (dispatcher)", () => {
     expect(await normalizeToolResult("not_a_tool", {}, catalog)).toBeNull();
   });
 
+  // BR-41 (chat.back.md v2.4) — the two v2.4 ingestion tools are NOT graph
+  // tools: their results ({ run_id, status, ... }) carry no node/link data, so
+  // the normalizer MUST return null and NO `graph_delta` frame is emitted for
+  // them. Locks BUG-03 from the TC-05 QA review.
+  it("BR-41: v2.4 ingestion tools (start_async_ingestion/get_ingestion_status) return null", async () => {
+    const catalog = buildTestCatalog();
+    const ingestionTools = ["start_async_ingestion", "get_ingestion_status"];
+    for (const tool of ingestionTools) {
+      const out = await normalizeToolResult(
+        tool,
+        { run_id: "r-1", raw_information_id: "raw-1", status: "running" },
+        catalog,
+        fakeClient
+      );
+      expect(out, `tool=${tool}`).toBeNull();
+    }
+  });
+
   it("routes `traverse` to normalizeTraverse (no client needed)", async () => {
     const catalog = buildTestCatalog();
     const result = {

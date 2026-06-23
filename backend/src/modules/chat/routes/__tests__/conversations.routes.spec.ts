@@ -1113,6 +1113,112 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
     await app.close();
   });
 
+  it("BR-32: persists a chat_tool_call row for each v2.4 ingestion tool (start_async_ingestion + get_ingestion_status)", async () => {
+    // Locks BUG-01/02 from the TC-05 QA review: the two v2.4 ingestion tools
+    // flow through the SAME generic dispatch/persistence path as the read
+    // tools — each tool_result yields one chat_tool_call audit row (BR-32),
+    // and (being non-graph tools — BR-41) neither inflates the count with a
+    // graph_delta-driven row.
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
+      id: "u",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "ingest this" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-20T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
+      id: "tool-call-ingest",
+      conversation_id: CID,
+      message_id: null,
+      tool_name: "start_async_ingestion",
+      arguments: {},
+      result: {},
+      is_error: false,
+      error_message: null,
+      duration_ms: 5,
+      created_at: "2026-06-20T12:00:00.500Z",
+    });
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "a",
+      conversation_id: CID,
+      role: "assistant",
+      content: [],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 10,
+      tokens_out: 5,
+      latency_ms: 100,
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "start_async_ingestion", args_summary: "source_type=chat" },
+      {
+        type: "tool_result",
+        tool: "start_async_ingestion",
+        ok: true,
+        arguments: { source_type: "chat", content: "x" },
+        result: { outcome: "ingested", run_id: "r-1", raw_information_id: "raw-1", status: "running" },
+        is_error: false,
+        error_message: null,
+        duration_ms: 5,
+      },
+      { type: "tool_start", tool: "get_ingestion_status", args_summary: "llm_run_id=r-1" },
+      {
+        type: "tool_result",
+        tool: "get_ingestion_status",
+        ok: true,
+        arguments: { llm_run_id: "r-1" },
+        result: { status: "running" },
+        is_error: false,
+        error_message: null,
+        duration_ms: 4,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "ingest this" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // BR-32: exactly one chat_tool_call row per ingestion tool — no more, no
+    // less (no graph_delta inflation).
+    expect(chatRepo.insertToolCall).toHaveBeenCalledTimes(2);
+    const persistedNames = vi
+      .mocked(chatRepo.insertToolCall)
+      .mock.calls.map((c) => (c[1] as { tool_name: string }).tool_name);
+    expect(persistedNames).toEqual(["start_async_ingestion", "get_ingestion_status"]);
+
+    // BR-41: neither ingestion tool emits a graph_delta frame.
+    const frames = parseSse(res.body);
+    expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
+
+    await app.close();
+  });
+
   it("v2.2: persists the (assistant tool_use, user tool_result) PAIR on iteration_end; never frames it to the wire", async () => {
     // THE regression for the multi-turn bug: a tool-bearing iteration must be
     // persisted as a valid pair of rows (BR-29 step 6.d) so the next turn's
