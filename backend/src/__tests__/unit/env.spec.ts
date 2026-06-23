@@ -150,8 +150,10 @@ describe("loadEnv", () => {
       const env = loadEnv(baseEnv);
       expect(env.CHAT_ENABLED).toBe(true);
       expect(env.CHAT_MODEL).toBe("claude-opus-4-8");
-      // TC-02 / BR-18 v2.4: default bumped from `v1` to `v2`.
-      expect(env.CHAT_PROMPT_VERSION).toBe("v2");
+      // TC-01 / chat.back.md v2.5 / BR-18 v3: default bumped from `v2` to
+      // `v3` (the ontology-aware prompt). v2.4 (TC-02) previously bumped
+      // from `v1` to `v2`.
+      expect(env.CHAT_PROMPT_VERSION).toBe("v3");
       expect(env.MAX_HISTORY_MESSAGES).toBe(40);
       expect(env.MAX_ITERATIONS).toBe(8);
       expect(env.TURN_TIMEOUT_MS).toBe(90_000);

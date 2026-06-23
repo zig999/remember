@@ -1,19 +1,24 @@
-// TC-01 + TC-03 (v2.4) acceptance criteria covered:
+// TC-01 + TC-03 (v2.4) + TC-01 (v2.5) acceptance criteria covered:
 //   - selectChatPromptModule('v1') returns the v1 module.
 //   - selectChatPromptModule('v2') returns the v2 module (v2.4 / TC-03).
+//   - selectChatPromptModule('v3') returns the v3 module (v2.5 / TC-01).
 //   - selectChatPromptModule('unknown') throws UnknownChatPromptVersionError.
 //   - Prompt module v1 exports CHAT_PROMPT_MARKER_V1 as a named string constant.
 //   - Prompt module v2 re-exports the SAME marker token (BR-20 stable across
 //     versions — TC-03).
-//   - DEFAULT_CHAT_PROMPT_VERSION === 'v2' (BR-18 v2.4 — TC-03).
+//   - DEFAULT_CHAT_PROMPT_VERSION === 'v3' (BR-18 v3 — chat.back.md v2.5).
 //   - v2.system() body carries the three pt-BR ingestion directives (TC-03).
 //
-// Spec refs: chat.back.md BR-18 v2.4 (prompt versioning + ingestion
-// directives), BR-20 (output guard marker exported from the prompt module —
-// stable across versions).
+// Spec refs: chat.back.md BR-18 v3 (prompt versioning + `system(catalog)`
+// signature widening; ontology-aware v3), BR-20 (output guard marker exported
+// from the prompt module — stable across versions).
 
 import { describe, expect, it } from "vitest";
 
+import {
+  buildSnapshot,
+  type CatalogSnapshot,
+} from "../../../modules/knowledge-graph/catalog/catalog.js";
 import {
   DEFAULT_CHAT_PROMPT_VERSION,
   selectChatPromptModule,
@@ -29,13 +34,24 @@ import {
   system as v2System,
 } from "../../../modules/chat/prompts/v2.js";
 
+// Empty CatalogSnapshot used by tests that only need to exercise v1/v2 (both
+// ignore the argument — BR-18 v3 backward-compat).
+const EMPTY_CATALOG: CatalogSnapshot = buildSnapshot({
+  nodeTypes: [],
+  linkTypes: [],
+  linkTypeRules: [],
+  attributeKeys: [],
+});
+
 describe("chat/prompts", () => {
   // BR-18: known version dispatches to the right module.
   it("selectChatPromptModule('v1') resolves to the v1 module", () => {
     const mod = selectChatPromptModule("v1");
     expect(mod.version).toBe(V1_PROMPT_VERSION);
     expect(mod.marker).toBe(CHAT_PROMPT_MARKER_V1);
-    expect(mod.system()).toBe(v1System());
+    // v2.5 BR-18 v3: signature widened to `system(catalog)`; v1 ignores
+    // the argument (backward-compat).
+    expect(mod.system(EMPTY_CATALOG)).toBe(v1System(EMPTY_CATALOG));
   });
 
   // BR-18 v2.4: known version 'v2' dispatches to the v2 module.
@@ -44,15 +60,19 @@ describe("chat/prompts", () => {
     expect(mod.version).toBe(V2_PROMPT_VERSION);
     // BR-20: marker is STABLE across versions — v2 carries the v1 marker.
     expect(mod.marker).toBe(CHAT_PROMPT_MARKER_V1);
-    expect(mod.system()).toBe(v2System());
+    // v2.5 BR-18 v3: signature widened to `system(catalog)`; v2 ignores
+    // the argument (backward-compat).
+    expect(mod.system(EMPTY_CATALOG)).toBe(v2System(EMPTY_CATALOG));
   });
 
-  // BR-18: unknown version is a configuration error, never a silent fallback.
-  // v2.4: 'v3' is unknown — only 'v1' and 'v2' are registered.
-  it("selectChatPromptModule('v3') throws UnknownChatPromptVersionError", () => {
-    expect(() => selectChatPromptModule("v3")).toThrow(
-      UnknownChatPromptVersionError
-    );
+  // BR-18 v3 / chat.back.md v2.5: 'v3' is now registered (ontology-aware
+  // prompt). Detailed v3 coverage lives in
+  // modules/chat/prompts/__tests__/v3.spec.ts (Testing rows xix–xxiii).
+  it("selectChatPromptModule('v3') resolves to the v3 module", () => {
+    const mod = selectChatPromptModule("v3");
+    expect(mod.version).toBe("v3");
+    // BR-20: marker is STABLE across versions — v3 carries the v1 marker.
+    expect(mod.marker).toBe(CHAT_PROMPT_MARKER_V1);
   });
 
   it("selectChatPromptModule('unknown') throws UnknownChatPromptVersionError", () => {
@@ -77,9 +97,10 @@ describe("chat/prompts", () => {
     expect((err as Error).message).toMatch(/v2/);
   });
 
-  // DEFAULT bumped from v1 to v2 in v2.4 (BR-18 v2.4 / chat.back.md §8).
-  it("DEFAULT_CHAT_PROMPT_VERSION equals v2", () => {
-    expect(DEFAULT_CHAT_PROMPT_VERSION).toBe("v2");
+  // DEFAULT bumped from v2 to v3 in v2.5 (BR-18 v3 / chat.back.md §8).
+  // v2.4 (TC-03) previously bumped from v1 to v2.
+  it("DEFAULT_CHAT_PROMPT_VERSION equals v3", () => {
+    expect(DEFAULT_CHAT_PROMPT_VERSION).toBe("v3");
   });
 
   // BR-20: the marker is a named exported string constant — guard imports it

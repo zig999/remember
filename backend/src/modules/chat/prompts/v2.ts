@@ -47,8 +47,14 @@ export { CHAT_PROMPT_MARKER_V1 } from "./v1.js";
  * `env.CHAT_INGEST_ENABLED=false` the ingestion tools are not in the
  * catalog — the directives are inert prose, never invoked (BR-44 step 1).
  */
-export function system(): string {
-  const v1Body = v1System();
+export function system(catalog?: unknown): string {
+  // v3 (chat.back.md v2.5 BR-18 v3) widens the signature to
+  // `system(catalog: CatalogSnapshot)`. v2 IGNORES the argument and continues
+  // to return the v2.4 string verbatim (backward-compat contract). The arg
+  // is typed `unknown` here so v2 stays decoupled from the catalog module;
+  // the registry's typed wrapper enforces the `CatalogSnapshot` shape at
+  // the seam.
+  const v1Body = v1System(catalog);
   const v2Additions = [
     "",
     "INGESTAO ASSINCRONA (FERRAMENTAS ingest)",
