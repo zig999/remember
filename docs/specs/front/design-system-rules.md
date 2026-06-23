@@ -1,7 +1,7 @@
 # Design System Rules — Remember (compact summary)
 
 > Source: `docs/specs/front/design-system/` (tokens.md, composition.md, components.md, implementation.md)
-> Version: 1.2.0 | Status: draft
+> Version: 1.3.0 | Status: draft
 
 ---
 
@@ -65,6 +65,7 @@ Every border must write **both** a width utility AND a color utility.
 | `motion.transition.promote` | `StateBadge` uncertain→accepted | Color morph + halo |
 | `motion.transition.supersede` | Graph node superseded | Fade + slide |
 | `motion.transition.merge` | Graph nodes merge | Collapse + re-anchor |
+| `motion.graph.nodeReveal` | Graph nodes entering canvas | Fade-in + scale-up reveal (`opacity: 0→1`, `scale: 0.85→1`) |
 
 `prefers-reduced-motion` gating is ad hoc, **except `transitionCrtPowerOn`** — mandatory gate (WCAG 2.2 AA).
 
@@ -122,6 +123,20 @@ z-popover (30)   z-frame (40)  z-modal (50)  z-toast (60)
 | Stay on Stack Auth (`@stackframe/react`) | R1 — JWKS/EdDSA; Better Auth is a separate migration |
 | Email field: `autoFocus` on mount | Sign-in focus management |
 
+### 5.3 Graph (floating edges + layout algorithms)
+
+| Rule | Rationale |
+|---|---|
+| `GraphNodeAdapter` handles: `opacity-0 pointer-events-none` | Handles are RF routing endpoints only — visual attachment computed by `getEdgeParams` |
+| `GraphEdgeAdapter`: call `useInternalNode(sourceId)` + `useInternalNode(targetId)` | Never use RF-injected `sourceX/Y/targetX/Y` — those come from fixed Handle offsets |
+| `getEdgeParams` returns `null` → render nothing (not `{0,0}`) | Unmeasured nodes must not produce phantom edges at canvas origin |
+| Layout algorithm stored as `layoutAlgorithm: 'force' \| 'tree' \| 'radial'` in `useGraphStore` | Single source of truth; `setLayoutAlgorithm` bumps `layoutNonce` → `useForceLayout` re-runs |
+| All layout runners share signature `(nodeIds, linkPairs, pinnedPositions) → Map<string,{x,y}>` | Uniform pin contract — no runner skips the pin set |
+| Tree/radial: spanning tree by BFS from highest-degree node; virtual super-root for forests | Cross-links (not in spanning tree) remain as floating edges |
+| Algorithm Select options: `'force'` → 'Força', `'tree'` → 'Árvore', `'radial'` → 'Radial' | pt-BR labels; string literals in code (i18n disabled) |
+| `getSnapshot` emits `version: 2` (adds `layout_algorithm`); `hydrate` reads v1 (default `'force'`) and v2 | Backward-compatible snapshot migration |
+| `d3-hierarchy` bundled in `graph` manualChunk (`['@xyflow/react','d3-force','d3-hierarchy']`) | Co-located with d3-force; single lazy-loadable graph bundle |
+
 ---
 
 ## 6. Accessibility Floors
@@ -155,6 +170,9 @@ zodResolver (@hookform)  → safeZodResolver (safeParse-based) — Zod v4 incomp
 GlassSurface animate on sign-in → animate={false}; CRT wrapper controls entrance
 Better Auth SDK          → stay on Stack Auth (@stackframe/react)
 @stackframe/react outside features/auth/ → narrow exception only
+Fixed Handle coords in GraphEdgeAdapter → use useInternalNode + getEdgeParams (floating)
+getEdgeParams null path at {0,0} → render null (phantom-edge prevention)
+Direct d3-hierarchy import outside useForceLayout runners → all layout in the hook module
 ```
 
 ---
@@ -165,4 +183,5 @@ Better Auth SDK          → stay on Stack Auth (@stackframe/react)
 |---|---|---|---|
 | 1.0.0 | 2026-06-18 | Front Spec Agent | Initial foundation rules: tokens, glass levels, z-index, component contract, motion. |
 | 1.1.0 | 2026-06-20 | Front Spec Agent | Chat wave: glass levels detail, chat-specific rules, a11y floors, forbidden patterns. |
+| 1.3.0 | 2026-06-23 | Front Spec Agent | Graph-improvement wave: §5.3 graph rules added (floating-edge contract, layout algorithm selector, pin set contract, BFS spanning tree, algorithm Select labels, snapshot v2); §7 graph forbidden patterns added. Synced to tokens.md — rule 12b compliant. |
 | 1.2.0 | 2026-06-20 | Front Spec Agent | Auth/sign-in wave: §2.2 motion factories table (transitionCrtPowerOn + stagger); §3 glass sign-in panel exception; §5.2 sign-in specific rules; §6 a11y floors (sign-in items); §7 forbidden patterns (sign-in items). Synced to tokens.md — rule 12b compliant. |

@@ -20,7 +20,8 @@
 - Consume `nodes: GraphNodeData[]` and `links: GraphLinkData[]` as props (the caller — `ChatWorkspace` — reads `useGraphStore` and passes the data down).
 - Show processing state (`GraphStatusOverlay`) when the BFF is running a graph tool.
 - Animate new nodes one by one via `useGraphReveal` + Framer Motion (stagger ~90ms, `opacity 0→1` + `scale 0.85→1`).
-- Pin existing node positions when new nodes arrive (d3-force `fx`/`fy` — no layout jump, D5).
+- Pin existing node positions when new nodes arrive (all three layout algorithms honour the pin set — no layout jump, D5).
+- Render edges as **floating edges**: each edge connects at the nearest point on its source and target node boundaries, not at a fixed handle position (`getEdgeParams` helper in `GraphEdgeAdapter`).
 - Let the user **reposition any node by drag-and-drop** (TC-FE drag, supersedes the v1 "not draggable" stance of D5). The drop commits the node's canvas coordinate to the store (`setNodePosition`) and records it in `userPinned`; because the force pass already pins any node that has a position, the dragged coordinate is honoured on every subsequent force run (AC-F.12 extended: existing **and user-placed** nodes do not jump). Drag stays view-local — it never writes to chat state (REQ-6 / UC-CG-09).
 - Render edges: `is_temporal=true → solid`, `is_temporal=false → dashed` (tokens.md §7).
 - Derive node visual state from `status` only: `active → accepted` (green), `needs_review → uncertain` (amber).
@@ -50,6 +51,8 @@
 | `onNodeSelect` | `(nodeId: string) => void` | no | `undefined` | Callback fired when a node is clicked. Used by parent to mount `NodeDetailPanel`. Never causes a chat mutation. |
 | `ref` | `Ref<GraphSpaceHandle>` | no | — | React 19 ref-as-prop — exposes the view-only handle. |
 | `className` | `string` | no | `""` | Additional Tailwind classes merged via `cn()`. |
+
+> **Note:** `layoutAlgorithm` and `setLayoutAlgorithm` are NOT props of `GraphSpace` — they are consumed from `useGraphStore` directly by `GraphCanvas`. `GraphSpace` passes `layoutAlgorithm`/`setLayoutAlgorithm` down to `GraphCanvas` via `GraphCanvas` props; `ChatWorkspace` does not need to be aware of them (they live entirely in the graph sub-tree).
 
 ### Types referenced
 
@@ -227,22 +230,42 @@ GraphSpace
 ├── GraphEmptyState     (status="empty")
 └── ReactFlowProvider
     └── GraphCanvas         (<ReactFlow> controlled: nodeTypes, edgeTypes, onNodeClick)
-        ├── nodeTypes.graphNode: GraphNodeAdapter  (wraps ds/GraphNode + React Flow <Handle>s)
-        └── edgeTypes.graphEdge: GraphEdgeAdapter  (custom edge — solid/dashed, label)
+        ├── Panel(top-right): algorithm Select ('Força'/'Árvore'/'Radial') + Reorganizar button
+        ├── nodeTypes.graphNode: GraphNodeAdapter  (wraps ds/GraphNode + invisible <Handle>s)
+        └── edgeTypes.graphEdge: GraphEdgeAdapter  (floating edge — useInternalNode + getEdgeParams)
 
 Hooks (feature-local):
-  useForceLayout     → d3-force positions; pins existing nodes (fx/fy); outputs {id → {x,y}}
+  useForceLayout     → layout dispatcher (reads layoutAlgorithm → runForceLayout | runTreeLayout | runRadialLayout)
   useGraphReveal     → consumes revealQueue via dequeueReveal(); Framer Motion stagger
 ```
 
 ### Key implementation constraints
 
-- `GraphNodeAdapter` **reuses `components/ds/GraphNode`** — wraps it with `<Handle source>` and `<Handle target>` for React Flow connection points. Does NOT re-implement node styling.
-- `useForceLayout` runs d3-force on the node list. Nodes already in `positions` Map are pinned (`fx`/`fy` set). New nodes start unpin, get positioned by force, then pinned after first stable tick.
+- `GraphNodeAdapter` **reuses `components/ds/GraphNode`** — wraps it with two `<Handle>` elements (source at bottom, target at top) that are **invisible** (`opacity-0 pointer-events-none`). The handles are retained because React Flow needs them as routing endpoints; they do NOT define the visual attachment point for edges. Does NOT re-implement node styling.
+- **Floating edges**: `GraphEdgeAdapter` calls `useInternalNode(source)` and `useInternalNode(target)` at render time to read the current node bounding geometry (position + measured size). The pure helper `getEdgeParams(sourceNode, targetNode)` computes the center-to-center line, intersects it with each node's rectangle, and returns `{ sourceX, sourceY, sourcePos, targetX, targetY, targetPos }`. If either node is unmeasured (returns `null`), the edge renders nothing. `GraphCanvas.toRfEdges` no longer sets `sourceX/sourceY/targetX/targetY` on the RF edge shape.
+- **Layout dispatcher**: `useForceLayout` reads `layoutAlgorithm` from the store. `'force'` delegates to `runForceLayout` (d3-force); `'tree'` delegates to `runTreeLayout` (d3-hierarchy tidy tree); `'radial'` delegates to `runRadialLayout` (d3-hierarchy radial tree). All three runners share the same signature `(nodeIds, linkPairs, pinnedPositions) → Map<string, {x,y}>`. The spanning tree for `'tree'`/`'radial'` is derived by BFS from the highest-degree node; a virtual super-root is added for disconnected forests and discarded from the output; cross-links (edges not in the spanning tree) are preserved in RF as floating edges.
 - The `revealStaggerMs` prop (default 90ms) controls the inter-node animation delay in `useGraphReveal`. The hook calls `useGraphStore.getState().dequeueReveal()` every `revealStaggerMs`ms until the queue is empty.
 - `GraphEdgeAdapter` is the `GraphEdge` component spec — see `GraphEdge.component.spec.md`.
 - `NodeDetailPanel` is **not** a child of `GraphSpace` — it is mounted by `ChatWorkspace` in the right pane above `GraphSpace` when `onNodeSelect` fires. `GraphSpace` only calls the callback.
 - Motion variants come from `lib/motion.ts` (`motion.graph.nodeReveal`). A new factory `motion.graph.nodeReveal` should be added: `{ initial: { opacity: 0, scale: 0.85 }, animate: { opacity: 1, scale: 1 }, transition: { duration: 0.18, ease: "easeOut" } }`.
+
+### Scenario 8 — Layout algorithm select changes layout
+
+**Given** `GraphSpace` is in `status="ready"` with nodes visible  
+**When** the user opens the algorithm Select in the Panel top-right and chooses 'Árvore'  
+**Then** `setLayoutAlgorithm('tree')` is called on `useGraphStore`  
+**And** `layoutNonce` is bumped  
+**And** `useForceLayout` re-runs with `runTreeLayout`  
+**And** nodes animate from their current positions to the new tree layout  
+**And** the Select shows 'Árvore' as the active value  
+
+### Scenario 9 — Floating edge reconnects after node drag
+
+**Given** `GraphSpace` has two connected nodes A and B in `status="ready"`  
+**When** the user drags node A to a new position  
+**Then** the edge connecting A and B re-computes its attachment point via `getEdgeParams`  
+**And** the edge path visually follows the nearest boundary point of the new position  
+**And** `sourceX`/`sourceY` are derived from `useInternalNode`, NOT from fixed Handle coordinates  
 
 ---
 
@@ -250,4 +273,5 @@ Hooks (feature-local):
 
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
+| 1.1.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave (REQ-1 + REQ-2): §1 added floating-edge + layout-algorithm responsibilities; §2 note on layoutAlgorithm store coupling; §9 component tree updated (invisible handles, algorithm Select, floating-edge edge renderer, layout dispatcher hook); Key constraints updated (invisible handles, floating-edge getEdgeParams contract, layout dispatcher details). BDD Scenarios 8 and 9 added. |
 | 1.0.0 | 2026-06-21 | Front Spec Agent | initial | GraphSpace wave. Full spec: props contract, 5 component states, 7 BDD scenarios, accessibility contract, internal architecture notes. Authoritative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21 §6. |

@@ -2,7 +2,7 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.1.0 | Status: draft
+> Version: 1.2.0 | Status: draft
 
 ---
 
@@ -87,6 +87,7 @@ These are **owned code** — do not regenerate via CLI. Extend by composition.
 | `Switch` | `components/ui/switch/` | ConversationMenu (include-archived toggle) |
 | `Dialog` + `DialogContent` + `DialogHeader` + `DialogFooter` + `DialogTitle` + `DialogDescription` | `components/ui/dialog/` | ConversationMenu (delete confirmation) |
 | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuItem` + `DropdownMenuSeparator` | `components/ui/dropdown-menu/` | ConversationMenu, Header (settings) |
+| `Select` + `SelectTrigger` + `SelectContent` + `SelectItem` + `SelectValue` | `components/ui/select/` | `GraphCanvas` algorithm selector (graph-improvement wave: `'Força'` / `'Árvore'` / `'Radial'` options) |
 | `Tooltip` | `components/ui/tooltip/` | (available — not yet used) |
 | `Popover` | `components/ui/popover/` | (available — not yet used) |
 
@@ -117,6 +118,20 @@ The following components live inside `features/auth/components/`. Full specs are
 |---|---|---|
 | `SignInPanel` | auth | CRT wrapper (`motion.div` with `transitionCrtPowerOn`) + `GlassSurface level="panel"` (animate=false) + welcome text + `SignInForm` |
 | `SignInForm` | auth | RHF + Zod form: email (Login) + password (Senha) + submit button; manages UI states idle/submitting/error |
+
+### 4.3 Graph feature (`features/graph/components/`)
+
+The following components live inside `features/graph/components/`. Full spec is in `GraphSpace.component.spec.md` and `GraphEdge.component.spec.md`.
+
+| Component | Feature | Role | Notes |
+|---|---|---|---|
+| `GraphSpace` | graph | Container — ReactFlowProvider + status overlay + empty state | Spec: `GraphSpace.component.spec.md` |
+| `GraphCanvas` | graph | `<ReactFlow>` controlled canvas + Panel top-right (algorithm Select + Reorganizar) | Consumes `useForceLayout` dispatcher (force/tree/radial) |
+| `GraphNodeAdapter` | graph | Custom RF node — wraps `ds/GraphNode` + **invisible** `<Handle>` ports (top/bottom) | Handles invisible: `opacity-0 pointer-events-none`; floating-edge geometry comes from `getEdgeParams` |
+| `GraphEdgeAdapter` | graph | Custom RF edge — floating geometry via `useInternalNode` + `getEdgeParams` | REQ-1: connects at nearest node boundary, not fixed handle |
+| `GraphStatusOverlay` | graph | `aria-live="polite"` loading/error overlay | |
+| `GraphEmptyState` | graph | Centered empty state copy | |
+| `NodeDetailPanel` | graph | Inline node detail — replaces GraphSpace in right pane | Spec: `NodeDetailPanel.component.spec.md` |
 
 ---
 
@@ -156,4 +171,5 @@ Components with a single appearance do NOT use CVA. `SignInPanel` and `SignInFor
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Initial component catalog. DS atoms: GlassSurface, StateBadge, GraphNode, ChatBubble, ConversationMenu. Shadcn/ui primitives used in chat wave. Feature-local reference table. |
+| 1.2.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: §3 `Select` added to shadcn/ui primitives (algorithm selector). §4.3 graph feature-local reference table added (GraphCanvas Panel, invisible handles in GraphNodeAdapter, floating-edge GraphEdgeAdapter). |
 | 1.1.0 | 2026-06-20 | Front Spec Agent | minor | Auth wave: added `Input` + `Label` to shadcn/ui primitives table (sign-in uses them). Added §4.2 auth feature-local components (SignInPanel, SignInForm). §5.4: sign-in `animate={false}` CRT exception documented. |

@@ -26,7 +26,7 @@
 | Auth client | Better Auth (Neon Auth) 2-step flow: `POST {VITE_NEON_AUTH_URL}/sign-in/email` + `GET {VITE_NEON_AUTH_URL}/token`; SPA holds JWT bearer in memory + `sessionStorage`; JWT verified BFF-side via JWKS | No SDK dependency; raw `fetch` with `credentials:'include'`; session cookie (7d) enables silent JWT refresh (DC — see BR-19) |
 | Architecture pattern | Feature-folder monorepo single-app (`features/<area>/{api,components,hooks,types.ts}`) | Cross-feature import forbidden — enforced by `eslint-plugin-import` `no-restricted-paths` |
 | Graph renderer | React Flow `@xyflow/react` v12 (MIT) | Pinned by `front.md §1.1`; v11 → v12 is a package-name rename |
-| Graph layout | `d3-force` | Existing nodes pinned with `fx`/`fy` |
+| Graph layout | `d3-force` (physics), `d3-hierarchy` (tree, radial) | Three algorithms; `useForceLayout` dispatches based on `layoutAlgorithm` store field. Existing nodes always honoured by the pin set across all three. |
 | Animation | Framer Motion (`framer-motion`) | All variants live in `lib/motion.ts` (mandatory — no inline); `prefers-reduced-motion` gate optional (relaxed 2026-06-19); decorative motion allowed |
 | Notifications | `sonner` | Single `<Toaster>` mounted in `__root` |
 | Icons | `lucide-react` | Only icon set in the repo |
@@ -47,7 +47,7 @@
 | `server.proxy` | `'/api': { target: process.env.VITE_BFF_URL ?? 'http://localhost:3000', changeOrigin: true }` | Avoids CORS in dev; production uses the env-injected base URL directly |
 | `build.target` | `'es2022'` | Matches Node 20 LTS feature parity and current browser baseline |
 | `build.sourcemap` | `true` | Required for pino-forwarded client errors to be readable |
-| `build.rollupOptions.output.manualChunks` | `{ 'react-vendor': ['react','react-dom'], 'tanstack': ['@tanstack/react-query','@tanstack/react-router','@tanstack/react-table'], 'graph': ['@xyflow/react','d3-force'], 'motion': ['framer-motion'] }` | Four named vendor chunks; keeps the graph and motion bundles loadable on demand |
+| `build.rollupOptions.output.manualChunks` | `{ 'react-vendor': ['react','react-dom'], 'tanstack': ['@tanstack/react-query','@tanstack/react-router','@tanstack/react-table'], 'graph': ['@xyflow/react','d3-force','d3-hierarchy'], 'motion': ['framer-motion'] }` | Four named vendor chunks; `d3-hierarchy` co-located in the `graph` chunk (graph-improvement wave). |
 | `build.chunkSizeWarningLimit` | `350` (kb) | Slightly above the 300 kb budget (`front.md` Performance Budgets) — fail loud before the budget breaks |
 
 ### 1.2 `tsconfig.json` decisions
@@ -123,7 +123,7 @@ Persisted JSON example:
 | `expansionSet` | `string[]` | UUID array | Set of node ids that have been expanded via `traverse` in the current session |
 | `selection` | `string \| null` | UUID or null | Currently selected node id |
 | `panelCollapsed` | `boolean` | Required | Whether the side panel is collapsed |
-| `version` | `1` | Required | Schema version |
+| `version` | `1 \| 2` | Required | Schema version — `2` adds `layoutAlgorithm`; hydrate reads both |
 
 ### Store: `useAsOfStore` (in-memory mirror of the URL)
 
@@ -270,8 +270,8 @@ The URL is the canonical place for view state per `front.md §3.2`. The implemen
 
 ### BR-16 -- Graph node positions controlled, never imperative
 **Related spec section:** `front.md §7.3`
-**Where to validate:** Graph feature implementation (later wave); foundation imposes the contract
-**Description:** Node positions are owned by React Flow's controlled API and mirrored in `useGraphViewStore.pinnedPositions`. Direct DOM mutation (`element.style.transform = ...`) is forbidden. d3-force simulation runs on the data model only, not on DOM nodes.
+**Where to validate:** Graph feature implementation; foundation imposes the contract
+**Description:** Node positions are owned by React Flow's controlled API and mirrored in `useGraphStore.positions`. Direct DOM mutation (`element.style.transform = ...`) is forbidden. All three layout runners (`runForceLayout`, `runTreeLayout`, `runRadialLayout`) operate on the data model only — no DOM nodes. The algorithm selector (`layoutAlgorithm`) is a store field; switching it bumps `layoutNonce`, which triggers `useForceLayout` to re-run with the new runner.
 **Error returned:** N/A.
 
 ### BR-17 -- BFF envelope failure path = single error map
@@ -489,12 +489,25 @@ This foundation does NOT include:
 
 ---
 
+### BR-20 -- Layout algorithm selector state + version-2 snapshot
+**Related spec section:** `front.md §7.1` (Layout algorithms row, graph-improvement wave)
+**Where to validate:** `features/graph/state/graph-store.ts`; `features/graph/hooks/useForceLayout.ts`
+**Description:** `useGraphStore` adds `layoutAlgorithm: 'force' | 'tree' | 'radial'` with default `'force'`. `setLayoutAlgorithm(algo)` sets the field AND bumps `layoutNonce` — the `useForceLayout` effect subscribes to `layoutNonce` and re-runs the layout with the new runner. `getSnapshot()` emits `version: 2` and includes `layout_algorithm`. `hydrate()` accepts both version 1 (no `layout_algorithm` → default `'force'`) and version 2 (reads the field). This is the only persisted schema change introduced by the graph-improvement wave; the BFF persistence endpoint receives the v2 shape.
+**Error returned:** N/A.
+
+### BR-21 -- Floating edges: no fixed Handle coordinates
+**Related spec section:** `front.md §7.1` (Edge routing row, graph-improvement wave)
+**Where to validate:** `features/graph/components/GraphEdgeAdapter/`; `features/graph/lib/getEdgeParams.ts`
+**Description:** `GraphEdgeAdapter` MUST NOT use the `sourceX`/`sourceY`/`targetX`/`targetY` values injected by React Flow (those come from the fixed Handle positions). Instead, it calls `useInternalNode(sourceId)` and `useInternalNode(targetId)` to read the current node geometry (position + measured width/height) and delegates to the pure helper `getEdgeParams(source, target)` — which computes the center-to-center intersection point with each node's bounding rectangle and returns the nearest `Position` direction. `Handle` elements in `GraphNodeAdapter` retain their `type="source"` / `type="target"` declarations (required by RF for edge routing) but are rendered **invisible** (`opacity-0 pointer-events-none`). A `getEdgeParams` that returns `null` (either node unmeasured) causes the edge to render nothing, not crash.
+**Error returned:** N/A.
+
 ## Changelog
 
 > Mandatory — never remove previous entries.
 
 | Version | Date | Author | Type | Description | CR |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: §1 layout row updated (three algorithms `force`/`tree`/`radial`); manualChunks `graph` chunk updated to include `d3-hierarchy`; `useGraphViewStore` version field updated to `1 | 2`; BR-16 updated (mentions all three runners); BR-20 added (layout algorithm selector + v2 snapshot); BR-21 added (floating edges — no fixed Handle coords). | sdd_front |
 | 1.0.0 | 2026-06-18 | Back Spec Agent | initial | Initial foundation: Vite 6 / TS strict / Tailwind v4 / TanStack stack pins; persisted client state shapes; 18 BRs covering aliases, env, envelope, auth guard, lint guards, motion gate, theme hydration; ST for boot + theme; 5 named motion/error events; BFF + Neon Auth integrations; technical-debt list. | -- |
 | 1.0.1 | 2026-06-19 | Owner review | patch | EV-01–04 motion payloads now reference the canonical token names from `tokens.md §11.1` (`--duration-*` / `--ease-*`) instead of the non-existent `--motion-duration-*` / `--motion-easing-*` (W-FG-3). | -- |
 | 1.1.0 | 2026-06-21 | Front Spec Agent | minor | Auth layer replaced: Stack Auth SDK → Better Auth 2-step flow (PROVEN 2026-06-21). §1 auth client row updated (raw fetch, no SDK, session cookie). BR-04 updated (JWT source = GET /token, guard location = protectedLayoutRoute, silent refresh precedes redirect). BR-19 added (silent refresh via session cookie — DC — bounded 1 retry). §6 Neon Auth row updated (2-step endpoints, timeout, silent refresh). Constraint 5 updated (refresh implemented, not deferred). §8 Out of scope updated (rolling sessions remain out of scope). | sdd_front |
