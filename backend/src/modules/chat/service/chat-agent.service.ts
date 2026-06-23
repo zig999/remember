@@ -26,6 +26,7 @@
 
 import type { Logger } from "pino";
 import type Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 
 import type {
   ChatAgentService,
@@ -227,7 +228,7 @@ export function createChatAgentService(
   // BR-06: the `tools` array we send to Anthropic is the resolved catalog,
   // turned into the SDK's `Tool` shape via Zod-derived JSON Schema. We build
   // it once per service instance.
-  const tools = buildToolDescriptors(deps.catalog);
+  const tools = buildToolDescriptors(deps.catalog, deps.logger);
 
   // `stats` is overwritten on each `runTurn` invocation. The route handler
   // reads it after consuming the iterable to build the pino INFO record.
@@ -996,34 +997,121 @@ function synthesiseInternalErrorEnvelope(err: unknown): ToolEnvelope {
 // Tool descriptor builder
 // ---------------------------------------------------------------------------
 
+/** Permissive fallback `input_schema` used when a tool's Zod schema cannot
+ *  be converted into an Anthropic-compatible JSON Schema. Logged at WARN
+ *  level so the operator can patch the offending tool, but the chat surface
+ *  stays up. */
+const PERMISSIVE_INPUT_SCHEMA: Anthropic.Messages.Tool.InputSchema = {
+  type: "object",
+  additionalProperties: true,
+} as unknown as Anthropic.Messages.Tool.InputSchema;
+
+/**
+ * Convert a single tool's Zod input schema to an Anthropic-compatible
+ * `input_schema`. Uses `z.toJSONSchema` (Zod v4) with `target: 'draft-7'`
+ * so the emitted shape stays inline (no `$defs`/`$ref`) for the simple
+ * object schemas our 13-15 tools use. We strip the `$schema` meta-field
+ * (Anthropic does not need it; keeping it is harmless but noisy) and
+ * verify the result has `type === "object"` at the root — Anthropic
+ * rejects anything else. If the conversion throws OR the result is not a
+ * root-level object schema, return `undefined` so the caller can fall
+ * back to the permissive shape and log.
+ *
+ * Determinism: `z.toJSONSchema` is a pure function of the Zod schema. The
+ * P0 prompt-cache prefix (system + tools) therefore remains byte-stable
+ * across process lifetime once the catalog is resolved — exactly one
+ * re-cache happens on rollout (schemas change once), then stable.
+ */
+function toolInputSchemaFromZod(
+  toolName: string,
+  inputSchema: unknown,
+  logger: Logger
+): Anthropic.Messages.Tool.InputSchema | undefined {
+  try {
+    // `z.toJSONSchema` accepts any `ZodType`; the catalog stores `ZodTypeAny`.
+    // `draft-7` keeps inline `additionalProperties: false` for `z.object` and
+    // avoids 2020-12 quirks Anthropic may not have updated for.
+    const raw = z.toJSONSchema(inputSchema as Parameters<typeof z.toJSONSchema>[0], {
+      target: "draft-7",
+    });
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      logger.warn(
+        { event: "chat.tool_schema_invalid_root", tool: toolName },
+        "tool input schema did not convert to a JSON Schema object"
+      );
+      return undefined;
+    }
+    const record = raw as Record<string, unknown>;
+    if (record["type"] !== "object") {
+      logger.warn(
+        {
+          event: "chat.tool_schema_non_object_root",
+          tool: toolName,
+          received_type: record["type"],
+        },
+        "tool input schema root is not type:object — Anthropic requires object"
+      );
+      return undefined;
+    }
+    // Strip JSON Schema meta-keys Anthropic does not need. `$schema` is
+    // emitted by Zod's draft-7 target; `$defs`/`definitions` would only
+    // appear if the schema used `z.lazy`/recursion — none of our 13-15
+    // chat tools do, so logging is sufficient.
+    if ("$defs" in record || "definitions" in record) {
+      logger.warn(
+        { event: "chat.tool_schema_has_defs", tool: toolName },
+        "tool input schema contains $defs/definitions — Anthropic may reject"
+      );
+      return undefined;
+    }
+    // Drop `$schema` (meta only, not consumed by Anthropic). Keep everything
+    // else verbatim: properties, required, enums, descriptions, min/max.
+    const { $schema: _drop, ...clean } = record;
+    return clean as unknown as Anthropic.Messages.Tool.InputSchema;
+  } catch (err) {
+    logger.warn(
+      {
+        event: "chat.tool_schema_conversion_failed",
+        tool: toolName,
+        error: serializeError(err),
+      },
+      "z.toJSONSchema threw — falling back to permissive schema"
+    );
+    return undefined;
+  }
+}
+
 /**
  * Build the Anthropic `Tool[]` descriptor array from the resolved catalog.
- * Each `McpTool` carries a Zod input schema; we convert to JSON Schema via
- * the Anthropic SDK's preferred form. For TC-03 we use a permissive schema
- * (object with no required fields) because the chat module does not own the
- * tool input schemas — the model receives the description and infers the
- * shape from there. Future work (TD): plumb the JSON Schema export from
- * each tool through `McpTool` so Anthropic gets the strict typing it needs.
+ * Each `McpTool` carries a Zod input schema; we convert it via
+ * `z.toJSONSchema` so the model receives the real shape (required fields,
+ * enums, types) and stops wasting a round-trip on a first attempt that
+ * omits required fields (e.g. `start_async_ingestion.source_type`).
+ *
+ * Per BR-06 the Zod schema is re-applied by the tool handler on dispatch
+ * (defense in depth) — an invalid shape still surfaces as a structured
+ * envelope rather than an SDK validation rejection. The advertised schema
+ * is a guide for the model, not the boundary check.
+ *
+ * Fallback (per-tool): if a single tool's schema cannot be converted,
+ * fall back to a permissive `{ type:'object', additionalProperties:true }`
+ * for THAT tool only and log — never derail the chat boot.
+ *
+ * Exported for unit testing (BR-06 advertised-schema invariant).
  */
-function buildToolDescriptors(
-  catalog: ResolvedChatToolCatalog
+export function buildToolDescriptors(
+  catalog: ResolvedChatToolCatalog,
+  logger: Logger
 ): readonly Anthropic.Messages.Tool[] {
   const out: Anthropic.Messages.Tool[] = [];
   for (const name of Object.keys(catalog)) {
     const tool = catalog[name];
     if (tool === undefined) continue; // unreachable — catalog is dense by BR-05
+    const derived = toolInputSchemaFromZod(name, tool.inputSchema, logger);
     out.push({
       name,
       description: tool.description,
-      // Permissive schema — the model is steered by the description and the
-      // system prompt's "resolve ids before calling" rule. Each tool's Zod
-      // schema is re-applied by the tool handler itself on dispatch, so an
-      // invalid shape surfaces as a structured envelope (BR-07) rather than
-      // an SDK validation rejection.
-      input_schema: {
-        type: "object",
-        additionalProperties: true,
-      } as unknown as Anthropic.Messages.Tool.InputSchema,
+      input_schema: derived ?? PERMISSIVE_INPUT_SCHEMA,
     });
   }
   return out;
