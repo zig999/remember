@@ -111,7 +111,24 @@ const envSchema = z.object({
   CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5"),
   // CHAT_PROMPT_VERSION: prompt module version (BR-18). Unknown value is a boot
   //   error — see modules/chat/prompts/index.ts (UnknownChatPromptVersionError).
-  CHAT_PROMPT_VERSION: z.string().min(1).default("v1"),
+  //   v2.4 (TC-02): default bumped from `v1` → `v2`. The `v2` module (added by
+  //   TC-03) layers three ingestion directives on top of `v1`; the directives
+  //   are inert when `CHAT_INGEST_ENABLED=false` because the two ingestion
+  //   tools are absent from the catalog (BR-18 v2.4 / BR-44 step 1). `v1`
+  //   continues to resolve verbatim for backward-compatibility.
+  CHAT_PROMPT_VERSION: z.string().min(1).default("v2"),
+  // CHAT_INGEST_ENABLED: feature flag gating the v2.4 async-ingestion capability
+  //   on chat (BR-44). Boot-time only — toggling requires a BFF restart; the
+  //   chat tool catalog is resolved lazily on the first request and cached for
+  //   the process lifetime (BR-05 v2.4). When `true`, the catalog includes
+  //   `start_async_ingestion` + `get_ingestion_status` (15 tools total);
+  //   when `false`, the catalog is the v2.0 13-tool read-only set. Independent
+  //   of `CHAT_ENABLED` (BR-14): the kill-switch still wins. Default `false`
+  //   (BR-44). NEW in TC-02.
+  CHAT_INGEST_ENABLED: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+    .default(false),
   // MAX_HISTORY_MESSAGES: legacy stateless-v1 upper bound on `messages.length`
   //   (BR-01 v1). In v2.0 it is functionally superseded by MAX_CONTENT_LENGTH
   //   (the request body now carries ONE `content` string; history is server-
