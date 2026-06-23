@@ -183,6 +183,71 @@ export type GetIngestionStatusMcpInput = z.infer<
   typeof GetIngestionStatusMcpInputSchema
 >;
 
+// --------------------------------------------------------------------------
+// `get_ingestion_status` OUTPUT shape (TC-02 / BR-31 / BR-33).
+//
+// The MCP transport renders `{ ok, result }` envelopes via the shared SDK
+// kernel — this schema describes the `result` payload returned on success.
+// It mirrors `LlmRunResponseSchema` (`dto/llm-run.dto.ts`) plus the OPTIONAL
+// `affected_nodes` field added by BR-33; the schema is declared here next to
+// the input schema so the toolset registrar has a single import surface for
+// both directions. The Zod type is the contract — JSON-Schema generation is
+// not currently emitted for outputs (only inputs are advertised by `tools/
+// list`), but the schema is the canonical type definition that QA / tests
+// assert against.
+//
+// `affected_nodes` is `.optional()` — serializers must OMIT the key entirely
+// when absent (never emit `null` on the wire). It is attached ONLY when
+// `result.status === 'completed'`; on `running` / `failed` runs the field is
+// absent. Empty array is a valid completed-run payload (a run can complete
+// with only `rejected` outcomes).
+// --------------------------------------------------------------------------
+
+/** One entry of `result.affected_nodes` — BR-33 wire shape. */
+export const AffectedNodeOutputSchema = z.object({
+  id: z.string().uuid(),
+  canonical_name: z.string(),
+  node_type: z.string(),
+});
+export type AffectedNodeOutput = z.infer<typeof AffectedNodeOutputSchema>;
+
+/** Per-outcome counters — mirror of `LlmRunSummarySchema` (BR-12). */
+const GetIngestionStatusSummarySchema = z.object({
+  accepted: z.number().int().nonnegative(),
+  consolidated: z.number().int().nonnegative(),
+  superseded_previous: z.number().int().nonnegative(),
+  needs_review: z.number().int().nonnegative(),
+  uncertain: z.number().int().nonnegative(),
+  disputed: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  error: z.number().int().nonnegative(),
+  orphaned_fragments: z.number().int().nonnegative(),
+});
+
+/**
+ * `result` shape of `{ ok: true, result }` returned by `get_ingestion_status`.
+ *
+ * BR-33 v1.3.0 — `affected_nodes` is the optional projection of the run's
+ * touched nodes; populated on `status === 'completed'` (cache hit OR derived
+ * from `tool_call.result` rows on cache miss), absent otherwise.
+ */
+export const GetIngestionStatusOutputSchema = z.object({
+  id: z.string().uuid(),
+  model: z.string(),
+  prompt_version: z.string(),
+  started_at: z.string().datetime({ offset: true }),
+  finished_at: z.string().datetime({ offset: true }).nullable(),
+  status: z.enum(["running", "completed", "failed"]),
+  attempts: z.number().int().positive(),
+  input_raw_information_id: z.string().uuid(),
+  idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+  summary: GetIngestionStatusSummarySchema,
+  affected_nodes: z.array(AffectedNodeOutputSchema).optional(),
+});
+export type GetIngestionStatusOutput = z.infer<
+  typeof GetIngestionStatusOutputSchema
+>;
+
 /** `list_recent_ingestions` — optional page size (1..50, default 10). */
 export const ListRecentIngestionsMcpInputSchema = z.object({
   limit: z

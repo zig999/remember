@@ -72,6 +72,13 @@ import { ResourceNotFoundError } from "./ingestion.service.js";
 import {
   aggregateToolCallOutcomes,
 } from "../repository/llm-run.repository.js";
+import {
+  createAffectedNodeCollector,
+  resolveAffectedNodes,
+  setCachedAffectedNodes,
+  type AffectedNode,
+  type AffectedNodeCollector,
+} from "./affected-nodes.js";
 
 // --------------------------------------------------------------------------
 // Public error sentinels — caller maps to HTTP envelope.
@@ -424,6 +431,14 @@ export async function runLlmExtraction(
     now,
   };
 
+  // BR-33 — per-run affected-node collector. Records ids touched by every
+  // `propose_*` ok:true envelope (filtering by outcome inside the collector).
+  // On happy-path completion the orchestrator resolves to `AffectedNode[]` via
+  // ONE batched lookup and writes through to the process-scoped cache. On any
+  // failure path we do NOT cache (the read path remains best-effort and the
+  // run is `failed` — read paths omit the field anyway).
+  const affectedNodes = createAffectedNodeCollector();
+
   try {
     // Prompt selection (BR-26 step 2) — dispatch on the run's prompt_version.
     // Inside the run-scoped try so an unknown version flips the run to `failed`
@@ -453,6 +468,7 @@ export async function runLlmExtraction(
         prompt,
         logger,
         llmRunId,
+        affectedNodes,
       });
 
       if (outcome.kind === "fatal_burst") {
@@ -498,7 +514,40 @@ export async function runLlmExtraction(
 
   // ---- Happy path — close run as completed ----
   await closeRunSafe(pool, llmRunId, "completed");
-  const finalRun = await readFinalRun(pool, llmRunId);
+
+  // BR-33 — resolve the collected ids to `AffectedNode[]` via ONE batched
+  // `knowledge_node JOIN node_type` lookup, then write through to the
+  // process-scoped LRU cache so the next `get_ingestion_status` poll is a
+  // cache hit. Empty ids list = empty resolved list (a completed run with
+  // only `rejected` outcomes); we still cache the empty array so the read
+  // path emits `affected_nodes: []` (a valid completed-run payload).
+  //
+  // Best-effort: a transient DB outage during the batched lookup is logged
+  // at WARN and the field is omitted from the run-completion log. The read
+  // path re-derives the list on the next poll (cache miss → derived).
+  let resolved: AffectedNode[] = [];
+  try {
+    const collectedIds = affectedNodes.ids();
+    const client = await pool.connect();
+    try {
+      resolved = await resolveAffectedNodes(client, collectedIds);
+    } finally {
+      client.release();
+    }
+    setCachedAffectedNodes(llmRunId, resolved);
+  } catch (err) {
+    logger.warn(
+      {
+        llm_run_id: llmRunId,
+        cause_message: err instanceof Error ? err.message : String(err),
+      },
+      "extraction_affected_nodes_resolution_failed"
+    );
+    // resolved stays []; we still attempt to attach via readFinalRun below
+    // (which itself goes through getLlmRunById and will re-derive on miss).
+  }
+
+  const finalRun = await readFinalRun(pool, llmRunId, resolved);
   logger.info(
     {
       llm_run_id: llmRunId,
@@ -506,6 +555,7 @@ export async function runLlmExtraction(
       prompt_version: finalRun.prompt_version,
       attempts: finalRun.attempts,
       summary: finalRun.summary,
+      affected_nodes_count: resolved.length,
     },
     "run_completed"
   );
@@ -529,6 +579,8 @@ interface ChunkLoopInput {
   readonly prompt: PromptModule;
   readonly logger: Logger;
   readonly llmRunId: string;
+  /** BR-33 — accumulates affected-node ids across every chunk of this run. */
+  readonly affectedNodes: AffectedNodeCollector;
 }
 
 type ChunkLoopOutcome =
@@ -634,6 +686,12 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
         input.dispatchDeps,
         input.chunkId
       );
+
+      // BR-33 — record any affected node ids from this envelope. The
+      // collector itself filters by tool name + outcome (only `propose_*`
+      // ok:true with a contributing outcome contribute; `rejected` /
+      // `error` / `ok:false` envelopes are no-ops).
+      input.affectedNodes.record(block.name, envelope);
 
       if (envelope.ok) {
         // Any ok:true (including outcome=rejected for confidence floor)
@@ -835,10 +893,16 @@ async function closeRunSafe(
  * Read the final run row + summary in a fresh transaction. Used both for
  * the happy-path response and for the partial summary attached to the
  * 502 / 500 error sentinels.
+ *
+ * BR-33 — when `affectedNodes` is supplied (happy path) the field is attached
+ * verbatim. On error paths the caller passes `undefined`; the read path will
+ * also omit the field because the run is `failed` and BR-33's read contract
+ * limits the field to `status === 'completed'`.
  */
 async function readFinalRun(
   pool: Pool,
-  llmRunId: string
+  llmRunId: string,
+  affectedNodes?: readonly AffectedNode[]
 ): Promise<LlmRunResponse> {
   const client = await pool.connect();
   try {
@@ -848,7 +912,7 @@ async function readFinalRun(
       throw new ResourceNotFoundError("llm_run", llmRunId);
     }
     const summary = await aggregateToolCallOutcomes(client, llmRunId);
-    return {
+    const base: LlmRunResponse = {
       id: row.id,
       model: row.model,
       prompt_version: row.prompt_version,
@@ -861,6 +925,10 @@ async function readFinalRun(
       idempotency_key: row.idempotency_key,
       summary,
     };
+    if (row.status === "completed" && affectedNodes !== undefined) {
+      return { ...base, affected_nodes: [...affectedNodes] };
+    }
+    return base;
   } finally {
     client.release();
   }

@@ -61,7 +61,33 @@ export const LlmRunSummarySchema = z.object({
 });
 export type LlmRunSummary = z.infer<typeof LlmRunSummarySchema>;
 
-/** Response of `GET /llm-runs/{id}` and `POST /llm-runs/{id}/retry`. */
+/**
+ * One entry of `LlmRunResponse.affected_nodes` (BR-33 / TC-02).
+ *
+ * Surfaces a `KnowledgeNode` the run touched (created, matched, or
+ * consolidated). The triple `{ id, canonical_name, node_type }` is the
+ * minimum the chat-side `block 4C` (post-ingestion playbook in
+ * `chat.back.md` BR-18 v3) needs to jump directly to `get_node`/`traverse`
+ * — eliminating the multi-name `search` guess that motivated BR-33.
+ */
+export const AffectedNodeSchema = z.object({
+  id: z.string().uuid(),
+  canonical_name: z.string(),
+  node_type: z.string(),
+});
+export type AffectedNode = z.infer<typeof AffectedNodeSchema>;
+
+/**
+ * Response of `GET /llm-runs/{id}` and `POST /llm-runs/{id}/retry`.
+ *
+ * `affected_nodes` (BR-33, v1.3.0) is OPTIONAL — attached ONLY when
+ * `status === 'completed'`. Empty array is a valid completed-run payload (a
+ * run can complete with only `rejected` outcomes); ABSENT means the run is
+ * `running` / `failed` OR the best-effort batched lookup could not produce
+ * the list. Serializers MUST omit the key entirely when undefined (never
+ * emit `null` on the wire). Additive change — existing consumers that do
+ * not read the field are unaffected.
+ */
 export const LlmRunResponseSchema = z.object({
   id: z.string().uuid(),
   model: z.string(),
@@ -73,6 +99,7 @@ export const LlmRunResponseSchema = z.object({
   input_raw_information_id: z.string().uuid(),
   idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
   summary: LlmRunSummarySchema,
+  affected_nodes: z.array(AffectedNodeSchema).optional(),
 });
 export type LlmRunResponse = z.infer<typeof LlmRunResponseSchema>;
 

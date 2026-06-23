@@ -31,6 +31,12 @@ import {
 } from "../repository/llm-run.repository.js";
 import type { LlmRunRow } from "../repository/ingestion.repository.js";
 import { ResourceNotFoundError } from "./ingestion.service.js";
+import {
+  deriveAffectedNodes,
+  getCachedAffectedNodes,
+  setCachedAffectedNodes,
+  type AffectedNode,
+} from "./affected-nodes.js";
 
 export { ResourceNotFoundError };
 
@@ -86,7 +92,32 @@ export async function getLlmRunById(
     throw new ResourceNotFoundError("llm_run", llmRunId);
   }
   const summary = await aggregateToolCallOutcomes(client, llmRunId);
-  return toLlmRunResponse(row, summary);
+
+  // BR-33 — attach `affected_nodes` ONLY when the run is `completed`. The
+  // field is the snapshot of the run at completion; a `running` or `failed`
+  // run does not surface a partial list. Cache hit absorbs the common path;
+  // a miss falls back to the derived lookup over `tool_call.result` rows for
+  // this run (best-effort — a transient DB outage on the derived path is
+  // swallowed and the field is simply omitted).
+  let affectedNodes: readonly AffectedNode[] | undefined;
+  if (row.status === "completed") {
+    const cached = getCachedAffectedNodes(llmRunId);
+    if (cached !== undefined) {
+      affectedNodes = cached;
+    } else {
+      try {
+        const derived = await deriveAffectedNodes(client, llmRunId);
+        setCachedAffectedNodes(llmRunId, derived);
+        affectedNodes = derived;
+      } catch {
+        // Best-effort — omit the field on a transient read failure; the
+        // caller can re-derive on the next poll.
+        affectedNodes = undefined;
+      }
+    }
+  }
+
+  return toLlmRunResponse(row, summary, affectedNodes);
 }
 
 /**
@@ -204,9 +235,10 @@ export async function closeLlmRun(
 
 function toLlmRunResponse(
   row: LlmRunRow,
-  summary: LlmRunResponse["summary"]
+  summary: LlmRunResponse["summary"],
+  affectedNodes?: readonly AffectedNode[]
 ): LlmRunResponse {
-  return {
+  const base: LlmRunResponse = {
     id: row.id,
     model: row.model,
     prompt_version: row.prompt_version,
@@ -218,6 +250,13 @@ function toLlmRunResponse(
     idempotency_key: row.idempotency_key,
     summary,
   };
+  // BR-33 — never emit the key when undefined (serializers must omit it; we
+  // enforce by not assigning at all). Empty array is a valid completed-run
+  // payload and is preserved verbatim.
+  if (affectedNodes !== undefined) {
+    return { ...base, affected_nodes: [...affectedNodes] };
+  }
+  return base;
 }
 
 function toToolCallResponse(row: ToolCallRow): ToolCallResponse {

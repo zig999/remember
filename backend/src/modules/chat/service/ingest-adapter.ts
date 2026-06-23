@@ -71,9 +71,32 @@ export type StartAsyncIngestionInput = z.infer<
   typeof StartAsyncIngestionInputSchema
 >;
 
+/**
+ * One entry of `result.affected_nodes` (TC-02 / BR-43 v2.5 amendment).
+ *
+ * Carried VERBATIM from the ingestion service response when present; the
+ * chat adapter does NOT synthesise the field. On the synchronous-intake
+ * path `affected_nodes` is normally absent (extraction has not yet run);
+ * the Owner polls `get_ingestion_status` to observe the consolidated set
+ * once `status === 'completed'` (BR-45 v2.5 amendment).
+ */
+export interface AffectedNode {
+  readonly id: string;
+  readonly canonical_name: string;
+  readonly node_type: string;
+}
+
 /** Envelope returned by the adapter — flows back to the chat-agent as the
  *  tool_result block (BR-07). Success carries the run identifiers; failure
- *  carries the standard `{code, message, details?}` shape. */
+ *  carries the standard `{code, message, details?}` shape.
+ *
+ *  TC-02 / BR-43 v2.5 — `result.affected_nodes` is OPTIONAL. The adapter
+ *  forwards the field VERBATIM from the ingestion service response when
+ *  present and OMITS the key entirely when absent (never `[]`, never `null`).
+ *  Today the ingestion intake response does NOT carry the field (extraction
+ *  has not yet run on `outcome:"created"`); the plumbing is forward-
+ *  compatible so a future change in `ingestRawInformation` flows through
+ *  without a chat-side code change. */
 export type StartAsyncIngestionEnvelope =
   | {
       readonly ok: true;
@@ -83,6 +106,7 @@ export type StartAsyncIngestionEnvelope =
         readonly raw_information_id: string;
         readonly status: "running" | "failed" | "completed";
         readonly chunk_count: number;
+        readonly affected_nodes?: readonly AffectedNode[];
       };
     }
   | {
@@ -289,6 +313,15 @@ export async function dispatchStartAsyncIngestion(
     chunk_count,
   } = intake.body;
 
+  // TC-02 / BR-43 v2.5 — extract `affected_nodes` VERBATIM from the ingestion
+  // response when present. `IngestRawInformationResponse` does NOT declare the
+  // field in v1.3.0 (the field belongs to the post-extraction `LLMRun` read
+  // surface — see `ingestion.back.md` BR-33); we read it through a wider lens
+  // so a future additive change in `ingestRawInformation` (or a stub returning
+  // the field for test xxii) flows through without a chat-side code change.
+  // We OMIT the key entirely on absence — never `[]`, never `null`.
+  const intakeAffectedNodes = extractAffectedNodes(intake.body);
+
   // --- Step 4 — Idempotent dedupe path --------------------------------------
   if (intakeOutcome === "noop_existing") {
     deps.logger.info(
@@ -309,6 +342,9 @@ export async function dispatchStartAsyncIngestion(
         raw_information_id,
         status: "running",
         chunk_count,
+        ...(intakeAffectedNodes !== undefined
+          ? { affected_nodes: intakeAffectedNodes }
+          : {}),
       },
     };
   }
@@ -370,6 +406,28 @@ export async function dispatchStartAsyncIngestion(
       raw_information_id,
       status: "running",
       chunk_count,
+      ...(intakeAffectedNodes !== undefined
+        ? { affected_nodes: intakeAffectedNodes }
+        : {}),
     },
   };
+}
+
+/**
+ * Extract `affected_nodes` from an ingestion response if it carries the
+ * field — defensive read that tolerates the field's absence (the common
+ * case in v1.3.0). Returns `undefined` on absence; an array (possibly
+ * empty) on presence. The chat envelope OMITS the key when this returns
+ * `undefined` (never `[]`, never `null` — TC-02 invariant).
+ */
+function extractAffectedNodes(
+  body: unknown
+): readonly AffectedNode[] | undefined {
+  if (body === null || typeof body !== "object") return undefined;
+  const field = (body as { affected_nodes?: unknown }).affected_nodes;
+  if (field === undefined) return undefined;
+  if (!Array.isArray(field)) return undefined;
+  // Verbatim pass-through — we trust the upstream contract and do NOT
+  // re-validate shape (the spec mandates "no chat-side transformation").
+  return field as readonly AffectedNode[];
 }
