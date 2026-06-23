@@ -202,6 +202,34 @@ describe("GraphNodeAdapter", () => {
     expect(node?.textContent).not.toContain("Pessoa");
   });
 
+  it("handles are visually hidden but still in the DOM (TC-01 floating-edge invariant)", () => {
+    // Floating-edge contract (TC-01 / REQ-1): handles MUST remain in the
+    // DOM so React Flow recognises this node as a routing endpoint, but
+    // they MUST NOT be visible nor capture pointer events — edges are
+    // routed via `useInternalNode` + `getEdgeParams` against the node's
+    // bounding rect, not the static handle offset. A regression that
+    // removed the `opacity-0` / `pointer-events-none` classes would let
+    // the handles bleed through the design-system node visual.
+    act(() =>
+      root.render(
+        withProvider(
+          <GraphNodeAdapter
+            {...makeProps({
+              data: { id: "node-1", type: "person", label: "Rodrigo" },
+            })}
+          />,
+        ),
+      ),
+    );
+    const handles = container.querySelectorAll(".react-flow__handle");
+    expect(handles.length).toBe(2);
+    handles.forEach((h) => {
+      const cls = (h as HTMLElement).className;
+      expect(cls).toContain("opacity-0");
+      expect(cls).toContain("pointer-events-none");
+    });
+  });
+
   it("does not import useChatTurnStore — structural unidirectionality (AC-U.3)", () => {
     // Structural assertion: the adapter source must not IMPORT the chat
     // turn store nor anything else from `@/features/chat`. We narrow the

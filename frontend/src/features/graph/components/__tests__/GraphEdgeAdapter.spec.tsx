@@ -20,7 +20,7 @@
  *  - No import of `useChatTurnStore` — structural unidirectionality
  *     (AC-U.3). Verified by source-file regex.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -29,6 +29,38 @@ import { resolve } from "node:path";
 import { Position, ReactFlowProvider } from "@xyflow/react";
 import { GraphEdgeAdapter } from "../GraphEdgeAdapter";
 import type { GraphEdgeAdapterProps } from "../GraphEdgeAdapter";
+
+// TC-01 floating-edge harness — GraphEdgeAdapter now reads node geometry
+// via `useInternalNode(source/target)`. In this unit harness we don't
+// bring up a full `<ReactFlow>` instance (no nodes are registered in the
+// store), so `useInternalNode` would return `undefined` and the edge
+// would render nothing — defeating the existing dasharray/colour/a11y
+// assertions which are independent of path geometry.
+//
+// We stub the hook to return a synthetic, measured `InternalNode` for any
+// id. The two endpoints sit at distinct positions so `getEdgeParams`
+// returns a valid (non-null) bezier path; the actual coordinates are
+// irrelevant — the existing tests inspect the path's `class` /
+// `stroke-dasharray` / `aria-hidden` attributes, not the `d` value.
+vi.mock("@xyflow/react", async () => {
+  const actual =
+    await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
+  return {
+    ...actual,
+    useInternalNode: (id: string) => ({
+      id,
+      data: {},
+      position: { x: 0, y: 0 },
+      measured: { width: 100, height: 50 },
+      internals: {
+        positionAbsolute:
+          id === "n2" ? { x: 200, y: 200 } : { x: 0, y: 0 },
+        z: 0,
+        userNode: {} as never,
+      },
+    }),
+  };
+});
 
 // React Flow's `<EdgeLabelRenderer>` reads from the ReactFlow zustand
 // store. Outside a `<ReactFlowProvider>` it throws — so we wrap every

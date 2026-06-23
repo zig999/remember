@@ -27,9 +27,15 @@
  *  - tokens.md §7 (link-type colours + temporal/stable stroke distinction)
  */
 import type { FC } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from "@xyflow/react";
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  useInternalNode,
+} from "@xyflow/react";
 import type { ConfidenceState } from "@/components/ds/StateBadge";
 import { cn } from "@/lib/cn";
+import { getEdgeParams } from "../../lib/edge-params";
 import type { GraphEdgeAdapterProps } from "./GraphEdgeAdapter.types";
 
 /**
@@ -94,16 +100,21 @@ function stateStrokeClass(state: ConfidenceState | undefined): string | null {
 
 export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
   id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
+  source,
+  target,
   data,
   markerEnd,
   selected,
 }) => {
+  // Floating-edge geometry — read live node geometry via React Flow's
+  // internal-node hook. The RF-injected sourceX/Y/targetX/Y values come
+  // from the fixed `<Handle>` offsets and are intentionally NOT used here
+  // (see GraphEdge.spec §1 + §6 Do/Don't). These hooks subscribe to the
+  // RF store and re-render this edge whenever either endpoint node moves
+  // or is re-measured.
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+
   // Defensive: React Flow may briefly call the edge renderer without `data`
   // during reconciliation (e.g. mid-reveal). Render nothing in that case
   // instead of crashing.
@@ -111,13 +122,21 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
     return null;
   }
 
+  // If either node is unmeasured (still mounting, or zero-sized), render
+  // nothing — `getEdgeParams` returns `null` to signal the unmeasured
+  // state explicitly (no fallback to 0/0 — see GraphEdge.spec §6).
+  const params = getEdgeParams(sourceNode, targetNode);
+  if (!params) {
+    return null;
+  }
+
   const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
+    sourceX: params.sourceX,
+    sourceY: params.sourceY,
+    sourcePosition: params.sourcePos,
+    targetX: params.targetX,
+    targetY: params.targetY,
+    targetPosition: params.targetPos,
   });
 
   // Stroke colour: confidence-state override wins; otherwise link-type token.
