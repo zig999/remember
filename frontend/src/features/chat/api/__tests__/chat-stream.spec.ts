@@ -66,6 +66,40 @@ describe("parseSSEFrame", () => {
     });
   });
 
+  /* ----- async-ingestion in-stream error codes (TC-FE-02 / chat.feature.spec.md v1.2.0 §6) -----
+   *
+   * When `CHAT_INGEST_ENABLED=true`, the BFF can reject `start_async_ingestion`
+   * via the layered-validation step (`STRUCTURAL_INVALID`) or report that
+   * Postgres is unreachable during intake (`SYSTEM_SERVICE_UNAVAILABLE`).
+   * Both are in-stream-but-NOT-terminal: the BFF feeds the failure back to the
+   * model as a `tool_result` block and the stream continues (chat.back.md v2.4
+   * BR-43 step 2 / BR-45). For the parser these are just plain `error` frames
+   * — no special branch. The tests pin the discriminated-union shape so a
+   * future "filter out non-terminal errors" refactor would fail loudly here.
+   */
+
+  it("parses STRUCTURAL_INVALID as a normal error frame (async-ingest layered-validation rejection)", () => {
+    const out = parseSSEFrame(
+      'event: error\ndata: {"code":"STRUCTURAL_INVALID","message":"content too large"}',
+    );
+    expect(out).toEqual({
+      type: "error",
+      code: "STRUCTURAL_INVALID",
+      message: "content too large",
+    });
+  });
+
+  it("parses SYSTEM_SERVICE_UNAVAILABLE as a normal error frame (async-ingest intake DB down)", () => {
+    const out = parseSSEFrame(
+      'event: error\ndata: {"code":"SYSTEM_SERVICE_UNAVAILABLE","message":"ingestion unavailable"}',
+    );
+    expect(out).toEqual({
+      type: "error",
+      code: "SYSTEM_SERVICE_UNAVAILABLE",
+      message: "ingestion unavailable",
+    });
+  });
+
   it("tolerates CRLF line endings (some proxies upgrade \\n to \\r\\n)", () => {
     const out = parseSSEFrame(
       'event: text_delta\r\ndata: {"delta":"hi"}',

@@ -169,6 +169,12 @@ export function parseSSEFrame(block: string): ChatSSEFrame | null {
       return { type: "text_delta", delta };
     }
     case "tool_start": {
+      // chat.feature.spec.md v1.2.0 §4: when `CHAT_INGEST_ENABLED=true`, the
+      // catalog also includes `start_async_ingestion` and `get_ingestion_status`.
+      // These are **non-graph tools** — no `graph_delta` frame is emitted for
+      // them. The parser stays tool-agnostic (it just forwards the name); the
+      // dispatcher in `useSendMessage` filters which tools flip the graph
+      // column.
       const tool = p["tool"];
       const argsSummary = p["args_summary"];
       if (typeof tool !== "string" || typeof argsSummary !== "string") {
