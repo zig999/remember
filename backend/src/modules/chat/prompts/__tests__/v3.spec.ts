@@ -269,6 +269,60 @@ describe("v3.system(catalog) — block 4A ONTOLOGY (BR-18 v3, Testing xix)", () 
 // (xx) Block 4B — SEARCH DISCIPLINE directives (regex-matched, pt-BR)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Block 4A — defensive branches (arch/QA Low): catalog rows that reference an
+// unresolvable node_type_id must NOT crash the renderer (the IDs are
+// unreachable in practice thanks to DB FK constraints, but the renderer guards
+// them defensively — these tests lock that guard).
+// ---------------------------------------------------------------------------
+
+describe("renderOntologyBlock — defensive: unresolvable ids (Low edge)", () => {
+  it("skips a LinkTypeRule whose source/target node_type_id is unresolvable (no throw, pair omitted)", () => {
+    const catalog = buildSnapshot({
+      nodeTypes: [NT_PERSON, NT_PROJECT],
+      linkTypes: [LT_OWNS],
+      linkTypeRules: [
+        RULE_PERSON_OWNS_PROJECT,
+        // Dangling target — must be skipped, not rendered, not thrown.
+        {
+          id: "rule-dangling",
+          link_type_id: "lt-owns",
+          source_node_type_id: "nt-person",
+          target_node_type_id: "nt-DOES-NOT-EXIST",
+          valid_from: null,
+          valid_to: null,
+        },
+      ],
+      attributeKeys: [],
+    });
+    const out = renderOntologyBlock(catalog);
+    // The valid pair renders; the dangling rule contributes nothing.
+    expect(out).toContain("Person -> Project");
+    expect(out).not.toContain("nt-DOES-NOT-EXIST");
+    // The LinkType line itself still renders (with only its resolvable pair).
+    expect(out).toContain("- owns:");
+  });
+
+  it("renders '?' as the owner of an AttributeKey whose node_type_id is unresolvable (no throw)", () => {
+    const catalog = buildSnapshot({
+      nodeTypes: [NT_PROJECT],
+      linkTypes: [],
+      linkTypeRules: [],
+      attributeKeys: [
+        {
+          ...AK_PROJECT_STATUS,
+          id: "ak-orphan",
+          node_type_id: "nt-DOES-NOT-EXIST",
+          key: "orphan_attr",
+        },
+      ],
+    });
+    const out = renderOntologyBlock(catalog);
+    expect(out).toContain("?.orphan_attr");
+    expect(out).not.toContain("nt-DOES-NOT-EXIST");
+  });
+});
+
 describe("v3.system(catalog) — block 4B SEARCH DISCIPLINE (BR-18 v3, Testing xx)", () => {
   it("contains the directive that `search` is lexical AND", () => {
     const out = v3System(buildFixtureCatalog());

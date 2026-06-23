@@ -42,6 +42,7 @@ import { ingestRawInformation } from "../../ingestion/service/ingestion.service.
 import { runLlmExtraction } from "../../ingestion/service/extraction.service.js";
 import type { RunExtractionDeps } from "../../ingestion/service/extraction.service.js";
 import type { CatalogSnapshot } from "../../ingestion/catalog/catalog.js";
+import type { AffectedNode } from "../../ingestion/service/affected-nodes.js";
 import { DEFAULT_PROMPT_VERSION } from "../../ingestion/prompts/index.js";
 import { DEFAULT_INGEST_MODEL } from "../../ingestion/mcp/ingest-document.handler.js";
 import { SourceTypeSchema } from "../../ingestion/dto/source-type.js";
@@ -74,17 +75,15 @@ export type StartAsyncIngestionInput = z.infer<
 /**
  * One entry of `result.affected_nodes` (TC-02 / BR-43 v2.5 amendment).
  *
- * Carried VERBATIM from the ingestion service response when present; the
- * chat adapter does NOT synthesise the field. On the synchronous-intake
- * path `affected_nodes` is normally absent (extraction has not yet run);
- * the Owner polls `get_ingestion_status` to observe the consolidated set
- * once `status === 'completed'` (BR-45 v2.5 amendment).
+ * Re-exported from the canonical declaration in the ingestion service
+ * (`affected-nodes.ts`) — the adapter carries the field VERBATIM and does NOT
+ * synthesise it, so the shape MUST stay the single source of truth there
+ * (arch review P1: no local redeclaration). On the synchronous-intake path
+ * `affected_nodes` is normally absent (extraction has not yet run); the Owner
+ * polls `get_ingestion_status` to observe the consolidated set once
+ * `status === 'completed'` (BR-45 v2.5 amendment).
  */
-export interface AffectedNode {
-  readonly id: string;
-  readonly canonical_name: string;
-  readonly node_type: string;
-}
+export type { AffectedNode };
 
 /** Envelope returned by the adapter — flows back to the chat-agent as the
  *  tool_result block (BR-07). Success carries the run identifiers; failure
