@@ -47,6 +47,7 @@ import type { Pool } from "pg";
 import type { Env } from "../../../config/env.js";
 import type { McpServer } from "../../../mcp/server.js";
 import type { CatalogSnapshot } from "../../knowledge-graph/catalog/catalog.js";
+import type { CatalogSnapshot as IngestionCatalogSnapshot } from "../../ingestion/catalog/catalog.js";
 import {
   withReadOnly,
   withTransaction,
@@ -58,9 +59,14 @@ import type {
 } from "../repository/chat.repository.js";
 import {
   buildChatToolCatalog,
+  CHAT_INGEST_TOOL_NAMES,
   CHAT_TOOL_NAMES,
   type ResolvedChatToolCatalog,
 } from "../service/tool-catalog.js";
+import {
+  dispatchStartAsyncIngestion,
+  type StartAsyncIngestionEnvelope,
+} from "../service/ingest-adapter.js";
 import {
   normalizeToolResult,
   type GraphDeltaWire,
@@ -134,6 +140,16 @@ export interface ChatRouteDeps {
    * is generated. The eight non-SSE endpoints do NOT need the catalog.
    */
   readonly catalog?: CatalogSnapshot;
+  /**
+   * Optional ingestion catalog snapshot (v2.4 / BR-43). Required to drive the
+   * `start_async_ingestion` chat dispatcher — `runLlmExtraction` (UC-12 of
+   * ingestion) consumes this snapshot for the 5-layer validation pipeline.
+   * Threaded through `service/ingest-adapter.ts`. When absent OR when
+   * `env.CHAT_INGEST_ENABLED !== true` the route does NOT wire the ingestion
+   * dispatcher; the chat catalog still resolves to 13 entries and the model
+   * has no ingestion offer.
+   */
+  readonly ingestionCatalog?: IngestionCatalogSnapshot;
 }
 
 /**
@@ -161,6 +177,21 @@ export async function registerChatRoutes(
     maxContentLength: deps.env.MAX_CONTENT_LENGTH,
   });
 
+  // BR-44 step 4: emit the structured boot log so the v2.4 rollout state is
+  // auditable. The `tool_count` reflects what the catalog WILL resolve at the
+  // first sendMessage request (13 when `CHAT_INGEST_ENABLED=false`; 15 when
+  // true AND both ingestion entries register in time; 13 when true but the
+  // defensive-degradation path fires per BR-44 step 6). We compute the count
+  // by INSPECTING the registry HERE — at this point the `ingest` toolset is
+  // already populated (boot order: ingestion registers FIRST, chat routes
+  // mount AFTER). When `app.ts` mounts the chat routes before `ingest` is
+  // populated the count will be 13, which is the legal v2.0 fallback. The
+  // sticky-cache effect of `buildChatToolCatalog` means a partial resolution
+  // discovered at first request will match this boot log; on the rare
+  // race-where-the-count-differs the discrepancy is itself an observable
+  // signal of a deployment bug.
+  emitChatBootLog(deps);
+
   // Factory + utility client — wired once and shared across requests.
   const anthropicFactory: AnthropicFactory =
     deps.anthropicFactory ?? defaultAnthropicFactory;
@@ -185,11 +216,21 @@ export async function registerChatRoutes(
    * Lazy initialiser for the chat-agent service. Returns the service when the
    * catalog resolves; otherwise records the miss (BR-05) and returns
    * `undefined`. Idempotent — subsequent calls return the cached state.
+   *
+   * v2.4 (BR-44): `buildChatToolCatalog` now takes `(mcp, env, logger?)` —
+   * `env.CHAT_INGEST_ENABLED` gates the inclusion of the two ingestion entries.
+   * When the flag is true AND the `ingest` toolset exposes both names AND a
+   * `deps.ingestionCatalog` is wired, we also pre-build the ingest-adapter
+   * dispatcher so the agentic loop can short-circuit `start_async_ingestion`
+   * (BR-43). On the defensive-degradation path (BR-44 step 6) the catalog
+   * silently falls back to 13 entries; the adapter is NOT wired and the
+   * dispatcher is undefined — the model has no `start_async_ingestion` offer
+   * because the catalog never advertised it.
    */
   function getChatAgentLazy(): ChatAgentServiceWithStats | undefined {
     if (cachedService !== undefined) return cachedService;
     if (catalogState === "missing") return undefined;
-    const catalog = buildChatToolCatalog(deps.mcp);
+    const catalog = buildChatToolCatalog(deps.mcp, deps.env, deps.logger);
     if (catalog === undefined) {
       catalogState = "missing";
       deps.logger.error(
@@ -203,7 +244,13 @@ export async function registerChatRoutes(
       return undefined;
     }
     try {
-      cachedService = buildChatService(catalog, deps, anthropicFactory);
+      const ingestDispatcher = buildIngestDispatcher(catalog, deps);
+      cachedService = buildChatService(
+        catalog,
+        deps,
+        anthropicFactory,
+        ingestDispatcher
+      );
     } catch (err) {
       if (err instanceof ChatDisabledError) {
         catalogState = "resolved";
@@ -1110,7 +1157,8 @@ function sendNotFound(reply: FastifyReply, id: string): FastifyReply {
 function buildChatService(
   catalog: ResolvedChatToolCatalog,
   deps: ChatRouteDeps,
-  anthropicFactory: AnthropicFactory
+  anthropicFactory: AnthropicFactory,
+  ingestDispatcher: ((input: unknown) => Promise<StartAsyncIngestionEnvelope>) | undefined
 ): ChatAgentServiceWithStats {
   return createChatAgentService({
     mcp: deps.mcp,
@@ -1119,7 +1167,63 @@ function buildChatService(
     catalog,
     anthropicFactory,
     ...(deps.now !== undefined ? { now: deps.now } : {}),
+    ...(ingestDispatcher !== undefined ? { ingestDispatcher } : {}),
   });
+}
+
+/**
+ * Build the `start_async_ingestion` dispatcher (BR-43) by currying the
+ * `ingestion`-side dependencies onto `dispatchStartAsyncIngestion`. Returns
+ * `undefined` when:
+ *   1. The catalog did NOT include `start_async_ingestion` (CHAT_INGEST_ENABLED
+ *      is false OR the defensive-degradation path of BR-44 step 6 fired).
+ *   2. The ingestion catalog snapshot was not threaded in by `app.ts` — the
+ *      adapter requires it for the 5-layer validation pipeline.
+ *
+ * When the dispatcher is undefined AND the model emits `start_async_ingestion`
+ * regardless (it should not — the tool will not be in the Anthropic `tools[]`),
+ * the agentic loop's BR-10 unknown-tool guard surfaces a
+ * `VALIDATION_INVALID_FORMAT` envelope.
+ */
+function buildIngestDispatcher(
+  catalog: ResolvedChatToolCatalog,
+  deps: ChatRouteDeps
+): ((input: unknown) => Promise<StartAsyncIngestionEnvelope>) | undefined {
+  // BR-44 step 6 — the catalog is the authoritative gate. If
+  // `start_async_ingestion` is not in the resolved catalog, the model is not
+  // advertised the tool and there is nothing to dispatch.
+  if (catalog["start_async_ingestion"] === undefined) {
+    return undefined;
+  }
+  if (deps.ingestionCatalog === undefined) {
+    // Misconfiguration: the chat catalog wants to advertise the tool but the
+    // route was not handed an ingestion catalog snapshot. Log ERROR and skip
+    // wiring — the model still sees `start_async_ingestion` in the tools[]
+    // array but the BR-10 unknown-tool guard will return
+    // VALIDATION_INVALID_FORMAT on dispatch (the catalog handler is the
+    // ingestion MCP one, but driving it without the catalog snapshot would
+    // crash inside `runLlmExtraction`). The Owner discovers the misrouting via
+    // a failed `tool_result` block fed back to the model.
+    deps.logger.error(
+      {
+        event: "chat.ingest_dispatcher_unwired",
+        reason: "ingestion_catalog_absent",
+      },
+      "chat ingest dispatcher cannot be wired — ingestion catalog snapshot is missing"
+    );
+    return undefined;
+  }
+  const ingestionCatalog = deps.ingestionCatalog;
+  const env = deps.env as Env & { readonly INGEST_MODEL?: string };
+  return async (input: unknown): Promise<StartAsyncIngestionEnvelope> => {
+    return dispatchStartAsyncIngestion(input, {
+      pool: deps.pool,
+      logger: deps.logger,
+      catalog: ingestionCatalog,
+      anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
+      ...(env.INGEST_MODEL !== undefined ? { ingestModel: env.INGEST_MODEL } : {}),
+    });
+  };
 }
 
 function computeMissingToolNames(mcp: McpServer): string[] {
@@ -1128,6 +1232,59 @@ function computeMissingToolNames(mcp: McpServer): string[] {
     if (mcp.getTool("query", name) === undefined) missing.push(name);
   }
   return missing;
+}
+
+/**
+ * Emit the BR-44 step 4 boot log `chat.boot{chat_ingest_enabled, tool_count}`.
+ *
+ * The log is structured so a grep on `event=chat.boot` reveals the v2.4
+ * rollout state across deployments without reading source. Fields:
+ *   - `chat_ingest_enabled` mirrors `env.CHAT_INGEST_ENABLED` literally.
+ *   - `tool_count` is the count of tools the catalog WILL advertise (13 or
+ *     15). Computed by probing the in-process MCP registry at boot — this is
+ *     identical to what `buildChatToolCatalog` does lazily at first request.
+ *   - `ingest_dispatcher_wired` is the side-effect outcome: `true` when the
+ *     route will route `start_async_ingestion` through the chat-side adapter,
+ *     `false` otherwise (flag off OR ingestion catalog missing OR ingest tools
+ *     not registered in the MCP).
+ *
+ * Emitted at INFO level — boot diagnostics belong to the operational baseline.
+ */
+function emitChatBootLog(deps: ChatRouteDeps): void {
+  const ingestFlagOn = deps.env.CHAT_INGEST_ENABLED === true;
+  // Count what the catalog WILL resolve. The query portion is required; if
+  // any name is missing, the catalog is `undefined` (tool_count = 0). The
+  // ingest portion is conditional on the flag AND on both names being
+  // present.
+  let queryResolved = 0;
+  for (const name of CHAT_TOOL_NAMES) {
+    if (deps.mcp.getTool("query", name) !== undefined) queryResolved += 1;
+  }
+  let ingestResolved = 0;
+  if (ingestFlagOn) {
+    for (const name of CHAT_INGEST_TOOL_NAMES) {
+      if (deps.mcp.getTool("ingest", name) !== undefined) ingestResolved += 1;
+    }
+  }
+  // The catalog is dropped entirely when the query portion is incomplete
+  // (BR-05). When complete, the ingest portion is all-or-nothing (BR-44 §6).
+  const ingestPortionAdvertised =
+    ingestFlagOn && ingestResolved === CHAT_INGEST_TOOL_NAMES.length;
+  const toolCount =
+    queryResolved === CHAT_TOOL_NAMES.length
+      ? CHAT_TOOL_NAMES.length + (ingestPortionAdvertised ? CHAT_INGEST_TOOL_NAMES.length : 0)
+      : 0;
+  const ingestDispatcherWired =
+    ingestPortionAdvertised && deps.ingestionCatalog !== undefined;
+  deps.logger.info(
+    {
+      event: "chat.boot",
+      chat_ingest_enabled: ingestFlagOn,
+      tool_count: toolCount,
+      ingest_dispatcher_wired: ingestDispatcherWired,
+    },
+    "chat module routes registered"
+  );
 }
 
 function writeSseHeaders(reply: FastifyReply): void {

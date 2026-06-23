@@ -144,4 +144,69 @@ describe("chat/args-summary", () => {
     expect([...s].length).toBeLessThanOrEqual(ARGS_SUMMARY_MAX_CHARS);
     expect(s).toBe(`query="${"a".repeat(60)}"`);
   });
+
+  // -------------------------------------------------------------------------
+  // v2.4 — TC-05 acceptance criteria
+  // -------------------------------------------------------------------------
+
+  // BR-43 step 5 / BR-09: redact content to its length only.
+  it("start_async_ingestion: emits source_type and content_len only — NEVER raw content", () => {
+    const content = "This is a confidential meeting transcript. Lorem ipsum dolor sit amet.";
+    const s = buildArgsSummary("start_async_ingestion", {
+      source_type: "transcript",
+      content,
+    });
+    // Format: "source_type=<value> content_len=<n>"
+    expect(s).toBe(`source_type=transcript content_len=${[...content].length}`);
+    // Anti-leak invariant: the raw content MUST NOT appear in the summary.
+    expect(s).not.toContain("confidential");
+    expect(s).not.toContain("Lorem ipsum");
+  });
+
+  // BR-09: content_len is computed in Unicode code points, not UTF-16 code units.
+  it("start_async_ingestion: content_len counts Unicode code points", () => {
+    // 4 emoji = 4 code points (each is a surrogate pair = 2 UTF-16 units, i.e.
+    // 8 .length characters). The summary MUST report 4, not 8.
+    const content = "👋🌍🎉🚀";
+    const s = buildArgsSummary("start_async_ingestion", {
+      source_type: "note",
+      content,
+    });
+    expect(s).toBe("source_type=note content_len=4");
+  });
+
+  // BR-09: very large content stays bounded — only its length is surfaced.
+  it("start_async_ingestion: 10 MiB content surfaces as a small numeric length", () => {
+    const big = "x".repeat(1_000_000);
+    const s = buildArgsSummary("start_async_ingestion", {
+      source_type: "document",
+      content: big,
+    });
+    expect(s).toBe("source_type=document content_len=1000000");
+    expect([...s].length).toBeLessThanOrEqual(ARGS_SUMMARY_MAX_CHARS);
+  });
+
+  // BR-09: fallback when required fields missing.
+  it("start_async_ingestion: missing source_type or content -> fallback", () => {
+    expect(buildArgsSummary("start_async_ingestion", { source_type: "note" })).toBe(
+      "1 keys"
+    );
+    expect(buildArgsSummary("start_async_ingestion", { content: "x" })).toBe(
+      "1 keys"
+    );
+  });
+
+  // BR-45 step 5: get_ingestion_status emits llm_run_id.
+  it("get_ingestion_status: emits llm_run_id only", () => {
+    const s = buildArgsSummary("get_ingestion_status", { llm_run_id: UUID_A });
+    expect(s).toBe(`llm_run_id=${UUID_A}`);
+  });
+
+  // BR-09: fallback when llm_run_id missing.
+  it("get_ingestion_status: missing llm_run_id -> fallback", () => {
+    expect(buildArgsSummary("get_ingestion_status", {})).toBe("0 keys");
+    expect(buildArgsSummary("get_ingestion_status", { other: "x" })).toBe(
+      "1 keys"
+    );
+  });
 });

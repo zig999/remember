@@ -2023,3 +2023,168 @@ describe("POST /conversations/:id/messages — TC-be-002 graph_delta SSE project
     await app.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// TC-05 — BR-44 step 4: boot log on registration
+// ---------------------------------------------------------------------------
+
+describe("registerChatRoutes — BR-44 boot log", () => {
+  /**
+   * Capture pino records by wiring a destination stream. Each `info`/`warn`/
+   * `error` call lands as one JSON object in the array.
+   */
+  function buildCapturingLogger(): { logger: pino.Logger; records: unknown[] } {
+    const records: unknown[] = [];
+    const stream = {
+      write(line: string): void {
+        try {
+          records.push(JSON.parse(line));
+        } catch {
+          // pino sometimes flushes partial chunks; ignore unparseable lines.
+        }
+      },
+    };
+    const logger = pino({ level: "info" }, stream as never);
+    return { logger, records };
+  }
+
+  function findBootRecord(records: readonly unknown[]):
+    | {
+        event: string;
+        chat_ingest_enabled: boolean;
+        tool_count: number;
+        ingest_dispatcher_wired: boolean;
+      }
+    | undefined {
+    return records.find(
+      (r) =>
+        typeof r === "object" &&
+        r !== null &&
+        (r as { event?: unknown }).event === "chat.boot"
+    ) as
+      | {
+          event: string;
+          chat_ingest_enabled: boolean;
+          tool_count: number;
+          ingest_dispatcher_wired: boolean;
+        }
+      | undefined;
+  }
+
+  it("emits chat.boot{chat_ingest_enabled=false, tool_count=13} when the feature flag is off", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = { ...baseEnv, CHAT_INGEST_ENABLED: false } as Env;
+    const mcp = buildMcpWithAllChatTools();
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const bootRecord = findBootRecord(records);
+    expect(bootRecord).toBeDefined();
+    expect(bootRecord!.chat_ingest_enabled).toBe(false);
+    expect(bootRecord!.tool_count).toBe(13);
+    expect(bootRecord!.ingest_dispatcher_wired).toBe(false);
+    await app.close();
+  });
+
+  it("emits chat.boot{chat_ingest_enabled=true, tool_count=15, ingest_dispatcher_wired=true} when the flag is on AND ingest tools + catalog are present", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = { ...baseEnv, CHAT_INGEST_ENABLED: true } as Env;
+    const mcp = buildMcpWithAllChatTools();
+    // Register the v2.4 ingestion entries so the catalog resolves 15.
+    mcp.registerTool("ingest", {
+      name: "start_async_ingestion",
+      description: "stub start_async_ingestion",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    mcp.registerTool("ingest", {
+      name: "get_ingestion_status",
+      description: "stub get_ingestion_status",
+      inputSchema: z.object({}).passthrough(),
+      handler: async () => ({ ok: true, result: {} }),
+    });
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    // Minimal-but-valid ingestion catalog shape — only its presence matters
+    // for the boot log path; the dispatcher is not invoked here.
+    const ingestionCatalog = {
+      nodeTypes: [],
+      linkTypes: [],
+      linkTypeRules: [],
+      attributeKeys: [],
+      attributeValidValues: new Map(),
+      promptVersionsByName: new Map(),
+    } as unknown as Parameters<typeof registerChatRoutes>[1]["ingestionCatalog"];
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+          ingestionCatalog,
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const bootRecord = findBootRecord(records);
+    expect(bootRecord).toBeDefined();
+    expect(bootRecord!.chat_ingest_enabled).toBe(true);
+    expect(bootRecord!.tool_count).toBe(15);
+    expect(bootRecord!.ingest_dispatcher_wired).toBe(true);
+    await app.close();
+  });
+
+  it("emits chat.boot{tool_count=13, ingest_dispatcher_wired=false} when the flag is ON but the ingest tools are MISSING (defensive degradation, BR-44 §6)", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = { ...baseEnv, CHAT_INGEST_ENABLED: true } as Env;
+    // 13 query tools registered; ingest toolset is NEVER populated.
+    const mcp = buildMcpWithAllChatTools();
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const bootRecord = findBootRecord(records);
+    expect(bootRecord).toBeDefined();
+    // Flag still surfaces its literal value — the rollout state must be
+    // visible even when the catalog falls back.
+    expect(bootRecord!.chat_ingest_enabled).toBe(true);
+    expect(bootRecord!.tool_count).toBe(13);
+    expect(bootRecord!.ingest_dispatcher_wired).toBe(false);
+    await app.close();
+  });
+});

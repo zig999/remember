@@ -280,6 +280,12 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
             // `graph_delta` frames. Forwarded as a conditional spread so
             // exactOptionalPropertyTypes does not see an explicit `undefined`.
             ...(catalog !== undefined ? { catalog } : {}),
+            // v2.4 (BR-43): the ingestion catalog snapshot drives the
+            // `start_async_ingestion` chat dispatcher (`ingest-adapter.ts`
+            // forwards it to `runLlmExtraction`'s 5-layer validation). When
+            // undefined OR `env.CHAT_INGEST_ENABLED !== true`, the route does
+            // NOT wire the dispatcher and the model has no ingestion offer.
+            ...(ingestionCatalog !== undefined ? { ingestionCatalog } : {}),
           });
         },
         { prefix: "/conversations" }
