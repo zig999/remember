@@ -951,3 +951,217 @@ describe("useSendMessage — chatStatus state machine (TC-FE-04)", () => {
     }
   });
 });
+
+/* -------------------------------------------------------------------------
+ * TC-FE-01 — Ingestion tools are non-graph (BDD Scenario 6, FEAT-01 §9).
+ *
+ * `start_async_ingestion` and `get_ingestion_status` are server-side tool
+ * dispatches inside the chat agentic loop, gated by `CHAT_INGEST_ENABLED=true`
+ * at the BFF (`chat.back.md` v2.4 / BR-43 / BR-44). On the SPA they MUST be
+ * handled by the SAME generic ToolCallChip path as any other non-graph tool:
+ *   1. `tool_start` → addToolChip pending; chatStatus → "tool_running"
+ *   2. `tool_result` → resolve chip ok/err; chatStatus → "streaming"
+ *   3. NO `graph_delta` is emitted for these tools (they don't read the graph)
+ *   4. `useGraphStore.status` MUST NOT flip to "loading" — they are not in
+ *      the GRAPH_TOOLS set ({ traverse, get_node, list_nodes, search }).
+ *
+ * Why this matters (Rule 9 — intent, not behavior): if a future refactor
+ * accidentally adds `start_async_ingestion` to GRAPH_TOOLS, the right pane
+ * would flicker into "loading" and stay there (no graph_delta ever lands →
+ * `settleTurn("done")` would still flip it to "ready" / "empty", but the
+ * intermediate "loading" state is wrong UX for an ingestion call). These
+ * tests fail loudly if the GRAPH_TOOLS invariant is broken for ingestion.
+ * ------------------------------------------------------------------------- */
+
+describe("useSendMessage — ingestion tools are non-graph (TC-FE-01)", () => {
+  it("start_async_ingestion: tool_start/tool_result render a generic chip and do NOT flip GraphStatus to 'loading'", async () => {
+    // Record every setStatus call on the graph store — assert "loading" is
+    // never invoked for ingestion tools (the non-graph branch).
+    const setStatusCalls: Array<{ s: string; m: string | undefined }> = [];
+    const realSetStatus = useGraphStore.getState().setStatus;
+    useGraphStore.setState({
+      setStatus: (status, message) => {
+        setStatusCalls.push({ s: status, m: message });
+        realSetStatus(status, message);
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"start_async_ingestion","args_summary":"source_type=text content_len=42"}\n\n',
+          'event: tool_result\ndata: {"tool":"start_async_ingestion","ok":true}\n\n',
+          'event: text_delta\ndata: {"delta":"Ingestão iniciada."}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().status).toBe("empty");
+    const h = mountHarness();
+    try {
+      let result: SendMessageResult | undefined;
+      await act(async () => {
+        result = await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "Ingerir este documento.",
+        } as never);
+      });
+      useGraphStore.setState({ setStatus: realSetStatus });
+
+      // Generic chip path: chip exists with the verbatim tool name and ok=true.
+      const s = useChatTurnStore.getState();
+      expect(s.toolChips).toEqual([
+        {
+          tool: "start_async_ingestion",
+          argsSummary: "source_type=text content_len=42",
+          ok: true,
+        },
+      ]);
+
+      // GraphStatus invariant: tool_start for a non-graph tool MUST NOT call
+      // setStatus("loading"). The store stays in its initial "empty" state.
+      const loadingCalls = setStatusCalls.filter((c) => c.s === "loading");
+      expect(loadingCalls).toHaveLength(0);
+      expect(useGraphStore.getState().status).toBe("empty");
+
+      // Turn completes normally — done frame produced a stop_reason.
+      expect(result?.stopReason).toBe("end_turn");
+      expect(result?.errorCode).toBeNull();
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("get_ingestion_status: tool_start/tool_result render a generic chip and do NOT flip GraphStatus to 'loading'", async () => {
+    const setStatusCalls: Array<{ s: string; m: string | undefined }> = [];
+    const realSetStatus = useGraphStore.getState().setStatus;
+    useGraphStore.setState({
+      setStatus: (status, message) => {
+        setStatusCalls.push({ s: status, m: message });
+        realSetStatus(status, message);
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"get_ingestion_status","args_summary":"run_id=abc"}\n\n',
+          'event: tool_result\ndata: {"tool":"get_ingestion_status","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().status).toBe("empty");
+    const h = mountHarness();
+    try {
+      let result: SendMessageResult | undefined;
+      await act(async () => {
+        result = await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "Como está a ingestão?",
+        } as never);
+      });
+      useGraphStore.setState({ setStatus: realSetStatus });
+
+      const s = useChatTurnStore.getState();
+      expect(s.toolChips).toEqual([
+        {
+          tool: "get_ingestion_status",
+          argsSummary: "run_id=abc",
+          ok: true,
+        },
+      ]);
+
+      const loadingCalls = setStatusCalls.filter((c) => c.s === "loading");
+      expect(loadingCalls).toHaveLength(0);
+      expect(useGraphStore.getState().status).toBe("empty");
+
+      expect(result?.stopReason).toBe("end_turn");
+      expect(result?.errorCode).toBeNull();
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("ingestion tools follow the chatStatus tool_running → streaming → idle path (no graph branch)", async () => {
+    // Indirect test of the generic dispatch path: the chatStatus sequence
+    // for a non-graph tool is identical whether the tool is `search` (graph)
+    // or `start_async_ingestion` (non-graph) — only the GraphStatus side
+    // effect differs. By pinning the sequence here we prove the dispatcher
+    // funnels ingestion tools through the generic addToolChip branch.
+    const calls: string[] = [];
+    const realSet = useChatTurnStore.getState().setChatStatus;
+    useChatTurnStore.setState({
+      setChatStatus: (next) => {
+        calls.push(next);
+        realSet(next);
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"start_async_ingestion","args_summary":"source_type=text content_len=10"}\n\n',
+          'event: tool_result\ndata: {"tool":"start_async_ingestion","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "x",
+        } as never);
+      });
+      useChatTurnStore.setState({ setChatStatus: realSet });
+
+      // Same sequence as the `search` (graph) tool — see the existing
+      // "tool_start → 'tool_running'; tool_result → back to 'streaming'"
+      // test above. The dispatcher does NOT special-case ingestion tools.
+      expect(calls).toEqual(["tool_running", "streaming", "idle"]);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("ingestion tools do not emit graph_delta and leave useGraphStore.nodes empty", async () => {
+    // A non-graph tool resolving with ok=true must not — by itself — cause
+    // the graph pane to mutate. The BFF does NOT emit `graph_delta` for
+    // ingestion tools (BR-43 / spec §12 out-of-scope note: "The graph_delta
+    // frame is not emitted for ingestion tools"). This test confirms the
+    // SPA observes that invariant: nodes Map stays empty across the turn.
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"start_async_ingestion","args_summary":"source_type=text content_len=10"}\n\n',
+          'event: tool_result\ndata: {"tool":"start_async_ingestion","ok":true}\n\n',
+          'event: tool_start\ndata: {"tool":"get_ingestion_status","args_summary":"run_id=abc"}\n\n',
+          'event: tool_result\ndata: {"tool":"get_ingestion_status","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().nodes.size).toBe(0);
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "ingerir e checar",
+        } as never);
+      });
+      // No graph_delta was emitted → store remains empty across the whole
+      // ingestion turn, even though two tool chips were rendered.
+      expect(useGraphStore.getState().nodes.size).toBe(0);
+      expect(useChatTurnStore.getState().toolChips).toHaveLength(2);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+});
