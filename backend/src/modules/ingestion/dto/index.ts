@@ -162,4 +162,13 @@ export const IngestToolDescriptions = {
     "`ingest_document` call timed out on your client (the server keeps extracting): " +
     "match your document by preview/source_type, then read its run_status here or via " +
     "`get_ingestion_status`. `limit` 1..50 (default 10). Read-only.",
+  start_async_ingestion:
+    "Ingest a whole document and IMMEDIATELY return the run id while extraction " +
+    "continues in the background. Use this instead of `ingest_document` when you " +
+    "cannot afford to block (chat turn, short client timeout): the server stores " +
+    "the raw text + chunks synchronously (< 1 s) and runs structured extraction " +
+    "(entities, relations, attributes, full provenance) asynchronously. Poll " +
+    "`get_ingestion_status` with the returned `llm_run_id` to learn the terminal " +
+    "outcome. Re-sending the same content is a no-op (returns the existing run, no " +
+    "new extraction). Arguments and defaults match `ingest_document` exactly.",
 } as const;
