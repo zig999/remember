@@ -78,6 +78,14 @@ export interface GraphLinkWire {
   readonly source_node_id: string;
   readonly target_node_id: string;
   readonly link_type: string;
+  /**
+   * Optional pt-BR display label of the LinkType, projected server-side from
+   * the catalog row (`link_type.label`). Additive in v2.4.0 — OMITTED when
+   * the slug is not present in the catalog snapshot (open-ontology fallback);
+   * the SPA then humanizes the slug client-side. The slug (`link_type`)
+   * remains the stable wire identifier; `link_type_label` is presentation-only.
+   */
+  readonly link_type_label?: string;
   readonly is_temporal: boolean;
   readonly is_in_effect?: boolean;
   readonly status?: string;
@@ -180,11 +188,16 @@ function pickLinkWire(
   const is_temporal = linkTypeRow?.is_temporal ?? false;
 
   // Optional fields — pass through when present + well-typed; otherwise omit.
+  // `link_type_label` (openapi v2.4.0, additive) projects the catalog's pt-BR
+  // label so the SPA can render the human form without a static slug->label
+  // table. When the slug is missing from the snapshot (open-ontology fallback)
+  // the field is OMITTED and the SPA humanizes the slug client-side.
   const out: GraphLinkWire = {
     id,
     source_node_id,
     target_node_id,
     link_type,
+    ...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {}),
     is_temporal,
     ...(typeof is_in_effect === "boolean" ? { is_in_effect } : {}),
     ...(typeof status === "string" ? { status } : {}),

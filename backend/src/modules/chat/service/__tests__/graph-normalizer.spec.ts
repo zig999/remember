@@ -208,6 +208,41 @@ describe("normalizeTraverse", () => {
     expect(delta.links[0]?.is_temporal).toBe(false);
   });
 
+  it("projects link_type_label from the catalog when the slug is known", () => {
+    // openapi.yaml v2.4.0 (GraphLinkWire.link_type_label): single source of
+    // truth is the catalog row's `label`. The SPA renders it instead of
+    // humanizing the slug client-side.
+    const catalog = buildTestCatalog();
+    const delta = normalizeTraverse(
+      {
+        nodes: [nodeSummary("n-1", "person", "Anna"), nodeSummary("n-2", "organization", "Acme")],
+        links: [
+          traversalLink({ id: "l-1", source: "n-1", target: "n-2", link_type: "reports_to" }),
+        ],
+      },
+      catalog
+    );
+    expect(delta.links[0]?.link_type_label).toBe("reports to");
+  });
+
+  it("OMITS link_type_label when the slug is missing from the catalog snapshot", () => {
+    // openapi.yaml v2.4.0: open-ontology fallback — the SPA humanizes the
+    // slug client-side. We must NOT emit a label fabricated from the slug.
+    const catalog = buildTestCatalog();
+    const delta = normalizeTraverse(
+      {
+        nodes: [nodeSummary("n-1", "person", "Anna"), nodeSummary("n-2", "organization", "Acme")],
+        links: [
+          traversalLink({ id: "l-1", source: "n-1", target: "n-2", link_type: "totally_unknown" }),
+        ],
+      },
+      catalog
+    );
+    const link = delta.links[0];
+    expect(link).toBeDefined();
+    expect(link && "link_type_label" in link).toBe(false);
+  });
+
   it("passes through optional link fields (status, flags, is_in_effect)", () => {
     const catalog = buildTestCatalog();
     const delta = normalizeTraverse(
