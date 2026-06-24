@@ -7,6 +7,7 @@
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
 import { StateBadge } from "@/components/ds/StateBadge";
+import { useCurationNodeDetail } from "../../api/node.hooks";
 import type { DisputedItemSide } from "../../types";
 
 export interface DisputeSideCardProps {
@@ -34,11 +35,26 @@ export const DisputeSideCard: FC<DisputeSideCardProps> = ({
   onSelect,
   className,
 }) => {
+  // LINK dispute sides carry a target node (no `value`); resolve its canonical
+  // name so the side reads "Apollo (Project)" instead of "—" (R3). ATTRIBUTE
+  // sides carry `value` and pass null here, so the query stays disabled.
+  const isLink = side.value === null && side.targetNodeId !== null;
+  const nodeQ = useCurationNodeDetail(isLink ? side.targetNodeId : null);
+  const targetName = nodeQ.data?.node.canonicalName;
+  const targetType = nodeQ.data?.node.nodeType;
+  const label = isLink
+    ? (targetName ??
+      (nodeQ.isPending
+        ? "Carregando…"
+        : `nó ${side.targetNodeId?.slice(0, 8) ?? "?"}`))
+    : (side.value ?? "—");
+
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
+      aria-label={label}
       onClick={() => onSelect(side.itemId)}
       className={cn(
         "flex w-full flex-col gap-sm rounded-md border p-md text-left transition",
@@ -48,7 +64,12 @@ export const DisputeSideCard: FC<DisputeSideCardProps> = ({
       )}
     >
       <span className="flex items-center justify-between gap-md">
-        <span className="font-medium text-content">{side.value ?? "—"}</span>
+        <span className="font-medium text-content">
+          {label}
+          {isLink && targetType && (
+            <span className="ml-sm text-caption text-muted">({targetType})</span>
+          )}
+        </span>
         <StateBadge state="disputed" size="sm" />
       </span>
       <span className="text-caption text-body">
