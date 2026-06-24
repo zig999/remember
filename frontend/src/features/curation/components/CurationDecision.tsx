@@ -75,7 +75,6 @@ export const CurationDecision: FC<CurationDecisionProps> = ({ item, queue }) => 
       serverError={dispatch.serverError}
       stale={dispatch.stale}
       submitting={dispatch.submitting}
-      className="h-full"
       actions={{
         onResolveEntityMatch: (body) => {
           if (item.kind !== "entity_match") return;

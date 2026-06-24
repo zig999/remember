@@ -210,10 +210,14 @@ export const CurationPage: FC = () => {
           )}
         </section>
 
-        {/* Decision column (with inline evidence) — fills the rest. */}
+        {/* Decision column (with inline evidence) — fills the rest and
+            scrolls INTERNALLY (min-h-0 + overflow-y-auto) so a tall dispute
+            panel never makes <main> scroll. Keeping the scroll in-column
+            keeps the scrollbar between the fixed header and footer instead
+            of running the full viewport height under them. */}
         <div
           data-testid="curation-decision-region"
-          className="flex min-h-0 flex-1 flex-col"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
         >
           {selectedFull ? (
             <CurationDecision item={selectedFull} queue={data} />
