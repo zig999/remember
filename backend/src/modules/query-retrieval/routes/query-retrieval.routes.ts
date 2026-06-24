@@ -4,11 +4,12 @@
 // already enforces Neon Auth JWT (BR-01); individual handlers do NOT
 // re-check the token.
 //
-// Endpoints (TC-06):
+// Endpoints (TC-06 + TC-be-002):
 //   - GET  /api/v1/search                              (UC-01)
 //   - GET  /api/v1/provenance/links/{link_id}          (UC-07)
 //   - GET  /api/v1/provenance/attributes/{attribute_id}(UC-08)
 //   - GET  /api/v1/provenance/fragments/{fragment_id}  (UC-09)
+//   - GET  /api/v1/fragments/accepted                  (TC-be-002, openapi v1.3.0)
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
@@ -21,6 +22,8 @@ import {
   LinkIdParamSchema,
   SearchQuerySchema,
 } from "../dto/search.dto.js";
+import { ListAcceptedFragmentsQuerySchema } from "../dto/fragment.dto.js";
+import { listAcceptedFragmentsService } from "../service/accepted-fragments.service.js";
 import {
   EmptyProvenanceError,
   FragmentNotAcceptedError,
@@ -146,6 +149,34 @@ export async function registerQueryRetrievalRoutes(
           fragment_id: params.fragment_id,
         });
       }
+    }
+  );
+
+  // ---------------------------------------------------------------
+  // GET /fragments/accepted  (TC-be-002, openapi v1.3.0)
+  //
+  // Lists `information_fragment` rows with `status = 'accepted'`
+  // filtered by `llm_run_id` and/or `raw_information_id` (at least
+  // one required). Tombstoned sources are silently omitted.
+  // ---------------------------------------------------------------
+  app.get(
+    "/fragments/accepted",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      // ZodError -> 422 VALIDATION_INVALID_FORMAT via the global handler.
+      const query = ListAcceptedFragmentsQuerySchema.parse(request.query ?? {});
+      return await withReadOnly(deps.pool, async (client) => {
+        const body = await listAcceptedFragmentsService(
+          client,
+          {
+            llm_run_id: query.llm_run_id,
+            raw_information_id: query.raw_information_id,
+            limit: query.limit,
+            offset: query.offset,
+          },
+          deps.logger
+        );
+        return reply.status(200).send({ ok: true, result: body });
+      });
     }
   );
 }
