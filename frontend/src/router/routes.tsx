@@ -32,6 +32,7 @@ import { Route as RootRoute } from "./__root";
 import { StubPage } from "./StubPage";
 import { SignInPage } from "./SignInPage";
 import { ChatWorkspace } from "@/features/chat/components/ChatWorkspace";
+import { CurationPage } from "@/features/curation/components/CurationPage";
 import { AppShell } from "@/shell/AppShell";
 import { useAuthStore } from "@/state/auth";
 
@@ -154,10 +155,29 @@ export const ingestRoute = createRoute({
   component: () => <StubPage title="Ingestão" testId="ingest-page" />,
 });
 
+/**
+ * Curation route — `/curation` (TC-04 of the curadoria-ui wave).
+ *
+ * `validateSearch` accepts a single optional `?item=<kind>:<id>` deep-link
+ * param. The string is preserved verbatim here — the page parses it via
+ * `parseItemSearchParam` (features/curation/state/curation-store.ts) so
+ * a malformed value silently falls through to first-item auto-select
+ * (curadoria.flow.md §3 row 3b).
+ *
+ * Same shape as `chatRoute.validateSearch`: empty or missing yields `{}`,
+ * keeping the URL clean (`/curation` not `/curation?item=`).
+ */
 export const curationRoute = createRoute({
   getParentRoute: () => protectedLayoutRoute,
   path: "/curation",
-  component: () => <StubPage title="Curadoria" testId="curation-page" />,
+  validateSearch: (search: Record<string, unknown>): { item?: string } => {
+    const raw = search.item;
+    if (typeof raw === "string" && raw.length > 0) {
+      return { item: raw };
+    }
+    return {};
+  },
+  component: () => <CurationPage />,
 });
 
 export const historyRoute = createRoute({
