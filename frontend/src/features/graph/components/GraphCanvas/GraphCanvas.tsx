@@ -47,6 +47,14 @@ import { Shuffle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { GraphLayoutAlgorithm } from "../../state/graph-store";
+import {
   GraphNodeAdapter,
   type GraphNode,
 } from "../GraphNodeAdapter";
@@ -55,6 +63,19 @@ import {
   type GraphEdge,
 } from "../GraphEdgeAdapter";
 import type { GraphCanvasProps } from "./GraphCanvas.types";
+
+/** User-facing labels for the algorithm Select (pt-BR per project i18n
+ *  policy). Centralised so tests and the JSX both read the same source. */
+const LAYOUT_ALGORITHM_LABELS: Record<GraphLayoutAlgorithm, string> = {
+  force: "Força",
+  tree: "Árvore",
+  radial: "Radial",
+};
+const LAYOUT_ALGORITHM_ORDER: readonly GraphLayoutAlgorithm[] = [
+  "force",
+  "tree",
+  "radial",
+];
 
 /**
  * `nodeTypes`/`edgeTypes` are referentially-stable maps — React Flow
@@ -134,6 +155,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   onNodeSelect,
   onNodePositionCommit,
   onResetLayout,
+  layoutAlgorithm,
+  onLayoutAlgorithmChange,
   ref,
   className,
 }) => {
@@ -300,23 +323,52 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       zoomOnScroll
       className={cn("h-full w-full", className)}
     >
-      {/* "Reorganizar" — re-flow the layout (discard user drags, re-run the
-          force pass). Shown only with a handler wired AND at least one node.
+      {/* Top-right control Panel — hosts both the algorithm Select (TC-02)
+          and the "Reorganizar" button. Shown only when the canvas has at
+          least one visible node AND at least one of the controls is wired:
+          a Panel with neither control is empty noise.
           React Flow's <Panel> overlays the canvas without affecting layout. */}
-      {onResetLayout && visibleNodes.length > 0 && (
-        <Panel position="top-right">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onResetLayout}
-            aria-label="Reorganizar o layout do grafo"
-          >
-            <Shuffle aria-hidden="true" className="size-4" />
-            Reorganizar
-          </Button>
-        </Panel>
-      )}
+      {visibleNodes.length > 0 &&
+        (onResetLayout || (layoutAlgorithm && onLayoutAlgorithmChange)) && (
+          <Panel position="top-right">
+            <div className="flex items-center gap-sm">
+              {layoutAlgorithm && onLayoutAlgorithmChange && (
+                <Select
+                  value={layoutAlgorithm}
+                  onValueChange={(v) =>
+                    onLayoutAlgorithmChange(v as GraphLayoutAlgorithm)
+                  }
+                >
+                  <SelectTrigger
+                    aria-label="Algoritmo de layout do grafo"
+                    className="w-auto min-w-3xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LAYOUT_ALGORITHM_ORDER.map((algo) => (
+                      <SelectItem key={algo} value={algo}>
+                        {LAYOUT_ALGORITHM_LABELS[algo]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {onResetLayout && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onResetLayout}
+                  aria-label="Reorganizar o layout do grafo"
+                >
+                  <Shuffle aria-hidden="true" className="size-4" />
+                  Reorganizar
+                </Button>
+              )}
+            </div>
+          </Panel>
+        )}
     </ReactFlow>
   );
 };

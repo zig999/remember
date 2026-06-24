@@ -111,6 +111,12 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
   const setNodePosition = useGraphStore((s) => s.setNodePosition);
   // "Reorganizar" (Phase 2) — re-flow the layout, discarding user drags.
   const resetLayout = useGraphStore((s) => s.resetLayout);
+  // TC-02 — algorithm picker. Both slices are read from the store here (not
+  // in GraphCanvas) so GraphCanvas stays a thin RF wrapper that takes
+  // primitive props. `layoutAlgorithm` is the value, `setLayoutAlgorithm`
+  // the setter — passed together to GraphCanvas.
+  const layoutAlgorithm = useGraphStore((s) => s.layoutAlgorithm);
+  const setLayoutAlgorithm = useGraphStore((s) => s.setLayoutAlgorithm);
 
   // Consume the reveal queue at the configured stagger. The hook owns the
   // status transition `"revealing" → "ready"` and the reduced-motion
@@ -149,6 +155,8 @@ const GraphCanvasRegion: FC<GraphCanvasRegionProps> = ({
         revealedIds={revealedIds}
         onNodePositionCommit={setNodePosition}
         onResetLayout={resetLayout}
+        layoutAlgorithm={layoutAlgorithm}
+        onLayoutAlgorithmChange={setLayoutAlgorithm}
         {...canvasNodeSelectProp}
         {...canvasRefProp}
       />

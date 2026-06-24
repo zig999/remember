@@ -24,14 +24,26 @@ import { http } from "@/lib/http";
 import { authHeader } from "@/features/chat/api/_request";
 import { useGraphStore } from "../state/graph-store";
 
-/** Wire shape of the snapshot stored in chat_graph_view.snapshot. */
-export interface GraphViewSnapshot {
-  readonly version: 1;
-  readonly nodes: unknown[];
-  readonly links: unknown[];
-  readonly positions: Record<string, { x: number; y: number }>;
-  readonly user_pinned: string[];
-}
+/** Wire shape of the snapshot stored in chat_graph_view.snapshot.
+ *  Discriminated by `version` — TC-02 bumps to v2 with an additive
+ *  `layout_algorithm` field. The hook accepts both versions on restore so
+ *  pre-TC-02 saved graphs keep working. */
+export type GraphViewSnapshot =
+  | {
+      readonly version: 1;
+      readonly nodes: unknown[];
+      readonly links: unknown[];
+      readonly positions: Record<string, { x: number; y: number }>;
+      readonly user_pinned: string[];
+    }
+  | {
+      readonly version: 2;
+      readonly nodes: unknown[];
+      readonly links: unknown[];
+      readonly positions: Record<string, { x: number; y: number }>;
+      readonly user_pinned: string[];
+      readonly layout_algorithm: "force" | "tree" | "radial";
+    };
 
 /**
  * Hook signature: receives the current conversationId string (or undefined
@@ -67,13 +79,26 @@ export function useGraphPersistence(
           hydratedFor.current = conversationId;
           // The snapshot is validated server-side. Cast nodes/links to their
           // typed forms — the wire schema and store types are aligned.
-          useGraphStore.getState().hydrate({
-            version: 1,
-            nodes: snapshot.nodes as import("../types").GraphNodeData[],
-            links: snapshot.links as import("../types").GraphLinkData[],
-            positions: snapshot.positions,
-            user_pinned: snapshot.user_pinned,
-          });
+          // v1 and v2 share the common fields; v2 also carries
+          // `layout_algorithm`. The store's `hydrate` accepts both.
+          if (snapshot.version === 2) {
+            useGraphStore.getState().hydrate({
+              version: 2,
+              nodes: snapshot.nodes as import("../types").GraphNodeData[],
+              links: snapshot.links as import("../types").GraphLinkData[],
+              positions: snapshot.positions,
+              user_pinned: snapshot.user_pinned,
+              layout_algorithm: snapshot.layout_algorithm,
+            });
+          } else {
+            useGraphStore.getState().hydrate({
+              version: 1,
+              nodes: snapshot.nodes as import("../types").GraphNodeData[],
+              links: snapshot.links as import("../types").GraphLinkData[],
+              positions: snapshot.positions,
+              user_pinned: snapshot.user_pinned,
+            });
+          }
         }
       } catch {
         // Restore is best-effort — a network error / 404 leaves the graph
