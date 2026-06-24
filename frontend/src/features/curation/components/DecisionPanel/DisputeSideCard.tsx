@@ -26,7 +26,10 @@ const SOURCE_LABEL: Readonly<
 });
 
 function fmt(d: Date | null): string {
-  return d === null ? "—" : d.toLocaleDateString("pt-BR");
+  // Format in UTC: valid_from/valid_to are DATE-ONLY values parsed to UTC
+  // midnight. Formatting in local time (BR = UTC-3) would shift them back a
+  // day (2026-06-17 → 16/06). UTC keeps the stored calendar date.
+  return d === null ? "—" : d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 export const DisputeSideCard: FC<DisputeSideCardProps> = ({

@@ -19,8 +19,12 @@ export interface PeriodTimelineProps {
   readonly className?: string;
 }
 
-function fmtYear(d: Date | null): string {
-  return d === null ? "em diante" : String(d.getUTCFullYear());
+// Full calendar date in UTC — year-only granularity collapsed same-year
+// disputes into identical text ("de 2026 em diante" on both sides), hiding
+// the distinct start dates AND the overlap that IS the conflict. UTC keeps
+// the stored date-only value from shifting a day in BR local time.
+function fmtDate(d: Date | null): string {
+  return d === null ? "" : d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 function describeSide(i: number, s: DisputedItemSide): string {
@@ -29,12 +33,12 @@ function describeSide(i: number, s: DisputedItemSide): string {
     return `Lado ${label}: sem datas registradas`;
   }
   if (s.validTo === null) {
-    return `Lado ${label}: vigente de ${fmtYear(s.validFrom)} em diante`;
+    return `Lado ${label}: vigente de ${fmtDate(s.validFrom)} em diante`;
   }
   if (s.validFrom === null) {
-    return `Lado ${label}: vigente até ${fmtYear(s.validTo)}`;
+    return `Lado ${label}: vigente até ${fmtDate(s.validTo)}`;
   }
-  return `Lado ${label}: vigente de ${fmtYear(s.validFrom)} a ${fmtYear(
+  return `Lado ${label}: vigente de ${fmtDate(s.validFrom)} a ${fmtDate(
     s.validTo,
   )}`;
 }
