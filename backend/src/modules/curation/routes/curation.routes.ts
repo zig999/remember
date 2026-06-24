@@ -142,7 +142,12 @@ export async function registerCurationRoutes(
           pool: deps.pool,
           logger: deps.logger,
         });
-        return reply.status(200).send({ ok: true, result });
+        // Bare success body — consistent with every other curation REST
+        // endpoint (queue/confirm/reject/...). The SPA's httpCuration returns
+        // the raw 2xx JSON, so an `{ ok, result }` wrapper here would surface
+        // as all-undefined fields client-side (toCurationMetrics → parseIso
+        // throws on `computed_at`). Error/degraded paths stay enveloped below.
+        return reply.status(200).send(result);
       } catch (err) {
         // Apply the shared mapper first to get the canonical envelope; THEN
         // re-map residual 500 → 503 per BR-33's graceful-degradation contract.

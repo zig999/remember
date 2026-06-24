@@ -891,7 +891,7 @@ export async function aggregateCurationMetrics(
            FROM knowledge_link
           WHERE status = 'disputed'
          UNION ALL
-         SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL
+         SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid
            FROM node_attribute
           WHERE status = 'disputed'
        ) g`

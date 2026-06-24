@@ -2246,35 +2246,32 @@ describe("Curation — BR-33 GET /metrics", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
+      // Bare success body — consistent with every other curation REST
+      // endpoint (the SPA's httpCuration returns the raw 2xx JSON; an
+      // `{ ok, result }` wrapper would surface as all-undefined fields and
+      // throw in toCurationMetrics). Error/degraded paths stay enveloped.
       const body = res.json() as {
-        ok: boolean;
-        result: {
-          accept_rate: number;
-          reject_rate_by_code: Record<string, number>;
-          needs_review_count: number;
-          uncertain_count: number;
-          disputed_count: number;
-          entity_match_queue_count: number;
-          disputed_queue_count: number;
-          computed_at: string;
-        };
+        accept_rate: number;
+        reject_rate_by_code: Record<string, number>;
+        needs_review_count: number;
+        uncertain_count: number;
+        disputed_count: number;
+        entity_match_queue_count: number;
+        disputed_queue_count: number;
+        computed_at: string;
       };
-      // Envelope: { ok: true, result } per task spec.
-      expect(body.ok).toBe(true);
       // Zero-division convention: empty curation_action → accept_rate = 0.
-      expect(body.result.accept_rate).toBe(0);
+      expect(body.accept_rate).toBe(0);
       // The empty map is surfaced as `{}` — NEVER omitted.
-      expect(body.result.reject_rate_by_code).toEqual({});
-      expect(body.result.needs_review_count).toBe(0);
-      expect(body.result.uncertain_count).toBe(0);
-      expect(body.result.disputed_count).toBe(0);
-      expect(body.result.entity_match_queue_count).toBe(0);
-      expect(body.result.disputed_queue_count).toBe(0);
+      expect(body.reject_rate_by_code).toEqual({});
+      expect(body.needs_review_count).toBe(0);
+      expect(body.uncertain_count).toBe(0);
+      expect(body.disputed_count).toBe(0);
+      expect(body.entity_match_queue_count).toBe(0);
+      expect(body.disputed_queue_count).toBe(0);
       // ISO-8601 wall-clock anchor.
-      expect(typeof body.result.computed_at).toBe("string");
-      expect(new Date(body.result.computed_at).toString()).not.toBe(
-        "Invalid Date"
-      );
+      expect(typeof body.computed_at).toBe("string");
+      expect(new Date(body.computed_at).toString()).not.toBe("Invalid Date");
     } finally {
       await app.close();
     }
@@ -2471,35 +2468,32 @@ describe("Curation — BR-33 GET /metrics", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(200);
+      // Bare success body (see the cold-start metrics test above).
       const body = res.json() as {
-        ok: boolean;
-        result: {
-          accept_rate: number;
-          reject_rate_by_code: Record<string, number>;
-          needs_review_count: number;
-          uncertain_count: number;
-          disputed_count: number;
-          entity_match_queue_count: number;
-          disputed_queue_count: number;
-        };
+        accept_rate: number;
+        reject_rate_by_code: Record<string, number>;
+        needs_review_count: number;
+        uncertain_count: number;
+        disputed_count: number;
+        entity_match_queue_count: number;
+        disputed_queue_count: number;
       };
-      expect(body.ok).toBe(true);
       // accept_rate = 6 / 8 = 0.75 (in [0,1]).
-      expect(body.result.accept_rate).toBeCloseTo(0.75, 6);
+      expect(body.accept_rate).toBeCloseTo(0.75, 6);
       // reject_rate_by_code surfaces ONE entry per distinct error_code with
       // the fraction over total actions (NOT over rejects only).
-      expect(body.result.reject_rate_by_code).toEqual({
+      expect(body.reject_rate_by_code).toEqual({
         BUSINESS_INVALID_TARGET_NODE: 0.125,
         BUSINESS_TEMPORAL_INCOHERENT: 0.125,
       });
       // Every count is non-negative and matches the seeded fixture.
-      expect(body.result.needs_review_count).toBe(2);
-      expect(body.result.entity_match_queue_count).toBe(2);
-      expect(body.result.uncertain_count).toBe(2);
+      expect(body.needs_review_count).toBe(2);
+      expect(body.entity_match_queue_count).toBe(2);
+      expect(body.uncertain_count).toBe(2);
       // 2 disputed links + 2 disputed attrs = 4 assertions.
-      expect(body.result.disputed_count).toBe(4);
+      expect(body.disputed_count).toBe(4);
       // 1 link group + 1 attribute group = 2 conflict groups.
-      expect(body.result.disputed_queue_count).toBe(2);
+      expect(body.disputed_queue_count).toBe(2);
     } finally {
       await app.close();
     }
