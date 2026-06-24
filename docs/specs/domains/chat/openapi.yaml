@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.4.0"
+  version: "2.5.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -18,6 +18,38 @@ info:
     is mediated by the BFF (read tools open their own `BEGIN READ ONLY`; the
     write path `start_async_ingestion` invokes the audited ingestion pipeline,
     NEVER raw SQL).
+
+    ## v2.5.0 — Graph-view snapshot schema `v2` (`layout_algorithm`)
+
+    The `GraphViewSnapshot` schema becomes a **tagged union on `version`**
+    (`oneOf` + `discriminator`):
+
+      - `GraphViewSnapshotV1` — legacy snapshot (`version: 1`). Shape is byte-
+        identical to the v2.3.0 contract: `nodes`, `links`, `positions`,
+        `user_pinned`. No `layout_algorithm` field.
+      - `GraphViewSnapshotV2` — current snapshot (`version: 2`). Strict
+        SUPERSET of v1 adding `layout_algorithm: enum [force, tree, radial]`
+        (matches the SPA's `GraphLayoutAlgorithm` type — introduced by the
+        tree/radial layout feature).
+
+    `SaveGraphViewRequest` accepts BOTH variants. The discriminator on
+    `version` produces precise 422 messages (unknown `version` rejects with
+    `invalid_union_discriminator`; an unknown `layout_algorithm` enum value
+    rejects scoped to the v2 branch). The repository writes the validated
+    body verbatim into `chat_graph_view.snapshot jsonb` — NO migration (the
+    column was already polymorphic). `GET /conversations/{id}/graph` returns
+    whatever bytes were persisted (v1 OR v2) — the BFF MUST NOT inject a
+    default `layout_algorithm` on read; the SPA's `hydrate` owns the v1 →
+    `"force"` back-compat default.
+
+    Live regression motivation (2026-06-24): the SPA's `getSnapshot` already
+    emits `version: 2` snapshots; the previous BE schema pinned
+    `version: 1` and rejected every PUT with 422 `VALIDATION_INVALID_FORMAT`
+    (`expected 1`); the FE swallowed the error in a silent `.catch`, so no
+    snapshot was ever persisted and reopening the conversation always
+    returned `result: null` on GET. Clients written against v2.4.0 keep
+    working — the v1 branch is preserved verbatim. See `chat.back.md` BR-42
+    (v2.7.0) for the BE Zod schema + route flow.
 
     ## v2.4.0 — Graph edge label projection (additive, wire)
 
@@ -886,7 +918,10 @@ paths:
         Returns 200 with `result: null` when the conversation exists but no
         snapshot has been saved yet — null means "nothing to restore", NOT an
         error. Returns 404 only when the conversation itself does not exist.
-        (chat.back.md BR-42)
+        Returns the persisted bytes verbatim — `version: 1` OR `version: 2`
+        depending on what was last saved. The BFF MUST NOT inject a default
+        `layout_algorithm` on read; the SPA's `hydrate` owns the v1 →
+        `"force"` back-compat default (chat.back.md BR-42 v2.7).
       responses:
         "200":
           description: "Snapshot returned (or null if none saved yet)."
@@ -894,8 +929,19 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GraphViewResponse" }
               examples:
-                withSnapshot:
-                  summary: "Snapshot present"
+                withSnapshotV2:
+                  summary: "Snapshot present (v2 — current shape)"
+                  value:
+                    ok: true
+                    result:
+                      version: 2
+                      nodes: []
+                      links: []
+                      positions: {}
+                      user_pinned: []
+                      layout_algorithm: "force"
+                withSnapshotV1:
+                  summary: "Snapshot present (v1 — legacy, no `layout_algorithm`)"
                   value:
                     ok: true
                     result:
@@ -931,8 +977,13 @@ paths:
         Saves (upserts) the current graph-view snapshot for this conversation.
         If a snapshot already exists it is overwritten (last version wins —
         snapshot-as-memento pattern). Returns 404 when the conversation does
-        not exist. Validates the body; size cap: nodes and links each max 2000
-        items. (chat.back.md BR-42)
+        not exist. The body is validated as a `SaveGraphViewRequest` — a
+        discriminated union on `version` (BFF: `z.discriminatedUnion`):
+        `version: 1` (legacy, no `layout_algorithm`) OR `version: 2`
+        (requires `layout_algorithm` ∈ `[force, tree, radial]`). Size cap:
+        `nodes` and `links` each max 2000 items. The validated body is
+        persisted verbatim into `chat_graph_view.snapshot jsonb` (chat.back.md
+        BR-42 v2.7).
       requestBody:
         required: true
         content:
@@ -964,7 +1015,13 @@ paths:
                       code: "RESOURCE_NOT_FOUND"
                       message: "conversation not found"
         "422":
-          description: "Validation error — malformed snapshot or size cap exceeded."
+          description: |
+            Validation error — malformed snapshot, size cap exceeded, or
+            discriminated-union failure (unknown `version`, missing
+            `layout_algorithm` on `version: 2`, or `layout_algorithm` outside
+            the closed enum). `details.path` (Zod failure path) points at the
+            offending field — e.g. `["layout_algorithm"]` for an invalid
+            enum value on the v2 branch.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -975,6 +1032,33 @@ paths:
                     error:
                       code: "VALIDATION_INVALID_FORMAT"
                       message: "nodes: Array must contain at most 2000 element(s)"
+                unknownVersion:
+                  summary: "Unknown `version` — discriminator mismatch"
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "version: Invalid discriminator value. Expected 1 | 2"
+                      details:
+                        path: ["version"]
+                missingLayoutAlgorithmOnV2:
+                  summary: "`version: 2` body missing `layout_algorithm`"
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "layout_algorithm: Required"
+                      details:
+                        path: ["layout_algorithm"]
+                invalidLayoutAlgorithmEnum:
+                  summary: "`layout_algorithm` outside the closed enum"
+                  value:
+                    ok: false
+                    error:
+                      code: "VALIDATION_INVALID_FORMAT"
+                      message: "layout_algorithm: Invalid enum value. Expected 'force' | 'tree' | 'radial', received 'spiral'"
+                      details:
+                        path: ["layout_algorithm"]
         "503": { $ref: "#/components/responses/ChatUnavailable" }
 
 # =============================================================================
@@ -1706,18 +1790,14 @@ components:
             traversal envelope.
           items: { $ref: "#/components/schemas/GraphLinkWire" }
 
-    GraphViewSnapshot:
+    GraphViewSnapshotBase:
       type: object
       description: |
-        A point-in-time snapshot of the graph-view state for one conversation.
-        Treated as a view memento — not re-projected from the KG on load.
-        The positions map holds the last user-dragged coordinates per node id.
-      required: [version, nodes, links, positions, user_pinned]
+        Shared structural fields of the graph-view snapshot. NOT used directly
+        on the wire — see `GraphViewSnapshotV1` / `GraphViewSnapshotV2` /
+        `GraphViewSnapshot` (the discriminated union).
+      required: [nodes, links, positions, user_pinned]
       properties:
-        version:
-          type: integer
-          enum: [1]
-          description: "Schema version — always 1."
         nodes:
           type: array
           maxItems: 2000
@@ -1744,10 +1824,85 @@ components:
             format: uuid
           description: "Node ids the user has explicitly pinned."
 
-    SaveGraphViewRequest:
+    GraphViewSnapshotV1:
+      description: |
+        Legacy graph-view snapshot (pre-tree/radial-layouts). Shape is byte-
+        identical to the v2.3.0 contract — no `layout_algorithm` field. The
+        BFF persists v1 snapshots verbatim; on read it MUST NOT inject a
+        default `layout_algorithm` (the SPA's `hydrate` owns the v1 →
+        `"force"` back-compat default).
       allOf:
-        - $ref: "#/components/schemas/GraphViewSnapshot"
-      description: "Request body for PUT /conversations/{id}/graph. Identical shape to GraphViewSnapshot."
+        - $ref: "#/components/schemas/GraphViewSnapshotBase"
+        - type: object
+          required: [version]
+          properties:
+            version:
+              type: integer
+              enum: [1]
+              description: "Schema version — legacy snapshot (no `layout_algorithm`)."
+
+    GraphViewSnapshotV2:
+      description: |
+        Current graph-view snapshot. Strict SUPERSET of `GraphViewSnapshotV1`
+        adding `layout_algorithm` — introduced by the tree/radial layout
+        feature. The SPA's `getSnapshot` always emits v2 today; v1 is
+        preserved on the BFF side strictly for backward-compatibility with
+        snapshots persisted by older FE builds.
+      allOf:
+        - $ref: "#/components/schemas/GraphViewSnapshotBase"
+        - type: object
+          required: [version, layout_algorithm]
+          properties:
+            version:
+              type: integer
+              enum: [2]
+              description: "Schema version — v2 (carries `layout_algorithm`)."
+            layout_algorithm:
+              type: string
+              enum: [force, tree, radial]
+              description: |
+                The graph layout algorithm last selected by the user.
+                Closed enum — mirrors the SPA's `GraphLayoutAlgorithm` type
+                (`frontend/src/features/graph/state/graph-store.ts`). Adding
+                a new layout (e.g. `"circular"`) is a coordinated BE + FE +
+                spec change.
+
+    GraphViewSnapshot:
+      description: |
+        A point-in-time snapshot of the graph-view state for one conversation.
+        Treated as a view memento — not re-projected from the KG on load.
+        The positions map holds the last user-dragged coordinates per node id.
+
+        Discriminated union on `version` (`oneOf` + `discriminator`) — v1
+        legacy and v2 (current, adds `layout_algorithm`). See `chat.back.md`
+        BR-42 (v2.7.0).
+      oneOf:
+        - $ref: "#/components/schemas/GraphViewSnapshotV1"
+        - $ref: "#/components/schemas/GraphViewSnapshotV2"
+      discriminator:
+        propertyName: version
+        mapping:
+          "1": "#/components/schemas/GraphViewSnapshotV1"
+          "2": "#/components/schemas/GraphViewSnapshotV2"
+
+    SaveGraphViewRequest:
+      description: |
+        Request body for `PUT /conversations/{id}/graph`. Identical shape to
+        `GraphViewSnapshot` — accepts BOTH `version: 1` (legacy) and
+        `version: 2` (current, requires `layout_algorithm`). The BFF validates
+        via a Zod discriminated union on `version` (chat.back.md BR-42 v2.7)
+        — unknown `version` rejects with `invalid_union_discriminator`; a bad
+        `layout_algorithm` enum value rejects scoped to the v2 branch. The
+        validated body is persisted verbatim into `chat_graph_view.snapshot
+        jsonb` (no per-version branching at the repository layer).
+      oneOf:
+        - $ref: "#/components/schemas/GraphViewSnapshotV1"
+        - $ref: "#/components/schemas/GraphViewSnapshotV2"
+      discriminator:
+        propertyName: version
+        mapping:
+          "1": "#/components/schemas/GraphViewSnapshotV1"
+          "2": "#/components/schemas/GraphViewSnapshotV2"
 
     GraphViewResponse:
       type: object
