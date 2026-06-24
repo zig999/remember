@@ -17,6 +17,7 @@ import {
   resolveDisplayMode,
   HIGH_SIMILARITY_THRESHOLD,
 } from "../../lib/display-mode";
+import { useCurationNodeDetail } from "../../api/node.hooks";
 import type {
   ReviewQueueItem,
   EntityMatchQueueItem,
@@ -94,6 +95,48 @@ const EntityMatchView: FC<{
   );
 };
 
+/**
+ * DisputeSubject — names WHAT is in dispute and WHY the sides conflict.
+ * Without it the panel showed only the competing targets ("Apollo" /
+ * "Operação Assistida") with no subject and no reason — the curator could
+ * not tell that the Task "Salvar imagens…" is claimed as part_of two
+ * projects, nor that part_of (functional) allows only one.
+ */
+const DisputeSubject: FC<{ readonly item: DisputeQueueItem }> = ({ item }) => {
+  const isLink = item.itemKind === "link";
+  const subjectId = isLink ? item.scope.sourceNodeId : item.scope.nodeId;
+  const relation = isLink ? item.scope.linkType : item.scope.attributeKey;
+  const subjectQ = useCurationNodeDetail(subjectId);
+  const subjectName = subjectQ.data?.node.canonicalName;
+  const subjectType = subjectQ.data?.node.nodeType;
+  const n = item.sides.length;
+
+  return (
+    <div className="flex flex-col gap-xs rounded-md border border-border bg-elevated p-md">
+      <p className="text-body-sm text-content">
+        <span className="font-medium">{subjectName ?? "Carregando…"}</span>
+        {subjectType && <span className="text-muted"> ({subjectType})</span>}{" "}
+        {isLink ? (
+          <>
+            está vinculado por <span className="font-medium">{relation}</span> a{" "}
+            {n} alvos diferentes:
+          </>
+        ) : (
+          <>
+            tem {n} valores conflitantes para{" "}
+            <span className="font-medium">{relation}</span>:
+          </>
+        )}
+      </p>
+      <p className="text-caption text-muted">
+        {isLink
+          ? `“${relation}” admite apenas um destino vigente por vez, mas há ${n} com vigências sobrepostas. Escolha qual vale (os perdedores são arquivados) ou ajuste os períodos para que não se sobreponham.`
+          : `Apenas um valor pode vigorar por vez no mesmo período. Escolha qual vale ou ajuste os períodos.`}
+      </p>
+    </div>
+  );
+};
+
 const DisputeView: FC<{
   readonly item: DisputeQueueItem;
   readonly mode: "summary" | "full-diff";
@@ -106,10 +149,11 @@ const DisputeView: FC<{
       aria-label="Lados em disputa"
       className="flex flex-col gap-sm"
     >
+      <DisputeSubject item={item} />
       <p className="text-body-sm text-content">
         {mode === "summary"
-          ? "Dois lados sem sobreposição — selecione qual preferir."
-          : "Múltiplos lados conflitantes — selecione qual preferir ou ajuste períodos."}
+          ? "Selecione qual lado prefere."
+          : "Selecione qual lado prefere ou ajuste os períodos."}
       </p>
       {item.sides.map((s) => (
         <DisputeSideCard
