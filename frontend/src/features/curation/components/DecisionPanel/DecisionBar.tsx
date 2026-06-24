@@ -70,7 +70,9 @@ export const DecisionBar: FC<DecisionBarProps> = ({
       role="toolbar"
       aria-label="Ações de decisão"
       className={cn(
-        "flex flex-wrap items-center gap-md border-t border-border bg-surface p-md",
+        // No background — the bar inherits the (now glass) panel material
+        // behind it. Keeps the panel chrome uninterrupted across the footer.
+        "flex flex-wrap items-center gap-md border-t border-border p-md",
         className,
       )}
     >

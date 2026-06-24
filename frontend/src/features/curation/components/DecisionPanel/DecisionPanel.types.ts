@@ -74,6 +74,16 @@ export interface DecisionPanelProps {
   /** ProvenanceTrail integration — the parent passes the node mounted as
    *  evidence trail; gives drawer/page latitude in placement. */
   readonly provenanceSlot?: React.ReactNode;
+  /**
+   * Outer surface treatment.
+   *  - `"ambient"` (default) — the panel renders inside a `GlassSurface
+   *    level="ambient"` (its own background, border, blur).
+   *  - `"plain"` — the panel renders as a transparent `<section>` with NO
+   *    surface chrome; used when the panel is already nested inside another
+   *    glass surface (e.g. the CurationDrawer, which wraps content in a
+   *    `GlassSurface level="modal"`) to avoid double-glass stacking.
+   */
+  readonly surface?: "ambient" | "plain";
   readonly className?: string;
 }
 

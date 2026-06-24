@@ -42,11 +42,13 @@ export const CandidateCard: FC<CandidateCardProps> = ({
       aria-invalid={invalid || undefined}
       onClick={() => onSelect(candidate.candidateNodeId)}
       className={cn(
-        "flex w-full flex-col gap-sm rounded-md border p-md text-left transition",
+        // More opaque than the ambient panel behind it so the card reads
+        // as a discrete selectable surface (Group E option a).
+        "flex w-full flex-col gap-sm rounded-md border p-md text-left bg-surface-glass-panel transition",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         selected
-          ? "border-action bg-surface"
-          : "border-border bg-surface hover:bg-elevated",
+          ? "border-action"
+          : "border-border-glass hover:bg-elevated",
         invalid ? "border-border-error" : null,
         className,
       )}

@@ -32,7 +32,7 @@ export const EvidenceChip: FC<EvidenceChipProps> = ({ viewed, className }) => {
         "inline-flex items-center gap-xs rounded-pill border px-md py-xs text-caption",
         viewed
           ? "border-border-accepted bg-state-accepted text-state-accepted-fg"
-          : "border-border bg-surface text-content motion-safe:animate-pulse",
+          : "border-border-glass bg-surface-glass-panel text-content motion-safe:animate-pulse",
         className,
       )}
     >

@@ -8,11 +8,18 @@
 import { type FC } from "react";
 import { AlertTriangle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 /**
  * Polling pill — "N novos" when the queue grows. `role="status"` so AT
  * announces the count. Clicking the pill acknowledges the delta
  * (`updateLastSeen`) so it disappears.
+ *
+ * Uses the standard `Badge` for the accepted-state pill chrome inside a
+ * `<button>` (the click is what acknowledges; the button preserves keyboard
+ * activation + focus ring). `role="status"` + `aria-live` stay on the
+ * button so AT announces the count change in place.
  */
 export const PollingPill: FC<{
   readonly delta: number;
@@ -27,12 +34,13 @@ export const PollingPill: FC<{
       onClick={onAck}
       data-testid="curation-polling-pill"
       className={cn(
-        "rounded-pill border border-border-accepted bg-state-accepted px-md py-xs",
-        "text-caption text-state-accepted-fg",
+        "rounded-pill",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
       )}
     >
-      {delta} {delta === 1 ? "novo" : "novos"}
+      <Badge variant="success">
+        {delta} {delta === 1 ? "novo" : "novos"}
+      </Badge>
     </button>
   );
 };
@@ -64,16 +72,15 @@ export const QueueErrorBanner: FC<{ readonly onRetry: () => void }> = ({
       <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
       <p className="text-body-sm">Não foi possível carregar a fila.</p>
     </div>
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="sm"
       onClick={onRetry}
-      className={cn(
-        "self-start rounded-md border border-border-disputed px-md py-xs text-body-sm",
-        "hover:bg-state-disputed/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
-      )}
       data-testid="curation-queue-retry"
+      className="self-start"
     >
       Tentar novamente
-    </button>
+    </Button>
   </div>
 );

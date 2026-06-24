@@ -31,6 +31,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FC } from "react";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { GlassSurface } from "@/components/ds/GlassSurface";
 import { StateBadge } from "@/components/ds/StateBadge";
 import { ComparePane } from "./ComparePane";
 import { DecisionBar, type DecisionBarButtonProps } from "./DecisionBar";
@@ -58,6 +59,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   actions,
   fragmentFilter,
   provenanceSlot,
+  surface = "ambient",
   className,
 }) => {
   const badge = useMemo(() => headerBadge(item), [item]);
@@ -208,14 +210,8 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   const correctionItemKind =
     item.kind === "disputed" ? item.itemKind : "link";
 
-  return (
-    <section
-      aria-label="Painel de decisão"
-      className={cn(
-        "flex flex-col gap-md rounded-md border border-border bg-surface",
-        className,
-      )}
-    >
+  const body = (
+    <>
       {/* hidden tooltip text for aria-describedby on blocked buttons (§8) */}
       <span id={blockedHintId} className="sr-only">
         Veja a evidência antes de decidir.
@@ -317,11 +313,36 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           serverError={serverError}
           evidenceViewed={evidenceViewed}
           blockedHintId={blockedHintId}
-          onCorrect={(body) => {
-            actions?.onCorrect?.(body);
+          onCorrect={(req) => {
+            actions?.onCorrect?.(req);
           }}
         />
       )}
-    </section>
+    </>
+  );
+
+  // Outer surface — GlassSurface level="ambient" by default (its own
+  // background/border/blur). When nested inside another glass surface (e.g.
+  // CurationDrawer's modal-glass), the caller passes `surface="plain"` to
+  // skip the surface chrome and avoid double-glass stacking.
+  if (surface === "plain") {
+    return (
+      <section
+        aria-label="Painel de decisão"
+        className={cn("flex flex-col gap-md", className)}
+      >
+        {body}
+      </section>
+    );
+  }
+  return (
+    <GlassSurface
+      level="ambient"
+      role="region"
+      aria-label="Painel de decisão"
+      className={cn("flex flex-col gap-md", className)}
+    >
+      {body}
+    </GlassSurface>
   );
 };

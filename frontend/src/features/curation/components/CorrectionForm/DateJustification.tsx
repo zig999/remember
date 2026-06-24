@@ -9,10 +9,16 @@
  */
 import { type FC } from "react";
 import { Controller, type Control } from "react-hook-form";
-import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useListAcceptedFragments } from "../../api/provenance.hooks";
 import type { ValidFromSource } from "../../types";
 import type { CorrectionFormValues } from "./correction-schema";
@@ -111,23 +117,31 @@ export const DateJustification: FC<DateJustificationProps> = ({
             control={control}
             name="validFromFragmentId"
             render={({ field, fieldState }) => (
-              <select
-                {...field}
-                id="cf-frag"
+              // Standard dark-theme Select (Radix). Wired to the RHF field
+              // via `value` / `onValueChange`. Radix treats "" as "no value",
+              // so an undefined/"" field value renders the placeholder
+              // from <SelectValue>.
+              <Select
                 value={field.value ?? ""}
-                aria-invalid={!!fieldState.error || undefined}
-                className={cn(
-                  "h-9 w-full rounded-md border bg-input px-md text-label text-content",
-                  fieldState.error ? "border-border-error" : "border-border",
-                )}
+                onValueChange={(v) => field.onChange(v)}
               >
-                <option value="">Selecione um fragmento…</option>
-                {fragmentQ.data?.items.map((f) => (
-                  <option key={f.fragmentId} value={f.fragmentId}>
-                    {f.text.slice(0, 80)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="cf-frag"
+                  aria-invalid={!!fieldState.error || undefined}
+                  className={
+                    fieldState.error ? "border-border-error" : undefined
+                  }
+                >
+                  <SelectValue placeholder="Selecione um fragmento…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fragmentQ.data?.items.map((f) => (
+                    <SelectItem key={f.fragmentId} value={f.fragmentId}>
+                      {f.text.slice(0, 80)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           />
           {fragmentErrorMessage && (

@@ -223,7 +223,7 @@ export const CurationPage: FC = () => {
             <CurationDecision item={selectedFull} queue={data} />
           ) : (
             <GlassSurface
-              level="panel"
+              level="ambient"
               role="region"
               aria-label="Painel de decisão"
               data-testid="curation-decision-panel"

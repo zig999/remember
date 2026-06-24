@@ -11,7 +11,7 @@
  * QueueList itself; the parent wires `aria-controls` if needed.
  */
 import type { FC } from "react";
-import { cn } from "@/lib/cn";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ReviewQueueKind } from "../types";
 
 /** `undefined` means "Tudo" (both queues). Keep the value space narrow
@@ -25,6 +25,12 @@ export interface QueueTabsProps {
   readonly onChange: (next: QueueKindFilter) => void;
 }
 
+/**
+ * Radix Tabs values are strings, but `QueueKindFilter` carries `undefined`
+ * for the "Tudo" case. We map across that gap with a stable sentinel.
+ */
+const ALL_SENTINEL = "all";
+
 interface TabDefinition {
   readonly id: QueueKindFilter;
   readonly label: string;
@@ -32,42 +38,39 @@ interface TabDefinition {
 }
 
 const TABS: ReadonlyArray<TabDefinition> = [
-  { id: undefined, label: "Tudo", key: "all" },
+  { id: undefined, label: "Tudo", key: ALL_SENTINEL },
   { id: "entity_match", label: "Entidades", key: "entity_match" },
   { id: "disputed", label: "Disputas", key: "disputed" },
 ];
 
+function keyToFilter(key: string): QueueKindFilter {
+  if (key === ALL_SENTINEL) return undefined;
+  return key as ReviewQueueKind;
+}
+
+function filterToKey(value: QueueKindFilter): string {
+  return value ?? ALL_SENTINEL;
+}
+
+/**
+ * Tab filter using the standard Tabs component (Radix). The QueueList is
+ * the tabpanel — owned by the parent, so we only render the trigger row
+ * (TabsList/TabsTrigger) here; no TabsContent.
+ */
 export const QueueTabs: FC<QueueTabsProps> = ({ value, onChange }) => {
   return (
-    <div
-      role="tablist"
-      aria-label="Filtrar fila por tipo"
+    <Tabs
+      value={filterToKey(value)}
+      onValueChange={(next) => onChange(keyToFilter(next))}
       data-testid="curation-queue-tabs"
-      className="flex items-center gap-xs border-b border-border"
     >
-      {TABS.map((tab) => {
-        const active = tab.id === value;
-        return (
-          <button
-            type="button"
-            key={tab.key}
-            role="tab"
-            aria-selected={active}
-            data-tab-key={tab.key}
-            onClick={() => onChange(tab.id)}
-            className={cn(
-              "px-md py-sm text-body-sm",
-              "border-b-2 border-transparent",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
-              active
-                ? "border-border-focus text-content"
-                : "text-muted hover:text-content",
-            )}
-          >
+      <TabsList aria-label="Filtrar fila por tipo">
+        {TABS.map((tab) => (
+          <TabsTrigger key={tab.key} value={tab.key} data-tab-key={tab.key}>
             {tab.label}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 };

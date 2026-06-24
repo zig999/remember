@@ -106,7 +106,7 @@ const DisputeSubject: FC<{ readonly item: DisputeQueueItem }> = ({ item }) => {
   const n = item.sides.length;
 
   return (
-    <div className="flex flex-col gap-xs rounded-md border border-border bg-elevated p-md">
+    <div className="flex flex-col gap-xs rounded-md border border-border-glass bg-surface-glass-panel p-md">
       <p className="text-body-sm text-content">
         {isLink ? (
           <>

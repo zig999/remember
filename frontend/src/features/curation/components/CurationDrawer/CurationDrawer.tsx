@@ -166,6 +166,7 @@ const DrawerPanel: FC<DrawerPanelProps> = ({ item, forceClose }) => {
   return (
     <DecisionPanel
       item={item}
+      surface="plain"
       evidenceViewed={effectiveEvidenceViewed}
       serverError={dispatch.serverError}
       stale={dispatch.stale}

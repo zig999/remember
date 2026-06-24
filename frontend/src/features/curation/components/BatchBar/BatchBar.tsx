@@ -30,6 +30,7 @@
 import { useState, type FC } from "react";
 import { X, Check, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { GlassSurface } from "@/components/ds/GlassSurface";
 import { Button } from "@/components/ui/button";
 
 export type BatchKind = "entity_match" | "disputed" | "uncertain";
@@ -102,11 +103,16 @@ export const BatchBar: FC<BatchBarProps> = ({
   }
 
   return (
-    <div
-      role="toolbar"
+    // GlassSurface §14 narrows `role` to a closed set (no "toolbar"); we
+    // keep the toolbar semantics on an inner wrapper so the surface stays
+    // a region-like group while the action row is still announced as a
+    // toolbar.
+    <GlassSurface
+      level="ambient"
+      role="group"
       aria-label="Ações em lote"
       className={cn(
-        "sticky bottom-0 flex flex-wrap items-center justify-between gap-md border-t border-border bg-surface p-md",
+        "sticky bottom-0 flex flex-wrap items-center justify-between gap-md border-t border-border p-md",
         className,
       )}
     >
@@ -202,6 +208,6 @@ export const BatchBar: FC<BatchBarProps> = ({
           </div>
         </>
       )}
-    </div>
+    </GlassSurface>
   );
 };

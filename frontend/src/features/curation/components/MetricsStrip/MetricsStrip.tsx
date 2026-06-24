@@ -30,6 +30,7 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
+import { GlassSurface } from "@/components/ds/GlassSurface";
 import type { CurationMetrics } from "../../types";
 
 export interface MetricsStripFallback {
@@ -99,11 +100,13 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
   const skeleton = !settled || cells.length === 0;
 
   return (
-    <section
+    <GlassSurface
+      level="ambient"
+      role="region"
       aria-label="Métricas de curadoria"
       aria-busy={skeleton || undefined}
       className={cn(
-        "grid grid-cols-2 gap-sm rounded-md border border-border bg-surface p-md sm:grid-cols-5",
+        "grid grid-cols-2 gap-sm p-md sm:grid-cols-5",
         className,
       )}
     >
@@ -125,6 +128,6 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
               <span className="text-heading text-content">{cell.value}</span>
             </div>
           ))}
-    </section>
+    </GlassSurface>
   );
 };

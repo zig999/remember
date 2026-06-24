@@ -30,6 +30,7 @@
 import { useEffect, useRef, type FC } from "react";
 import { AlertTriangle, FileText, Quote } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { GlassSurface } from "@/components/ds/GlassSurface";
 import { EnvelopeError } from "@/lib/http";
 import {
   useProvenanceByLink,
@@ -189,23 +190,30 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
   const fragments = data?.fragments ?? [];
   if (fragments.length === 0) {
     return (
-      <section
+      <GlassSurface
+        level="ambient"
+        role="region"
         ref={sentinelRef}
-        role="alert"
         aria-label="Sem proveniência"
         tabIndex={0}
         className={cn(
-          "flex items-start gap-md rounded-md border border-border bg-surface p-md text-body",
+          "flex items-start gap-md p-md text-body",
           className,
         )}
       >
-        <p className="text-body-sm">Nenhuma proveniência disponível.</p>
-      </section>
+        {/* Alert lives inside so the ambient surface keeps a non-alert role
+            (GlassSurface §14: never sets role=alert/status). */}
+        <p role="alert" className="text-body-sm">
+          Nenhuma proveniência disponível.
+        </p>
+      </GlassSurface>
     );
   }
 
   return (
-    <section
+    <GlassSurface
+      level="ambient"
+      role="region"
       ref={sentinelRef}
       aria-label="Trilha de evidência"
       tabIndex={0}
@@ -214,7 +222,7 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
       {fragments.map((frag) => (
         <article
           key={frag.id}
-          className="flex flex-col gap-sm rounded-md border border-border bg-surface p-md"
+          className="flex flex-col gap-sm rounded-md border border-border bg-surface-glass-panel p-md"
         >
           <header className="flex items-center gap-sm text-body-sm text-body">
             <Quote aria-hidden="true" className="size-4" />
@@ -244,6 +252,6 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
           ))}
         </article>
       ))}
-    </section>
+    </GlassSurface>
   );
 };
