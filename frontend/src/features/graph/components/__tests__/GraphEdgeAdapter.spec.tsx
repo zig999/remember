@@ -378,23 +378,29 @@ describe("GraphEdgeAdapter — dimming + label + a11y", () => {
     expect(getPath()?.getAttribute("class")).toContain("opacity-40");
   });
 
-  it("renders the link-type slug as the visible label via EdgeLabelRenderer (structural)", () => {
+  it("renders the pt-BR display label via EdgeLabelRenderer (structural)", () => {
     // React Flow's `EdgeLabelRenderer` is a portal — it mounts its
     // children into the `.react-flow__edgelabel-renderer` div that only
     // exists inside a full `<ReactFlow>` instance. We do NOT bring up a
     // full ReactFlow in this unit harness; instead we pin the contract
-    // structurally — the source MUST render `{data.label}` inside an
-    // `<EdgeLabelRenderer>` block. A regression that drops the label
-    // rendering (or moves it outside the portal) fails this test.
+    // structurally — the source MUST render `{data.linkTypeLabel}` inside
+    // an `<EdgeLabelRenderer>` block (the catalog-resolved pt-BR text, NOT
+    // the slug). A regression that re-introduces `{data.label}` here would
+    // leak the slug back into the visible surface (GraphEdge.spec §7
+    // scenarios 7 / 8); the dual assertion below pins both halves.
     const src = readFileSync(
       resolve(__dirname, "../GraphEdgeAdapter/GraphEdgeAdapter.tsx"),
       "utf-8",
     );
     expect(src).toMatch(/<EdgeLabelRenderer>/);
-    // The label expression `{data.label}` must appear between the
-    // EdgeLabelRenderer open and close tags. We constrain by `s` flag
-    // (dot matches newlines) so the regex spans the multi-line block.
+    // The label expression `{data.linkTypeLabel}` must appear between the
+    // EdgeLabelRenderer open and close tags.
     expect(src).toMatch(
+      /<EdgeLabelRenderer>[\s\S]*?\{data\.linkTypeLabel\}[\s\S]*?<\/EdgeLabelRenderer>/,
+    );
+    // And the slug expression `{data.label}` must NOT appear inside the
+    // EdgeLabelRenderer block — it stays a color-key lookup only.
+    expect(src).not.toMatch(
       /<EdgeLabelRenderer>[\s\S]*?\{data\.label\}[\s\S]*?<\/EdgeLabelRenderer>/,
     );
   });

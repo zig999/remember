@@ -53,7 +53,14 @@ function makeNode(id: string): GraphNodeData {
 }
 
 function makeLink(id: string, source: string, target: string): GraphLinkData {
-  return { id, source, target, label: "related_to", isTemporal: false };
+  return {
+    id,
+    source,
+    target,
+    label: "related_to",
+    linkTypeLabel: "relacionado a",
+    isTemporal: false,
+  };
 }
 
 function makeDelta(

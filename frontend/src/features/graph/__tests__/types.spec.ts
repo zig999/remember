@@ -125,6 +125,7 @@ describe("GraphNodeData / GraphLinkData — surface shape (camelCase)", () => {
       source: "uuid-1",
       target: "uuid-2",
       label: "participates_in",
+      linkTypeLabel: "participa de",
       isTemporal: true,
     };
     expect(link.isTemporal).toBe(true);

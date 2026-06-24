@@ -464,6 +464,41 @@ describe("mapWireToGraphDelta — pure mapper", () => {
       isTemporal: true,
       state: "accepted",
     });
+    // Wire did not carry `link_type_label` → mapper falls back to the
+    // humanized slug. Pins the contract: the surface ALWAYS exposes a
+    // non-empty `linkTypeLabel`, never `undefined` (GraphEdge.spec §7
+    // Scenario 8). Without this assertion, a future regression that
+    // dropped the fallback would surface as `undefined` text on the canvas.
+    expect(delta.links[0]?.linkTypeLabel).toBe("participates in");
+  });
+
+  it("projects wire `link_type_label` into surface `linkTypeLabel` (pt-BR)", () => {
+    // The new wire field (BR / dev_tc_001) carries the catalog-resolved
+    // pt-BR display label. The mapper MUST pass it through unchanged — the
+    // visible canvas text comes from the backend, not from the frontend.
+    // Regression guard: a refactor that lower-cased / title-cased the
+    // value would silently change the rendered label.
+    const frame: ChatSSEFrameGraphDelta = {
+      type: "graph_delta",
+      sourceTool: "traverse",
+      nodes: [
+        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
+        { id: "n2", node_type: "person", canonical_name: "B", status: "active" },
+      ],
+      links: [
+        {
+          id: "l1",
+          source_node_id: "n1",
+          target_node_id: "n2",
+          link_type: "participates_in",
+          link_type_label: "participa de",
+          is_temporal: true,
+        },
+      ],
+    };
+    const delta = mapWireToGraphDelta(frame);
+    expect(delta.links[0]?.label).toBe("participates_in");
+    expect(delta.links[0]?.linkTypeLabel).toBe("participa de");
   });
 
   it("filters out merged/deleted nodes (I-2) and orphan links", () => {

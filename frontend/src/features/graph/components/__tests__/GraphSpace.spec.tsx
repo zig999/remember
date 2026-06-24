@@ -68,6 +68,7 @@ function makeLink(
     source,
     target,
     label: "related_to",
+    linkTypeLabel: "relacionado a",
     isTemporal: true,
   };
 }
@@ -421,6 +422,7 @@ describe("GraphSpace — isTemporal edge integration (V8, AC-F.11)", () => {
         source: "n1",
         target: "n2",
         label: "employed_by",
+        linkTypeLabel: "empregado em",
         isTemporal: true,
       },
       // isTemporal=false — would render dashed in a real browser.
@@ -429,6 +431,7 @@ describe("GraphSpace — isTemporal edge integration (V8, AC-F.11)", () => {
         source: "n2",
         target: "n3",
         label: "lives_in",
+        linkTypeLabel: "mora em",
         isTemporal: false,
       },
     ];
@@ -471,6 +474,7 @@ describe("GraphSpace — isTemporal edge integration (V8, AC-F.11)", () => {
         source: "a",
         target: "b",
         label: "lives_in",
+        linkTypeLabel: "mora em",
         isTemporal: false, // dashed in a real browser
       },
     ];

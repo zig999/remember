@@ -60,6 +60,7 @@ function makeLink(id: string, source: string, target: string): GraphLinkData {
     source,
     target,
     label: "related_to",
+    linkTypeLabel: "relacionado a",
     isTemporal: true,
   };
 }

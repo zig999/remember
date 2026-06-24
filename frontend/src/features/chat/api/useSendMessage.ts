@@ -66,6 +66,7 @@ import { useAuthStore } from "@/state/auth";
 import {
   deriveLinkState,
   deriveNodeState,
+  mapLinkTypeLabel,
   mapNodeType,
   useGraphStore,
   type GraphDelta,
@@ -405,6 +406,11 @@ export function mapWireToGraphDelta(
       source: wireLink.source_node_id,
       target: wireLink.target_node_id,
       label: wireLink.link_type,
+      // The visible label — pt-BR catalog-resolved when the backend projected
+      // it, otherwise a humanized slug. The slug (`label` above) stays the
+      // color-lookup key; only this string is rendered as text on the canvas.
+      // See GraphEdge.component.spec.md §2.
+      linkTypeLabel: mapLinkTypeLabel(wireLink.link_type, wireLink.link_type_label),
       isTemporal: wireLink.is_temporal,
       state: deriveLinkState(wireLink.status, wireLink.flags),
       ...(wireLink.is_in_effect === undefined

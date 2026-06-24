@@ -17,7 +17,12 @@
  *    review states). Re-ordering would change the StateBadge a user sees.
  */
 import { describe, expect, it } from "vitest";
-import { deriveLinkState, deriveNodeState, mapNodeType } from "../map";
+import {
+  deriveLinkState,
+  deriveNodeState,
+  mapLinkTypeLabel,
+  mapNodeType,
+} from "../map";
 
 /* -------------------------------------------------------------------------
  * mapNodeType — G-B / UC-CG-12
@@ -147,5 +152,66 @@ describe("deriveLinkState — precedence ladder", () => {
     // through to the flag ladder, so an unknown status with no flags is
     // visually `accepted` — matching the "no negative signal" rule.
     expect(deriveLinkState("anything_else", [])).toBe("accepted");
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * mapLinkTypeLabel — pt-BR display label resolution (GraphEdge.spec §2, §7)
+ * ------------------------------------------------------------------------- */
+
+describe("mapLinkTypeLabel — wire label projection + humanized fallback", () => {
+  it("returns the wire `link_type_label` verbatim when present", () => {
+    // The contract intent: the backend is the catalog authority. Whatever
+    // pt-BR string it projects is what the user sees — no client-side
+    // remap, no casing change. A regression that lowercased / title-cased
+    // here would silently change the rendered UI text without test failure
+    // on the backend side.
+    expect(mapLinkTypeLabel("participates_in", "participa de")).toBe(
+      "participa de",
+    );
+  });
+
+  it("preserves backend casing exactly (no client title-case)", () => {
+    // The closed-domain catalog occasionally uses capitalized first words
+    // (e.g. proper-noun-style labels in future tiers). The mapper must NOT
+    // normalize them — the backend decides.
+    expect(mapLinkTypeLabel("located_in", "Localiza-se em")).toBe(
+      "Localiza-se em",
+    );
+  });
+
+  it("falls back to humanized slug when wire field is absent", () => {
+    // Scenario 8 in the spec: an old SSE frame or an unknown link type may
+    // omit the projection. The user still sees the structure of the
+    // relationship — just in the slug's humanized form — instead of a
+    // blank pill. The visual difference (no pt-BR translation) is the
+    // intended signal that the backend projection is missing.
+    expect(mapLinkTypeLabel("participates_in", undefined)).toBe(
+      "participates in",
+    );
+  });
+
+  it("falls back to humanized slug when wire field is an empty string", () => {
+    // Defensive: a backend bug emitting "" (instead of omitting) must not
+    // render a blank label. Pinning this behavior so a regression in
+    // graph-normalizer (e.g. `??` instead of `||` upstream) does not
+    // silently blank the canvas.
+    expect(mapLinkTypeLabel("member_of", "")).toBe("member of");
+  });
+
+  it("falls back when wire field is whitespace-only", () => {
+    // Same defense as above: a label that trims to empty is treated as
+    // absent, not as a real label. The fallback gives the user something
+    // structural to read.
+    expect(mapLinkTypeLabel("reports_to", "   ")).toBe("reports to");
+  });
+
+  it("does not introduce extra spaces from multi-underscore slugs", () => {
+    // `belongs_to_category` has two underscores — each becomes one space.
+    // The humanized form should be readable (not double-spaced) so the
+    // visual signal "this is a fallback" remains a single-spaced phrase.
+    expect(mapLinkTypeLabel("belongs_to_category", undefined)).toBe(
+      "belongs to category",
+    );
   });
 });
