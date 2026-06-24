@@ -177,15 +177,37 @@ export type ConversationIdInput = z.infer<typeof ConversationIdParam>;
 const NodePosition = z.object({ x: z.number(), y: z.number() });
 
 /**
- * `PUT /conversations/:id/graph` request body.
- * Snapshot shape: { version, nodes, links, positions, user_pinned }.
+ * `PUT /conversations/:id/graph` request body — discriminated union v1|v2.
+ *
+ * Snapshot shape: { version, nodes, links, positions, user_pinned, [layout_algorithm] }.
  * Size cap on nodes/links (max 2000 each) bounds the JSONB blob.
+ *
+ * v1 — legacy snapshots (pre tree/radial layouts).
+ * v2 — adds `layout_algorithm` (`'force' | 'tree' | 'radial'`) for the
+ *      tree/radial layout feature. The FE's `getSnapshot` emits v2; the FE's
+ *      `hydrate` owns the back-compat default for v1 rows, so the BE MUST
+ *      persist v1 verbatim (no synthetic `layout_algorithm` injection).
  */
-export const SaveGraphViewRequest = z.object({
-  version: z.literal(1),
+const GraphViewSnapshotBaseFields = {
   nodes: z.array(z.any()).max(2000, "nodes must contain at most 2000 entries"),
   links: z.array(z.any()).max(2000, "links must contain at most 2000 entries"),
   positions: z.record(z.string(), NodePosition),
   user_pinned: z.array(z.string()),
+} as const;
+
+const GraphViewSnapshotV1 = z.object({
+  version: z.literal(1),
+  ...GraphViewSnapshotBaseFields,
 });
+
+const GraphViewSnapshotV2 = z.object({
+  version: z.literal(2),
+  ...GraphViewSnapshotBaseFields,
+  layout_algorithm: z.enum(["force", "tree", "radial"]),
+});
+
+export const SaveGraphViewRequest = z.discriminatedUnion("version", [
+  GraphViewSnapshotV1,
+  GraphViewSnapshotV2,
+]);
 export type SaveGraphViewRequestType = z.infer<typeof SaveGraphViewRequest>;

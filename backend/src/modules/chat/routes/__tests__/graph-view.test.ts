@@ -397,4 +397,131 @@ describe("PUT /api/v1/conversations/:id/graph", () => {
     expect(body.ok).toBe(false);
     expect(body.error.code).toBe("VALIDATION_INVALID_FORMAT");
   });
+
+  // -------------------------------------------------------------------------
+  // Discriminated union v1|v2 (TC dev_tc_001) — chat.back.md BR-42 v2.7.
+  // The FE emits v2 snapshots (adds layout_algorithm) but legacy rows are v1.
+  // The BE MUST accept both verbatim and never inject a default field.
+  // -------------------------------------------------------------------------
+
+  it("(xxvii) PUT/GET round-trip v2 — layout_algorithm preserved verbatim", async () => {
+    const v2Snapshot = {
+      version: 2 as const,
+      nodes: [],
+      links: [],
+      positions: {},
+      user_pinned: [],
+      layout_algorithm: "tree" as const,
+    };
+    const updated_at = "2026-06-24T00:00:00.000Z";
+
+    // PUT — capture what was forwarded to the repository.
+    vi.mocked(chatRepo.getConversationById).mockResolvedValue(fakeConversation());
+    vi.mocked(chatRepo.upsertConversationGraphView).mockResolvedValue({ updated_at });
+
+    const putRes = await app.inject({
+      method: "PUT",
+      url: `/api/v1/conversations/${CONV_ID}/graph`,
+      headers: { "content-type": "application/json" },
+      payload: v2Snapshot,
+    });
+
+    expect(putRes.statusCode).toBe(200);
+    // The repository must receive the EXACT v2 body (including layout_algorithm).
+    const upsertCall = vi.mocked(chatRepo.upsertConversationGraphView).mock.calls[0];
+    expect(upsertCall[2]).toEqual(v2Snapshot);
+
+    // GET — feed the same snapshot back through the repository and verify the
+    // response body is the v2 shape verbatim.
+    vi.mocked(chatRepo.getConversationGraphView).mockResolvedValue({
+      conversation_id: CONV_ID,
+      snapshot: v2Snapshot,
+      updated_at,
+    });
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversations/${CONV_ID}/graph`,
+    });
+
+    expect(getRes.statusCode).toBe(200);
+    const getBody = getRes.json();
+    expect(getBody.ok).toBe(true);
+    expect(getBody.result).toEqual(v2Snapshot);
+    expect(getBody.result.layout_algorithm).toBe("tree");
+  });
+
+  it("(xxviii) PUT v1 legacy — BE must NOT inject layout_algorithm", async () => {
+    const v1Snapshot = {
+      version: 1 as const,
+      nodes: [],
+      links: [],
+      positions: {},
+      user_pinned: [],
+    };
+    const updated_at = "2026-06-24T01:00:00.000Z";
+
+    vi.mocked(chatRepo.getConversationById).mockResolvedValue(fakeConversation());
+    vi.mocked(chatRepo.upsertConversationGraphView).mockResolvedValue({ updated_at });
+
+    const putRes = await app.inject({
+      method: "PUT",
+      url: `/api/v1/conversations/${CONV_ID}/graph`,
+      headers: { "content-type": "application/json" },
+      payload: v1Snapshot,
+    });
+
+    expect(putRes.statusCode).toBe(200);
+    // The repository must receive the EXACT v1 body — no synthetic
+    // layout_algorithm default; the FE's hydrate owns that back-compat path.
+    const upsertCall = vi.mocked(chatRepo.upsertConversationGraphView).mock.calls[0];
+    expect(upsertCall[2]).toEqual(v1Snapshot);
+    expect(upsertCall[2]).not.toHaveProperty("layout_algorithm");
+
+    // GET — same row back; the GET response must also be v1 verbatim.
+    vi.mocked(chatRepo.getConversationGraphView).mockResolvedValue({
+      conversation_id: CONV_ID,
+      snapshot: v1Snapshot,
+      updated_at,
+    });
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversations/${CONV_ID}/graph`,
+    });
+
+    expect(getRes.statusCode).toBe(200);
+    const getBody = getRes.json();
+    expect(getBody.ok).toBe(true);
+    expect(getBody.result).toEqual(v1Snapshot);
+    expect(getBody.result).not.toHaveProperty("layout_algorithm");
+  });
+
+  it("(xxix) PUT v2 invalid enum — 422 VALIDATION_INVALID_FORMAT on layout_algorithm", async () => {
+    const badSnapshot = {
+      version: 2,
+      nodes: [],
+      links: [],
+      positions: {},
+      user_pinned: [],
+      layout_algorithm: "spiral",
+    };
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/conversations/${CONV_ID}/graph`,
+      headers: { "content-type": "application/json" },
+      payload: badSnapshot,
+    });
+
+    expect(res.statusCode).toBe(422);
+    const body = res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("VALIDATION_INVALID_FORMAT");
+    // `error.details` carries the Zod flatten() output. The bad field is
+    // `layout_algorithm` — confirm the path points there.
+    const details = body.error.details;
+    const fieldErrors = details?.fieldErrors ?? {};
+    expect(Object.keys(fieldErrors)).toContain("layout_algorithm");
+  });
 });
