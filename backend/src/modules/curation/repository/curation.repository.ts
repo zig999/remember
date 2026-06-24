@@ -673,6 +673,11 @@ export interface DisputedLinkRow {
   readonly target_node_id: string;
   readonly link_type_id: string;
   readonly link_type_name: string;
+  /** Cardinality of the link type (A10). false = functional (one current per
+   *  (source, link_type)) → competing targets are SIDES of one dispute; true =
+   *  multi-valued → conflict scope includes the target. Drives the queue
+   *  dispute grouping (queue.service.groupDisputedLinks). */
+  readonly allows_multiple_current: boolean;
   readonly valid_from: string | null;
   readonly valid_to: string | null;
   readonly valid_from_source: "stated" | "document" | "received" | null;
@@ -692,6 +697,7 @@ export async function listDisputedLinks(
             kl.target_node_id,
             kl.link_type_id,
             lt.name AS link_type_name,
+            lt.allows_multiple_current,
             kl.valid_from::text AS valid_from,
             kl.valid_to::text AS valid_to,
             kl.valid_from_source,
@@ -883,7 +889,13 @@ export async function aggregateCurationMetrics(
   const disputedCount = Number(disputedRes.rows[0]?.total ?? 0);
 
   // -- disputed_queue_count ------------------------------------------------
-  // One row per CONFLICT GROUP (BR-14 column tuple), not per assertion.
+  // Per-assertion-scope count (links keyed by (source, target, link_type)).
+  // NOTE: this is an ADVISORY metric and is NOT fully consistent with the
+  // queue's dispute grouping (queue.service.groupDisputedLinks), which is
+  // cardinality-aware and collapses competing targets of a FUNCTIONAL link
+  // into ONE group. For functional multi-target disputes this can over-count
+  // vs. the number of queue items. Reconciling the two is a follow-up (the
+  // queue grouping is the user-facing source of truth).
   const disputedQueueRes = await client.query<{ total: string }>(
     `SELECT count(*)::text AS total
        FROM (

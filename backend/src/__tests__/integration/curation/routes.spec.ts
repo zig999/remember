@@ -942,6 +942,7 @@ function buildFakeClient(store: Store): any {
               target_node_id: l.target_node_id,
               link_type_id: l.link_type_id,
               link_type_name: lt?.name ?? "Unknown",
+              allows_multiple_current: lt?.allows_multiple_current ?? false,
               valid_from: l.valid_from,
               valid_to: l.valid_to,
               valid_from_source: l.valid_from_source,

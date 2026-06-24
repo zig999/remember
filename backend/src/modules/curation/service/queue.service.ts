@@ -152,10 +152,26 @@ function groupEntityMatchRows(
 }
 
 function groupDisputedLinks(rows: readonly DisputedLinkRow[]): DisputeQueueItem[] {
-  // Group by (source, target, link_type).
+  // Group by the CONFLICT SCOPE, which depends on the link type's cardinality
+  // (A10, link_type.allows_multiple_current):
+  //   - FUNCTIONAL (allows_multiple_current=false, e.g. part_of/located_in/
+  //     reports_to): only ONE target may fill the slot (§4/§5.6: 1 vigente por
+  //     (source, link_type)). Competing targets are the SIDES of one dispute,
+  //     so the scope is (source, link_type) — target EXCLUDED, scope.target
+  //     null. Keying by target here would split the sides into separate
+  //     single-sided "disputes" (then "Preferir este" has nothing to compare).
+  //   - MULTI-VALUED (allows_multiple_current=true): different targets coexist
+  //     legitimately and never conflict; a dispute is a clash on the SAME
+  //     (source, target, link_type) (e.g. validity), so the target is part of
+  //     the scope.
+  // Mirrors groupDisputedAttributes (keyed by (node, attribute_key), value
+  // excluded) for the functional case.
   const groups = new Map<string, DisputeQueueItem & { sides: DisputedItemSide[] }>();
   for (const r of rows) {
-    const key = `${r.source_node_id}\x1F${r.target_node_id}\x1F${r.link_type_id}`;
+    const functional = !r.allows_multiple_current;
+    const key = functional
+      ? `${r.source_node_id}\x1F${r.link_type_id}`
+      : `${r.source_node_id}\x1F${r.target_node_id}\x1F${r.link_type_id}`;
     let group = groups.get(key);
     if (!group) {
       group = {
@@ -163,7 +179,7 @@ function groupDisputedLinks(rows: readonly DisputedLinkRow[]): DisputeQueueItem[
         item_kind: "link",
         scope: {
           source_node_id: r.source_node_id,
-          target_node_id: r.target_node_id,
+          target_node_id: functional ? null : r.target_node_id,
           link_type: r.link_type_name,
           node_id: null,
           attribute_key: null,
