@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.3.0"
+  version: "2.4.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -18,6 +18,23 @@ info:
     is mediated by the BFF (read tools open their own `BEGIN READ ONLY`; the
     write path `start_async_ingestion` invokes the audited ingestion pipeline,
     NEVER raw SQL).
+
+    ## v2.4.0 — Graph edge label projection (additive, wire)
+
+    The `graph_delta` SSE frame's per-link payload (`GraphLinkWire`) gains an
+    OPTIONAL `link_type_label` field carrying the catalog-resolved pt-BR
+    display label (e.g. `"participa de"` for slug `participates_in`). The chat
+    graph-normalizer (chat.back.md BR-41) projects it server-side from the
+    same `CatalogSnapshot` row already used to resolve `is_temporal` —
+    `link_type.label`, single source of truth (v7 §15 catalog; reaffirmed by
+    catalog migrations `0001_seed.sql` / `0002_catalog_tier1.sql`). The slug
+    (`link_type`) is UNCHANGED and remains the stable wire identifier the SPA
+    uses for colour keying; `link_type_label` is presentation-only.
+
+    Fallback: on catalog miss (open-ontology safety), the BFF OMITS
+    `link_type_label` and the SPA humanizes the slug client-side. Clients
+    written against v2.3.0 keep working — the field is optional. No DB
+    migration: `link_type.label` already exists.
 
     ## v2.3 — Async ingestion capability (additive, feature-flagged)
 
@@ -341,10 +358,12 @@ paths:
                                  nodes:  [ { id: uuid, node_type: string, canonical_name: string,
                                              status: "active"|"needs_review"|"merged"|"deleted" }, ... ],
                                  links:  [ { id: uuid, source_node_id: uuid, target_node_id: uuid,
-                                             link_type: string, is_temporal: bool,
+                                             link_type: string, link_type_label?: string,
+                                             is_temporal: bool,
                                              is_in_effect?: bool, status?: string,
                                              flags?: ("uncertain"|"disputed"|"low_confidence")[] }, ... ] }
-                                 # (additive in v2.1, BR-41 — see "graph_delta semantics" below)
+                                 # (additive in v2.1, BR-41; `link_type_label` additive in v2.4.0
+                                 #  — see "graph_delta semantics" below)
           - `done`          -> { stop_reason: "end_turn" | "max_tokens" | "stop_sequence"
                                               | "max_iterations" | "turn_timeout"
                                               | "cancelled",
@@ -381,6 +400,13 @@ paths:
           - `traverse`: nodes + links from the traversal envelope; `is_temporal`
             on each link is resolved via the BFF's `CatalogSnapshot` (lookup by
             `link_type`; catalog miss -> `is_temporal: false` defensive default).
+            `link_type_label` (v2.4.0, additive) is also projected from the same
+            catalog row (`link_type.label`, pt-BR display label — e.g.
+            `"participa de"` for slug `participates_in`); catalog miss ->
+            `link_type_label` is OMITTED and the SPA humanizes the slug as a
+            fallback (open-ontology safety). The slug `link_type` remains the
+            stable wire identifier (used by the SPA as the colour key); the
+            label is presentation-only.
           - `get_node`: one node, zero links.
           - `list_nodes`: nodes of the current page, zero links.
           - `search`: ONLY `items(kind=node).id`; the BFF hydrates the ids
@@ -527,7 +553,7 @@ paths:
                     data: {"tool":"traverse","ok":true}
 
                     event: graph_delta
-                    data: {"source_tool":"traverse","nodes":[{"id":"33333333-3333-3333-3333-333333333333","node_type":"person","canonical_name":"Rodrigo","status":"active"},{"id":"44444444-4444-4444-4444-444444444444","node_type":"project","canonical_name":"Apollo","status":"active"}],"links":[{"id":"55555555-5555-5555-5555-555555555555","source_node_id":"33333333-3333-3333-3333-333333333333","target_node_id":"44444444-4444-4444-4444-444444444444","link_type":"works_at","is_temporal":true,"is_in_effect":true}]}
+                    data: {"source_tool":"traverse","nodes":[{"id":"33333333-3333-3333-3333-333333333333","node_type":"person","canonical_name":"Rodrigo","status":"active"},{"id":"44444444-4444-4444-4444-444444444444","node_type":"project","canonical_name":"Apollo","status":"active"}],"links":[{"id":"55555555-5555-5555-5555-555555555555","source_node_id":"33333333-3333-3333-3333-333333333333","target_node_id":"44444444-4444-4444-4444-444444444444","link_type":"works_at","link_type_label":"trabalha em","is_temporal":true,"is_in_effect":true}]}
 
                     event: llm_start
                     data: {"iteration":2}
@@ -1610,6 +1636,19 @@ components:
           type: string
           description: "Catalog slug, e.g. `works_at`, `located_in`."
           example: "works_at"
+        link_type_label:
+          type: string
+          description: |
+            Optional pt-BR display label of the LinkType, projected server-side
+            from the catalog row (`link_type.label`) by the chat graph-normalizer
+            (chat.back.md BR-41). Single source of truth: the catalog — the SPA
+            MUST NOT carry a static slug->label table. Additive in v2.4.0;
+            OMITTED when the slug is not present in the catalog snapshot
+            (open-ontology fallback). The SPA then humanizes the slug
+            client-side (e.g. underscores -> spaces). The slug (`link_type`)
+            remains the stable wire identifier (e.g. SPA colour keying);
+            `link_type_label` is presentation-only.
+          example: "trabalha em"
         is_temporal:
           type: boolean
           description: |
