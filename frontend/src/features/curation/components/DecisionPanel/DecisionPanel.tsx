@@ -44,6 +44,7 @@ import {
   describeScope,
   buildCorrectionDefaults,
 } from "./DecisionPanel.helpers";
+import { useCurationNodeDetail } from "../../api/node.hooks";
 import type { CorrectionFormDefaults } from "../CorrectionForm";
 import type { DecisionPanelProps } from "./DecisionPanel.types";
 
@@ -60,8 +61,28 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   className,
 }) => {
   const badge = useMemo(() => headerBadge(item), [item]);
-  const scope = useMemo(() => describeScope(item), [item]);
   const now = useMemo(() => new Date(), [item]); // refresh on item change
+
+  // Header subject: for disputes, resolve the SUBJECT node name (the link's
+  // source, or the attribute's node) so the title reads e.g. "Salvar
+  // imagens… · part_of" instead of just the bare relation. entity_match
+  // items already carry their canonical name. While the name loads (or for
+  // entity_match) we fall back to describeScope.
+  const subjectId = useMemo(() => {
+    if (item.kind !== "disputed") return null;
+    return item.itemKind === "link"
+      ? item.scope.sourceNodeId
+      : item.scope.nodeId;
+  }, [item]);
+  const subjectQ = useCurationNodeDetail(subjectId);
+  const headerRelation =
+    item.kind === "disputed"
+      ? (item.itemKind === "link" ? item.scope.linkType : item.scope.attributeKey)
+      : null;
+  const headerSubject =
+    item.kind === "entity_match"
+      ? item.canonicalName
+      : (subjectQ.data?.node.canonicalName ?? describeScope(item));
 
   // ---- selection state for ComparePane ----
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(
@@ -207,7 +228,16 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         <div className="flex items-center justify-between gap-md">
           <div className="flex items-center gap-md">
             <StateBadge state={badge.state} size="md" label={badge.label} />
-            <h2 className="text-heading text-content">{scope}</h2>
+            <h2 className="text-heading text-content">
+              {headerSubject}
+              {item.kind === "disputed" &&
+                subjectQ.data != null &&
+                headerRelation && (
+                  <span className="ml-sm align-middle text-body-sm font-normal text-muted">
+                    · {headerRelation}
+                  </span>
+                )}
+            </h2>
           </div>
           <EvidenceChip viewed={evidenceViewed} />
         </div>
