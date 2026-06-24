@@ -24,6 +24,10 @@ import { describe, expect, it } from "vitest";
 import {
   deriveInitialSelection,
   findItemInQueue,
+  indexOfSelected,
+  neighbour,
+  selectByIndex,
+  toSelectedItem,
 } from "../curation-page-helpers";
 import type { ReviewQueueList } from "../../types";
 
@@ -140,5 +144,95 @@ describe("deriveInitialSelection", () => {
       kind: "disputed",
       id: "side-x",
     });
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * TC-07 — neighbour / selectByIndex / toSelectedItem                  *
+ * ------------------------------------------------------------------ */
+
+describe("toSelectedItem", () => {
+  it("maps an entity_match item to its (kind, nodeId) selection", () => {
+    expect(toSelectedItem(buildEntityItem("n1"))).toEqual({
+      kind: "entity_match",
+      id: "n1",
+    });
+  });
+
+  it("maps a disputed item to its first side's itemId", () => {
+    expect(toSelectedItem(buildDisputedItem("side-1"))).toEqual({
+      kind: "disputed",
+      id: "side-1",
+    });
+  });
+});
+
+describe("indexOfSelected", () => {
+  it("returns the index of the matching item", () => {
+    const list = buildList([buildEntityItem("n1"), buildEntityItem("n2")]);
+    expect(indexOfSelected(list, { kind: "entity_match", id: "n2" })).toBe(1);
+  });
+
+  it("returns -1 when not found", () => {
+    const list = buildList([buildEntityItem("n1")]);
+    expect(indexOfSelected(list, { kind: "entity_match", id: "miss" })).toBe(-1);
+  });
+});
+
+describe("neighbour", () => {
+  it("advances to the next item on `next`", () => {
+    const list = buildList([
+      buildEntityItem("n1"),
+      buildEntityItem("n2"),
+      buildEntityItem("n3"),
+    ]);
+    expect(
+      neighbour(list, { kind: "entity_match", id: "n1" }, "next"),
+    ).toEqual({ kind: "entity_match", id: "n2" });
+  });
+
+  it("wraps from last back to first on `next`", () => {
+    const list = buildList([buildEntityItem("n1"), buildEntityItem("n2")]);
+    expect(
+      neighbour(list, { kind: "entity_match", id: "n2" }, "next"),
+    ).toEqual({ kind: "entity_match", id: "n1" });
+  });
+
+  it("wraps from first to last on `prev`", () => {
+    const list = buildList([buildEntityItem("n1"), buildEntityItem("n2")]);
+    expect(
+      neighbour(list, { kind: "entity_match", id: "n1" }, "prev"),
+    ).toEqual({ kind: "entity_match", id: "n2" });
+  });
+
+  it("returns null on empty queue", () => {
+    expect(neighbour(buildList([]), null, "next")).toBeNull();
+  });
+
+  it("returns the first item when no selection (j on a fresh page)", () => {
+    const list = buildList([buildEntityItem("n1"), buildEntityItem("n2")]);
+    expect(neighbour(list, null, "next")).toEqual({
+      kind: "entity_match",
+      id: "n1",
+    });
+  });
+});
+
+describe("selectByIndex", () => {
+  it("returns the (1-indexed) Nth item", () => {
+    const list = buildList([
+      buildEntityItem("n1"),
+      buildEntityItem("n2"),
+      buildEntityItem("n3"),
+    ]);
+    expect(selectByIndex(list, 1)).toEqual({ kind: "entity_match", id: "n1" });
+    expect(selectByIndex(list, 3)).toEqual({ kind: "entity_match", id: "n3" });
+  });
+
+  it("returns null when the index is out of range or invalid", () => {
+    const list = buildList([buildEntityItem("n1")]);
+    expect(selectByIndex(list, 0)).toBeNull();
+    expect(selectByIndex(list, 5)).toBeNull();
+    expect(selectByIndex(list, 10)).toBeNull(); // > 9 cap
   });
 });

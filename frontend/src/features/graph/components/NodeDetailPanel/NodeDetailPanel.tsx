@@ -33,13 +33,16 @@
  *  - React 19 ref-as-prop. The `ref` lives on `NodeDetailPanelProps` and is
  *    forwarded directly to the root `<section>`.
  */
-import { useEffect, useRef, type FC, type KeyboardEvent } from "react";
-import { X, Loader2, AlertTriangle, Network } from "lucide-react";
+import { useEffect, useRef, useState, type FC, type KeyboardEvent } from "react";
+import { X, Loader2, AlertTriangle, Network, Stethoscope } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { StateBadge } from "@/components/ds/StateBadge";
 import { cn } from "@/lib/cn";
 import { useNodeDetail } from "../../api/useNodeDetail";
+import { CurationDrawer } from "@/features/curation/components/CurationDrawer";
+import type { SelectedItemKind } from "@/features/curation/state/curation-store";
 import type { NodeDetailPanelProps } from "./NodeDetailPanel.types";
+import type { NodeDetailView } from "../../api/node-detail.types";
 
 /* ---------- canonical pt-BR copy --------------------------------------- */
 /**
@@ -61,7 +64,49 @@ export const NODE_DETAIL_COPY = Object.freeze({
   attrColState: "Estado",
   noAttributes: "Nenhum atributo registrado.",
   noAliases: "Nenhum alias adicional.",
+  curate: "Curar",
 });
+
+/* ---------- curation target derivation (TC-07) ------------------------ */
+
+/**
+ * Curation context for the "Curar" affordance — what kind of queue item
+ * the drawer should open and which id to look up.
+ *
+ *  - `needs_review` nodes belong to the **entity_match** queue (the BFF
+ *    emits one queue row per `needs_review` node — keyed by `node_id`).
+ *  - Nodes with at least one `uncertain` or `disputed` attribute have
+ *    a contextual curation entry; the drawer picks the first such
+ *    attribute id (BR-01/14: `uncertain` is a display flag, not a
+ *    dedicated queue, so the drawer surfaces it via the **disputed**
+ *    family + the attribute id).
+ *
+ * Returns `null` when the node has no curation-worthy signal — the
+ * "Curar" button is hidden in that case.
+ *
+ * Exported for direct unit-test coverage.
+ */
+export interface NodeCurationTarget {
+  readonly kind: SelectedItemKind;
+  readonly itemId: string;
+}
+
+export function deriveCurationTarget(
+  data: NodeDetailView,
+): NodeCurationTarget | null {
+  if (data.status === "needs_review") {
+    return { kind: "entity_match", itemId: data.id };
+  }
+  for (const attr of data.attributes) {
+    if (
+      attr.effectiveStatus === "uncertain" ||
+      attr.effectiveStatus === "disputed"
+    ) {
+      return { kind: "disputed", itemId: attr.id };
+    }
+  }
+  return null;
+}
 
 /* ---------- error code → state mapping --------------------------------- */
 type ErrorVariant = "not-found" | "deleted" | "generic";
@@ -244,15 +289,24 @@ const ErrorView: FC<ErrorViewProps> = ({
 };
 
 /* ---------- success state --------------------------------------------- */
-import type { NodeDetailView } from "../../api/node-detail.types";
 
 interface SuccessViewProps {
   data: NodeDetailView;
   closeRef: React.RefObject<HTMLButtonElement | null>;
+  curateButtonRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+  curationTarget: NodeCurationTarget | null;
+  onCurate: () => void;
 }
 
-const SuccessView: FC<SuccessViewProps> = ({ data, closeRef, onClose }) => {
+const SuccessView: FC<SuccessViewProps> = ({
+  data,
+  closeRef,
+  curateButtonRef,
+  onClose,
+  curationTarget,
+  onCurate,
+}) => {
   return (
     <>
       <PanelHeader
@@ -273,6 +327,29 @@ const SuccessView: FC<SuccessViewProps> = ({ data, closeRef, onClose }) => {
             <span data-testid="node-detail-status">
               <StateBadge state={data.badgeState} size="sm" />
             </span>
+            {/* "Curar" affordance (TC-07) — visible only when the node has a
+                curation signal. Opens the CurationDrawer in-loco, without
+                changing the URL. */}
+            {curationTarget !== null && (
+              <button
+                ref={curateButtonRef}
+                type="button"
+                onClick={onCurate}
+                data-testid="node-detail-curate"
+                data-curate-kind={curationTarget.kind}
+                className={cn(
+                  "inline-flex items-center gap-xs",
+                  // Hit target ≥ 32px (project floor; WCAG 2.2 SC 2.5.8).
+                  "min-h-8 px-md py-xs rounded-md",
+                  "text-body-sm text-content-inverse bg-action hover:bg-action-hover",
+                  "transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+                )}
+              >
+                <Stethoscope aria-hidden="true" className="size-4" />
+                {NODE_DETAIL_COPY.curate}
+              </button>
+            )}
           </>
         }
       />
@@ -395,6 +472,12 @@ export const NodeDetailPanel: FC<NodeDetailPanelProps> = ({
 }) => {
   const query = useNodeDetail(nodeId);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const curateButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // CurationDrawer open state (TC-07). Local — the drawer never changes
+  // the URL (spec §3 row "CurationDrawer abre"), so the parent route
+  // is unaware. On close, focus returns to the "Curar" button per §8.
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Spec §8 — focus the close button on mount so keyboard users can dismiss
   // immediately and screen-readers anchor on a meaningful control. The
@@ -403,6 +486,25 @@ export const NodeDetailPanel: FC<NodeDetailPanelProps> = ({
   useEffect(() => {
     closeRef.current?.focus();
   }, [nodeId]);
+
+  // Restore focus to the trigger when the drawer closes (FL-CURATION-03
+  // step 7). Radix already restores focus when it closes, but Radix
+  // targets `document.activeElement` at open-time — we are explicit so
+  // the contract is durable across Radix version bumps.
+  function handleDrawerOpenChange(next: boolean): void {
+    setDrawerOpen(next);
+    if (!next) {
+      // Defer to next frame so Radix has unmounted its focus-trap before
+      // we move the focus (otherwise Radix's restore overrides us).
+      requestAnimationFrame(() => {
+        curateButtonRef.current?.focus();
+      });
+    }
+  }
+
+  // Derive the curation target only when the query succeeded.
+  const curationTarget =
+    query.data !== undefined ? deriveCurationTarget(query.data) : null;
 
   // Escape closes — spec §8 / BDD Scenario 4. Attached to the panel root
   // (not document) so the listener auto-cleans when the panel unmounts.
@@ -448,7 +550,10 @@ export const NodeDetailPanel: FC<NodeDetailPanelProps> = ({
       <SuccessView
         data={query.data}
         closeRef={closeRef}
+        curateButtonRef={curateButtonRef}
         onClose={onClose}
+        curationTarget={curationTarget}
+        onCurate={() => setDrawerOpen(true)}
       />
     );
   } else {
@@ -463,36 +568,52 @@ export const NodeDetailPanel: FC<NodeDetailPanelProps> = ({
   }
 
   return (
-    <GlassSurface
-      level="panel"
-      role="complementary"
-      aria-label={`Detalhes do nó: ${resolvedLabel}`}
-      ref={ref as React.Ref<HTMLDivElement>}
-      onKeyDown={onKeyDown}
-      data-testid="node-detail-panel"
-      data-status={
-        query.isPending
-          ? "loading"
-          : query.isError
-            ? "error"
-            : query.data !== undefined
-              ? "success"
-              : "loading"
-      }
-      className={cn(
-        // Fill the parent (the ChatWorkspace right pane). `flex-col` so the
-        // header sits above the scrollable body. `min-h-0` so the body's
-        // `overflow-y-auto` actually kicks in inside the flex parent.
-        "flex h-full w-full flex-col min-h-0",
-        // Pull the panel above the canvas — ChatWorkspace mounts it as a
-        // sibling overlay; the z-token keeps it above React Flow's stack.
-        // `z-panel` is declared in styles/theme.css as a `@utility` per
-        // the Tailwind-v4 z-index gotcha.
-        "z-panel",
-        className,
+    <>
+      <GlassSurface
+        level="panel"
+        role="complementary"
+        aria-label={`Detalhes do nó: ${resolvedLabel}`}
+        ref={ref as React.Ref<HTMLDivElement>}
+        onKeyDown={onKeyDown}
+        data-testid="node-detail-panel"
+        data-status={
+          query.isPending
+            ? "loading"
+            : query.isError
+              ? "error"
+              : query.data !== undefined
+                ? "success"
+                : "loading"
+        }
+        className={cn(
+          // Fill the parent (the ChatWorkspace right pane). `flex-col` so the
+          // header sits above the scrollable body. `min-h-0` so the body's
+          // `overflow-y-auto` actually kicks in inside the flex parent.
+          "flex h-full w-full flex-col min-h-0",
+          // Pull the panel above the canvas — ChatWorkspace mounts it as a
+          // sibling overlay; the z-token keeps it above React Flow's stack.
+          // `z-panel` is declared in styles/theme.css as a `@utility` per
+          // the Tailwind-v4 z-index gotcha.
+          "z-panel",
+          className,
+        )}
+      >
+        {body}
+      </GlassSurface>
+      {/* CurationDrawer (TC-07) — portals itself; rendered as a sibling so
+          it does not inherit the panel's `z-panel` stacking. Only mounts
+          when the node has a curatable signal. */}
+      {curationTarget !== null && (
+        <CurationDrawer
+          open={drawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+          kind={curationTarget.kind}
+          itemId={curationTarget.itemId}
+          {...(query.data?.canonicalName !== undefined
+            ? { itemLabel: query.data.canonicalName }
+            : {})}
+        />
       )}
-    >
-      {body}
-    </GlassSurface>
+    </>
   );
 };

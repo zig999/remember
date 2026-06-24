@@ -52,7 +52,12 @@ import {
 import type { ReviewQueueListWire } from "../types";
 import { QueueList } from "./QueueList";
 import { QueueTabs, type QueueKindFilter } from "./QueueTabs";
-import { deriveInitialSelection } from "./curation-page-helpers";
+import {
+  deriveInitialSelection,
+  neighbour,
+  selectByIndex,
+} from "./curation-page-helpers";
+import { useCurationKeyboard } from "../hooks/useCurationKeyboard";
 
 const QUEUE_POLL_MS = 30_000;
 const QUEUE_LIMIT = 20;
@@ -273,6 +278,44 @@ export const CurationPage: FC = () => {
   const items = data?.items ?? [];
   const isEmpty = !isPending && !isError && items.length === 0;
   const hasSelection = selectedItem !== null;
+
+  // ---- keyboard shortcuts (TC-07) ----
+  //
+  // Page-level navigation: j/k cycles items, 1..9 selects Nth. Decision
+  // shortcuts (m/s/c/r/e/u) are deferred to TC-05 wiring — the page does
+  // not own DecisionPanel state — so we surface the dispatch entry point
+  // via the store + DecisionPanel actions. For now we wire the navigation
+  // + checkbox shortcuts that have no dependency on TC-05 internals.
+  //
+  // The hook auto-disables when focus is inside an input/textarea/select
+  // (the ReasonField inside DecisionPanel would otherwise eat every `c`
+  // the curator types).
+  const setSelectedItems = useCurationStore((s) => s.setSelectedItems);
+  const checkedIds = useCurationStore((s) => s.selectedItems);
+  useCurationKeyboard({
+    onNext: () => {
+      const next = neighbour(data, selectedItem, "next");
+      if (next !== null) handleSelect(next);
+    },
+    onPrev: () => {
+      const prev = neighbour(data, selectedItem, "prev");
+      if (prev !== null) handleSelect(prev);
+    },
+    onSelectIndex: (n) => {
+      const picked = selectByIndex(data, n);
+      if (picked !== null) handleSelect(picked);
+    },
+    onToggleCheck: () => {
+      if (selectedItem === null) return;
+      const next = new Set(checkedIds);
+      if (next.has(selectedItem.id)) {
+        next.delete(selectedItem.id);
+      } else {
+        next.add(selectedItem.id);
+      }
+      setSelectedItems(next);
+    },
+  });
 
   return (
     // The page itself opts INTO container queries with `@container` so

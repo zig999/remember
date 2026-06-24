@@ -468,3 +468,109 @@ describe("NodeDetailPanel — accessibility (V10, a11y §8)", () => {
     );
   });
 });
+
+/* ==================== V11 Curar affordance (TC-07) ===================== */
+
+import { deriveCurationTarget } from "../NodeDetailPanel";
+
+describe("deriveCurationTarget (TC-07 — pure)", () => {
+  it("returns entity_match kind for needs_review nodes", () => {
+    const target = deriveCurationTarget({
+      ...SUCCESS_DATA,
+      status: "needs_review",
+    });
+    expect(target).toEqual({ kind: "entity_match", itemId: "node-1" });
+  });
+
+  it("returns disputed kind for the first uncertain/disputed attribute when node is active", () => {
+    const target = deriveCurationTarget({
+      ...SUCCESS_DATA,
+      status: "active",
+      // attr-2 is `effectiveStatus: "uncertain"` in SUCCESS_DATA — the
+      // derivation must walk attributes and pick that id.
+    });
+    expect(target).toEqual({ kind: "disputed", itemId: "attr-2" });
+  });
+
+  it("returns null when no attribute is uncertain/disputed and node is active", () => {
+    const target = deriveCurationTarget({
+      ...SUCCESS_DATA,
+      status: "active",
+      attributes: [
+        {
+          ...SUCCESS_DATA.attributes[0]!,
+          effectiveStatus: "active" as const,
+          state: "accepted" as const,
+        },
+      ],
+    });
+    expect(target).toBeNull();
+  });
+
+  it("prefers needs_review (entity_match) over per-attribute disputed", () => {
+    const target = deriveCurationTarget({
+      ...SUCCESS_DATA,
+      status: "needs_review",
+      // Even with an uncertain attribute the node-level review wins.
+    });
+    expect(target?.kind).toBe("entity_match");
+  });
+});
+
+describe("NodeDetailPanel — Curar button (TC-07)", () => {
+  it("renders the Curar button when the node has a curation target", () => {
+    // SUCCESS_DATA already has attr-2 in `uncertain` state → derives
+    // a disputed target, so the button must be present.
+    mockState.isPending = false;
+    mockState.isSuccess = true;
+    mockState.data = SUCCESS_DATA;
+    act(() =>
+      root.render(
+        <NodeDetailPanel nodeId="node-1" onClose={() => undefined} />,
+      ),
+    );
+    const btn = find("node-detail-curate");
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn.getAttribute("data-curate-kind")).toBe("disputed");
+    expect(btn.textContent).toContain(NODE_DETAIL_COPY.curate);
+  });
+
+  it("hides the Curar button when no attribute is uncertain/disputed and node is active", () => {
+    mockState.isPending = false;
+    mockState.isSuccess = true;
+    mockState.data = {
+      ...SUCCESS_DATA,
+      status: "active",
+      attributes: [
+        {
+          ...SUCCESS_DATA.attributes[0]!,
+          effectiveStatus: "active" as const,
+          state: "accepted" as const,
+        },
+      ],
+    };
+    act(() =>
+      root.render(
+        <NodeDetailPanel nodeId="node-1" onClose={() => undefined} />,
+      ),
+    );
+    expect(maybeFind("node-detail-curate")).toBeNull();
+  });
+
+  it("Curar button hit-target ≥ 32px (WCAG 2.2 SC 2.5.8)", () => {
+    // Asserts the Tailwind utility, not the rendered pixel size (jsdom
+    // does not compute layout). `min-h-8` resolves to 32px in the v4
+    // spacing scale; a regression that switches to `min-h-7` would fail.
+    mockState.isPending = false;
+    mockState.isSuccess = true;
+    mockState.data = SUCCESS_DATA;
+    act(() =>
+      root.render(
+        <NodeDetailPanel nodeId="node-1" onClose={() => undefined} />,
+      ),
+    );
+    const btn = find("node-detail-curate");
+    const cls = btn.className;
+    expect(cls).toMatch(/\bmin-h-8\b/);
+  });
+});
