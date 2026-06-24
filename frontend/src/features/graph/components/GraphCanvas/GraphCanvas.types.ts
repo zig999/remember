@@ -21,7 +21,7 @@
  */
 import type { Ref } from "react";
 import type { GraphLinkData, GraphNodeData } from "../../types";
-import type { GraphPosition } from "../../state/graph-store";
+import type { GraphLayoutAlgorithm, GraphPosition } from "../../state/graph-store";
 import type { GraphSpaceHandle } from "../GraphSpace/GraphSpace.types";
 
 export interface GraphCanvasProps {
@@ -53,6 +53,16 @@ export interface GraphCanvasProps {
    *  least one node, an overlay button is shown that re-flows the layout
    *  (discards user drags, re-runs the force pass). Omitted → no button. */
   onResetLayout?: () => void;
+  /** Active layout algorithm (TC-02). When provided alongside
+   *  `onLayoutAlgorithmChange`, GraphCanvas renders a Select beside the
+   *  Reorganizar button so the user can switch between force / tree / radial.
+   *  Both props must be passed together — passing only one disables the
+   *  Select (defensive: a Select without a setter is read-only and useless;
+   *  a setter without the current value can't show the selection). */
+  layoutAlgorithm?: GraphLayoutAlgorithm;
+  /** Setter for the active layout algorithm (TC-02). Paired with
+   *  `layoutAlgorithm` above. */
+  onLayoutAlgorithmChange?: (algo: GraphLayoutAlgorithm) => void;
   /** Imperative view-handle ref (React 19 ref-as-prop). Exposes
    *  `focusNode`/`fitView`/`recenter` against the React Flow viewport. */
   ref?: Ref<GraphSpaceHandle>;

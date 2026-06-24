@@ -51,6 +51,11 @@ export interface GraphPosition {
   readonly y: number;
 }
 
+/** Layout algorithm selector (TC-02). The same three runners share one
+ *  signature — `useForceLayout` dispatches by this discriminator. New
+ *  algorithms join this union and the dispatcher case statement together. */
+export type GraphLayoutAlgorithm = "force" | "tree" | "radial";
+
 export interface GraphState {
   /** Live nodes keyed by id — `Map` for O(1) merge/lookup and stable
    *  insertion order (used by tests to assert "id N was added"). */
@@ -94,6 +99,12 @@ export interface GraphState {
    *  (the "Reorganizar" affordance). Distinct from a delta-driven run, which
    *  honours pins. Reset to 0 by `clear()`. */
   layoutNonce: number;
+  /** Active layout algorithm (TC-02). Defaults to `'force'` so legacy
+   *  behaviour is preserved. Switching via `setLayoutAlgorithm` selects the
+   *  runner used by `useForceLayout` AND bumps `layoutNonce` so the new
+   *  algorithm runs immediately, ignoring user pins (the user just asked
+   *  for a different layout — preserving stale pins would defeat that). */
+  layoutAlgorithm: GraphLayoutAlgorithm;
 
   /** Merge a delta into the store. Re-affirmed ids update in place; only
    *  new ids enter `revealQueue`. Sets `receivedDeltaThisTurn = true`
@@ -131,6 +142,13 @@ export interface GraphState {
    *  no `{0,0}` flash. No-op-safe on an empty graph (the force effect early
    *  returns). */
   resetLayout: () => void;
+  /** Switch to a different layout algorithm (TC-02). Sets
+   *  `layoutAlgorithm = algo` AND bumps `layoutNonce` — the
+   *  `useForceLayout` effect re-runs with the new runner and ignores the
+   *  pin set so the fresh layout is unobstructed (same semantics as
+   *  `resetLayout`, but also changes the algorithm). No-op if `algo`
+   *  equals the current algorithm — avoids a needless layout pass. */
+  setLayoutAlgorithm: (algo: GraphLayoutAlgorithm) => void;
   /** Reset to empty / `status === "empty"`. Called on conversation
    *  switch — the right pane goes back to `GraphEmptyState`. Also
    *  resets `receivedDeltaThisTurn` (new conversation = new turn). */
@@ -159,27 +177,48 @@ export interface GraphState {
 
   // ---- Graph view persistence (BR-42) ---------------------------------------
 
-  /** Snapshot shape written to / read from the BFF persistence endpoint. */
-  getSnapshot: () => {
-    version: 1;
-    nodes: GraphNodeData[];
-    links: GraphLinkData[];
-    positions: Record<string, { x: number; y: number }>;
-    user_pinned: string[];
-  };
+  /** Snapshot shape written to / read from the BFF persistence endpoint.
+   *  Bumped to `version: 2` in TC-02 to carry `layoutAlgorithm`. `hydrate`
+   *  also accepts `version: 1` (legacy) — see its docstring. */
+  getSnapshot: () => GraphSnapshotV2;
 
   /**
    * Restore a saved snapshot (BR-42). Sets nodes/links/positions/userPinned
    * from the saved data and makes all nodes immediately visible — NO 1-by-1
    * reveal animation (snapshot = "ultima versão apresentada", shown instantly).
+   *
+   * Backward compatibility (TC-02):
+   *  - `version: 1` snapshots are accepted unchanged; `layoutAlgorithm`
+   *    defaults to `'force'` so a graph saved before TC-02 hydrates with
+   *    the previous behaviour.
+   *  - `version: 2` snapshots restore the stored `layoutAlgorithm` too.
+   *  - Any other version value is treated like v1 + default algorithm — we
+   *    never throw on hydrate, since a corrupt snapshot must not block the
+   *    chat UI.
    */
-  hydrate: (snapshot: {
-    version: 1;
-    nodes: GraphNodeData[];
-    links: GraphLinkData[];
-    positions: Record<string, { x: number; y: number }>;
-    user_pinned: string[];
-  }) => void;
+  hydrate: (snapshot: GraphSnapshotV1 | GraphSnapshotV2) => void;
+}
+
+/** Legacy snapshot shape — what `getSnapshot` returned before TC-02. Still
+ *  accepted by `hydrate` so users with a server-side v1 snapshot continue to
+ *  see their saved graph after deploying TC-02. */
+export interface GraphSnapshotV1 {
+  version: 1;
+  nodes: GraphNodeData[];
+  links: GraphLinkData[];
+  positions: Record<string, { x: number; y: number }>;
+  user_pinned: string[];
+}
+
+/** v2 snapshot — adds `layout_algorithm`. snake_case on the wire to match
+ *  the existing `user_pinned` convention. */
+export interface GraphSnapshotV2 {
+  version: 2;
+  nodes: GraphNodeData[];
+  links: GraphLinkData[];
+  positions: Record<string, { x: number; y: number }>;
+  user_pinned: string[];
+  layout_algorithm: GraphLayoutAlgorithm;
 }
 
 /** A graph tool was active iff the status reflects an in-flight subgraph
@@ -204,6 +243,7 @@ function makeInitialState(): Pick<
   | "receivedDeltaThisTurn"
   | "userPinned"
   | "layoutNonce"
+  | "layoutAlgorithm"
 > {
   return {
     nodes: new Map<string, GraphNodeData>(),
@@ -216,6 +256,7 @@ function makeInitialState(): Pick<
     receivedDeltaThisTurn: false,
     userPinned: new Set<string>(),
     layoutNonce: 0,
+    layoutAlgorithm: "force",
   };
 }
 
@@ -356,6 +397,24 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     }));
   },
 
+  setLayoutAlgorithm: (algo) => {
+    set((state) => {
+      // No-op when the user picks the algorithm already active — avoids a
+      // pointless layout re-run and a spurious `layoutNonce` bump (which
+      // would otherwise also tag a save in `useGraphPersistence`).
+      if (state.layoutAlgorithm === algo) return {};
+      return {
+        layoutAlgorithm: algo,
+        // Discard pins too — the user just asked for a fresh layout under a
+        // different algorithm, and preserving pins from the prior algorithm
+        // would partially override the new shape (e.g. tree pins sitting in
+        // the middle of a radial wheel).
+        userPinned: new Set<string>(),
+        layoutNonce: state.layoutNonce + 1,
+      };
+    });
+  },
+
   clear: () => {
     set(makeInitialState());
   },
@@ -409,17 +468,21 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   // ---- Graph view persistence (BR-42) ---------------------------------------
 
   getSnapshot: () => {
-    const { nodes, links, positions, userPinned } = get();
+    const { nodes, links, positions, userPinned, layoutAlgorithm } = get();
     const posObj: Record<string, { x: number; y: number }> = {};
     for (const [id, pos] of positions) {
       posObj[id] = { x: pos.x, y: pos.y };
     }
+    // TC-02 bumps the snapshot to v2 — the new `layout_algorithm` field is
+    // additive. The PUT endpoint accepts the new shape; the BFF persists it
+    // verbatim and returns it on the next GET.
     return {
-      version: 1 as const,
+      version: 2 as const,
       nodes: Array.from(nodes.values()),
       links: Array.from(links.values()),
       positions: posObj,
       user_pinned: Array.from(userPinned),
+      layout_algorithm: layoutAlgorithm,
     };
   },
 
@@ -443,6 +506,14 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       nextPositions.set(id, { x: pos.x, y: pos.y });
     }
 
+    // v1 → default to 'force' (previous behaviour). v2 → restore the
+    // stored algorithm. The `in` check is the safe discriminator because
+    // v1 lacks the property entirely.
+    const layoutAlgorithm: GraphLayoutAlgorithm =
+      snapshot.version === 2 && "layout_algorithm" in snapshot
+        ? snapshot.layout_algorithm
+        : "force";
+
     set({
       nodes: nextNodes,
       links: nextLinks,
@@ -454,6 +525,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       status: "ready",
       receivedDeltaThisTurn: false,
       errorMessage: undefined,
+      layoutAlgorithm,
     });
   },
 }));

@@ -55,6 +55,8 @@ import {
 } from "d3-force";
 
 import { useGraphStore, type GraphPosition } from "../state/graph-store";
+import { runTreeLayout } from "../lib/layout-tree";
+import { runRadialLayout } from "../lib/layout-radial";
 
 /* -------------------------------------------------------------------------
  * Tunables
@@ -212,6 +214,11 @@ export function useForceLayout(): ReadonlyMap<string, GraphPosition> {
   // `resetLayout` (Phase 2) bumps this. A change means "re-flow everything,
   // ignoring pins" — distinct from a delta-driven run, which honours pins.
   const layoutNonce = useGraphStore((s) => s.layoutNonce);
+  // TC-02 — the dispatcher switches between the three runners. NOT a hook
+  // dep (the effect already depends on `layoutNonce`, which `setLayoutAlgorithm`
+  // bumps). Read inside the effect so the latest value wins without forcing
+  // a second re-run.
+  const layoutAlgorithm = useGraphStore((s) => s.layoutAlgorithm);
 
   // Latest-positions ref — used inside the effect to read the pin set without
   // making `positions` itself an effect dependency (that would loop on the
@@ -248,13 +255,32 @@ export function useForceLayout(): ReadonlyMap<string, GraphPosition> {
       return;
     }
 
-    const next = runForceLayout(nodeIds, linkPairs, pinned);
+    // Dispatch to the correct runner. All three share the same signature so
+    // the call site stays identical — only the function reference differs.
+    // `runForceLayout` remains the default and the existing tests still
+    // pin its pin-preserving behaviour.
+    let next: Map<string, GraphPosition>;
+    switch (layoutAlgorithm) {
+      case "tree":
+        next = runTreeLayout(nodeIds, linkPairs, pinned);
+        break;
+      case "radial":
+        next = runRadialLayout(nodeIds, linkPairs, pinned);
+        break;
+      case "force":
+      default:
+        next = runForceLayout(nodeIds, linkPairs, pinned);
+        break;
+    }
 
     // Write back to the store. We always replace with a fresh Map so the
     // subscription's referential check fires — Zustand uses strict equality.
     useGraphStore.setState({ positions: next });
     // Intentionally NOT depending on `positions` — see the docstring above.
-    // `layoutNonce` IS a dep: bumping it (resetLayout) forces a re-flow.
+    // `layoutNonce` IS a dep: bumping it (resetLayout / setLayoutAlgorithm)
+    // forces a re-flow. `layoutAlgorithm` is read fresh inside the effect
+    // — switching algorithm always bumps `layoutNonce`, so it rides the
+    // same trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, links, layoutNonce]);
 

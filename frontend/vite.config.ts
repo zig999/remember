@@ -28,7 +28,7 @@ export default defineConfig({
             "@tanstack/react-router",
             "@tanstack/react-table",
           ],
-          graph: ["@xyflow/react", "d3-force"],
+          graph: ["@xyflow/react", "d3-force", "d3-hierarchy"],
           motion: ["framer-motion"],
         },
       },

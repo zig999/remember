@@ -196,12 +196,16 @@ describe("useGraphStore.getSnapshot()", () => {
     useGraphStore.getState().clear();
   });
 
-  it("serializes current store state to wire shape with version 1", () => {
+  it("serializes current store state to wire shape with version 2 (TC-02)", () => {
     useGraphStore.getState().addNodes({ nodes: [makeNode("n1")], links: [] });
     useGraphStore.getState().setNodePosition("n1", { x: 50, y: 60 });
 
     const snap = useGraphStore.getState().getSnapshot();
-    expect(snap.version).toBe(1);
+    // TC-02 bumped the snapshot schema to v2 with an additive
+    // `layout_algorithm` field. The v1 shape (no layout_algorithm) is still
+    // accepted by `hydrate` — see graph-store-layout-algorithm.spec.ts.
+    expect(snap.version).toBe(2);
+    expect(snap.layout_algorithm).toBe("force");
     expect(snap.nodes.some((n: GraphNodeData) => n.id === "n1")).toBe(true);
     expect(snap.positions["n1"]).toEqual({ x: 50, y: 60 });
     expect(snap.user_pinned).toContain("n1");
