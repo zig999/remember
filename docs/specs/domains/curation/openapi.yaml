@@ -55,6 +55,8 @@ tags:
     description: "Resolution of links / attributes in `disputed` state (section 6.5-C)"
   - name: "Items"
     description: "Direct curator actions on a single link or attribute"
+  - name: "Metrics"
+    description: "Calibration aggregates for the curation feedback loop (section 16)"
 
 security:
   - bearerAuth: []
@@ -131,6 +133,57 @@ paths:
                       code: "VALIDATION_INVALID_FORMAT"
                       message: "`kind` must be one of [entity_match, disputed]"
                       details: { kind: "unknown_queue" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  # ---------------------------------------------------------------------------
+  # Calibration metrics - section 16 (additive read-only aggregate)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/curation/metrics:
+    get:
+      tags: ["Metrics"]
+      operationId: getCurationMetrics
+      summary: Read durable §16 calibration aggregates
+      description: |
+        Returns durable calibration aggregates for the curation feedback loop
+        (section 16). Aggregates are derived from existing tables -- this endpoint
+        is purely read-only, performs NO writes, and requires NO schema migration.
+
+        Sources of each field (no embeddings, lexical + audit only):
+          - `accept_rate` and `reject_rate_by_code` -- aggregated from
+            `curation_action` rows (the `action` and the validation outcome /
+            error code recorded by the layered validation, section 13).
+          - `needs_review_count` -- count of `knowledge_node` rows with
+            `status = needs_review` (section 4.3).
+          - `uncertain_count`, `disputed_count` -- counts from the resolved
+            views (`knowledge_link_resolved`, `node_attribute_resolved`) where
+            `effective_status` is `uncertain` / `disputed` (sections 5.4, 6.6).
+            Display flags `uncertain` / `low_confidence` have NO queue (ADR A26)
+            but ARE surfaced here as calibration signal.
+          - `entity_match_queue_count`, `disputed_queue_count` -- the two
+            dedicated review queues (section 10.1).
+
+        `computed_at` is the BFF-side clock at the moment the aggregates were
+        computed (a single read transaction snapshots all counts coherently).
+
+        Graceful degradation contract (front spec R1 / `front/features/curadoria
+        .feature.spec.md` section 1): the frontend `MetricsStrip` MUST tolerate
+        503 here and fall back to per-kind totals from `listReviewQueue`. This
+        endpoint MUST NOT cause the curadoria screen to fail on read errors --
+        clients treat it as advisory.
+
+        Same security and JWT contract as the rest of the domain (bearerAuth,
+        Neon Auth / Stack Auth, sections 2.5 / A29). No request body, no query
+        parameters.
+      responses:
+        "200":
+          description: "Snapshot of calibration aggregates at `computed_at`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurationMetricsResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
@@ -1436,3 +1489,116 @@ components:
           type: string
           format: uuid
           example: "ccccccc5-cccc-cccc-cccc-cccccccccccc"
+
+    # -------------------------------------------------------------------------
+    # Calibration metrics (section 16) -- additive read-only aggregate.
+    # All counts are non-negative integers; rates are in [0, 1].
+    # -------------------------------------------------------------------------
+    RejectRateByCode:
+      type: object
+      description: |
+        Rejection rate keyed by error code from the layered validation
+        (section 13 / `backend/src/shared/error-mapping.ts`). The KEY is the
+        namespaced error code (`VALIDATION_*`, `BUSINESS_*`, etc.); the VALUE
+        is the fraction of `curation_action` rows whose validation outcome
+        recorded that code, in `[0, 1]`. Keys present are only those that
+        appear in the audit trail -- absent keys are implicitly zero. Sum of
+        values may not equal `1 - accept_rate` exactly when an action records
+        more than one secondary code; the canonical aggregate is `accept_rate`.
+      additionalProperties:
+        type: number
+        format: float
+        minimum: 0
+        maximum: 1
+      example:
+        VALIDATION_INVALID_FORMAT: 0.02
+        BUSINESS_REVIEW_NOT_PENDING: 0.01
+        BUSINESS_TARGET_NODE_REQUIRED: 0.005
+
+    CurationMetricsResponse:
+      type: object
+      required:
+        - accept_rate
+        - reject_rate_by_code
+        - needs_review_count
+        - uncertain_count
+        - disputed_count
+        - entity_match_queue_count
+        - disputed_queue_count
+        - computed_at
+      properties:
+        accept_rate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.91
+          description: |
+            Share of curator actions whose layered validation succeeded
+            (section 13). Computed from `curation_action` rows -- accepted
+            commits over total committed actions in the lifetime of the system.
+        reject_rate_by_code:
+          $ref: "#/components/schemas/RejectRateByCode"
+        needs_review_count:
+          type: integer
+          minimum: 0
+          example: 7
+          description: |
+            Count of `knowledge_node` rows with `status = needs_review`
+            (section 4.3). Equals the size of the `entity_match` queue when no
+            review row was deleted out-of-band -- the two are kept in sync
+            transactionally.
+        uncertain_count:
+          type: integer
+          minimum: 0
+          example: 23
+          description: |
+            Count of `KnowledgeLink` + `NodeAttribute` rows whose
+            `effective_status` resolves to `uncertain` in the resolved views
+            (section 5.4 / 6.6). Display-only signal -- there is NO dedicated
+            review queue for `uncertain` (ADR A26).
+        disputed_count:
+          type: integer
+          minimum: 0
+          example: 4
+          description: |
+            Count of `KnowledgeLink` + `NodeAttribute` rows in `disputed`
+            state (section 6.5-C / 6.6), resolved via the views. This is the
+            assertion-level count, distinct from `disputed_queue_count` which
+            is the number of conflict GROUPS in the `disputed` queue.
+        entity_match_queue_count:
+          type: integer
+          minimum: 0
+          example: 7
+          description: |
+            Number of items currently in the `entity_match` review queue
+            (section 10.1). One per pending `KnowledgeNode` with
+            `status = needs_review`.
+        disputed_queue_count:
+          type: integer
+          minimum: 0
+          example: 3
+          description: |
+            Number of items currently in the `disputed` review queue
+            (section 10.1). One per conflict scope (group of items disputing
+            the same `(source, link_type)` or `(node, attribute_key)` window).
+        computed_at:
+          type: string
+          format: date-time
+          example: "2026-06-24T12:15:43Z"
+          description: |
+            BFF-side timestamp when the snapshot was computed. All counts
+            in this response come from the SAME read transaction so they are
+            mutually coherent; `computed_at` is the wall-clock anchor.
+      example:
+        accept_rate: 0.91
+        reject_rate_by_code:
+          VALIDATION_INVALID_FORMAT: 0.02
+          BUSINESS_REVIEW_NOT_PENDING: 0.01
+          BUSINESS_TARGET_NODE_REQUIRED: 0.005
+        needs_review_count: 7
+        uncertain_count: 23
+        disputed_count: 4
+        entity_match_queue_count: 7
+        disputed_queue_count: 3
+        computed_at: "2026-06-24T12:15:43Z"
