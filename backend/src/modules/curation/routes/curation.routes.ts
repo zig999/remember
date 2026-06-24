@@ -5,6 +5,7 @@
 //
 // Endpoints implemented:
 //   - GET  /api/v1/curation/queue                            (UC-01)
+//   - GET  /api/v1/curation/metrics                          (BR-33)
 //   - POST /api/v1/curation/entity-matches/{node_id}/resolve (UC-02, UC-03)
 //   - POST /api/v1/curation/nodes/merge                      (UC-04)
 //   - POST /api/v1/curation/disputes/resolve                 (UC-05, UC-06, UC-07)
@@ -50,6 +51,7 @@ import {
   correctItemService,
   rejectItemService,
 } from "../service/item.service.js";
+import { computeCurationMetricsService } from "../service/metrics.service.js";
 import { listReviewQueueService } from "../service/queue.service.js";
 import { mapErrorToHttpResponse } from "../mcp/error-envelope.js";
 
@@ -117,6 +119,69 @@ export async function registerCurationRoutes(
       const query = ListReviewQueueQuerySchema.parse(request.query ?? {});
       const body = await listReviewQueueService({ pool: deps.pool }, query);
       return reply.status(200).send(body);
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // BR-33: GET /metrics — read-only §16 calibration snapshot.
+  //
+  // Wraps the shared mapper with a graceful-degradation override: ANY residual
+  // 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front
+  // spec MetricsStrip (R1) can fall back to per-kind totals from /queue. 401
+  // auth failures and 2xx responses are NEVER degraded.
+  //
+  // The original `error_class` is preserved in the server-side WARN log via
+  // sendError's existing `logLevel: "error"` branch (no silent swallow —
+  // CLAUDE.md Rule 12 "Fail Loud").
+  // ---------------------------------------------------------------------
+  app.get(
+    "/metrics",
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const result = await computeCurationMetricsService({
+          pool: deps.pool,
+          logger: deps.logger,
+        });
+        return reply.status(200).send({ ok: true, result });
+      } catch (err) {
+        // Apply the shared mapper first to get the canonical envelope; THEN
+        // re-map residual 500 → 503 per BR-33's graceful-degradation contract.
+        const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
+        const degradedStatus = statusCode === 500 ? 503 : statusCode;
+        const degradedEnvelope =
+          statusCode === 500
+            ? {
+                ok: false as const,
+                error: {
+                  code: "SYSTEM_SERVICE_UNAVAILABLE",
+                  message: "A backing service is temporarily unavailable.",
+                },
+              }
+            : envelope;
+        // Preserve "Fail Loud" — log the original cause server-side for the
+        // 503 and 500-mapped-to-503 cases (the masked envelope hides it from
+        // the client). The shared mapper's logLevel decides WARN vs ERROR.
+        if (logLevel === "error" || statusCode === 500) {
+          deps.logger.warn(
+            {
+              route: "GET /api/v1/curation/metrics",
+              operation: "getCurationMetrics",
+              transport: "rest",
+              original_status: statusCode,
+              outcome: degradedStatus,
+              error_code: degradedEnvelope.error.code,
+              error_class:
+                err instanceof Error
+                  ? (err as { code?: string }).code ?? err.name
+                  : typeof err,
+              cause_message:
+                err instanceof Error ? err.message : String(err),
+            },
+            "curation_metrics_degraded"
+          );
+        }
+        return reply.status(degradedStatus).send(degradedEnvelope);
+      }
     }
   );
 

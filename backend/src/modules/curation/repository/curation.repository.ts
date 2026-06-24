@@ -764,3 +764,147 @@ export async function countDisputedAttributes(
   );
   return Number(res.rows[0]?.total ?? 0);
 }
+
+// ---------------------------------------------------------------------------
+// BR-33: curation_metrics — read-only §16 calibration aggregates.
+//
+// Each statement below is a separate `client.query(...)` issued inside the
+// SAME `BEGIN READ ONLY` transaction (opened by `withReadOnly` in the service
+// layer) so all seven aggregates see one coherent MVCC snapshot — the
+// `computed_at` guarantee declared by `openapi.yaml` (CurationMetricsResponse).
+//
+// SQL sources are spelled out in `curation.back.md` BR-33 ("SQL sources" table).
+// ---------------------------------------------------------------------------
+
+/** Accept actions are the five non-reject curator verbs (BR-33 spec table). */
+const ACCEPT_ACTIONS = [
+  "resolve_entity_match",
+  "merge_nodes",
+  "resolve_dispute",
+  "confirm_item",
+  "correct_item",
+] as const;
+
+/** Row shape used by `aggregateCurationMetrics` to surface the snapshot. */
+export interface CurationMetricsRow {
+  /** `accept_rate` numerator/denominator; pre-divided to keep service simple. */
+  readonly accept_rate: number;
+  /**
+   * Map of `error.code` → fraction (in [0, 1]) for explicit reject_item rows
+   * whose `payload->>'error_code'` is populated. Empty `{}` is the canonical
+   * empty state (NEVER omitted from the response — BR-33).
+   */
+  readonly reject_rate_by_code: Readonly<Record<string, number>>;
+  readonly needs_review_count: number;
+  readonly uncertain_count: number;
+  readonly disputed_count: number;
+  readonly entity_match_queue_count: number;
+  readonly disputed_queue_count: number;
+}
+
+/**
+ * Run the BR-33 aggregate snapshot inside the caller's transaction. The
+ * service layer is expected to have already opened a `BEGIN READ ONLY` block
+ * (`withReadOnly`) — every statement below is parameterless and read-only.
+ */
+export async function aggregateCurationMetrics(
+  client: PoolClient
+): Promise<CurationMetricsRow> {
+  // -- accept_rate ---------------------------------------------------------
+  // Numerator: rows whose `action` is one of the five accept verbs.
+  // Denominator: total curation_action rows. Zero-division → 0 at BFF layer
+  // (documented choice; matches the OpenAPI "Share of curator actions"
+  // description for an empty-table cold start — see acceptance criterion #3).
+  const totalActionsRes = await client.query<{ total: string }>(
+    `SELECT count(*)::text AS total FROM curation_action`
+  );
+  const totalActions = Number(totalActionsRes.rows[0]?.total ?? 0);
+  let acceptRate = 0;
+  if (totalActions > 0) {
+    const acceptedRes = await client.query<{ total: string }>(
+      `SELECT count(*)::text AS total
+         FROM curation_action
+        WHERE action = ANY($1::text[])`,
+      [Array.from(ACCEPT_ACTIONS)]
+    );
+    const accepted = Number(acceptedRes.rows[0]?.total ?? 0);
+    acceptRate = accepted / totalActions;
+  }
+
+  // -- reject_rate_by_code -------------------------------------------------
+  // Today `curation_action.payload` of `reject_item` is `'{}'` (BR-25), so
+  // this map is empty in practice. We still surface the field as `{}` rather
+  // than omit it (BR-33 — front spec depends on the key being present).
+  let rejectRateByCode: Record<string, number> = {};
+  if (totalActions > 0) {
+    const rejectsRes = await client.query<{ code: string; total: string }>(
+      `SELECT (payload->>'error_code') AS code,
+              count(*)::text AS total
+         FROM curation_action
+        WHERE action = 'reject_item'
+          AND payload ? 'error_code'
+        GROUP BY 1`
+    );
+    for (const row of rejectsRes.rows) {
+      if (row.code === null || row.code === undefined) continue;
+      rejectRateByCode[row.code] = Number(row.total) / totalActions;
+    }
+  }
+
+  // -- needs_review_count + entity_match_queue_count -----------------------
+  // BR-33: surfaced as two separate fields even though they are logically
+  // equal under BR-10 — the OpenAPI contract requires both, and they are NOT
+  // guaranteed equal across out-of-band repairs.
+  const needsReviewRes = await client.query<{ total: string }>(
+    `SELECT count(*)::text AS total
+       FROM knowledge_node
+      WHERE status = 'needs_review'`
+  );
+  const needsReviewCount = Number(needsReviewRes.rows[0]?.total ?? 0);
+  const entityMatchQueueCount = needsReviewCount;
+
+  // -- uncertain_count -----------------------------------------------------
+  // Sum of resolved-view rows whose effective_status='uncertain' (§5.4/§6.6).
+  const uncertainRes = await client.query<{ total: string }>(
+    `SELECT (
+       (SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'uncertain')
+     + (SELECT count(*) FROM node_attribute_resolved WHERE effective_status = 'uncertain')
+     )::text AS total`
+  );
+  const uncertainCount = Number(uncertainRes.rows[0]?.total ?? 0);
+
+  // -- disputed_count ------------------------------------------------------
+  const disputedRes = await client.query<{ total: string }>(
+    `SELECT (
+       (SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'disputed')
+     + (SELECT count(*) FROM node_attribute_resolved WHERE effective_status = 'disputed')
+     )::text AS total`
+  );
+  const disputedCount = Number(disputedRes.rows[0]?.total ?? 0);
+
+  // -- disputed_queue_count ------------------------------------------------
+  // One row per CONFLICT GROUP (BR-14 column tuple), not per assertion.
+  const disputedQueueRes = await client.query<{ total: string }>(
+    `SELECT count(*)::text AS total
+       FROM (
+         SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id
+           FROM knowledge_link
+          WHERE status = 'disputed'
+         UNION ALL
+         SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL
+           FROM node_attribute
+          WHERE status = 'disputed'
+       ) g`
+  );
+  const disputedQueueCount = Number(disputedQueueRes.rows[0]?.total ?? 0);
+
+  return {
+    accept_rate: acceptRate,
+    reject_rate_by_code: rejectRateByCode,
+    needs_review_count: needsReviewCount,
+    uncertain_count: uncertainCount,
+    disputed_count: disputedCount,
+    entity_match_queue_count: entityMatchQueueCount,
+    disputed_queue_count: disputedQueueCount,
+  };
+}

@@ -1012,6 +1012,128 @@ function buildFakeClient(store: Store): any {
         };
       }
 
+      // ============ BR-33 metrics: total curation_action count ============
+      if (
+        text.includes("count(*)::text AS total FROM curation_action") &&
+        !text.includes("WHERE")
+      ) {
+        return {
+          rows: [{ total: String(store.curation_actions.length) }],
+          rowCount: 1,
+        };
+      }
+
+      // ============ BR-33 metrics: accepted curation_action count ============
+      if (
+        text.includes("FROM curation_action") &&
+        text.includes("WHERE action = ANY($1::text[])")
+      ) {
+        const accept = new Set(params[0] as string[]);
+        const total = store.curation_actions.filter((r) =>
+          accept.has(r.action)
+        ).length;
+        return {
+          rows: [{ total: String(total) }],
+          rowCount: 1,
+        };
+      }
+
+      // ============ BR-33 metrics: reject_rate_by_code grouping ============
+      if (
+        text.includes("(payload->>'error_code')") &&
+        text.includes("WHERE action = 'reject_item'") &&
+        text.includes("payload ? 'error_code'") &&
+        text.includes("GROUP BY 1")
+      ) {
+        const grouped = new Map<string, number>();
+        for (const r of store.curation_actions) {
+          if (r.action !== "reject_item") continue;
+          const code = (r.payload as { error_code?: unknown }).error_code;
+          if (typeof code !== "string") continue;
+          grouped.set(code, (grouped.get(code) ?? 0) + 1);
+        }
+        return {
+          rows: Array.from(grouped.entries()).map(([code, total]) => ({
+            code,
+            total: String(total),
+          })),
+          rowCount: grouped.size,
+        };
+      }
+
+      // ============ BR-33 metrics: needs_review_count ============
+      if (
+        text.includes("count(*)::text AS total") &&
+        text.includes("FROM knowledge_node") &&
+        text.includes("status = 'needs_review'")
+      ) {
+        const total = store.nodes.filter((n) => n.status === "needs_review")
+          .length;
+        return {
+          rows: [{ total: String(total) }],
+          rowCount: 1,
+        };
+      }
+
+      // ============ BR-33 metrics: uncertain_count via resolved views ============
+      // Resolved-view rows whose effective_status='uncertain' (§5.4) — the
+      // fake store has no separate views, so we approximate by treating
+      // `status='uncertain'` on the underlying tables as the resolved value
+      // (consistent with what the queue tests already do).
+      if (
+        text.includes("knowledge_link_resolved") &&
+        text.includes("node_attribute_resolved") &&
+        text.includes("'uncertain'")
+      ) {
+        const total =
+          store.links.filter((l) => l.status === "uncertain").length +
+          store.attributes.filter((a) => a.status === "uncertain").length;
+        return {
+          rows: [{ total: String(total) }],
+          rowCount: 1,
+        };
+      }
+
+      // ============ BR-33 metrics: disputed_count via resolved views ============
+      if (
+        text.includes("knowledge_link_resolved") &&
+        text.includes("node_attribute_resolved") &&
+        text.includes("'disputed'")
+      ) {
+        const total =
+          store.links.filter((l) => l.status === "disputed").length +
+          store.attributes.filter((a) => a.status === "disputed").length;
+        return {
+          rows: [{ total: String(total) }],
+          rowCount: 1,
+        };
+      }
+
+      // ============ BR-33 metrics: disputed_queue_count (conflict groups) ============
+      if (
+        text.includes("UNION ALL") &&
+        text.includes("knowledge_link") &&
+        text.includes("node_attribute") &&
+        text.includes("'disputed'")
+      ) {
+        const linkScopes = new Set<string>();
+        for (const l of store.links) {
+          if (l.status !== "disputed") continue;
+          linkScopes.add(
+            `${l.source_node_id}\x1F${l.target_node_id}\x1F${l.link_type_id}`
+          );
+        }
+        const attrScopes = new Set<string>();
+        for (const a of store.attributes) {
+          if (a.status !== "disputed") continue;
+          attrScopes.add(`${a.node_id}\x1F${a.attribute_key_id}`);
+        }
+        return {
+          rows: [{ total: String(linkScopes.size + attrScopes.size) }],
+          rowCount: 1,
+        };
+      }
+
       throw new Error(`fake client: unknown SQL: ${text.slice(0, 200)}`);
     },
     release: () => undefined,
@@ -2093,6 +2215,414 @@ describe("Curation — Auth", () => {
         url: "/api/v1/curation/queue",
       });
       expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+// ===========================================================================
+// BR-33 — GET /api/v1/curation/metrics
+// ===========================================================================
+describe("Curation — BR-33 GET /metrics", () => {
+  let fixture: AuthFixture;
+  let token: string;
+  beforeAll(async () => {
+    fixture = await buildAuthFixture();
+    token = await signValidJwt(fixture.privateKey);
+  });
+
+  // Acceptance criterion: empty system returns 200 with `data:[]`-equivalent
+  // empty snapshot — accept_rate=0 (zero-division convention) and
+  // reject_rate_by_code={} (NEVER omitted; front spec depends on the key
+  // being present).
+  it("returns 200 with the empty snapshot when no data exists", async () => {
+    const store = buildEmptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/curation/metrics",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        ok: boolean;
+        result: {
+          accept_rate: number;
+          reject_rate_by_code: Record<string, number>;
+          needs_review_count: number;
+          uncertain_count: number;
+          disputed_count: number;
+          entity_match_queue_count: number;
+          disputed_queue_count: number;
+          computed_at: string;
+        };
+      };
+      // Envelope: { ok: true, result } per task spec.
+      expect(body.ok).toBe(true);
+      // Zero-division convention: empty curation_action → accept_rate = 0.
+      expect(body.result.accept_rate).toBe(0);
+      // The empty map is surfaced as `{}` — NEVER omitted.
+      expect(body.result.reject_rate_by_code).toEqual({});
+      expect(body.result.needs_review_count).toBe(0);
+      expect(body.result.uncertain_count).toBe(0);
+      expect(body.result.disputed_count).toBe(0);
+      expect(body.result.entity_match_queue_count).toBe(0);
+      expect(body.result.disputed_queue_count).toBe(0);
+      // ISO-8601 wall-clock anchor.
+      expect(typeof body.result.computed_at).toBe("string");
+      expect(new Date(body.result.computed_at).toString()).not.toBe(
+        "Invalid Date"
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Acceptance criterion: counts and rates derived from seeded fixtures
+  // exercise each SQL source AND prove mutual coherence (every count
+  // populated against the same snapshot).
+  it("aggregates accept_rate, queues, uncertain/disputed counts from the snapshot", async () => {
+    const store = buildEmptyStore();
+
+    // 2 needs_review nodes → entity_match_queue_count = needs_review_count = 2
+    store.nodes.push(
+      {
+        id: nextUuid("nn"),
+        node_type_id: UUID.PROJECT_NT,
+        canonical_name: "Pending A",
+        status: "needs_review",
+        merged_into_node_id: null,
+      },
+      {
+        id: nextUuid("nn"),
+        node_type_id: UUID.PROJECT_NT,
+        canonical_name: "Pending B",
+        status: "needs_review",
+        merged_into_node_id: null,
+      },
+      {
+        id: nextUuid("nn"),
+        node_type_id: UUID.PROJECT_NT,
+        canonical_name: "Active C",
+        status: "active",
+        merged_into_node_id: null,
+      }
+    );
+
+    // 1 uncertain link + 1 uncertain attribute → uncertain_count = 2
+    store.links.push({
+      id: nextUuid("lu"),
+      source_node_id: store.nodes[0].id,
+      target_node_id: store.nodes[2].id,
+      link_type_id: UUID.LT_DEPENDS,
+      valid_from: null,
+      valid_to: null,
+      status: "uncertain",
+      confidence: "0.60",
+      valid_from_source: null,
+      superseded_at: null,
+      supersedes_link_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+    store.attributes.push({
+      id: nextUuid("au"),
+      node_id: store.nodes[2].id,
+      attribute_key_id: UUID.AK_DEADLINE,
+      value_type: "date",
+      value: "2026-07-15",
+      valid_from: null,
+      valid_to: null,
+      status: "uncertain",
+      confidence: "0.55",
+      valid_from_source: null,
+      superseded_at: null,
+      supersedes_attribute_id: null,
+      recorded_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    // 2 disputed link rows on the SAME scope (same source/target/link_type) →
+    // 1 conflict GROUP. Plus 2 disputed attribute rows on the SAME (node, key)
+    // scope → 1 conflict GROUP. → disputed_queue_count = 2, disputed_count = 4.
+    const linkScopeA = store.nodes[0].id;
+    const linkScopeB = store.nodes[2].id;
+    store.links.push(
+      {
+        id: nextUuid("ld"),
+        source_node_id: linkScopeA,
+        target_node_id: linkScopeB,
+        link_type_id: UUID.LT_DEPENDS,
+        valid_from: null,
+        valid_to: null,
+        status: "disputed",
+        confidence: "0.80",
+        valid_from_source: null,
+        superseded_at: null,
+        supersedes_link_id: null,
+        recorded_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: nextUuid("ld"),
+        source_node_id: linkScopeA,
+        target_node_id: linkScopeB,
+        link_type_id: UUID.LT_DEPENDS,
+        valid_from: null,
+        valid_to: null,
+        status: "disputed",
+        confidence: "0.82",
+        valid_from_source: null,
+        superseded_at: null,
+        supersedes_link_id: null,
+        recorded_at: new Date(),
+        updated_at: new Date(),
+      }
+    );
+    store.attributes.push(
+      {
+        id: nextUuid("ad"),
+        node_id: store.nodes[2].id,
+        attribute_key_id: UUID.AK_DEADLINE,
+        value_type: "date",
+        value: "2026-07-15",
+        valid_from: null,
+        valid_to: null,
+        status: "disputed",
+        confidence: "0.82",
+        valid_from_source: "document",
+        superseded_at: null,
+        supersedes_attribute_id: null,
+        recorded_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: nextUuid("ad"),
+        node_id: store.nodes[2].id,
+        attribute_key_id: UUID.AK_DEADLINE,
+        value_type: "date",
+        value: "2026-07-20",
+        valid_from: null,
+        valid_to: null,
+        status: "disputed",
+        confidence: "0.85",
+        valid_from_source: "stated",
+        superseded_at: null,
+        supersedes_attribute_id: null,
+        recorded_at: new Date(),
+        updated_at: new Date(),
+      }
+    );
+
+    // 8 curation actions in the audit trail:
+    //   - 6 accept-typed (confirm_item, resolve_dispute, …) → accepted = 6
+    //   - 2 reject_item:
+    //       * 1 with payload.error_code = "BUSINESS_INVALID_TARGET_NODE"
+    //       * 1 with payload.error_code = "BUSINESS_TEMPORAL_INCOHERENT"
+    //   → accept_rate = 6 / 8 = 0.75
+    //   → reject_rate_by_code:
+    //       * "BUSINESS_INVALID_TARGET_NODE": 1/8 = 0.125
+    //       * "BUSINESS_TEMPORAL_INCOHERENT": 1/8 = 0.125
+    const acceptVerbs = [
+      "confirm_item",
+      "resolve_dispute",
+      "resolve_dispute",
+      "merge_nodes",
+      "resolve_entity_match",
+      "correct_item",
+    ] as const;
+    for (const a of acceptVerbs) {
+      store.curation_actions.push({
+        id: nextUuid("ca"),
+        action: a,
+        target_kind: "link",
+        target_id: store.nodes[0].id,
+        payload: {},
+        reason: null,
+        created_at: new Date(),
+      });
+    }
+    store.curation_actions.push({
+      id: nextUuid("ca"),
+      action: "reject_item",
+      target_kind: "link",
+      target_id: store.nodes[0].id,
+      payload: { error_code: "BUSINESS_INVALID_TARGET_NODE" },
+      reason: "wrong target",
+      created_at: new Date(),
+    });
+    store.curation_actions.push({
+      id: nextUuid("ca"),
+      action: "reject_item",
+      target_kind: "attribute",
+      target_id: store.nodes[0].id,
+      payload: { error_code: "BUSINESS_TEMPORAL_INCOHERENT" },
+      reason: "bad period",
+      created_at: new Date(),
+    });
+
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/curation/metrics",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        ok: boolean;
+        result: {
+          accept_rate: number;
+          reject_rate_by_code: Record<string, number>;
+          needs_review_count: number;
+          uncertain_count: number;
+          disputed_count: number;
+          entity_match_queue_count: number;
+          disputed_queue_count: number;
+        };
+      };
+      expect(body.ok).toBe(true);
+      // accept_rate = 6 / 8 = 0.75 (in [0,1]).
+      expect(body.result.accept_rate).toBeCloseTo(0.75, 6);
+      // reject_rate_by_code surfaces ONE entry per distinct error_code with
+      // the fraction over total actions (NOT over rejects only).
+      expect(body.result.reject_rate_by_code).toEqual({
+        BUSINESS_INVALID_TARGET_NODE: 0.125,
+        BUSINESS_TEMPORAL_INCOHERENT: 0.125,
+      });
+      // Every count is non-negative and matches the seeded fixture.
+      expect(body.result.needs_review_count).toBe(2);
+      expect(body.result.entity_match_queue_count).toBe(2);
+      expect(body.result.uncertain_count).toBe(2);
+      // 2 disputed links + 2 disputed attrs = 4 assertions.
+      expect(body.result.disputed_count).toBe(4);
+      // 1 link group + 1 attribute group = 2 conflict groups.
+      expect(body.result.disputed_queue_count).toBe(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Acceptance criterion: 401 without JWT (inherited from the shared
+  // requireNeonAuth preHandler — BR-01).
+  it("returns 401 without a JWT", async () => {
+    const store = buildEmptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/curation/metrics",
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Acceptance criterion: 503 (NOT 500) when Neon is unreachable —
+  // graceful-degradation override of BR-28 so the front spec MetricsStrip
+  // can fall back to listReviewQueue totals.
+  it("returns 503 SYSTEM_SERVICE_UNAVAILABLE on pg ECONNREFUSED", async () => {
+    const store = buildEmptyStore();
+    // Pool that fails every connect/query with ECONNREFUSED — same shape as
+    // the observability regression test below.
+    const fail = (): never => {
+      throw Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), {
+        code: "ECONNREFUSED",
+      });
+    };
+    const failingPool: any = {
+      connect: async () => ({
+        query: async () => fail(),
+        release: () => undefined,
+      }),
+      on: () => undefined,
+      end: async () => undefined,
+    };
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: failingPool,
+      auth: buildNeonAuth(envFixture, async () =>
+        ({
+          type: "public",
+          algorithm: "RS256",
+          ...fixture.publicJwk,
+        }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      catalog: buildCatalogFromStore(store),
+      ingestionCatalog: buildIngestionCatalogFromStore(store),
+    });
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/curation/metrics",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(503);
+      const body = res.json() as {
+        ok: boolean;
+        error: { code: string; message: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("SYSTEM_SERVICE_UNAVAILABLE");
+      // The masked envelope NEVER leaks the underlying ECONNREFUSED message.
+      expect(body.error.message).not.toContain("ECONNREFUSED");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // BR-33 graceful-degradation contract: ANY non-pg-mapped fault (residual
+  // 500 from the shared mapper) must be re-mapped to 503 so the front spec
+  // never sees a 500. Exercised by a non-pg throw inside the service.
+  it("re-maps residual 500 outcomes to 503 (graceful degradation)", async () => {
+    const store = buildEmptyStore();
+    // Pool whose query throws a non-pg, non-Zod error — `mapErrorToHttpResponse`
+    // would normally return 500 SYSTEM_INTERNAL_ERROR; the route's local
+    // mapper re-maps it to 503.
+    const opaqueError = new Error("opaque view-not-found");
+    const failingPool: any = {
+      connect: async () => ({
+        query: async () => {
+          throw opaqueError;
+        },
+        release: () => undefined,
+      }),
+      on: () => undefined,
+      end: async () => undefined,
+    };
+    const app = await buildApp({
+      env: envFixture,
+      logger: silentLogger,
+      pool: failingPool,
+      auth: buildNeonAuth(envFixture, async () =>
+        ({
+          type: "public",
+          algorithm: "RS256",
+          ...fixture.publicJwk,
+        }) as never
+      ),
+      mcp: buildMcpServer(silentLogger),
+      catalog: buildCatalogFromStore(store),
+      ingestionCatalog: buildIngestionCatalogFromStore(store),
+    });
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/curation/metrics",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(503);
+      const body = res.json() as {
+        ok: boolean;
+        error: { code: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("SYSTEM_SERVICE_UNAVAILABLE");
     } finally {
       await app.close();
     }
