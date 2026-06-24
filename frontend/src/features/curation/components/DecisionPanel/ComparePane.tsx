@@ -1,0 +1,161 @@
+/**
+ * ComparePane — adaptive diff/summary view (TC-05).
+ *
+ * Spec references:
+ *  - curadoria.feature.spec.md §2 UI-03 (mode resumo / mode diff cheio),
+ *    §11 (heuristic — implemented in features/curation/lib/display-mode.ts).
+ *
+ * The component is data-driven by `resolveDisplayMode(item)`. Both modes
+ * render the same data; only the layout / verbosity differ.
+ *
+ * Selection state lifts to the parent (DecisionPanel) because the
+ * DecisionBar needs it to compose the merge/prefer_one body.
+ */
+import type { FC } from "react";
+import { cn } from "@/lib/cn";
+import {
+  resolveDisplayMode,
+  HIGH_SIMILARITY_THRESHOLD,
+} from "../../lib/display-mode";
+import type {
+  ReviewQueueItem,
+  EntityMatchQueueItem,
+  DisputeQueueItem,
+} from "../../types";
+import { CandidateCard } from "./CandidateCard";
+import { DisputeSideCard } from "./DisputeSideCard";
+import { PeriodTimeline } from "./PeriodTimeline";
+
+export interface ComparePaneProps {
+  readonly item: ReviewQueueItem;
+  /** entity_match: candidate node id of the merge target (null = none selected). */
+  readonly selectedCandidate: string | null;
+  /** disputed (prefer_one): item_id of the winner (null = none selected). */
+  readonly selectedSide: string | null;
+  readonly onSelectCandidate: (candidateNodeId: string) => void;
+  readonly onSelectSide: (itemId: string) => void;
+  /** When the parent surfaces SELF_MERGE_FORBIDDEN, the affected candidate
+   *  card highlights. */
+  readonly invalidCandidateId?: string | null;
+  readonly className?: string;
+}
+
+const EntityMatchView: FC<{
+  readonly item: EntityMatchQueueItem;
+  readonly mode: "summary" | "full-diff";
+  readonly selectedCandidate: string | null;
+  readonly onSelectCandidate: (candidateNodeId: string) => void;
+  readonly invalidCandidateId?: string | null;
+}> = ({ item, mode, selectedCandidate, onSelectCandidate, invalidCandidateId }) => {
+  if (mode === "summary" && item.candidates.length === 1) {
+    const top = item.candidates[0]!;
+    return (
+      <div className="flex flex-col gap-sm">
+        <p className="text-body-sm text-content">
+          Candidato com alta similaridade (≥{" "}
+          {Math.round(HIGH_SIMILARITY_THRESHOLD * 100)}%): podemos fundir
+          diretamente.
+        </p>
+        <CandidateCard
+          candidate={top}
+          selected={selectedCandidate === top.candidateNodeId}
+          onSelect={onSelectCandidate}
+          invalid={invalidCandidateId === top.candidateNodeId}
+        />
+      </div>
+    );
+  }
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Candidatos para fusão"
+      className="flex flex-col gap-sm"
+    >
+      <p className="text-body-sm text-content">
+        Múltiplos candidatos — escolha qual representa a mesma entidade.
+      </p>
+      {item.candidates.length === 0 ? (
+        <p className="text-body-sm text-body">
+          Nenhum candidato sugerido. Você pode manter separados ou fundir
+          ad-hoc por busca.
+        </p>
+      ) : (
+        item.candidates.map((c) => (
+          <CandidateCard
+            key={c.candidateNodeId}
+            candidate={c}
+            selected={selectedCandidate === c.candidateNodeId}
+            onSelect={onSelectCandidate}
+            invalid={invalidCandidateId === c.candidateNodeId}
+          />
+        ))
+      )}
+    </div>
+  );
+};
+
+const DisputeView: FC<{
+  readonly item: DisputeQueueItem;
+  readonly mode: "summary" | "full-diff";
+  readonly selectedSide: string | null;
+  readonly onSelectSide: (itemId: string) => void;
+}> = ({ item, mode, selectedSide, onSelectSide }) => {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Lados em disputa"
+      className="flex flex-col gap-sm"
+    >
+      <p className="text-body-sm text-content">
+        {mode === "summary"
+          ? "Dois lados sem sobreposição — selecione qual preferir."
+          : "Múltiplos lados conflitantes — selecione qual preferir ou ajuste períodos."}
+      </p>
+      {item.sides.map((s) => (
+        <DisputeSideCard
+          key={s.itemId}
+          side={s}
+          selected={selectedSide === s.itemId}
+          onSelect={onSelectSide}
+        />
+      ))}
+      <PeriodTimeline sides={item.sides} />
+    </div>
+  );
+};
+
+export const ComparePane: FC<ComparePaneProps> = ({
+  item,
+  selectedCandidate,
+  selectedSide,
+  onSelectCandidate,
+  onSelectSide,
+  invalidCandidateId,
+  className,
+}) => {
+  const mode = resolveDisplayMode(item);
+  return (
+    <section
+      aria-label="Comparação"
+      data-mode={mode}
+      className={cn("flex flex-col gap-md p-md", className)}
+    >
+      {item.kind === "entity_match" ? (
+        <EntityMatchView
+          item={item}
+          mode={mode}
+          selectedCandidate={selectedCandidate}
+          onSelectCandidate={onSelectCandidate}
+          invalidCandidateId={invalidCandidateId ?? null}
+        />
+      ) : (
+        <DisputeView
+          item={item}
+          mode={mode}
+          selectedSide={selectedSide}
+          onSelectSide={onSelectSide}
+        />
+      )}
+    </section>
+  );
+};
