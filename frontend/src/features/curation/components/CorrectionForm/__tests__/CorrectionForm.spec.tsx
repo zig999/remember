@@ -25,7 +25,7 @@ import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CorrectionForm } from "../CorrectionForm";
-import { correctionSchema } from "../correction-schema";
+import { buildCorrectItemRequest, correctionSchema } from "../correction-schema";
 
 // jsdom doesn't ship ResizeObserver — Radix Radio Group / Popover rely on
 // it for their size measurement. Polyfill to a no-op so the component
@@ -142,6 +142,70 @@ describe("correctionSchema — §5 validations", () => {
       correctionSchema.safeParse(base({ validFromSource: "document" }))
         .success,
     ).toBe(true);
+  });
+});
+
+/* ---------- Wire shape — buildCorrectItemRequest (CorrectItemRequest) ----------
+ *
+ * Why: this is the exact body CorrectionForm.submit() sends to the curation
+ * `correct` endpoint. The form fields are camelCase; the wire is snake_case
+ * (openapi.yaml CorrectItemRequest). If this mapping silently drifts — a
+ * dropped field, a wrong key, or `value` leaking into a link correction —
+ * the server rejects the errata (or, worse, applies the wrong field) and the
+ * curator's correction is lost. Tested via the same hermetic schema-parse
+ * path the §5 tests use (no RHF/jsdom submission). */
+describe("buildCorrectItemRequest — wire shape", () => {
+  function parsed(over: Partial<Record<string, unknown>> = {}) {
+    const result = correctionSchema.safeParse({
+      itemKind: "attribute" as const,
+      itemId: "attr-1",
+      value: "Presidente",
+      targetNodeId: "",
+      validFrom: "2023-03-01",
+      validTo: "",
+      validFromSource: "document" as const,
+      validFromFragmentId: "",
+      reason: "promoção registrada",
+      ...over,
+    });
+    if (!result.success) throw new Error("fixture must parse");
+    return result.data;
+  }
+
+  it("maps an attribute correction to snake_case with `value` (no target_node_id)", () => {
+    const body = buildCorrectItemRequest("attribute", "attr-1", parsed());
+    expect(body).toEqual({
+      item_kind: "attribute",
+      item_id: "attr-1",
+      corrected: {
+        value: "Presidente",
+        valid_from: "2023-03-01",
+        valid_to: null,
+        valid_from_source: "document",
+        valid_from_fragment_id: null,
+      },
+      reason: "promoção registrada",
+    });
+    expect("target_node_id" in body.corrected).toBe(false);
+  });
+
+  it("maps a link correction to `target_node_id` (no value key)", () => {
+    const values = parsed({ itemKind: "link", value: "", targetNodeId: "node-9" });
+    const body = buildCorrectItemRequest("link", "link-1", values);
+    expect(body.item_kind).toBe("link");
+    expect(body.item_id).toBe("link-1");
+    expect(body.corrected).toMatchObject({ target_node_id: "node-9" });
+    expect("value" in body.corrected).toBe(false);
+  });
+
+  it("forwards the fragment id when valid_from_source=stated (BR-15)", () => {
+    const values = parsed({
+      validFromSource: "stated",
+      validFromFragmentId: "frag-7",
+    });
+    const body = buildCorrectItemRequest("attribute", "attr-1", values);
+    expect(body.corrected.valid_from_source).toBe("stated");
+    expect(body.corrected.valid_from_fragment_id).toBe("frag-7");
   });
 });
 

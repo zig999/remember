@@ -9,6 +9,17 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+// Each test here `vi.resetModules()` then re-imports @tanstack/react-router
+// and ../routes and builds a fresh router. That is import-bound work: under
+// the full parallel suite (80+ files) Vite re-transforms those modules while
+// the CPU is saturated, so the default 5s timeout is too tight and this file
+// flakes red even though every test passes in isolation (~1.3s). The heavy
+// feature pages are already code-split via `lazy` in routes.tsx (so the route
+// tree imports cheaply); this raises the ceiling for the residual
+// import+transform cost under contention. File-scoped — does not affect other
+// suites.
+vi.setConfig({ testTimeout: 20_000 });
+
 interface FakeStorage {
   getItem: (k: string) => string | null;
   setItem: (k: string, v: string) => void;

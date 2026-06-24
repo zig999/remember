@@ -61,7 +61,7 @@ export const QueueTabs: FC<QueueTabsProps> = ({ value, onChange }) => {
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
               active
                 ? "border-border-focus text-content"
-                : "text-content-muted hover:text-content",
+                : "text-muted hover:text-content",
             )}
           >
             {tab.label}

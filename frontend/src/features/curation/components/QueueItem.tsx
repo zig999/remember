@@ -129,14 +129,14 @@ export const QueueItem: FC<QueueItemProps> = ({
         // Min target size 32px — feature.spec §8.
         "flex w-full flex-col items-start gap-xs rounded-md p-md text-left",
         "border border-border bg-surface-glass-panel",
-        "transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+        "transition-colors hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         // Selection highlight (UI-02).
-        selected && "bg-surface-elevated ring-2 ring-border-focus",
+        selected && "bg-elevated ring-2 ring-border-focus",
       )}
     >
       <div className="flex w-full items-center justify-between gap-sm">
         <StateBadge state={badge.state} size="sm" label={badge.label} />
-        <span className="text-caption text-content-muted">{relative}</span>
+        <span className="text-caption text-muted">{relative}</span>
       </div>
       <span className="text-body-sm font-medium text-content">{scope}</span>
     </button>

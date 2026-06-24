@@ -17,6 +17,7 @@
  *  - "Informe um motivo para continuar."
  */
 import { z } from "zod";
+import type { CorrectItemRequest } from "../../types";
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -131,5 +132,33 @@ export function buildDefaults(
     validFromSource: d.validFromSource ?? "document",
     validFromFragmentId: d.validFromFragmentId ?? "",
     reason: "",
+  };
+}
+
+/**
+ * Map validated form values to the `CorrectItemRequest` wire body — the
+ * single source of the snake_case shape submitted by CorrectionForm
+ * (openapi.yaml CorrectItemRequest / CorrectedValues). `itemKind` selects
+ * `value` (attribute) vs `target_node_id` (link); the remaining fields are
+ * passed through as the validated (possibly-null) values.
+ */
+export function buildCorrectItemRequest(
+  itemKind: "link" | "attribute",
+  itemId: string,
+  values: CorrectionFormValues,
+): CorrectItemRequest {
+  return {
+    item_kind: itemKind,
+    item_id: itemId,
+    corrected: {
+      ...(itemKind === "attribute"
+        ? { value: values.value }
+        : { target_node_id: values.targetNodeId }),
+      valid_from: values.validFrom,
+      valid_to: values.validTo,
+      valid_from_source: values.validFromSource,
+      valid_from_fragment_id: values.validFromFragmentId,
+    },
+    reason: values.reason,
   };
 }

@@ -27,14 +27,34 @@
  *   preserved verbatim. Specs to reconcile in a follow-up sweep.
  */
 
+import { lazy, Suspense } from "react";
 import { createRoute, redirect, Outlet } from "@tanstack/react-router";
 import { Route as RootRoute } from "./__root";
 import { StubPage } from "./StubPage";
 import { SignInPage } from "./SignInPage";
-import { ChatWorkspace } from "@/features/chat/components/ChatWorkspace";
-import { CurationPage } from "@/features/curation/components/CurationPage";
 import { AppShell } from "@/shell/AppShell";
 import { useAuthStore } from "@/state/auth";
+
+/**
+ * The heavy feature pages (chat + curation) are loaded lazily. Their module
+ * graphs are large — the curation page pulls DecisionPanel / ProvenanceTrail /
+ * CorrectionForm and the React Flow node-type map; the chat workspace pulls
+ * the graph feature. A static import here drags all of that into anything that
+ * imports the route tree — including the bare-Node `routes.spec.tsx`, which
+ * only builds the tree to assert route ids and was timing out on that
+ * transitive load under the full parallel suite. `lazy` defers each import to
+ * first render, keeping route-tree construction cheap.
+ */
+const ChatWorkspace = lazy(() =>
+  import("@/features/chat/components/ChatWorkspace").then((m) => ({
+    default: m.ChatWorkspace,
+  })),
+);
+const CurationPage = lazy(() =>
+  import("@/features/curation/components/CurationPage").then((m) => ({
+    default: m.CurationPage,
+  })),
+);
 
 /**
  * ProtectedLayout — workspace chrome (AppShell) for authenticated routes.
@@ -103,7 +123,21 @@ export const chatRoute = createRoute({
     }
     return {};
   },
-  component: () => <ChatWorkspace />,
+  component: () => (
+    <Suspense
+      fallback={
+        <div
+          className="m-auto text-body-sm text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          Carregando conversa…
+        </div>
+      }
+    >
+      <ChatWorkspace />
+    </Suspense>
+  ),
 });
 
 /**
@@ -177,7 +211,21 @@ export const curationRoute = createRoute({
     }
     return {};
   },
-  component: () => <CurationPage />,
+  component: () => (
+    <Suspense
+      fallback={
+        <div
+          className="m-auto text-body-sm text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          Carregando curadoria…
+        </div>
+      }
+    >
+      <CurationPage />
+    </Suspense>
+  ),
 });
 
 export const historyRoute = createRoute({

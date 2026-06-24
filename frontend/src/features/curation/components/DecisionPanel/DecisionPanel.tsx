@@ -13,7 +13,11 @@
  *   - provenanceSlot (caller-provided — usually <ProvenanceTrail /> below)
  *   - ReasonField (always rendered for destructive actions)
  *   - DecisionBar (UI-02 gated by evidenceViewed, UI-03 armed)
- *   - CorrectionForm (UI-11, expands inline; not a modal)
+ *   - CorrectionSection (UI-11, expands inline; not a modal)
+ *
+ * Pure helpers live in `DecisionPanel.helpers.ts`; the UI-11 errata
+ * affordance lives in `CorrectionSection.tsx` — both extracted to keep
+ * this file under the 300-line limit.
  *
  * Reused in TC-07's CurationDrawer — no store/router dependencies.
  *
@@ -24,76 +28,24 @@
  *   - BUSINESS_CORRECTION_NO_CHANGES -> forwarded to CorrectionForm.
  *   - Other codes              -> generic inline error banner.
  */
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type FC,
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FC } from "react";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { StateBadge } from "@/components/ds/StateBadge";
-import { Button } from "@/components/ui/button";
 import { ComparePane } from "./ComparePane";
 import { DecisionBar, type DecisionBarButtonProps } from "./DecisionBar";
 import { EvidenceChip } from "./EvidenceChip";
 import { ReasonField, type ReasonFieldHandle } from "./ReasonField";
 import { StaleBanner } from "./StaleBanner";
-import { CorrectionForm } from "../CorrectionForm";
+import { CorrectionSection } from "./CorrectionSection";
+import {
+  relative,
+  headerBadge,
+  describeScope,
+  buildCorrectionDefaults,
+} from "./DecisionPanel.helpers";
 import type { CorrectionFormDefaults } from "../CorrectionForm";
 import type { DecisionPanelProps } from "./DecisionPanel.types";
-import type {
-  ReviewQueueItem,
-  DisputeQueueItem,
-} from "../../types";
-
-function relative(now: Date, then: Date): string {
-  const diff = Math.max(0, now.getTime() - then.getTime());
-  const min = Math.floor(diff / 60_000);
-  if (min < 1) return "agora";
-  if (min < 60) return `há ${min} min`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `há ${hr} h`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `há ${day} d`;
-  return then.toLocaleDateString("pt-BR");
-}
-
-function headerBadge(item: ReviewQueueItem): {
-  readonly state: "uncertain" | "disputed";
-  readonly label: string;
-} {
-  if (item.kind === "entity_match") {
-    return { state: "uncertain", label: "Para revisar" };
-  }
-  return { state: "disputed", label: "Disputado" };
-}
-
-function describeScope(item: ReviewQueueItem): string {
-  if (item.kind === "entity_match") return item.canonicalName;
-  return (
-    item.scope.linkType ?? item.scope.attributeKey ?? "Item em disputa"
-  );
-}
-
-/** Build CorrectionForm defaults from a disputed item's first side. The
- *  parent picks which side seeds the form; we default to side[0]. */
-function buildCorrectionDefaults(item: DisputeQueueItem): CorrectionFormDefaults {
-  const first = item.sides[0];
-  if (!first) {
-    return { validFromSource: "document" };
-  }
-  return {
-    value: first.value,
-    targetNodeId: first.targetNodeId,
-    validFrom: first.validFrom ? first.validFrom.toISOString().slice(0, 10) : null,
-    validTo: first.validTo ? first.validTo.toISOString().slice(0, 10) : null,
-    validFromSource: first.validFromSource,
-    validFromFragmentId: null,
-  };
-}
 
 export const DecisionPanel: FC<DecisionPanelProps> = ({
   item,
@@ -117,16 +69,14 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   );
   const [selectedSide, setSelectedSide] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  const [correctionOpen, setCorrectionOpen] = useState(false);
   const reasonRef = useRef<ReasonFieldHandle>(null);
-  const correctButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Reset selections / form / reason whenever the item changes.
+  // Reset selections / reason whenever the item changes. (The correction
+  // sub-form resets independently via its `key` below.)
   useEffect(() => {
     setSelectedCandidate(null);
     setSelectedSide(null);
     setReason("");
-    setCorrectionOpen(false);
   }, [item.kind === "entity_match" ? item.nodeId : item.sides.map((s) => s.itemId).join(":")]);
 
   // ---- server-error projection ----
@@ -229,17 +179,6 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
   const reasonRequired = true;
 
   // ---- correction form integration ----
-  function openCorrection(): void {
-    setCorrectionOpen(true);
-  }
-  function closeCorrection(): void {
-    setCorrectionOpen(false);
-    // Restore focus to the "Corrigir…" button per §8.
-    requestAnimationFrame(() => {
-      correctButtonRef.current?.focus();
-    });
-  }
-
   const canCorrect = item.kind === "disputed"; // entity_match has no item id.
   const correctionDefaults: CorrectionFormDefaults | null =
     item.kind === "disputed" ? buildCorrectionDefaults(item) : null;
@@ -336,51 +275,22 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         blockedHintId={blockedHintId}
       />
 
-      {/* Correção (UI-11) */}
+      {/* Correção (UI-11) — keyed by item so it resets on item change. */}
       {canCorrect && (
-        <div className="border-t border-border p-md">
-          {correctionOpen ? (
-            <CorrectionForm
-              itemKind={correctionItemKind}
-              itemId={correctionItemId}
-              defaults={correctionDefaults ?? {}}
-              {...(fragmentFilter ? { fragmentFilter } : {})}
-              submitting={submitting}
-              serverError={
-                serverError &&
-                (serverError.code === "BUSINESS_TEMPORAL_INCOHERENT" ||
-                  serverError.code === "BUSINESS_CORRECTION_NO_CHANGES" ||
-                  serverError.code === "BUSINESS_DATE_UNJUSTIFIED" ||
-                  serverError.code === "BUSINESS_FRAGMENT_NOT_ACCEPTED")
-                  ? serverError
-                  : null
-              }
-              onCancel={closeCorrection}
-              onSubmit={(body) => {
-                actions?.onCorrect?.(body);
-              }}
-            />
-          ) : (
-            <Button
-              ref={correctButtonRef}
-              type="button"
-              variant="ghost"
-              onClick={openCorrection}
-              aria-disabled={!evidenceViewed || undefined}
-              aria-describedby={
-                !evidenceViewed ? blockedHintId : undefined
-              }
-              onClickCapture={(e) => {
-                if (!evidenceViewed) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }
-              }}
-            >
-              Corrigir…
-            </Button>
-          )}
-        </div>
+        <CorrectionSection
+          key={correctionItemId}
+          itemKind={correctionItemKind}
+          itemId={correctionItemId}
+          defaults={correctionDefaults ?? {}}
+          {...(fragmentFilter ? { fragmentFilter } : {})}
+          submitting={submitting}
+          serverError={serverError}
+          evidenceViewed={evidenceViewed}
+          blockedHintId={blockedHintId}
+          onCorrect={(body) => {
+            actions?.onCorrect?.(body);
+          }}
+        />
       )}
     </section>
   );
