@@ -1,41 +1,45 @@
 /**
- * CurationPage — `/curation` route component (TC-04).
+ * CurationPage — `/curation` route component.
  *
  * Layout (curadoria.feature.spec.md §2 UI-01):
  *
- *   ┌────────────────────────────────────────────────────────────────┐
- *   │  Queue (left)        │  Decision (centre)   │  Evidence (right)│
- *   │  - QueueTabs         │  GlassSurface panel  │  GlassSurface    │
- *   │  - QueueList         │  (placeholder; TC-05 │  (placeholder;   │
- *   │  - BatchBar (TC-06)  │   delivers content)  │   TC-05 too)     │
- *   └────────────────────────────────────────────────────────────────┘
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │  Queue (left)            │  Decision + evidence (main) │
+ *   │  - MetricsStrip          │  DecisionPanel (ComparePane │
+ *   │  - QueueTabs             │   + ProvenanceTrail slot +  │
+ *   │  - QueueList             │   DecisionBar + Correction   │
+ *   │                          │   Section)                  │
+ *   └──────────────────────────────────────────────────────┘
+ *
+ * Evidence is mounted as the DecisionPanel `provenanceSlot` (the same
+ * composition CurationDrawer uses) so the evidence gate works at every
+ * breakpoint without a separate, sometimes-hidden column. The dedicated
+ * ≥xl third-column treatment from §4/§6 is a visual follow-up.
  *
  * Container-query breakpoints (Tailwind v4 — never CSS @media):
- *   - `@xl` and above → three columns visible
- *   - `@md` to `@xl`  → queue + decision (evidence hidden)
+ *   - `@md` and above → queue (1/3) + decision (fill) side by side
  *   - below `@md`     → queue stacked above decision (mobile)
  *
  * Responsibilities owned HERE:
- *  - Fetch the review queue (useCurationQueue, hooks/); render UI-08/07/09.
- *  - Deep-link `?item=<kind>:<id>` resolution: parse + look up the item
- *    in the resolved queue + select OR fall back to auto-select-first
- *    (Sub-flow A step 5).
- *  - Polling pill: when `data.total` grows above `lastSeenTotal`, render
- *    "N novos" with `role="status"`; click to refetch + update.
+ *  - Fetch the review queue (useCurationQueue) + the metrics aggregates
+ *    (useCurationMetrics, R1) and render UI-08 / UI-07 / UI-09.
+ *  - Resolve the selected queue item to its full shape and mount the real
+ *    DecisionPanel via CurationDecision.
+ *  - Deep-link `?item=<kind>:<id>` resolution + auto-select-first.
+ *  - Polling pill: when `data.total` grows above `lastSeenTotal`.
  *
  * Presentational sub-components live in `curation-page-parts.tsx`; the
- * queue hook lives in `../hooks/useCurationQueue.ts` — both extracted to
- * keep this file under the 300-line limit.
+ * queue hook lives in `../hooks/useCurationQueue.ts`; the decision wiring
+ * lives in `CurationDecision.tsx`.
  *
- * Out of scope (TC-05/06/07/08):
- *  - DecisionPanel content (ComparePane, DecisionBar, ReasonField, …)
- *  - EvidencePanel content (ProvenanceTrail)
- *  - BatchBar UI (the slot is reserved here but display:none)
- *  - Mutations, UndoToast, StaleBanner
+ * Deferred (not yet wired here): BatchBar multi-select dispatch (the queue
+ * checkbox state exists; the batch action bar is a follow-up).
  */
 import { useEffect, useMemo, useState, type FC } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Inbox } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { GlassSurface } from "@/components/ds/GlassSurface/GlassSurface";
 import { curationRoute } from "@/router/routes";
 import {
   parseItemSearchParam,
@@ -47,63 +51,51 @@ import { QueueList } from "./QueueList";
 import { QueueTabs, type QueueKindFilter } from "./QueueTabs";
 import {
   deriveInitialSelection,
+  findItemInQueue,
   neighbour,
   selectByIndex,
 } from "./curation-page-helpers";
 import { useCurationKeyboard } from "../hooks/useCurationKeyboard";
 import { useCurationQueue } from "../hooks/useCurationQueue";
-import {
-  PollingPill,
-  EmptyQueue,
-  QueueErrorBanner,
-  DecisionPanelPlaceholder,
-  EvidencePanelPlaceholder,
-} from "./curation-page-parts";
+import { useCurationMetrics } from "../api/curation.hooks";
+import { CurationDecision } from "./CurationDecision";
+import { MetricsStrip } from "./MetricsStrip";
+import { PollingPill, EmptyQueue, QueueErrorBanner } from "./curation-page-parts";
 
 export const CurationPage: FC = () => {
-  // Deep-link param. `validateSearch` on curationRoute (set below in
-  // routes.tsx) yields `{ item?: string }`. `useSearch` is reactive: if
-  // the curator navigates `?item=<other>` the page re-derives.
+  // Deep-link param. `validateSearch` on curationRoute yields `{ item?: string }`.
   const search = useSearch({ from: curationRoute.id }) as { item?: string };
   const deepLink = useMemo(
     () => parseItemSearchParam(search.item),
     [search.item],
   );
 
-  // Local UI-only state (the tab and any panel-local fields). Tabs are
-  // page-local; URL-persistence of the filter is a follow-up TC.
+  // Local UI-only state (the active queue-kind tab).
   const [kindFilter, setKindFilter] = useState<QueueKindFilter>(undefined);
 
-  // Store slices — subscribe to ONLY the values that change the render
-  // (Zustand strict-equality avoids the whole-store re-render trap).
+  // Store slices — subscribe to ONLY the values that change the render.
   const selectedItem = useCurationStore((s) => s.selectedItem);
   const lastSeenTotal = useCurationStore((s) => s.lastSeenTotal);
   const setSelectedItem = useCurationStore((s) => s.setSelectedItem);
   const updateLastSeen = useCurationStore((s) => s.updateLastSeen);
 
-  // Server cache — UI-08 if pending, UI-09 if error.
+  // Server cache — the queue (UI-08/09) + the R1 calibration metrics.
   const queueQuery = useCurationQueue(kindFilter);
   const isPending = queueQuery.isPending;
   const isError = queueQuery.isError;
   const data = queueQuery.data;
+  const metricsQuery = useCurationMetrics();
 
   const navigate = useNavigate();
 
-  // Deep-link + auto-select resolution. Runs AFTER the queue resolves
-  // (gated on `!isPending && data !== undefined`) per TC-04 constraint
-  // #3 ("deep-link resolution must run AFTER listReviewQueue resolves").
-  // Also runs whenever `kindFilter` flips — switching tabs may take the
-  // current selection out of the active list.
+  // Deep-link + auto-select resolution. Runs AFTER the queue resolves.
   useEffect(() => {
     if (isPending || data === undefined) return;
     const initial = deriveInitialSelection(data, deepLink);
     setSelectedItem(initial);
   }, [isPending, data, deepLink, kindFilter, setSelectedItem]);
 
-  // Polling pill delta — recomputed on every resolve. We compare against
-  // `lastSeenTotal` (the user's last "acknowledged" total). On first
-  // resolve `lastSeenTotal === null`, so we seed it WITHOUT showing the
-  // pill (no false-positive on cold load).
+  // Polling pill delta — recomputed on every resolve.
   const total = data?.total ?? 0;
   const delta = lastSeenTotal === null ? 0 : Math.max(0, total - lastSeenTotal);
   useEffect(() => {
@@ -112,9 +104,8 @@ export const CurationPage: FC = () => {
     }
   }, [lastSeenTotal, total, data, updateLastSeen]);
 
-  // Selection callback — also mirrors the choice into the URL so a
-  // reload / share-link reproduces the same view. We use
-  // `replace: true` to avoid polluting the back stack on every click.
+  // Selection callback — mirrors the choice into the URL (replace, no back-
+  // stack pollution) so a reload / share-link reproduces the same view.
   const handleSelect = (item: SelectedItem): void => {
     setSelectedItem(item);
     const next = stringifyItemSearchParam(item);
@@ -127,19 +118,26 @@ export const CurationPage: FC = () => {
 
   const items = data?.items ?? [];
   const isEmpty = !isPending && !isError && items.length === 0;
-  const hasSelection = selectedItem !== null;
 
-  // ---- keyboard shortcuts (TC-07) ----
-  //
-  // Page-level navigation: j/k cycles items, 1..9 selects Nth. Decision
-  // shortcuts (m/s/c/r/e/u) are deferred to TC-05 wiring — the page does
-  // not own DecisionPanel state — so we surface the dispatch entry point
-  // via the store + DecisionPanel actions. For now we wire the navigation
-  // + checkbox shortcuts that have no dependency on TC-05 internals.
-  //
-  // The hook auto-disables when focus is inside an input/textarea/select
-  // (the ReasonField inside DecisionPanel would otherwise eat every `c`
-  // the curator types).
+  // Resolve the selected item to its full queue shape for the DecisionPanel.
+  const selectedFull = useMemo(
+    () => findItemInQueue(data, selectedItem),
+    [data, selectedItem],
+  );
+
+  // R1 fallback for MetricsStrip — best-effort per-kind counts from the
+  // loaded page (≤20 items). Only consulted when metrics errors out.
+  const metricsFallback = useMemo(() => {
+    let em = 0;
+    let dp = 0;
+    for (const it of items) {
+      if (it.kind === "entity_match") em += 1;
+      else dp += 1;
+    }
+    return { entityMatchQueueCount: em, disputedQueueCount: dp };
+  }, [items]);
+
+  // ---- keyboard shortcuts ----
   const setSelectedItems = useCurationStore((s) => s.setSelectedItems);
   const checkedIds = useCurationStore((s) => s.selectedItems);
   useCurationKeyboard({
@@ -168,15 +166,12 @@ export const CurationPage: FC = () => {
   });
 
   return (
-    // The page itself opts INTO container queries with `@container` so
-    // its descendant layout can react to the page's own width (not the
-    // viewport). This is the same primitive used by ChatWorkspace.
     <div
       className="@container min-h-0 w-full flex-1"
       data-testid="curation-page"
     >
       <div className="flex h-full w-full flex-col gap-md p-lg @md:flex-row">
-        {/* Queue column — full width below @md, 1/3 at @md+. */}
+        {/* Queue column — full width below @md, 1/3 at @md, 1/4 at @xl. */}
         <section
           aria-label="Fila de curadoria"
           aria-busy={isPending}
@@ -189,21 +184,14 @@ export const CurationPage: FC = () => {
         >
           <header className="flex items-center justify-between gap-sm">
             <h2 className="text-heading text-content">Curadoria</h2>
-            <PollingPill
-              delta={delta}
-              onAck={() => updateLastSeen(total)}
-            />
+            <PollingPill delta={delta} onAck={() => updateLastSeen(total)} />
           </header>
 
-          {/* MetricsStrip placeholder — TC-05 will fetch + render. The
-              skeleton keeps the layout stable. */}
-          <div
-            data-testid="curation-metrics-strip"
-            className={cn(
-              "h-12 rounded-md border border-border bg-surface-glass-panel",
-              isPending && "animate-pulse",
-            )}
-            aria-hidden={isPending}
+          <MetricsStrip
+            metrics={metricsQuery.data ?? null}
+            settled={!metricsQuery.isPending}
+            hasError={metricsQuery.isError}
+            fallback={metricsFallback}
           />
 
           <QueueTabs value={kindFilter} onChange={setKindFilter} />
@@ -220,38 +208,35 @@ export const CurationPage: FC = () => {
               skeleton={isPending}
             />
           )}
-
-          {/* BatchBar slot — TC-06 mounts content here. Reserved with
-              display:none so the layout does not shift when TC-06 lands. */}
-          <div
-            data-testid="curation-batch-bar-slot"
-            className="hidden"
-            aria-hidden="true"
-          />
         </section>
 
-        {/* Decision column — visible from base up; 2/3 at @md, 2/4 at @xl. */}
-        <section
-          aria-label="Painel de decisão"
-          className={cn(
-            "flex min-h-0 flex-1 flex-col",
-            "@md:w-2/3 @md:flex-none",
-            "@xl:w-2/4",
-          )}
+        {/* Decision column (with inline evidence) — fills the rest. */}
+        <div
+          data-testid="curation-decision-region"
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <DecisionPanelPlaceholder hasSelection={hasSelection} />
-        </section>
-
-        {/* Evidence column — visible only at @xl+ (third column). */}
-        <section
-          aria-label="Evidência"
-          className={cn(
-            "hidden min-h-0 flex-col",
-            "@xl:flex @xl:w-1/4",
+          {selectedFull ? (
+            <CurationDecision item={selectedFull} queue={data} />
+          ) : (
+            <GlassSurface
+              level="panel"
+              role="region"
+              aria-label="Painel de decisão"
+              data-testid="curation-decision-panel"
+              className="flex h-full min-h-0 flex-col p-lg"
+            >
+              <div
+                className="m-auto flex flex-col items-center gap-sm text-center"
+                data-testid="curation-decision-idle"
+              >
+                <Inbox aria-hidden="true" className="size-6 text-muted" />
+                <p className="text-body-sm text-muted">
+                  Selecione um item da fila para começar.
+                </p>
+              </div>
+            </GlassSurface>
           )}
-        >
-          <EvidencePanelPlaceholder />
-        </section>
+        </div>
       </div>
     </div>
   );

@@ -6,9 +6,8 @@
  * data-testids / aria contracts the page (and its tests) rely on.
  */
 import { type FC } from "react";
-import { AlertTriangle, CheckCircle, Inbox } from "lucide-react";
+import { AlertTriangle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { GlassSurface } from "@/components/ds/GlassSurface/GlassSurface";
 
 /**
  * Polling pill — "N novos" when the queue grows. `role="status"` so AT
@@ -77,51 +76,4 @@ export const QueueErrorBanner: FC<{ readonly onRetry: () => void }> = ({
       Tentar novamente
     </button>
   </div>
-);
-
-/** Placeholder DecisionPanel — TC-05 swaps the inner content. */
-export const DecisionPanelPlaceholder: FC<{ readonly hasSelection: boolean }> = ({
-  hasSelection,
-}) => (
-  <GlassSurface
-    level="panel"
-    role="region"
-    aria-label="Painel de decisão"
-    data-testid="curation-decision-panel"
-    className="flex h-full min-h-0 flex-col p-lg"
-  >
-    {hasSelection ? (
-      <p
-        className="m-auto text-body-sm text-muted"
-        data-testid="curation-decision-placeholder-selected"
-      >
-        Painel de decisão em construção (TC-05).
-      </p>
-    ) : (
-      <div
-        className="m-auto flex flex-col items-center gap-sm text-center"
-        data-testid="curation-decision-placeholder-idle"
-      >
-        <Inbox aria-hidden="true" className="size-6 text-muted" />
-        <p className="text-body-sm text-muted">
-          Selecione um item da fila para começar.
-        </p>
-      </div>
-    )}
-  </GlassSurface>
-);
-
-/** Placeholder EvidencePanel — TC-05 swaps the inner content. */
-export const EvidencePanelPlaceholder: FC = () => (
-  <GlassSurface
-    level="panel"
-    role="region"
-    aria-label="Evidência"
-    data-testid="curation-evidence-panel"
-    className="flex h-full min-h-0 flex-col p-lg"
-  >
-    <p className="m-auto text-body-sm text-muted">
-      A trilha de evidência aparecerá aqui (TC-05).
-    </p>
-  </GlassSurface>
 );
