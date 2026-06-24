@@ -65,7 +65,16 @@ function makeLink(
   label: string,
   isTemporal: boolean,
 ): GraphLinkData {
-  return { id, source, target, label, isTemporal };
+  // Storybook fixtures: humanize the slug so each story shows a non-empty
+  // visible label without hand-curating a pt-BR string per link.
+  return {
+    id,
+    source,
+    target,
+    label,
+    linkTypeLabel: label.replace(/_/g, " "),
+    isTemporal,
+  };
 }
 
 const SAMPLE_NODES: readonly GraphNodeData[] = [

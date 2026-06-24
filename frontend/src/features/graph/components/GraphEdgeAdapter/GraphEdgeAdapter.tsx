@@ -9,8 +9,12 @@
  *    stroke uses the LinkType colour token (`--color-link-{label}`).
  *  - `opacity-40` when `data.inEffect === false` OR `data.state ===
  *    "superseded"` (out-of-effect / historical edge, GraphEdge.spec §3).
- *  - The link-type slug (`data.label`) rendered as a small centred label
- *    via `EdgeLabelRenderer`, using the `text-caption` token.
+ *  - The catalog-resolved **pt-BR display label** (`data.linkTypeLabel`)
+ *    rendered as a small centred label via `EdgeLabelRenderer`, using the
+ *    `text-caption` token. The slug (`data.label`) is **never** rendered as
+ *    text — it is used only as the stroke-color lookup key
+ *    (`LINK_STROKE_CLASS[data.label]`). See GraphEdge.spec §1, §2, §7
+ *    scenarios 7 / 8.
  *  - Hover thickens the stroke from `--border-thin` to `--border-2`
  *    (GraphEdge.spec §3 — hover state baseline; rich tooltip is deferred).
  *
@@ -211,7 +215,7 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
             isDimmed && "opacity-40",
           )}
         >
-          {data.label}
+          {data.linkTypeLabel}
         </div>
       </EdgeLabelRenderer>
     </>

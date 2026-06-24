@@ -154,3 +154,39 @@ export function deriveLinkState(
   }
   return "accepted";
 }
+
+/**
+ * Resolve the visible pt-BR display label for a link from the wire payload.
+ *
+ * The backend projects `link_type_label` (catalog-resolved label, e.g.
+ * `"participa de"`) alongside the slug `link_type` (`"participates_in"`). The
+ * frontend renders the label — never the slug — but legacy frames or unknown
+ * link types may omit the projection. In that case we humanize the slug
+ * (underscores → spaces) as a graceful fallback (GraphEdge.spec §2, §7
+ * Scenario 8).
+ *
+ * The slug stays the lookup key for `LINK_STROKE_CLASS` in `GraphEdgeAdapter`
+ * — it is intentionally not consumed here.
+ *
+ * @param linkType — the wire `link_type` slug (snake_case).
+ * @param linkTypeLabel — the wire `link_type_label` projection (optional).
+ * @returns the visible label string; never empty when `linkType` is non-empty.
+ */
+export function mapLinkTypeLabel(
+  linkType: string,
+  linkTypeLabel: string | undefined,
+): string {
+  // We trim the wire label defensively. A backend bug that ever emitted an
+  // empty string (instead of omitting the field) would otherwise render a
+  // blank pill on the canvas, with no visible signal of the regression.
+  if (linkTypeLabel !== undefined && linkTypeLabel.trim().length > 0) {
+    return linkTypeLabel;
+  }
+  // Fallback: humanize the slug. We do NOT lowercase or title-case here —
+  // slugs are already lowercase and the fallback is intentionally minimal
+  // (replacing `_` with spaces). The user-facing surface for known
+  // link types is always the backend-resolved label; the fallback is for
+  // the unknown-slug case and is meant to look slightly different (no
+  // pt-BR translation) so a missing projection is visually noticeable.
+  return linkType.replace(/_/g, " ");
+}

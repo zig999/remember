@@ -49,6 +49,7 @@ function makeLink(
     source,
     target,
     label: "related_to",
+    linkTypeLabel: "relacionado a",
     isTemporal,
   };
 }

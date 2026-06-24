@@ -56,8 +56,18 @@ export interface GraphLinkData {
   readonly source: string;
   /** GraphNodeData.id of the target endpoint. */
   readonly target: string;
-  /** Link type slug (`participates_in`, `member_of`, …). */
+  /** Link type slug (`participates_in`, `member_of`, …). Used **exclusively**
+   *  as the stroke-color lookup key (`LINK_STROKE_CLASS[label]`) and as a
+   *  diagnostic id — **never** rendered as visible text. The visible text is
+   *  `linkTypeLabel`. */
   readonly label: string;
+  /** Catalog-resolved pt-BR display label (e.g. `"participa de"`). Sourced
+   *  from `link_type_label` on the wire (projected by the backend
+   *  `graph-normalizer.ts`); falls back to the humanized slug
+   *  (`link_type.replace(/_/g, " ")`) when the wire field is absent (legacy
+   *  frames / unknown link types). This is the only string rendered along
+   *  the edge path and in the hover tooltip — see GraphEdge.spec §2. */
+  readonly linkTypeLabel: string;
   /** `true` → solid stroke; `false` → dashed stroke (tokens.md §7, I-1). */
   readonly isTemporal: boolean;
   /** Optional: dim the edge when `false` (out-of-effect today). */
@@ -114,6 +124,13 @@ export interface GraphLinkWire {
   readonly source_node_id: string;
   readonly target_node_id: string;
   readonly link_type: string;
+  /** Optional: catalog-resolved pt-BR display label for `link_type`
+   *  (e.g. `"participa de"` for `link_type="participates_in"`). Projected
+   *  by the backend `graph-normalizer.ts` from the LinkType catalog
+   *  (`backend/src/modules/.../graph-normalizer.ts`). Older frames or
+   *  unknown link types omit it; the mapper falls back to the humanized
+   *  slug in that case — see `lib/map.ts#mapLinkTypeLabel`. */
+  readonly link_type_label?: string;
   /** From the LinkType catalog (`is_temporal` column) — temporal → solid,
    *  stable → dashed (tokens.md §7, I-1). */
   readonly is_temporal: boolean;
