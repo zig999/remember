@@ -42,6 +42,19 @@ const okResult = (res: { json: () => unknown }): unknown =>
 // Fixture: fake DB store (minimal, scoped to the four scenarios we cover)
 // ---------------------------------------------------------------------------
 
+interface AcceptedFragmentFakeRow {
+  fragment_id: string;
+  fragment_text: string;
+  fragment_confidence: number | string;
+  fragment_llm_run_id: string;
+  fragment_created_at: Date;
+  raw_information_id: string;
+  chunk_index: number;
+  source_type: string;
+  received_at: Date;
+  document_title: string | null;
+}
+
 interface Store {
   /** Drives the parsed-tsquery short-circuit. */
   parsedTsQueryByInput: Map<string, string>;
@@ -72,6 +85,14 @@ interface Store {
   chainByFragment: Map<string, ChainRow[]>;
   /** Count of traversal SQL invocations — asserts expand=false skips traverseNodes. */
   traversalCalls: number;
+  /** TC-be-002: accepted-fragment rows keyed by `${llm_run_id}|${raw_information_id}`. */
+  acceptedFragments: AcceptedFragmentFakeRow[];
+  /** TC-be-002: predicate that decides which rows belong to a query. */
+  acceptedFragmentFilter?: (
+    row: AcceptedFragmentFakeRow,
+    llmRunId: string | null,
+    rawInformationId: string | null
+  ) => boolean;
 }
 
 interface ChainRow {
@@ -101,7 +122,30 @@ function emptyStore(): Store {
     fragments: new Map(),
     chainByFragment: new Map(),
     traversalCalls: 0,
+    acceptedFragments: [],
   };
+}
+
+/**
+ * TC-be-002 helper — default filter mirrors the production SQL:
+ *   - status excluded here (rows already represent `accepted`)
+ *   - llm_run_id / raw_information_id intersection
+ *   - tombstone short-circuit handled by removing the row from `acceptedFragments`
+ *     in the fixture (the predicate does not re-check `tombstones`).
+ */
+function defaultAcceptedFragmentFilter(
+  row: AcceptedFragmentFakeRow,
+  llmRunId: string | null,
+  rawInformationId: string | null
+): boolean {
+  if (llmRunId !== null && row.fragment_llm_run_id !== llmRunId) return false;
+  if (
+    rawInformationId !== null &&
+    row.raw_information_id !== rawInformationId
+  ) {
+    return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +262,15 @@ function buildFakeClient(store: Store): import("pg").PoolClient {
       }
 
       // ---- tombstone check ----
-      if (text.includes("FROM compliance_deletion")) {
+      // Match only the dedicated `findTombstone` SQL — its SELECT lists
+      // `executed_at` and binds an `ANY($1::uuid[])` array. Otherwise the
+      // matcher would steal the `NOT EXISTS compliance_deletion` subquery
+      // used by `listAcceptedFragments` (which embeds the same FROM clause).
+      if (
+        text.includes("FROM compliance_deletion") &&
+        text.includes("executed_at") &&
+        text.includes("ANY($1::uuid[])")
+      ) {
         const rawIds = (params[0] as string[]) ?? [];
         for (const rid of rawIds) {
           const dt = store.tombstones.get(rid);
@@ -252,6 +304,63 @@ function buildFakeClient(store: Store): import("pg").PoolClient {
         const fid = String(params[0]);
         const rows = store.chainByFragment.get(fid) ?? [];
         return { rows, rowCount: rows.length };
+      }
+
+      // ---- TC-be-002: listAcceptedFragments — count ----
+      // (placed BEFORE generic tombstone/fragment-status matchers so the
+      // shared `compliance_deletion` substring does not get stolen by the
+      // later tombstone matcher; same reasoning for the DISTINCT-ON page.)
+      if (
+        text.includes("COUNT(DISTINCT f.id)") &&
+        text.includes("information_fragment")
+      ) {
+        const llmRunId = (params[0] as string | null) ?? null;
+        const rawId = (params[1] as string | null) ?? null;
+        const filter = store.acceptedFragmentFilter ?? defaultAcceptedFragmentFilter;
+        // The production SQL deduplicates on fragment.id; the fixture stores
+        // each fragment once, so a uniqueness pass on `fragment_id` is enough.
+        const matched = new Set<string>();
+        for (const row of store.acceptedFragments) {
+          if (filter(row, llmRunId, rawId)) matched.add(row.fragment_id);
+        }
+        return { rows: [{ total: matched.size }], rowCount: 1 };
+      }
+
+      // ---- TC-be-002: listAcceptedFragments — page (DISTINCT ON) ----
+      if (
+        text.includes("DISTINCT ON (f.id)") &&
+        text.includes("information_fragment")
+      ) {
+        const llmRunId = (params[0] as string | null) ?? null;
+        const rawId = (params[1] as string | null) ?? null;
+        const limit = Number(params[2] ?? 20);
+        const offset = Number(params[3] ?? 0);
+        const filter = store.acceptedFragmentFilter ?? defaultAcceptedFragmentFilter;
+
+        // Dedup by fragment_id (lowest chunk_index wins).
+        const byId = new Map<string, AcceptedFragmentFakeRow>();
+        for (const row of store.acceptedFragments) {
+          if (!filter(row, llmRunId, rawId)) continue;
+          const prev = byId.get(row.fragment_id);
+          if (prev === undefined || row.chunk_index < prev.chunk_index) {
+            byId.set(row.fragment_id, row);
+          }
+        }
+        const deduped = Array.from(byId.values());
+
+        // Sort: received_at DESC NULLS LAST, fragment_created_at DESC, fragment_id ASC.
+        deduped.sort((a, b) => {
+          const ra = a.received_at?.getTime() ?? -Infinity;
+          const rb = b.received_at?.getTime() ?? -Infinity;
+          if (rb !== ra) return rb - ra;
+          const ca = a.fragment_created_at.getTime();
+          const cb = b.fragment_created_at.getTime();
+          if (cb !== ca) return cb - ca;
+          return a.fragment_id < b.fragment_id ? -1 : a.fragment_id > b.fragment_id ? 1 : 0;
+        });
+
+        const page = deduped.slice(offset, offset + limit);
+        return { rows: page, rowCount: page.length };
       }
 
       // ---- node_type listing / link_type listing / attribute_key listing ----
@@ -618,6 +727,325 @@ describe("query-retrieval — GET /api/v1/provenance/fragments/:fragment_id", ()
       expect(body.fragments[0]!.status).toBe("accepted");
       expect(body.fragments[0]!.chunks.length).toBe(1);
       expect(body.fragments[0]!.chunks[0]!.raw_information.id).toBe(rawId);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-be-002 — GET /api/v1/fragments/accepted
+// ---------------------------------------------------------------------------
+
+describe("query-retrieval — GET /api/v1/fragments/accepted", () => {
+  let fixture: AuthFixture;
+  let token: string;
+  beforeAll(async () => {
+    fixture = await buildAuthFixture();
+    token = await signValidJwt(fixture.privateKey);
+  });
+
+  const RUN_ID = "11111111-1111-4111-8111-111111111111";
+  const RAW_ID = "22222222-2222-4222-8222-222222222222";
+
+  function makeRow(over: Partial<AcceptedFragmentFakeRow>): AcceptedFragmentFakeRow {
+    return {
+      fragment_id: "aaaaaaaa-0000-4000-8000-000000000001",
+      fragment_text: "Texto do fragmento.",
+      fragment_confidence: 0.9,
+      fragment_llm_run_id: RUN_ID,
+      fragment_created_at: new Date("2026-06-11T18:31:14Z"),
+      raw_information_id: RAW_ID,
+      chunk_index: 0,
+      source_type: "ata",
+      received_at: new Date("2026-06-11T18:30:00Z"),
+      document_title: "Ata Apollo",
+      ...over,
+    };
+  }
+
+  // Encodes WHY: the SPA CorrectionForm picker calls this endpoint with a
+  // raw_information_id and expects { ok: true, result: { total, items, ... } }.
+  // Drift in the envelope or field names would break the form (BR-26).
+  it("returns 200 with paginated envelope on raw_information_id filter", async () => {
+    const store = emptyStore();
+    store.acceptedFragments = [makeRow({})];
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        ok: true;
+        result: {
+          total: number;
+          limit: number;
+          offset: number;
+          items: {
+            fragment_id: string;
+            text: string;
+            confidence: number;
+            llm_run_id: string;
+            created_at: string;
+            source: {
+              raw_information_id: string;
+              chunk_index: number;
+              source_type: string;
+              received_at: string;
+              document_title: string | null;
+            };
+          }[];
+        };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.result.total).toBe(1);
+      expect(body.result.limit).toBe(20);
+      expect(body.result.offset).toBe(0);
+      expect(body.result.items.length).toBe(1);
+      const item = body.result.items[0]!;
+      expect(item.fragment_id).toBe("aaaaaaaa-0000-4000-8000-000000000001");
+      expect(item.confidence).toBe(0.9);
+      expect(item.created_at).toBe("2026-06-11T18:31:14.000Z");
+      expect(item.source.raw_information_id).toBe(RAW_ID);
+      expect(item.source.received_at).toBe("2026-06-11T18:30:00.000Z");
+      expect(item.source.document_title).toBe("Ata Apollo");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: omitting both filters would offer the entire fragments table.
+  // The contract refuses with 422 and a structured `requires_one_of` detail
+  // so the SPA can highlight the right form fields.
+  it("returns 422 VALIDATION_INVALID_FORMAT when no filter is supplied", async () => {
+    const store = emptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/fragments/accepted",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(422);
+      const body = res.json() as {
+        ok: false;
+        error: { code: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("VALIDATION_INVALID_FORMAT");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: bad UUID at the boundary protects the SQL layer (cast
+  // failures would surface as a generic 500 otherwise).
+  it("returns 422 VALIDATION_INVALID_FORMAT on bad llm_run_id UUID", async () => {
+    const store = emptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/fragments/accepted?llm_run_id=not-a-uuid",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(422);
+      const body = res.json() as { error: { code: string } };
+      expect(body.error.code).toBe("VALIDATION_INVALID_FORMAT");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns 422 VALIDATION_INVALID_FORMAT on bad raw_information_id UUID", async () => {
+    const store = emptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/fragments/accepted?raw_information_id=still-not-a-uuid",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(422);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: limit > 100 must be refused — uncapped pages risk
+  // memory pressure on the BFF + slow client renders.
+  it("returns 422 when limit exceeds the maximum (100)", async () => {
+    const store = emptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}&limit=250`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(422);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: JWT enforcement is shared (BR-01). The endpoint must NOT
+  // bypass auth — a single carve-out would leak a fragment listing publicly.
+  it("returns 401 without a JWT", async () => {
+    const store = emptyStore();
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}`,
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: a fragment that maps to two chunks must appear ONCE — the
+  // contract is "what is available to cite", not the full chunk chain.
+  it("returns each fragment exactly once even when it has multiple chunks", async () => {
+    const store = emptyStore();
+    store.acceptedFragments = [
+      makeRow({ chunk_index: 3 }),
+      makeRow({ chunk_index: 0 }), // first chunk by index — should be picked
+      makeRow({ chunk_index: 1 }),
+    ];
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        result: { total: number; items: { source: { chunk_index: number } }[] };
+      };
+      expect(body.result.total).toBe(1);
+      expect(body.result.items.length).toBe(1);
+      expect(body.result.items[0]!.source.chunk_index).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: BR-14 tombstone short-circuit — compliance-deleted documents
+  // must never surface as citable evidence (silent omission, not 410).
+  it("silently omits fragments whose RawInformation is compliance-deleted", async () => {
+    const store = emptyStore();
+    // The production query has `NOT EXISTS compliance_deletion`. The fixture
+    // models that exclusion via the filter predicate.
+    store.acceptedFragmentFilter = (row, llmRunId, rawId) => {
+      if (store.tombstones.has(row.raw_information_id)) return false;
+      return defaultAcceptedFragmentFilter(row, llmRunId, rawId);
+    };
+    store.acceptedFragments = [makeRow({})];
+    store.tombstones.set(RAW_ID, new Date("2026-06-11T19:00:00Z"));
+
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { result: { total: number; items: unknown[] } };
+      expect(body.result.total).toBe(0);
+      expect(body.result.items).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: when both filters are supplied, the result must satisfy
+  // BOTH (intersection) — not the union — so the picker can disambiguate
+  // re-extractions over the same document.
+  it("applies intersection semantics when both filters are supplied", async () => {
+    const store = emptyStore();
+    const OTHER_RUN = "33333333-3333-4333-8333-333333333333";
+    const OTHER_RAW = "44444444-4444-4444-8444-444444444444";
+    store.acceptedFragments = [
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000a",
+        fragment_llm_run_id: RUN_ID,
+        raw_information_id: RAW_ID,
+      }),
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000b",
+        fragment_llm_run_id: OTHER_RUN,
+        raw_information_id: RAW_ID,
+      }),
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000c",
+        fragment_llm_run_id: RUN_ID,
+        raw_information_id: OTHER_RAW,
+      }),
+    ];
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?llm_run_id=${RUN_ID}&raw_information_id=${RAW_ID}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        result: { total: number; items: { fragment_id: string }[] };
+      };
+      expect(body.result.total).toBe(1);
+      expect(body.result.items[0]!.fragment_id).toBe(
+        "aaaaaaaa-0000-4000-8000-00000000000a"
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Encodes WHY: deterministic ordering is part of the contract — drift
+  // would break SPA stable rendering / cursor expectations.
+  it("orders by received_at DESC, created_at DESC, fragment_id ASC", async () => {
+    const store = emptyStore();
+    store.acceptedFragments = [
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000a",
+        received_at: new Date("2026-06-10T00:00:00Z"),
+        fragment_created_at: new Date("2026-06-10T01:00:00Z"),
+      }),
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000b",
+        received_at: new Date("2026-06-12T00:00:00Z"), // newer document
+        fragment_created_at: new Date("2026-06-12T00:30:00Z"),
+      }),
+      makeRow({
+        fragment_id: "aaaaaaaa-0000-4000-8000-00000000000c",
+        received_at: new Date("2026-06-12T00:00:00Z"), // same document timestamp
+        fragment_created_at: new Date("2026-06-12T00:10:00Z"), // older fragment
+      }),
+    ];
+    const app = await buildAppWith(store, fixture);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/fragments/accepted?raw_information_id=${RAW_ID}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        result: { items: { fragment_id: string }[] };
+      };
+      expect(body.result.items.map((i) => i.fragment_id)).toEqual([
+        "aaaaaaaa-0000-4000-8000-00000000000b",
+        "aaaaaaaa-0000-4000-8000-00000000000c",
+        "aaaaaaaa-0000-4000-8000-00000000000a",
+      ]);
     } finally {
       await app.close();
     }
