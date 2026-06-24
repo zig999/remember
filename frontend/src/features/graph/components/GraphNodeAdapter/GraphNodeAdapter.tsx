@@ -31,11 +31,19 @@ import type { GraphNodeAdapterProps } from "./GraphNodeAdapter.types";
  * Handle styling — kept minimal and token-driven. React Flow renders the
  * `<Handle>` as a small DOM element at a fixed offset around the node; we
  * size it via Tailwind classes (4-pt grid) so it stays consistent with the
- * design system. The handle is decorative for v1 (edges are auto-wired by
- * the layout, not user-drawn), so we hide it from assistive technology.
+ * design system.
+ *
+ * Floating-edge invariant (TC-01 / REQ-1): edges are routed via
+ * `useInternalNode` + `getEdgeParams` (the floating-edge helper), NOT
+ * through the fixed `<Handle>` offset. The handles MUST remain in the DOM
+ * — React Flow still uses them to recognise this node as a routing
+ * endpoint and to read the cardinal `Position` for the bezier handle
+ * direction — but they MUST NOT be visible or interactive. `opacity-0`
+ * removes the visual; `pointer-events-none` removes the hit area so the
+ * handle never intercepts node drag/click events.
  */
 const HANDLE_CLASSES =
-  "!size-2 !min-w-0 !rounded-pill !border !border-border-glass !bg-surface-glass-panel";
+  "!size-2 !min-w-0 !rounded-pill !border !border-border-glass !bg-surface-glass-panel opacity-0 pointer-events-none";
 
 export const GraphNodeAdapter: FC<GraphNodeAdapterProps> = ({
   data,
