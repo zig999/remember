@@ -328,6 +328,13 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
           "list_recent_ingestions",
         ].sort()
       );
+      // TC-04 / TC-06 v2.8 seam-removal pinning: the directed-ingestion
+      // entry is wire-advertised under the `ingest` toolset, and the retired
+      // `start_async_ingestion` MUST NOT resurface on the wire. The exhaustive
+      // list above also implies these, but the explicit positive + negative
+      // assertions make the regression intent legible at a glance.
+      expect(names).toContain("ingest_directed");
+      expect(names).not.toContain("start_async_ingestion");
     } finally {
       await app.close();
     }
