@@ -2172,7 +2172,6 @@ describe("registerChatRoutes — BR-44 boot log", () => {
           event: string;
           chat_ingest_enabled: boolean;
           tool_count: number;
-          ingest_dispatcher_wired: boolean;
         }
       | undefined;
   }
@@ -2203,24 +2202,17 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     expect(bootRecord).toBeDefined();
     expect(bootRecord!.chat_ingest_enabled).toBe(false);
     expect(bootRecord!.tool_count).toBe(13);
-    expect(bootRecord!.ingest_dispatcher_wired).toBe(false);
     await app.close();
   });
 
-  it("emits chat.boot{chat_ingest_enabled=true, tool_count=15, ingest_dispatcher_wired=true} when the flag is on AND ingest tools + catalog are present", async () => {
+  it("emits chat.boot{chat_ingest_enabled=true, tool_count=14} when the flag is on AND ingest_directed is registered (v2.8)", async () => {
     const { logger, records } = buildCapturingLogger();
     const env = { ...baseEnv, CHAT_INGEST_ENABLED: true } as Env;
     const mcp = buildMcpWithAllChatTools();
-    // Register the v2.4 ingestion entries so the catalog resolves 15.
+    // Register the v2.8 ingestion entry so the catalog resolves 14.
     mcp.registerTool("ingest", {
-      name: "start_async_ingestion",
-      description: "stub start_async_ingestion",
-      inputSchema: z.object({}).passthrough(),
-      handler: async () => ({ ok: true, result: {} }),
-    });
-    mcp.registerTool("ingest", {
-      name: "get_ingestion_status",
-      description: "stub get_ingestion_status",
+      name: "ingest_directed",
+      description: "stub ingest_directed",
       inputSchema: z.object({}).passthrough(),
       handler: async () => ({ ok: true, result: {} }),
     });
@@ -2256,12 +2248,11 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     const bootRecord = findBootRecord(records);
     expect(bootRecord).toBeDefined();
     expect(bootRecord!.chat_ingest_enabled).toBe(true);
-    expect(bootRecord!.tool_count).toBe(15);
-    expect(bootRecord!.ingest_dispatcher_wired).toBe(true);
+    expect(bootRecord!.tool_count).toBe(14);
     await app.close();
   });
 
-  it("emits chat.boot{tool_count=13, ingest_dispatcher_wired=false} when the flag is ON but the ingest tools are MISSING (defensive degradation, BR-44 §6)", async () => {
+  it("emits chat.boot{tool_count=13} when the flag is ON but ingest_directed is MISSING (defensive degradation, BR-44 §6)", async () => {
     const { logger, records } = buildCapturingLogger();
     const env = { ...baseEnv, CHAT_INGEST_ENABLED: true } as Env;
     // 13 query tools registered; ingest toolset is NEVER populated.
@@ -2290,7 +2281,6 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     // visible even when the catalog falls back.
     expect(bootRecord!.chat_ingest_enabled).toBe(true);
     expect(bootRecord!.tool_count).toBe(13);
-    expect(bootRecord!.ingest_dispatcher_wired).toBe(false);
     await app.close();
   });
 });

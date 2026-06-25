@@ -1,16 +1,17 @@
-// TC-04 (v2.4) acceptance criteria covered:
+// TC-04 (v2.8) acceptance criteria covered:
 //   - buildChatToolCatalog(mcp, env) returns undefined if ANY of the 13 query
 //     names is unresolved (revoked-but-restated BR-05 invariant).
 //   - With CHAT_INGEST_ENABLED=false (or absent): catalog has exactly 13 names.
-//   - With CHAT_INGEST_ENABLED=true AND the two `ingest` names registered:
-//     catalog has exactly 15 names, with start_async_ingestion + get_ingestion_status
-//     resolved on the `ingest` toolset AFTER the 13 query entries.
-//   - With CHAT_INGEST_ENABLED=true AND `ingest` toolset missing the two names:
+//   - With CHAT_INGEST_ENABLED=true AND the `ingest_directed` name registered:
+//     catalog has exactly 14 names, with `ingest_directed` resolved on the
+//     `ingest` toolset AFTER the 13 query entries.
+//   - With CHAT_INGEST_ENABLED=true AND `ingest` toolset missing the entry:
 //     defensive degradation — log ERROR 'chat.tool_catalog_partial_resolution'
 //     AND fall back to the 13-tool catalog (route still mounts — BR-44 step 6).
 //   - Subsequent calls return the cached value (no re-lookup).
 //
-// Spec refs: chat.back.md BR-05 v2.4 (catalog gate), BR-44 (CHAT_INGEST_ENABLED).
+// Spec refs: chat.back.md BR-05 v2.8 (catalog gate), BR-44 v2.8 (CHAT_INGEST_ENABLED
+// gates `ingest_directed`).
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { z } from "zod";
@@ -85,12 +86,9 @@ describe("chat/service/tool-catalog", () => {
     );
   });
 
-  // BR-44 step 2: the 2 ingestion names are listed and in fixed order.
-  it("CHAT_INGEST_TOOL_NAMES enumerates exactly start_async_ingestion + get_ingestion_status (in order)", () => {
-    expect(CHAT_INGEST_TOOL_NAMES).toEqual([
-      "start_async_ingestion",
-      "get_ingestion_status",
-    ]);
+  // BR-44 v2.8 step 2: the single ingestion name is listed.
+  it("CHAT_INGEST_TOOL_NAMES enumerates exactly [ingest_directed] (v2.8)", () => {
+    expect(CHAT_INGEST_TOOL_NAMES).toEqual(["ingest_directed"]);
   });
 
   // BR-05 happy path: every query name resolves -> dense 13-tool catalog when
@@ -105,37 +103,34 @@ describe("chat/service/tool-catalog", () => {
     expect(names.sort()).toEqual([...CHAT_TOOL_NAMES].sort());
   });
 
-  // BR-44 step 1: even when the ingest tools ARE in the registry, they are
+  // BR-44 step 1: even when the ingest tool IS in the registry, it is
   // NOT advertised in the chat catalog when the flag is off.
-  it("with CHAT_INGEST_ENABLED=false, registered ingest tools are NOT included", () => {
+  it("with CHAT_INGEST_ENABLED=false, registered ingest tool is NOT included", () => {
     const mcp = makeRegistry([...QUERY_SPECS, ...INGEST_SPECS]);
     const catalog = buildChatToolCatalog(mcp, ENV_FLAG_OFF);
     expect(catalog).toBeDefined();
-    expect(Object.keys(catalog!)).not.toContain("start_async_ingestion");
-    expect(Object.keys(catalog!)).not.toContain("get_ingestion_status");
+    expect(Object.keys(catalog!)).not.toContain("ingest_directed");
   });
 
-  // BR-44 step 2: with the flag ON and both ingest tools registered, the
-  // catalog has exactly 15 names, and the ingest entries appear AFTER the 13
-  // query entries (deterministic order — stable Anthropic tools[] hash).
-  it("with CHAT_INGEST_ENABLED=true and full registry yields exactly 15 names (ingest last)", () => {
+  // BR-44 v2.8 step 2: with the flag ON and the `ingest_directed` tool
+  // registered, the catalog has exactly 14 names, and the ingest entry
+  // appears AFTER the 13 query entries (deterministic order — stable
+  // Anthropic tools[] hash).
+  it("with CHAT_INGEST_ENABLED=true and full registry yields exactly 14 names (ingest_directed last)", () => {
     const mcp = makeRegistry([...QUERY_SPECS, ...INGEST_SPECS]);
     const catalog = buildChatToolCatalog(mcp, ENV_FLAG_ON);
     expect(catalog).toBeDefined();
     const names = Object.keys(catalog!);
-    expect(names).toHaveLength(15);
-    // Last two are start_async_ingestion + get_ingestion_status (in that order).
-    expect(names.slice(-2)).toEqual([
-      "start_async_ingestion",
-      "get_ingestion_status",
-    ]);
+    expect(names).toHaveLength(14);
+    // The 14th entry is `ingest_directed`.
+    expect(names.slice(-1)).toEqual(["ingest_directed"]);
     // First 13 are the query names in source order.
     expect(names.slice(0, 13)).toEqual([...CHAT_TOOL_NAMES]);
   });
 
-  // BR-44 step 6 defensive degradation: flag ON + at least one ingest tool
+  // BR-44 step 6 defensive degradation: flag ON + `ingest_directed`
   // missing -> log ERROR + fall back to 13-tool catalog. Route still mounts.
-  it("with CHAT_INGEST_ENABLED=true and ingest toolset missing both names: 13-name catalog + ERROR log", () => {
+  it("with CHAT_INGEST_ENABLED=true and ingest toolset missing ingest_directed: 13-name catalog + ERROR log", () => {
     const mcp = makeRegistry(QUERY_SPECS); // no ingest entries
     const errorSpy = vi.fn();
     const logger = { error: errorSpy } as unknown as Parameters<
@@ -148,35 +143,10 @@ describe("chat/service/tool-catalog", () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     const [payload, msg] = errorSpy.mock.calls[0]!;
     expect(payload.event).toBe("chat.tool_catalog_partial_resolution");
-    expect(payload.requested).toEqual([
-      "start_async_ingestion",
-      "get_ingestion_status",
-    ]);
-    expect(payload.missing.sort()).toEqual([
-      "get_ingestion_status",
-      "start_async_ingestion",
-    ]);
+    expect(payload.requested).toEqual(["ingest_directed"]);
+    expect(payload.missing).toEqual(["ingest_directed"]);
     expect(payload.resolved).toEqual([]);
     expect(msg).toMatch(/falling back to 13-tool catalog/);
-  });
-
-  // BR-44 step 6 — partial degradation: only ONE ingest tool present.
-  it("with CHAT_INGEST_ENABLED=true and only one ingest tool present: still falls back to 13-tool catalog", () => {
-    const mcp = makeRegistry([
-      ...QUERY_SPECS,
-      { toolset: "ingest", name: "start_async_ingestion" },
-    ]);
-    const errorSpy = vi.fn();
-    const logger = { error: errorSpy } as unknown as Parameters<
-      typeof buildChatToolCatalog
-    >[2];
-
-    const catalog = buildChatToolCatalog(mcp, ENV_FLAG_ON, logger);
-    expect(catalog).toBeDefined();
-    expect(Object.keys(catalog!)).toHaveLength(13);
-    expect(Object.keys(catalog!)).not.toContain("start_async_ingestion");
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy.mock.calls[0]![0].missing).toEqual(["get_ingestion_status"]);
   });
 
   // BR-05: any missing QUERY name -> undefined (route is not mounted).
@@ -225,7 +195,7 @@ describe("chat/service/tool-catalog", () => {
     const a = buildChatToolCatalog(mcp, ENV_FLAG_OFF);
     expect(Object.keys(a!)).toHaveLength(13);
     const b = buildChatToolCatalog(mcp, ENV_FLAG_ON);
-    expect(Object.keys(b!)).toHaveLength(15);
+    expect(Object.keys(b!)).toHaveLength(14);
     expect(b).not.toBe(a);
   });
 
