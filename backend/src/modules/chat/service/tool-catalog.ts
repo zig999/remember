@@ -1,11 +1,11 @@
 // Lazy tool-catalog resolver — looks up the read-only `query`-toolset tools
 // in the in-process `McpServer` registry (BR-05 v2.4) AND, when the feature
-// flag `env.CHAT_INGEST_ENABLED === true`, two additional `ingest`-toolset
-// tools (`start_async_ingestion`, `get_ingestion_status` — BR-44). The
-// resolved catalog is memoized for the lifetime of the process.
+// flag `env.CHAT_INGEST_ENABLED === true`, one additional `ingest`-toolset
+// tool (`ingest_directed` — BR-44 v2.8). The resolved catalog is memoized for
+// the lifetime of the process.
 //
 // Why lazy? Tool registration is performed by `query-retrieval`,
-// `knowledge-graph`, and (for the v2.4 ingestion entries) `ingestion` at boot
+// `knowledge-graph`, and (for the v2.8 ingestion entry) `ingestion` at boot
 // time. Mounting the chat route is sequenced AFTER those registrars on the
 // `/api/v1` scope, so by the first request all the required tools are
 // present. Resolving on first request (instead of at module load) keeps the
@@ -23,12 +23,12 @@
 // the route registrar logs a single ERROR with the diff and does NOT serve a
 // degraded chat surface.
 //
-// Defensive degradation on the v2.4 ingestion portion (BR-44 step 6): when
-// `CHAT_INGEST_ENABLED=true` but ONE OR BOTH of the two ingest entries is
-// missing in the registry, we log ERROR `chat.tool_catalog_partial_resolution`
-// and FALL BACK to the 13-tool catalog (the route still mounts; the Owner
-// sees no ingestion offer). This is distinct from the `query`-portion miss
-// because the chat surface remains usable without the ingestion capability.
+// Defensive degradation on the v2.8 ingestion portion (BR-44 step 6): when
+// `CHAT_INGEST_ENABLED=true` but the `ingest_directed` entry is missing in
+// the registry, we log ERROR `chat.tool_catalog_partial_resolution` and FALL
+// BACK to the 13-tool catalog (the route still mounts; the Owner sees no
+// ingestion offer). This is distinct from the `query`-portion miss because
+// the chat surface remains usable without the ingestion capability.
 
 import type { Logger } from "pino";
 
@@ -54,24 +54,23 @@ export const CHAT_TOOL_NAMES = [
   "get_provenance_fragment",
 ] as const;
 
-/** The 2 `ingest`-toolset tools added to the chat catalog when
- *  `env.CHAT_INGEST_ENABLED === true` (BR-05 v2.4 step 2 / BR-44). Order is
- *  fixed — they appear AFTER the 13 query entries in the resolved catalog so
- *  the Anthropic `tools[]` array hash is stable across reloads (BR-44 step 2). */
-export const CHAT_INGEST_TOOL_NAMES = [
-  "start_async_ingestion",
-  "get_ingestion_status",
-] as const;
+/** The `ingest`-toolset tool added to the chat catalog when
+ *  `env.CHAT_INGEST_ENABLED === true` (BR-05 v2.8 step 2 / BR-44 v2.8). Order is
+ *  fixed — the entry appears AFTER the 13 query entries in the resolved catalog
+ *  so the Anthropic `tools[]` array hash is stable across reloads (BR-44 step 2).
+ *  v2.8 (TC-04): retired `start_async_ingestion` + `get_ingestion_status` in
+ *  favour of the deterministic, single-shot `ingest_directed` tool. */
+export const CHAT_INGEST_TOOL_NAMES = ["ingest_directed"] as const;
 
 /** Toolset for the 13 read-only entries — always `query`. */
 const CHAT_QUERY_TOOLSET: ToolsetName = "query";
-/** Toolset for the 2 v2.4 ingestion entries — `ingest`. */
+/** Toolset for the v2.8 ingestion entry (`ingest_directed`) — `ingest`. */
 const CHAT_INGEST_TOOLSET: ToolsetName = "ingest";
 
 /**
  * Resolved chat tool catalog: a map from tool name to the live `McpTool`
  * reference returned by `McpServer.getTool(toolset, name)`. The map is dense
- * over the names the catalog includes (13 or 15 depending on the feature
+ * over the names the catalog includes (13 or 14 depending on the feature
  * flag); a partial resolution of the REQUIRED query portion returns
  * `undefined`.
  */
@@ -104,8 +103,8 @@ let CACHED_FOR_INGEST_FLAG: boolean | null = null;
  *   - `ResolvedChatToolCatalog` with 13 entries when ALL 13 query names
  *     resolve AND either `CHAT_INGEST_ENABLED=false` or the defensive
  *     degradation path fired (BR-44 step 6).
- *   - `ResolvedChatToolCatalog` with 15 entries when ALL 13 query names AND
- *     both v2.4 ingestion names resolve AND `CHAT_INGEST_ENABLED=true`.
+ *   - `ResolvedChatToolCatalog` with 14 entries when ALL 13 query names AND
+ *     the v2.8 `ingest_directed` entry resolve AND `CHAT_INGEST_ENABLED=true`.
  *   - `undefined` when at least ONE of the 13 query names is missing in the
  *     registry (route is not mounted — BR-05).
  *
@@ -156,7 +155,7 @@ export function buildChatToolCatalog(
     return undefined;
   }
 
-  // --- 2. Optionally resolve the 2 v2.4 ingestion entries ------------------
+  // --- 2. Optionally resolve the v2.8 ingestion entry (`ingest_directed`) ----
   // Order is preserved by appending AFTER the 13 query entries (BR-44 step 2).
   if (ingestFlag) {
     const requested = [...CHAT_INGEST_TOOL_NAMES];

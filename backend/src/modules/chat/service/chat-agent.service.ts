@@ -127,43 +127,14 @@ const TURN_TIMEOUT_REASON = "turn_timeout" as const;
  * catalog is required — `registerChatRoutes(...)` does not mount the route
  * when `buildChatToolCatalog(mcp, env)` returns `undefined` (BR-05).
  *
- * v2.4 (BR-43): when `env.CHAT_INGEST_ENABLED === true` AND the catalog
- * resolved `start_async_ingestion`, the route MUST inject an
- * `ingestDispatcher` that drives `service/ingest-adapter.ts`
- * (`dispatchStartAsyncIngestion`). The chat agentic loop short-circuits the
- * `start_async_ingestion` tool_use block to this dispatcher INSTEAD OF the
- * catalog handler — the adapter owns the synchronous intake + fire-and-forget
- * extraction (see BR-43 §6 in `chat.back.md`). All OTHER tools (including the
- * verbatim-reused `get_ingestion_status`, BR-45) flow through the catalog
- * handler unchanged.
- *
- * The dispatcher is intentionally typed as an opaque function — the service
- * does not know about ingestion internals; the route currying is the single
- * import seam between the chat domain and `ingestion.service`.
+ * v2.8 (BR-43 / BR-44 / TC-04): the chat-side async-ingestion seam was
+ * retired. `ingest_directed` flows through the SAME standard catalog dispatch
+ * path as any other tool (`catalog[toolName].handler`) — no special-case
+ * branch, no chat-owned adapter. The route layer is no longer responsible for
+ * injecting an ingestion dispatcher into the service.
  */
-export type IngestionToolEnvelope =
-  | { readonly ok: true; readonly result: unknown }
-  | {
-      readonly ok: false;
-      readonly error: {
-        readonly code: string;
-        readonly message: string;
-        readonly details?: unknown;
-      };
-    };
-
 export interface ChatAgentServiceFactoryDeps extends ChatAgentServiceDeps {
   readonly catalog: ResolvedChatToolCatalog;
-  /**
-   * Optional dispatcher for `start_async_ingestion` (BR-43). When provided,
-   * the agentic loop routes the `start_async_ingestion` tool_use block to
-   * this function instead of `catalog["start_async_ingestion"].handler`. The
-   * function MUST resolve in < 1 s (intake only — extraction is scheduled
-   * fire-and-forget by the adapter; BR-43 §3) and MUST NEVER throw — it
-   * returns a structured envelope so the loop can feed it back to the model
-   * as a `tool_result` block (BR-07 / BR-10 path).
-   */
-  readonly ingestDispatcher?: (input: unknown) => Promise<IngestionToolEnvelope>;
 }
 
 /**
@@ -256,9 +227,6 @@ export function createChatAgentService(
         now,
         input,
         accumulator,
-        ...(deps.ingestDispatcher !== undefined
-          ? { ingestDispatcher: deps.ingestDispatcher }
-          : {}),
         publishStats: (next) => {
           stats = next;
         },
@@ -284,14 +252,6 @@ interface RunTurnContext {
   readonly input: ChatRunInput;
   readonly accumulator: StatsAccumulator;
   readonly publishStats: (next: ChatRunStats) => void;
-  /** BR-43 dispatcher injection. Undefined when CHAT_INGEST_ENABLED=false OR
-   *  the catalog did not resolve `start_async_ingestion` (defensive-degradation
-   *  path of BR-44 §6). When the model emits a `start_async_ingestion`
-   *  tool_use block AND this dispatcher is undefined, the loop falls back to
-   *  `catalog["start_async_ingestion"].handler` — which, when the catalog
-   *  truly does not advertise the tool, is undefined and surfaces as
-   *  `VALIDATION_INVALID_FORMAT` via the BR-10 unknown-tool guard. */
-  readonly ingestDispatcher?: (input: unknown) => Promise<IngestionToolEnvelope>;
 }
 
 /**
@@ -650,37 +610,18 @@ async function* runTurnGenerator(
           // chat_tool_call row by the route handler.
           const toolStartedAt = ctx.now();
 
-          // BR-43 (v2.4): the `start_async_ingestion` tool is dispatched
-          // through the chat-side ingest-adapter (`service/ingest-adapter.ts`)
-          // rather than the catalog handler. The adapter composes
-          // `ingestion.service.ingestRawInformation` (synchronous intake) +
-          // schedules `ingestion.service.runLlmExtraction` fire-and-forget.
-          // We still apply the per-tool wall-clock race (BR-17) because the
-          // intake transaction must complete < 1 s; a slower outcome signals
-          // an actual outage and surfaces as `SYSTEM_SERVICE_UNAVAILABLE`. The
-          // adapter NEVER throws — it always resolves with an envelope — so
-          // `raceToolHandler`'s defensive catch path is dead weight here, but
-          // we route through the shared helper to keep the timeout semantics
-          // uniform across every chat tool dispatch.
-          //
-          // BR-45 (v2.4): `get_ingestion_status` is dispatched through the
-          // catalog handler verbatim (same Zod schema, same `BEGIN READ ONLY`,
-          // same envelope mapping). NO chat-side adapter required — the
-          // ingestion module's read-only handler is reused as-is.
+          // v2.8 (BR-43 / BR-44 / TC-04): every chat tool — including
+          // `ingest_directed` — flows through the SAME generic catalog
+          // dispatch. `ingest_directed` is deterministic, NO-LLM, and lives
+          // on the `ingest` MCP toolset just like any other handler; there
+          // is no chat-side adapter, no special-case branch, no per-tool
+          // dispatcher injection. The seam that previously short-circuited
+          // the retired async-ingestion tool was removed together with it.
           //
           // BR-10: defensive guard for unknown tool name.
           const tool = ctx.catalog[toolName];
           let toolEnvelope: ToolEnvelope;
-          if (
-            toolName === "start_async_ingestion" &&
-            ctx.ingestDispatcher !== undefined
-          ) {
-            toolEnvelope = await raceToolHandler(
-              ctx.ingestDispatcher,
-              block.input,
-              ctx.env.TOOL_TIMEOUT_MS
-            );
-          } else if (tool === undefined) {
+          if (tool === undefined) {
             toolEnvelope = {
               ok: false,
               error: {
@@ -1086,7 +1027,7 @@ function toolInputSchemaFromZod(
  * Each `McpTool` carries a Zod input schema; we convert it via
  * `z.toJSONSchema` so the model receives the real shape (required fields,
  * enums, types) and stops wasting a round-trip on a first attempt that
- * omits required fields (e.g. `start_async_ingestion.source_type`).
+ * omits required fields (e.g. `ingest_directed.source_type`).
  *
  * Per BR-06 the Zod schema is re-applied by the tool handler on dispatch
  * (defense in depth) — an invalid shape still surfaces as a structured

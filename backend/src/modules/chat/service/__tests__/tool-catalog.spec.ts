@@ -1,26 +1,26 @@
 // Unit tests for the chat tool-catalog gating logic (chat.back.md §1 Testing
-// row (xv) / BR-05 v2.4 / BR-44).
+// row (xv) / BR-05 v2.8 / BR-44 v2.8).
 //
 // WHY these matter — three INDEPENDENT intent-bearing failures the catalog
 // must distinguish:
 //
 //   1. With `CHAT_INGEST_ENABLED=false` (default) the catalog must advertise
-//      EXACTLY the 13 read-only `query`-toolset tools. If a v2.4 ingestion
+//      EXACTLY the 13 read-only `query`-toolset tools. If the v2.8 ingestion
 //      entry leaked into this catalog the LLM would call a tool the chat
-//      domain has no adapter for (BR-43 only applies when the flag is on).
+//      domain has not opted into yet.
 //
-//   2. With `CHAT_INGEST_ENABLED=true` AND both `ingest`-toolset entries
-//      registered, the catalog must advertise EXACTLY 15 names in a fixed
-//      order (BR-44 step 2: the 2 ingest entries appear AFTER the 13 query
+//   2. With `CHAT_INGEST_ENABLED=true` AND the `ingest_directed` entry
+//      registered, the catalog must advertise EXACTLY 14 names in a fixed
+//      order (BR-44 v2.8 step 2: the ingest entry appears AFTER the 13 query
 //      entries so the Anthropic `tools[]` hash is stable across reloads —
 //      this enables prompt caching, see LLM cost audit).
 //
-//   3. With `CHAT_INGEST_ENABLED=true` but the `ingest`-toolset MISSING either
-//      `start_async_ingestion` OR `get_ingestion_status`, the catalog must
-//      gracefully degrade to 13 names AND log a single ERROR at boot
-//      (BR-44 step 6 defensive degradation). Regression here would silently
-//      half-mount a 14-tool catalog (model sees one entry but the other path
-//      is dead) — a fail-loud requirement of CLAUDE.md Golden Rule 12.
+//   3. With `CHAT_INGEST_ENABLED=true` but the `ingest`-toolset MISSING
+//      `ingest_directed`, the catalog must gracefully degrade to 13 names AND
+//      log a single ERROR at boot (BR-44 step 6 defensive degradation).
+//      Regression here would silently mount the ingest portion at zero entries
+//      without surfacing the deployment bug — a fail-loud requirement of
+//      CLAUDE.md Golden Rule 12.
 //
 // The module under test is a process-scope SINGLETON with sticky cache
 // semantics (BR-05). Every test calls `__resetChatToolCatalogForTests()` in
@@ -93,18 +93,17 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
   });
 
   it("CHAT_INGEST_ENABLED=false → exactly 13 query names, no ingest names (row xv default)", () => {
-    // BR-05 v2.4 step 1: when the rollout flag is OFF (the default), the
+    // BR-05 v2.8 step 1: when the rollout flag is OFF (the default), the
     // catalog must be EXACTLY the 13 read-only query-toolset tools. An extra
     // entry would mean the LLM gets advertised an ingestion capability the
-    // chat domain has no dispatcher for (BR-43 only fires when the flag is on).
+    // chat domain has not opted into yet.
     const mcp = makeMcpStub([...ALL_QUERY_TOOLS, ...ALL_INGEST_TOOLS]);
     const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: false });
 
     expect(catalog).toBeDefined();
     expect(Object.keys(catalog!).sort()).toEqual([...CHAT_TOOL_NAMES].sort());
-    // Negative assertion — neither ingest tool leaks through.
-    expect(catalog!["start_async_ingestion"]).toBeUndefined();
-    expect(catalog!["get_ingestion_status"]).toBeUndefined();
+    // Negative assertion — the ingest tool does not leak through.
+    expect(catalog!["ingest_directed"]).toBeUndefined();
   });
 
   it("CHAT_INGEST_ENABLED undefined → treated as false (defensive `=== true` check, 13 names)", () => {
@@ -120,11 +119,11 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
     expect(Object.keys(catalog!).length).toBe(13);
   });
 
-  it("CHAT_INGEST_ENABLED=true + both ingest tools registered → exactly 15 names (row xv enabled)", () => {
-    // BR-44 step 2: when the flag is ON and the ingest registrar advertised
-    // both `start_async_ingestion` and `get_ingestion_status`, the catalog
-    // must expose 15 entries. A regression that resolved only one or returned
-    // 13 would silently break the chat agent's ingestion offer.
+  it("CHAT_INGEST_ENABLED=true + ingest_directed registered → exactly 14 names (row xv enabled)", () => {
+    // BR-44 v2.8 step 2: when the flag is ON and the ingest registrar
+    // advertised `ingest_directed`, the catalog must expose 14 entries. A
+    // regression that returned 13 would silently break the chat agent's
+    // ingestion offer.
     const mcp = makeMcpStub([...ALL_QUERY_TOOLS, ...ALL_INGEST_TOOLS]);
     const logger = makeLogger();
     const catalog = buildChatToolCatalog(
@@ -134,28 +133,23 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
     );
 
     expect(catalog).toBeDefined();
-    expect(Object.keys(catalog!).length).toBe(15);
-    // The two v2.4 entries must be present and reference the registered tools.
-    expect(catalog!["start_async_ingestion"]).toBeDefined();
-    expect(catalog!["start_async_ingestion"].name).toBe("start_async_ingestion");
-    expect(catalog!["get_ingestion_status"]).toBeDefined();
-    expect(catalog!["get_ingestion_status"].name).toBe("get_ingestion_status");
+    expect(Object.keys(catalog!).length).toBe(14);
+    // The v2.8 entry must be present and reference the registered tool.
+    expect(catalog!["ingest_directed"]).toBeDefined();
+    expect(catalog!["ingest_directed"].name).toBe("ingest_directed");
     // No defensive-degradation log on the happy path.
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("CHAT_INGEST_ENABLED=true + ONE ingest tool missing → degrades to 13 names + boot ERROR log (row xv defensive)", () => {
+  it("CHAT_INGEST_ENABLED=true + ingest_directed missing → degrades to 13 names + boot ERROR log (row xv defensive)", () => {
     // BR-44 step 6: defensive degradation. The flag being on AND the registry
     // being incomplete is a DEPLOYMENT BUG (the ingest registrar ran with the
     // wrong tier or feature subset). The catalog must mount with the 13-name
     // surface so the chat domain stays usable, AND must log a single ERROR so
     // an operator notices. The fail-loud requirement (CLAUDE.md Golden Rule 12)
-    // forbids silently mounting a 14-tool catalog.
-    const mcp = makeMcpStub([
-      ...ALL_QUERY_TOOLS,
-      // Intentionally omit `start_async_ingestion`, register only the other.
-      { toolset: "ingest", name: "get_ingestion_status" },
-    ]);
+    // forbids silently mounting an incomplete catalog without surfacing the
+    // condition.
+    const mcp = makeMcpStub(ALL_QUERY_TOOLS); // no ingest entries
     const logger = makeLogger();
     const catalog = buildChatToolCatalog(
       mcp,
@@ -165,38 +159,15 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
 
     expect(catalog).toBeDefined();
     expect(Object.keys(catalog!).length).toBe(13);
-    // Neither ingest entry remains — all-or-nothing per BR-44 step 6.
-    expect(catalog!["start_async_ingestion"]).toBeUndefined();
-    expect(catalog!["get_ingestion_status"]).toBeUndefined();
+    // No ingest entry remains — all-or-nothing per BR-44 step 6.
+    expect(catalog!["ingest_directed"]).toBeUndefined();
 
     // The ERROR carries the diff so the operator can correlate.
     expect(logger.error).toHaveBeenCalledOnce();
     const [payload] = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(payload).toMatchObject({
       event: "chat.tool_catalog_partial_resolution",
-      missing: ["start_async_ingestion"],
-    });
-  });
-
-  it("CHAT_INGEST_ENABLED=true + BOTH ingest tools missing → degrades to 13 names + ERROR log naming both", () => {
-    // Edge of the defensive-degradation path: both ingest entries missing.
-    // Same intent as the previous test but proves the missing[] array is
-    // built defensively (not a single-entry shortcut).
-    const mcp = makeMcpStub(ALL_QUERY_TOOLS);
-    const logger = makeLogger();
-    const catalog = buildChatToolCatalog(
-      mcp,
-      { CHAT_INGEST_ENABLED: true },
-      logger
-    );
-
-    expect(catalog).toBeDefined();
-    expect(Object.keys(catalog!).length).toBe(13);
-    expect(logger.error).toHaveBeenCalledOnce();
-    const [payload] = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(payload).toMatchObject({
-      event: "chat.tool_catalog_partial_resolution",
-      missing: [...CHAT_INGEST_TOOL_NAMES],
+      missing: ["ingest_directed"],
     });
   });
 
@@ -245,22 +216,22 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Row (xvii) — get_ingestion_status reuse (BR-45)
+  // Row (xvii) v2.8 — `ingest_directed` reuses the ingest-toolset handler
+  // VERBATIM (seam-removal regression: no chat-side wrapper, no dispatcher
+  // injection)
   // ---------------------------------------------------------------------------
 
-  it("(xvii) get_ingestion_status → reuses the ingest-toolset handler VERBATIM (no chat-side wrapper)", async () => {
-    // BR-45: the chat domain does NOT wrap `get_ingestion_status` — it points
-    // straight at the ingestion module's read-only handler (same Zod schema,
-    // same `BEGIN READ ONLY` semantics, same envelope mapping). Catalog
-    // identity proves this: the `McpTool` reference returned by the registry
-    // must be the SAME object stored in the resolved catalog.
-    // A regression that copied the handler into a chat-owned wrapper would
-    // diverge the schema over time AND break the audit trail of `tool_call`
-    // rows (which are written by the ingest handler, not the chat module).
-    const registered = fakeTool("get_ingestion_status");
+  it("(xvii) ingest_directed → reuses the ingest-toolset handler VERBATIM (no chat-side wrapper)", async () => {
+    // TC-04: the chat domain does NOT wrap `ingest_directed` — it points
+    // straight at the ingestion module's handler (same Zod schema, same
+    // envelope mapping). Catalog identity proves this: the `McpTool`
+    // reference returned by the registry must be the SAME object stored in
+    // the resolved catalog. A regression that re-introduced a chat-side
+    // adapter (the retired `ingest-adapter.ts` seam) would break this
+    // identity invariant.
+    const registered = fakeTool("ingest_directed");
     const ingestMap = new Map<string, McpTool>([
-      ["ingest:start_async_ingestion", fakeTool("start_async_ingestion")],
-      ["ingest:get_ingestion_status", registered],
+      ["ingest:ingest_directed", registered],
     ]);
     const mcp = {
       getTool: vi.fn((toolset: ToolsetName, name: string) => {
@@ -272,13 +243,13 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
     const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: true });
     expect(catalog).toBeDefined();
     // Identity is the contract — same reference both sides.
-    expect(catalog!["get_ingestion_status"]).toBe(registered);
+    expect(catalog!["ingest_directed"]).toBe(registered);
 
     // The chat-agent loop (chat-agent.service.ts) dispatches by invoking
     // `catalog[toolName].handler(input)`. We simulate that invocation and
     // assert the registered handler is the one that runs (no shim).
-    const input = { llm_run_id: "11111111-1111-1111-1111-111111111111" };
-    await catalog!["get_ingestion_status"].handler(input);
+    const input = { source_type: "note", content: "hello" };
+    await catalog!["ingest_directed"].handler(input);
     expect((registered.handler as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(input);
   });
 
@@ -293,7 +264,7 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
     expect(Object.keys(off!).length).toBe(13);
 
     const on = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: true });
-    expect(Object.keys(on!).length).toBe(15);
+    expect(Object.keys(on!).length).toBe(14);
     expect(on).not.toBe(off);
   });
 });
