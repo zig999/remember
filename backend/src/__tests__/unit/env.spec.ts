@@ -150,10 +150,11 @@ describe("loadEnv", () => {
       const env = loadEnv(baseEnv);
       expect(env.CHAT_ENABLED).toBe(true);
       expect(env.CHAT_MODEL).toBe("claude-opus-4-8");
-      // TC-01 / chat.back.md v2.5 / BR-18 v3: default bumped from `v2` to
-      // `v3` (the ontology-aware prompt). v2.4 (TC-02) previously bumped
-      // from `v1` to `v2`.
-      expect(env.CHAT_PROMPT_VERSION).toBe("v3");
+      // TC-005 / chat.back.md v2.8 / BR-18 v4: default bumped from `v3` to
+      // `v4` (the directed-ingestion-aware prompt). Lineage: v2.4 bumped
+      // v1->v2 (ingestion directives), TC-01 v2.5 bumped v2->v3 (ontology
+      // block), TC-005 v2.8 bumps v3->v4 (directed-ingestion block 4C).
+      expect(env.CHAT_PROMPT_VERSION).toBe("v4");
       expect(env.MAX_HISTORY_MESSAGES).toBe(40);
       expect(env.MAX_ITERATIONS).toBe(8);
       expect(env.TURN_TIMEOUT_MS).toBe(90_000);

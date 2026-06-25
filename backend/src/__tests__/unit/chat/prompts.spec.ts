@@ -97,10 +97,14 @@ describe("chat/prompts", () => {
     expect((err as Error).message).toMatch(/v2/);
   });
 
-  // DEFAULT bumped from v2 to v3 in v2.5 (BR-18 v3 / chat.back.md §8).
-  // v2.4 (TC-03) previously bumped from v1 to v2.
-  it("DEFAULT_CHAT_PROMPT_VERSION equals v3", () => {
-    expect(DEFAULT_CHAT_PROMPT_VERSION).toBe("v3");
+  // DEFAULT bumped from v3 to v4 in v2.8 (BR-18 v4 / chat.back.md §8 —
+  // directed-ingestion-aware prompt). Lineage: v2.4 bumped v1->v2 (TC-03,
+  // ingestion directives); v2.5 bumped v2->v3 (TC-01, ontology block);
+  // v2.8 (TC-005) bumps v3->v4 (block 4C v2.8 directed-ingestion playbook).
+  // `v1`, `v2`, `v3` continue to resolve through the registry — asserted
+  // by the resolution tests above.
+  it("DEFAULT_CHAT_PROMPT_VERSION equals v4", () => {
+    expect(DEFAULT_CHAT_PROMPT_VERSION).toBe("v4");
   });
 
   // BR-20: the marker is a named exported string constant — guard imports it
