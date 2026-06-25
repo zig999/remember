@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember — Ingestion Domain API"
-  version: "1.2.2"
+  version: "1.4.1"
   description: |
     REST contract for the ingestion domain of the Remember system.
 
@@ -35,7 +35,7 @@ info:
 
     Source of truth: `remember-modelagem-v7.md` (§3.1, §3.2, §3.5, §4, §6.5,
     §8, §9, §11, §13, §14.1). Database schema: `migrations/0001_init.sql`
-    (single bootstrap migration; v1.2.0 introduces no schema change).
+    (single bootstrap migration; v1.3.0 introduces no schema change).
 
     Authentication (§2.5, A29): every endpoint requires a valid Neon Auth (Stack Auth)
     JWT, verified in the BFF middleware. The service key never leaves the BFF.
@@ -45,15 +45,24 @@ info:
     not part of this OpenAPI surface): `ingest_document` (BR-30, synchronous
     composition of UC-01 + UC-12 — awaits the full extraction), the read-only
     operational tools `health` / `get_ingestion_status` / `list_recent_ingestions`
-    (BR-31, polling channel after a client timeout), and the new
-    `start_async_ingestion` (BR-32, UC-13 — fires extraction as a detached
-    background promise and returns immediately with `run_status: 'running'`,
-    rollout-flag-guarded by `env.CHAT_INGEST_ENABLED`). These five MCP tools
+    (BR-31, polling channel after a client timeout), and `ingest_directed`
+    (BR-34, v1.4.0 — synchronous, **deterministic** directed ingestion: the
+    caller supplies a structured payload of fragments / nodes / links /
+    attributes with local refs, the server resolves the refs and dispatches
+    the four `propose_*` handlers in dependency order with NO LLM call on
+    the server, returning a per-item report inline). These five MCP tools
     are advertised by `POST /api/v1/mcp/ingest` and by the local stdio MCP
     transport; their REST equivalents are UC-01 + UC-12 + the polling reads
-    on the LLMRun endpoints below. A REST caller that wants async ingestion
-    simply calls `POST /api/v1/ingest/raw-information` and skips the
-    `POST /api/v1/ingest/llm-runs/:id/run` step.
+    on the LLMRun endpoints below.
+
+    The previous `start_async_ingestion` tool (former BR-32, v1.2.9 — fired
+    extraction as a detached background promise) is **retired** in v1.4.0:
+    its sole consumer (the chat agentic loop) now uses `ingest_directed`
+    instead, which is deterministic, synchronous and bounded, eliminating
+    both the LLM round-trip on the server and the detached-promise lifecycle.
+    `ingest_directed` is rollout-flag-guarded on the chat side by
+    `env.CHAT_INGEST_ENABLED` (boot-only); the tool itself is always
+    registered on the `ingest` toolset regardless of the chat flag.
 
 servers:
   - url: "http://localhost:3000"

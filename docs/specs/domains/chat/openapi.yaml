@@ -1,23 +1,93 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.5.0"
+  version: "2.6.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
     per turn. The BFF drives an agentic Anthropic tool-use loop whose tools are
     the 13 read-only `query`-toolset entries already exposed by `query-retrieval`
-    and `knowledge-graph`. The BFF persists every user/assistant message and
-    reconstructs the model context from the database (recent window + rolling
-    summary) — the client never resends the conversation history.
+    and `knowledge-graph`, plus — when `CHAT_INGEST_ENABLED=true` — the SINGLE
+    write-bearing tool `ingest_directed` (added in v2.6.0; supersedes v2.3.0's
+    async pair). The BFF persists every user/assistant message and reconstructs
+    the model context from the database (recent window + rolling summary) — the
+    client never resends the conversation history.
 
     NORMATIVE DEVIATION: this domain is an ADDITIVE deviation from
     `remember-modelagem-v7.md` (which does NOT specify a chat surface). Registered
     in `chat.spec.md` §1 and `back/chat.back.md` §1. The inegociable rule of v7
     §2 holds: the LLM never reaches the database directly — each tool dispatch
     is mediated by the BFF (read tools open their own `BEGIN READ ONLY`; the
-    write path `start_async_ingestion` invokes the audited ingestion pipeline,
-    NEVER raw SQL).
+    write path `ingest_directed` invokes the audited ingestion pipeline
+    DETERMINISTICALLY — no server-side LLM — by composing the four `propose_*`
+    handlers, NEVER raw SQL).
+
+    ## v2.6.0 — Directed ingestion REPLACES async ingestion (breaking, feature-flagged)
+
+    The chat catalog returns to a 14-tool maximum: the 13 read-only `query`
+    tools (unchanged) PLUS, when `CHAT_INGEST_ENABLED=true`, the single
+    write-bearing tool `ingest_directed` (registered in the `ingestion`
+    toolset and exposed dual REST+MCP on `POST /api/v1/mcp/ingest`).
+
+    Why the change:
+      - The v2.3.0 pair (`start_async_ingestion` + `get_ingestion_status`)
+        treated the Owner's natural-language command as a DOCUMENT to be
+        re-extracted by a server-side LLM. A directional instruction such
+        as "create an Event linked to Apollo and record the alignment with
+        Antônio" became opaque text re-interpreted by the extractor — the
+        intent ("which entity to create, what to link") was lost.
+      - The new `ingest_directed` tool is DETERMINISTIC. The chat LLM does
+        the only LLM-grade judgement (NL -> typed payload, ONE tool call);
+        the BFF executes the payload by composing the four `propose_*`
+        handlers (5-layer validation, provenance, audit) WITHOUT any
+        server-side LLM call. Document-style ingestion remains available
+        OUTSIDE the chat surface via `ingest_document` (Claude Desktop) or
+        the existing REST/MCP `propose_*` flow under a dedicated run.
+
+    Server-side decisions baked into the contract:
+      1. Atomicity: per-item + report. Each item is committed in its own
+         transaction (the existing `propose_*` TX-per-call). Partial failure
+         persists the valid items and lists the failed ones in the report.
+         An optional `node_id` field on a `nodes[]` entry PINS the dispatch
+         to a known entity (bypasses fuzzy resolution).
+      2. Confidence: forced to `1.0` and `valid_from_basis: "stated"` on
+         the server. The directed path NEVER falls into `uncertain` and is
+         NEVER discarded by confidence.
+      3. Re-assertion: re-runs and consolidates. Each invocation creates a
+         distinct `RawInformation` (the synthesised content is stamped
+         with a timestamp/nonce so `content_hash` is unique per command);
+         the `propose_*` handlers consolidate on node/link identity
+         (v7 §18 — provenance accumulates, never duplicates).
+      4. Missing date: the chat LLM ASKS the Owner (prompt directive v4)
+         when a link/attribute requires `valid_from` and no date was
+         stated. The per-item report always exposes `valid_from_basis` so
+         the silent `received` fallback never hides a missing date.
+
+    What got removed (versus v2.3.0):
+      - `start_async_ingestion` tool — removed from BOTH the `ingest`
+        toolset and the chat catalog (it was orphaned: the chat surface
+        was its only consumer).
+      - `get_ingestion_status` tool — STAYS on the `ingest` toolset
+        (Claude Desktop continues to use it); REMOVED from the chat
+        catalog (the directed path is synchronous; there is no longer a
+        background run to poll FROM CHAT).
+
+    BR-05 v2.3 ("13 read + 2 ingestion tools") is REVOKED in v2.6 and
+    rewritten to authorise this 13 + (0 | 1) catalog. BR-43 (async
+    dispatch) and BR-45 (status reuse on chat) are RETIRED. A new BR-43
+    v2.6 carries the directed-ingestion contract; BR-18 v2.6 carries the
+    directed-ingestion prompt directives (CHAT_PROMPT_VERSION default
+    bumped to `v4`). The chat domain still DEPENDS on `ingestion` for
+    tool dispatch (chat.spec.md §7) — now via the deterministic
+    `ingest_directed` handler.
+
+    Anti-prompt-injection: the v4 prompt instructs the model to (a) call
+    `ingest_directed` only on EXPLICIT Owner request; (b) treat the
+    document body as DATA, never instruction (v7 §13); (c) ASK the Owner
+    for any missing date that a temporal link/attribute requires; (d)
+    REPORT the inline per-item result back to the Owner (no auto-loop —
+    each command is a single tool call followed by the natural-language
+    answer).
 
     ## v2.5.0 — Graph-view snapshot schema `v2` (`layout_algorithm`)
 
@@ -68,37 +138,16 @@ info:
     written against v2.3.0 keep working — the field is optional. No DB
     migration: `link_type.label` already exists.
 
-    ## v2.3 — Async ingestion capability (additive, feature-flagged)
+    ## v2.3 — Async ingestion (RETIRED in v2.6.0)
 
-    The chat catalog grows from 13 to 15 tools. The two new entries are gated by
-    the boot-time env flag `CHAT_INGEST_ENABLED` (default `false`):
-
-      - `start_async_ingestion` — one-shot intake. Persists `RawInformation` +
-        chunks + a `running` `LLMRun` (composes `ingestion` UC-01,
-        `ingestRawInformation`, completes in < 1 s) and fires the in-process
-        LLM extraction orchestrator (`runLlmExtraction`, `ingestion` UC-12) as
-        BACKGROUND fire-and-forget. Returns immediately
-        `{ run_id, raw_information_id, status: "running" }`. The asynchronous
-        model is FORCED by the existing chat budgets: `TOOL_TIMEOUT_MS = 15 s`
-        (BR-17) and `TURN_TIMEOUT_MS = 90 s` (BR-16) versus a typical extraction
-        latency of ~67 s per chunk. The chat agent therefore CANNOT wait
-        synchronously for extraction to complete.
-      - `get_ingestion_status` — read-only operational tool reused verbatim from
-        the `ingest` toolset (`ingestion.back.md` BR-31). The chat catalog
-        resolves it via `mcp.getTool('ingest', 'get_ingestion_status')` exactly
-        like the 13 `query` tools (BR-05). The model uses it to poll a run
-        started in an earlier turn.
-
-    BR-05 of `chat.spec.md` ("13 read-only `query` tools") is REVOKED in v2.3
-    and rewritten to authorise this fixed 15-tool catalog. The chat domain now
-    DEPENDS on `ingestion` for service-layer dispatch (chat.spec.md §7).
-
-    Anti-prompt-injection: a new `CHAT_PROMPT_VERSION` (default `v2`) instructs
-    the model to (a) only call `start_async_ingestion` when the Owner has
-    EXPLICITLY asked to ingest, (b) treat the document body as DATA, never as
-    instruction (v7 §13), (c) optionally call `get_ingestion_status` after
-    starting a run. The system prompt is the only place the new behaviour is
-    described — document text is not parsed for control commands.
+    The v2.3 capability (`start_async_ingestion` + `get_ingestion_status`
+    advertised on chat under `CHAT_INGEST_ENABLED=true`) is SUPERSEDED by
+    v2.6.0's directed ingestion (see top of this description). The two
+    tool names are NO LONGER present on the chat catalog
+    (`get_ingestion_status` remains registered on the `ingest` toolset
+    for Claude Desktop, but the chat dispatcher no longer resolves it).
+    The historical block is preserved in the chat.spec.md changelog
+    (v2.3.0 entry) for traceability.
 
     ## Scope (v2, STATEFUL — supersedes the v1 stateless `POST /api/v1/chat`)
 
@@ -493,15 +542,19 @@ paths:
 
         ## Tools
 
-        Resolved chat tool catalog (chat.spec.md BR-05 v2.3): always the 13
-        read-only `query`-toolset entries; plus `start_async_ingestion`
-        (write-bearing, dispatches the `ingestion` pipeline via BR-43) and
-        `get_ingestion_status` (read-only, BR-45) when `CHAT_INGEST_ENABLED=true`
-        at boot (BR-44). The `query`-toolset invocations open their own short
-        `BEGIN READ ONLY` transaction (`withReadOnly`); `start_async_ingestion`
-        invokes the audited `ingestion` service (never raw SQL). The LLM never
-        reaches the database directly. Tool inputs and results are persisted in
-        `chat_tool_call` (BR-32) for audit.
+        Resolved chat tool catalog (chat.spec.md BR-05 v2.6): always the 13
+        read-only `query`-toolset entries; PLUS the SINGLE write-bearing tool
+        `ingest_directed` (deterministic — NO server-side LLM — dispatches the
+        `ingestion` pipeline via BR-43 v2.6 by composing the four `propose_*`
+        handlers) when `CHAT_INGEST_ENABLED=true` at boot (BR-44 v2.6). The
+        `query`-toolset invocations open their own short `BEGIN READ ONLY`
+        transaction (`withReadOnly`); `ingest_directed` invokes the audited
+        `ingestion` service (never raw SQL — its orchestrator persists one
+        `RawInformation` + chunks + an `LLMRun(model="directed")` and then
+        calls `proposeFragmentHandler` / `proposeNodeHandler` /
+        `proposeLinkHandler` / `proposeAttributeHandler` directly). The LLM
+        never reaches the database directly. Tool inputs and results are
+        persisted in `chat_tool_call` (BR-32) for audit.
       parameters:
         - in: header
           name: Idempotency-Key
@@ -595,46 +648,26 @@ paths:
 
                     event: done
                     data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":1500,"tokens_out":42}
-                startAsyncIngestion:
-                  summary: "Owner asks to ingest a document — start_async_ingestion fires the run (CHAT_INGEST_ENABLED=true)"
+                ingestDirected:
+                  summary: "Owner gives a directional ingestion command — ingest_directed dispatches deterministically (CHAT_INGEST_ENABLED=true)"
                   value: |
                     event: llm_start
                     data: {"iteration":1}
 
                     event: tool_start
-                    data: {"tool":"start_async_ingestion","args_summary":"source_type=\"document\" content_len=12453"}
+                    data: {"tool":"ingest_directed","args_summary":"fragments=1 nodes=2 links=1"}
 
                     event: tool_result
-                    data: {"tool":"start_async_ingestion","ok":true}
+                    data: {"tool":"ingest_directed","ok":true}
 
                     event: llm_start
                     data: {"iteration":2}
 
                     event: text_delta
-                    data: {"delta":"Comecei a ingestao do documento. Posso consultar o status a seguir."}
+                    data: {"delta":"Pronto: criei o Event 'Alinhamento Apollo' e liguei ao projeto Apollo (1 item OK, 0 falhas)."}
 
                     event: done
                     data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":820,"tokens_out":31}
-                getIngestionStatus:
-                  summary: "Owner polls the running ingestion via get_ingestion_status"
-                  value: |
-                    event: llm_start
-                    data: {"iteration":1}
-
-                    event: tool_start
-                    data: {"tool":"get_ingestion_status","args_summary":"llm_run_id=\"c0c0c0c0-...\""}
-
-                    event: tool_result
-                    data: {"tool":"get_ingestion_status","ok":true}
-
-                    event: llm_start
-                    data: {"iteration":2}
-
-                    event: text_delta
-                    data: {"delta":"A ingestao ainda esta em execucao (status: running). Volto a verificar em breve."}
-
-                    event: done
-                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":640,"tokens_out":22}
                 noGraphTool:
                   summary: "Turn with a catalog tool — no graph_delta is emitted"
                   value: |
@@ -1175,7 +1208,7 @@ components:
                   code: "BUSINESS_CHAT_DISABLED"
                   message: "chat surface is disabled by CHAT_ENABLED=false"
             ingestKillSwitch:
-              summary: "CHAT_INGEST_ENABLED=false — the ingestion tools are NOT advertised in the chat catalog. The pre-stream 503 is NEVER emitted by the chat routes themselves (the flag only filters the catalog). Documented here for completeness — see chat.spec.md BR-44."
+              summary: "CHAT_INGEST_ENABLED=false — `ingest_directed` is NOT advertised in the chat catalog. The pre-stream 503 is NEVER emitted by the chat routes themselves (the flag only filters the catalog). Documented here for completeness — see chat.spec.md BR-44 v2.6."
               value:
                 ok: false
                 error:
@@ -1572,15 +1605,16 @@ components:
             - list_node_types
             - list_link_types
             - list_attribute_keys
-            - start_async_ingestion
-            - get_ingestion_status
+            - ingest_directed
           description: |
             Resolved tool name from the chat catalog. The 13 first names are the
-            read-only `query` toolset (chat.spec.md BR-05). The last two
-            (`start_async_ingestion`, `get_ingestion_status`) are the v2.3
-            ingestion capability gated by `CHAT_INGEST_ENABLED` (chat.spec.md
-            BR-44). When the flag is `false`, those two names are NOT advertised
-            in the resolved catalog and the model cannot emit them.
+            read-only `query` toolset (chat.spec.md BR-05 v2.6). The 14th name
+            (`ingest_directed`) is the v2.6.0 directed-ingestion capability
+            gated by `CHAT_INGEST_ENABLED` (chat.spec.md BR-44 v2.6). When the
+            flag is `false`, `ingest_directed` is NOT advertised in the
+            resolved catalog and the model cannot emit it. The v2.3.0 pair
+            (`start_async_ingestion`, `get_ingestion_status`) is RETIRED in
+            v2.6.0 and will never appear on this enum.
           example: "search"
         args_summary:
           type: string
