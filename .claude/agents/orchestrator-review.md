@@ -566,9 +566,16 @@ python3 .claude/skills/orch-log/scripts/append.py \
 Register:
 ```bash
 python3 -c "
-import sys; sys.path.insert(0,'.claude/lib')
+import sys, os, pathlib; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
-register_worker('<worker_id>', '<task_id>', <attempt>, phase='review', stack='<stack>', task_type='<task.task_type>')
+# S1 (instrumentation): record the context size passed to the worker so a later
+# worker_exited_without_terminal can be attributed to context (on_subagent_stop
+# flags context_limit above 150k chars) and classify_run_status can correlate
+# exits with context. Estimate = delivery file size + ~30000 chars fixed overhead
+# (activation prompt + QA skill + standards).
+_d = pathlib.Path(os.environ['ORCH_PROJECT_DIR']) / '<task.spec>'
+_est = (_d.stat().st_size if _d.exists() else 0) + 30000
+register_worker('<worker_id>', '<task_id>', <attempt>, phase='review', stack='<stack>', task_type='<task.task_type>', spawn_context_chars=_est)
 "
 ```
 
@@ -581,6 +588,20 @@ For each task in the batch, estimate the context size that will be passed to the
 ```bash
 DELIVERY_BYTES=$(stat -c %s "$ORCH_PROJECT_DIR/<task.spec>" 2>/dev/null || echo 0)
 THRESHOLD=102400
+EST_CHARS=$((DELIVERY_BYTES + 30000))   # + fixed prompt/skill overhead (S1)
+EST_TOKENS=$((EST_CHARS / 4))
+if [ "$DELIVERY_BYTES" -gt "$THRESHOLD" ]; then MITIGATION="blocked"; else MITIGATION="none"; fi
+
+# S1 (instrumentation): record the per-worker context estimate, mirroring orchestrator-sdd
+# §5.2.5. Populates the per-spawn distribution that classify_run_status correlates with
+# worker_exited failures. threshold_block matches the 100 KB (~25k token) review limit.
+python3 .claude/skills/orch-log/scripts/append.py \
+  --agent orchestrator-review \
+  --event-type context_budget_evaluated \
+  --task-id <task_id> \
+  --attempt <attempt> \
+  --data "{\"phase\":\"review\",\"estimated_tokens\":$EST_TOKENS,\"threshold_warn\":20000,\"threshold_block\":25600,\"mitigation\":\"$MITIGATION\"}"
+
 if [ "$DELIVERY_BYTES" -gt "$THRESHOLD" ]; then
   python3 .claude/skills/orch-log/scripts/append.py \
     --agent orchestrator-review \
@@ -607,6 +628,10 @@ Emit all Agent tool calls in a **single response turn**.
   Set these as shell env vars before any emit.py call.
   nesting_depth: <nesting_depth + 1>
   Delivery artifact to review: <task.spec>
+  Changed files (focus your review here): <changed_files>
+    (S5 — the changed_files list extracted from the handoff manifest in Step 2, or
+     "[]" when unavailable. Use it to scope which source files to read on-demand;
+     do not pre-read the whole tree.)
   Emit task_completed with artifacts: [<qa_verdict_path>] when done.
   qa_verdict_path convention: <session_dir>/qa/<task_id>-qa.md
   (Architecture and security reviewers write to <session_dir>/reviews/<task_id>-arch.yaml and <session_dir>/reviews/<task_id>-sec.yaml respectively.)
@@ -920,9 +945,12 @@ Stop. Do NOT evaluate criterion scripts.
 python3 .claude/skills/phase-review-rules/scripts/check_all_qa_verdicts_approved.py
 python3 .claude/skills/phase-review-rules/scripts/check_no_open_critical_findings.py
 python3 .claude/skills/phase-review-rules/scripts/check_documentation_verified.py
+python3 .claude/skills/phase-review-rules/scripts/check_no_orphan_placeholders.py
 ```
 
-If all three return `"met": true`:
+`check_no_orphan_placeholders` (R2) scans the delivered source surface for incomplete-work markers (e.g. `em construção`, `swaps the inner content`, `TODO: TC-`). A leftover placeholder owned by no integration TC is a green-but-non-functional deliverable — this gate blocks it. Projects scope the scan via `ORCH_PLACEHOLDER_SCAN_PATHS` and tune markers via `ORCH_PLACEHOLDER_EXTRA_MARKERS`; with no source root present it returns `met: true` (scanned 0).
+
+If all four return `"met": true`:
 
 ```bash
 python3 .claude/skills/orch-log/scripts/append.py \
@@ -942,8 +970,13 @@ python3 .claude/skills/orch-log/scripts/append.py \
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-review \
+  --event-type phase_exit_criterion_met \
+  --data '{"phase":"review","criterion":"no_orphan_placeholders"}'
+
+python3 .claude/skills/orch-log/scripts/append.py \
+  --agent orchestrator-review \
   --event-type phase_exit_approved \
-  --data '{"phase":"review","criteria_met":["all_qa_verdicts_approved","no_open_critical_findings","documentation_verified"],"next_phase":"test","workflow_id":"<workflow_id>"}'
+  --data '{"phase":"review","criteria_met":["all_qa_verdicts_approved","no_open_critical_findings","documentation_verified","no_orphan_placeholders"],"next_phase":"test","workflow_id":"<workflow_id>"}'
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-review \
