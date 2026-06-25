@@ -180,22 +180,20 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // (discover a run after a client-side timeout — the server keeps
       // extracting after the socket drops). They let an MCP client confirm the
       // BFF is up and recover the run id/state without re-sending the document.
-      // BR-32: `start_async_ingestion` is gated on `CHAT_INGEST_ENABLED`. The
-      // toolset registrar skips `mcp.registerTool` when the flag is false, so
-      // we likewise omit the name from the transport whitelist — `tools/list`
-      // must NOT advertise a tool the registry cannot dispatch.
-      const chatIngestEnabled =
-        (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true;
+      // BR-34 / TC-03: `ingest_directed` replaces the retired
+      // `start_async_ingestion` on the transport whitelist. The directed tool
+      // is always registered (no `CHAT_INGEST_ENABLED` gate — it never calls
+      // Anthropic), so it is unconditionally advertised by `tools/list`.
       await registerIngestMcpTransport(scoped, {
         logger,
         mcp,
         toolNames: [
           ...INGEST_TOOL_NAMES,
           "ingest_document",
+          "ingest_directed",
           "health",
           "get_ingestion_status",
           "list_recent_ingestions",
-          ...(chatIngestEnabled ? (["start_async_ingestion"] as const) : []),
         ],
       });
     }
