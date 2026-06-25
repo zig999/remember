@@ -261,3 +261,196 @@ export const ListRecentIngestionsMcpInputSchema = z.object({
 export type ListRecentIngestionsMcpInput = z.infer<
   typeof ListRecentIngestionsMcpInputSchema
 >;
+
+// --------------------------------------------------------------------------
+// `ingest_directed` (BR-34) — one-shot, deterministic directed-ingestion tool.
+//
+// The caller (typically the chat agentic loop, but any MCP client may use it)
+// supplies a fully-structured payload of fragments + nodes + optional
+// attributes + optional links carrying LOCAL `ref` identifiers — the server
+// opens a `RawInformation` + `LLMRun` (sentinels `model='directed'`,
+// `prompt_version='directed-v1'`), then dispatches the items in dependency
+// order through the existing `propose_*` handlers. No Anthropic round-trip.
+//
+// Schema constraints (BR-34, v1.4.1):
+//   - `ref` strings are local to the call (1..120 chars, must be non-empty).
+//   - `confidence` is DELIBERATELY ABSENT from every item — the server forces
+//     `confidence = 1.0` on every dispatched `propose_*` (BR-34 step 4 + the
+//     contract: a directed payload is a stated fact by construction; callers
+//     cannot lower confidence here).
+//   - `valid_from_basis` is restricted to the public `'stated' | 'document'`
+//     enum (the `'received'` fallback is server-internal, never accepted from
+//     callers — BR-16).
+//   - `node_id` on a node item is an OPTIONAL UUID PIN: when present, the
+//     handler skips BR-25 trigram resolution and uses the supplied id directly
+//     (rejected `STRUCTURAL_INVALID` if the id does not point to an `active`
+//     node). When absent, the handler runs the standard `proposeNodeHandler`
+//     entity-resolution path.
+//   - `source_label` is a free-form caller tag carried into
+//     `metadata.source_label` for audit; not parsed.
+//
+// Unlike the four `propose_*` tools, this schema is NOT extended with an
+// `llm_run_id` field — the orchestrator CREATES the run. Mirrors the
+// `IngestDocumentMcpInputSchema` pattern in that respect. The tool is NOT
+// added to `INGEST_TOOL_NAMES` (that enum is the per-proposal `tool_call`
+// audit surface; `ingest_directed` is not a `propose_*` writer).
+// --------------------------------------------------------------------------
+
+/** ISO date `YYYY-MM-DD`. Mirrors the service-side regex (`directed-ingestion.service.ts`). */
+const IngestDirectedIsoDateSchema = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}$/,
+    "valid_from must be ISO YYYY-MM-DD"
+  );
+
+/** Local ref string scoped to one call. 1..120 chars; never persisted, never returned. */
+const IngestDirectedRefSchema = z.string().min(1).max(120);
+
+/** Public `ValidFromBasis` enum (BR-16): the `'received'` fallback is server-internal. */
+const IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"]);
+
+const IngestDirectedFragmentItemSchema = z.object({
+  ref: IngestDirectedRefSchema.describe(
+    "Local identifier you choose for this fragment (e.g. 'f1'). Cite it from any attribute/link `evidence_ref` to point at this fragment."
+  ),
+  text: z
+    .string()
+    .min(1)
+    .max(1000)
+    .describe(
+      "The verbatim factual claim quoted from the source (max 1000 chars). One atomic claim per fragment — split compound sentences."
+    ),
+});
+
+const IngestDirectedNodeItemSchema = z.object({
+  ref: IngestDirectedRefSchema.describe(
+    "Local identifier you choose for this node (e.g. 'n_apollo'). Cite it from `node_ref`, `source_ref`, or `target_ref` to reference this node."
+  ),
+  node_type: z
+    .string()
+    .min(1)
+    .describe(
+      "Catalog NodeType name (e.g. 'Person', 'Project'). Must exist in the catalog."
+    ),
+  name: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe(
+      "Canonical name of the entity (1..500 chars). The server runs entity resolution against existing nodes of the same type unless `node_id` is supplied."
+    ),
+  node_id: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Optional UUID PIN: when supplied, the server SKIPS entity resolution and binds this ref to the supplied id directly. Use when you already know the target id (e.g. from a prior `query`-toolset read) and want to re-affirm against it without risking trigram drift. Rejected (STRUCTURAL_INVALID) if the id does not point to an active node."
+    ),
+  aliases: z
+    .array(z.string().min(1).max(500))
+    .optional()
+    .describe(
+      "Optional alternative names (alias surface forms). Used by entity resolution; ignored when `node_id` is supplied."
+    ),
+});
+
+const IngestDirectedAttributeValueSchema = z.union([
+  z.string().min(1).max(2000),
+  z.number().finite(),
+  z.boolean(),
+]);
+
+const IngestDirectedAttributeItemSchema = z.object({
+  node_ref: IngestDirectedRefSchema.describe(
+    "The `ref` of the node this attribute belongs to (must appear in `nodes[]`)."
+  ),
+  key: z
+    .string()
+    .min(1)
+    .describe(
+      "Catalog AttributeKey for the node's type (e.g. 'deadline', 'status')."
+    ),
+  value: IngestDirectedAttributeValueSchema.describe(
+    "The attribute value (string | number | boolean). Must match the key's catalog value type."
+  ),
+  evidence_ref: IngestDirectedRefSchema.describe(
+    "The `ref` of the fragment that evidences this attribute (must appear in `fragments[]`)."
+  ),
+  valid_from: IngestDirectedIsoDateSchema.optional().describe(
+    "Optional ISO date when this attribute became valid. Required when the catalog AttributeKey requires it."
+  ),
+  valid_from_basis: IngestDirectedValidFromBasisSchema.optional().describe(
+    "Justification for `valid_from`: 'stated' (date is in the fragment text) or 'document' (date taken from the document's own metadata). Defaults to 'stated' when omitted."
+  ),
+});
+
+const IngestDirectedLinkItemSchema = z.object({
+  source_ref: IngestDirectedRefSchema.describe(
+    "The `ref` of the source node (must appear in `nodes[]`)."
+  ),
+  target_ref: IngestDirectedRefSchema.describe(
+    "The `ref` of the target node (must appear in `nodes[]`)."
+  ),
+  link_type: z
+    .string()
+    .min(1)
+    .describe(
+      "Catalog LinkType name. Must be allowed for the source-type → target-type pair by an active LinkTypeRule."
+    ),
+  evidence_ref: IngestDirectedRefSchema.describe(
+    "The `ref` of the fragment that evidences this link (must appear in `fragments[]`)."
+  ),
+  valid_from: IngestDirectedIsoDateSchema.optional().describe(
+    "Optional ISO date when this link became valid. Required when the catalog LinkType requires it."
+  ),
+  valid_from_basis: IngestDirectedValidFromBasisSchema.optional().describe(
+    "Justification for `valid_from`: 'stated' (date is in the fragment text) or 'document' (date taken from the document's own metadata). Defaults to 'stated' when omitted."
+  ),
+});
+
+/**
+ * MCP-facing schema for the `ingest_directed` tool (BR-34). The handler
+ * (`directed-ingest.handler.ts`, separate Task Contract) Zod-parses with this
+ * schema first, then delegates to the deterministic orchestrator in
+ * `directed-ingestion.service.ts`.
+ *
+ * Single source of truth for the tool's input shape — derived into Anthropic
+ * `input_schema` via `z.toJSONSchema` at the registration site (per BR-24
+ * pattern). `confidence` MUST NOT appear in this schema by design.
+ */
+export const IngestDirectedMcpInputSchema = z.object({
+  fragments: z
+    .array(IngestDirectedFragmentItemSchema)
+    .min(1)
+    .describe(
+      "At least one atomic factual claim, each with a local `ref`. Every attribute / link must cite one of these refs as its `evidence_ref`."
+    ),
+  nodes: z
+    .array(IngestDirectedNodeItemSchema)
+    .min(1)
+    .describe(
+      "At least one entity, each with a local `ref`. Use `node_id` to pin against a known existing node (skips resolution)."
+    ),
+  attributes: z
+    .array(IngestDirectedAttributeItemSchema)
+    .optional()
+    .describe(
+      "Optional list of attribute assertions (literal values belonging to a node)."
+    ),
+  links: z
+    .array(IngestDirectedLinkItemSchema)
+    .optional()
+    .describe(
+      "Optional list of relation assertions between two nodes."
+    ),
+  source_label: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Optional free-form caller tag (e.g. 'chat-turn-42'). Carried into the run's `metadata.source_label` for audit; not parsed by the server."
+    ),
+});
+export type IngestDirectedMcpInput = z.infer<typeof IngestDirectedMcpInputSchema>;

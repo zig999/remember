@@ -171,4 +171,17 @@ export const IngestToolDescriptions = {
     "`get_ingestion_status` with the returned `llm_run_id` to learn the terminal " +
     "outcome. Re-sending the same content is a no-op (returns the existing run, no " +
     "new extraction). Arguments and defaults match `ingest_document` exactly.",
+  ingest_directed:
+    "Ingest a fully-structured payload of fragments + nodes (+ optional attributes / " +
+    "links) you already know — the server runs NO LLM and persists every item " +
+    "deterministically through the standard validated `propose_*` pipeline. Use this " +
+    "when you already have the structured facts (e.g. you assembled them yourself " +
+    "from prior tool results) and want them in the graph without paying an extraction " +
+    "round-trip. Items reference each other through caller-chosen local `ref` strings " +
+    "(`evidence_ref` on attributes/links must cite a fragment ref; `node_ref` / " +
+    "`source_ref` / `target_ref` must cite a node ref). Supply `node_id` on a node " +
+    "to PIN against a known existing node (skips entity resolution). Returns a " +
+    "per-item report inline (per caller order) plus `run.affected_nodes` for direct " +
+    "navigation; the server forces `confidence = 1.0` on every dispatched item. " +
+    "Re-sending the same payload always creates a new run (no idempotent no-op).",
 } as const;
