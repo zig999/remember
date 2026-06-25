@@ -53,19 +53,19 @@ import {
   ingestDocumentHandler,
   type IngestDocumentDeps,
 } from "./ingest-document.handler.js";
-import { startAsyncIngestionHandler } from "./start-async-ingestion.handler.js";
+import { ingestDirectedHandler } from "./directed-ingest.handler.js";
 import { ValidationFailure } from "../validation/errors.js";
 import {
   GetIngestionStatusMcpInputSchema,
   HealthMcpInputSchema,
   INGEST_TOOL_NAMES,
+  IngestDirectedMcpInputSchema,
   IngestDocumentMcpInputSchema,
   ListRecentIngestionsMcpInputSchema,
   ProposeAttributeMcpInputSchema,
   ProposeFragmentMcpInputSchema,
   ProposeLinkMcpInputSchema,
   ProposeNodeMcpInputSchema,
-  StartAsyncIngestionMcpInputSchema,
   type IngestMcpToolName,
 } from "./mcp-schemas.js";
 
@@ -278,47 +278,27 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     },
   });
 
-  // ----- start_async_ingestion (BR-32) — async sibling of ingest_document -----
-  // Rollout flag: registered ONLY when env.CHAT_INGEST_ENABLED === true. When
-  // the flag is off (default), `mcp.registerTool` is skipped — the tool is
-  // absent from `tools/list` over both MCP transports and `getTool` returns
-  // `undefined`. Boot-only gate (no per-call check after registration).
-  if (deps.env.CHAT_INGEST_ENABLED === true) {
-    mcp.registerTool("ingest", {
-      name: "start_async_ingestion",
-      description: IngestToolDescriptions.start_async_ingestion,
-      inputSchema: StartAsyncIngestionMcpInputSchema as unknown as z.ZodTypeAny,
-      handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
-        const parsed = StartAsyncIngestionMcpInputSchema.safeParse(rawInput);
-        if (!parsed.success) {
-          return {
-            ok: false,
-            error: {
-              code: "STRUCTURAL_INVALID",
-              message: "start_async_ingestion arguments failed validation.",
-              details: {
-                issues: parsed.error.issues.map((i) => ({
-                  path: i.path.map((seg) => String(seg)).join("."),
-                  message: i.message,
-                })),
-              },
-            },
-          };
-        }
-        return await startAsyncIngestionHandler(parsed.data, {
-          pool,
-          logger,
-          catalog,
-          anthropicApiKey: deps.env.ANTHROPIC_API_KEY,
-          ingestModel: deps.env.INGEST_MODEL,
-          now,
-          ...(deps.anthropicFactory !== undefined
-            ? { anthropicFactory: deps.anthropicFactory }
-            : {}),
-        });
-      },
-    });
-  }
+  // ----- ingest_directed (BR-34) — deterministic, NO-LLM sibling of ingest_document -----
+  // Always registered (no rollout flag): the directed path never calls
+  // Anthropic and re-uses the same validated `propose_*` pipeline as the four
+  // proposal writers, so there is no extraction cost or model risk to gate.
+  // Replaces the retired `start_async_ingestion` tool (TC-03 / BR-34).
+  mcp.registerTool("ingest", {
+    name: "ingest_directed",
+    description: IngestToolDescriptions.ingest_directed,
+    inputSchema: IngestDirectedMcpInputSchema as unknown as z.ZodTypeAny,
+    handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+      // The handler owns its own Zod parse (BR-34, TC-03) — no second parse
+      // here. A parse failure surfaces as STRUCTURAL_INVALID; the run is
+      // never opened so there is no `tool_call` row to audit against.
+      return await ingestDirectedHandler(rawInput, {
+        pool,
+        logger,
+        catalog,
+        now,
+      });
+    },
+  });
 
   // ----- health — liveness + DB ping (read-only, no args) -----
   // Always succeeds at the MCP level: a DB failure surfaces inside `result`
@@ -376,21 +356,17 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     "list_recent_ingestions",
   ] as const;
 
-  const asyncTools =
-    deps.env.CHAT_INGEST_ENABLED === true ? (["start_async_ingestion"] as const) : ([] as const);
-
   logger.info(
     {
       component: "mcp.ingest",
       tools_registered:
-        INGEST_TOOL_NAMES.length + 1 + READ_ONLY_TOOL_NAMES.length + asyncTools.length,
+        INGEST_TOOL_NAMES.length + 2 + READ_ONLY_TOOL_NAMES.length,
       tool_names: [
         ...INGEST_TOOL_NAMES,
         "ingest_document",
+        "ingest_directed",
         ...READ_ONLY_TOOL_NAMES,
-        ...asyncTools,
       ],
-      chat_ingest_enabled: deps.env.CHAT_INGEST_ENABLED === true,
     },
     "ingest_toolset_registered"
   );

@@ -322,6 +322,7 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
         [
           ...INGEST_TOOL_NAMES,
           "ingest_document",
+          "ingest_directed",
           "health",
           "get_ingestion_status",
           "list_recent_ingestions",
