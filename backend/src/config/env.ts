@@ -117,8 +117,11 @@ const envSchema = z.object({
   //   ingestion playbook (4C) directives. `v1` and `v2` continue to resolve
   //   verbatim for backward-compatibility (they ignore the catalog argument
   //   of the widened `system(catalog)` signature). v2.4 (TC-02): default
-  //   bumped from `v1` → `v2` (ingestion directives now part of v3).
-  CHAT_PROMPT_VERSION: z.string().min(1).default("v3"),
+  //   bumped from `v1` → `v2` (ingestion directives now part of v3). v2.8
+  //   (TC-005): default bumped from `v3` → `v4` — v4 preserves blocks 4A/4B
+  //   verbatim from v3 and REPLACES block 4C with the directed-ingestion
+  //   playbook (BR-18 v4). `v3` / `v2` / `v1` continue to resolve.
+  CHAT_PROMPT_VERSION: z.string().min(1).default("v4"),
   // CHAT_INGEST_ENABLED: feature flag gating the v2.4 async-ingestion capability
   //   on chat (BR-44). Boot-time only — toggling requires a BFF restart; the
   //   chat tool catalog is resolved lazily on the first request and cached for

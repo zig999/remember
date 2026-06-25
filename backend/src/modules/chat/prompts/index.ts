@@ -19,6 +19,7 @@ import type { CatalogSnapshot } from "../../knowledge-graph/catalog/catalog.js";
 import * as v1 from "./v1.js";
 import * as v2 from "./v2.js";
 import * as v3 from "./v3.js";
+import * as v4 from "./v4.js";
 
 /** Slice of a prompt module the chat orchestrator consumes. */
 export interface ChatPromptModule {
@@ -61,18 +62,32 @@ const V3: ChatPromptModule = {
   marker: v3.CHAT_PROMPT_MARKER_V1,
 };
 
+// v4 (BR-18 v4 / chat.back.md v2.8): directed-ingestion-aware prompt.
+// Preserves block 4A (ontology) and block 4B (search discipline) verbatim
+// from v3 and REPLACES block 4C with the directed-ingestion playbook (when
+// to use `ingest_directed`, payload skeleton with refs + `node_id` pin,
+// ASK-the-Owner-for-missing-date directive, REPORT inline per-item result,
+// no auto-loop). Marker re-used verbatim from v1 (BR-20 stable across
+// versions).
+const V4: ChatPromptModule = {
+  version: v4.PROMPT_VERSION,
+  system: v4.system,
+  marker: v4.CHAT_PROMPT_MARKER_V1,
+};
+
 /**
- * Recommended default for NEW deployments — used when env is unset. v2.5
- * bumps this from `v2` to `v3` so fresh deployments pick up the ontology-
- * aware prompt (BR-18 v3). `v1` and `v2` continue to resolve through the
- * registry for backward-compatibility.
+ * Recommended default for NEW deployments — used when env is unset. v2.8
+ * bumps this from `v3` to `v4` so fresh deployments pick up the directed-
+ * ingestion-aware prompt (BR-18 v4). `v1`, `v2`, `v3` continue to resolve
+ * through the registry for backward-compatibility.
  */
-export const DEFAULT_CHAT_PROMPT_VERSION: string = v3.PROMPT_VERSION;
+export const DEFAULT_CHAT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
 
 const REGISTRY: Readonly<Record<string, ChatPromptModule>> = {
   [v1.PROMPT_VERSION]: V1,
   [v2.PROMPT_VERSION]: V2,
   [v3.PROMPT_VERSION]: V3,
+  [v4.PROMPT_VERSION]: V4,
 };
 
 /**
