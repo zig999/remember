@@ -267,4 +267,49 @@ describe("buildChatToolCatalog (BR-05 v2.4 / BR-44 gating)", () => {
     expect(Object.keys(on!).length).toBe(14);
     expect(on).not.toBe(off);
   });
+
+  // ---------------------------------------------------------------------------
+  // TC-04 / TC-06 v2.8 — seam-removal pinning
+  //
+  // The two legacy v2.4 ingestion tools (`start_async_ingestion` +
+  // `get_ingestion_status`) MUST NOT appear in the chat catalog on EITHER
+  // flag branch after TC-04. The constant `CHAT_INGEST_TOOL_NAMES` is the
+  // single source of truth — pin its value AND assert the legacy names are
+  // absent from the resolved catalog on both `CHAT_INGEST_ENABLED` settings.
+  // A regression that re-introduced either legacy name into the enum or the
+  // catalog would re-open the async-ingestion seam the spec retired.
+  // ---------------------------------------------------------------------------
+
+  it("CHAT_INGEST_TOOL_NAMES === ['ingest_directed'] EXACTLY (TC-04 constant pin)", () => {
+    // The constant is the single source the catalog reads. Asserting the
+    // exact tuple guards against silent additions / reorderings (e.g.,
+    // someone re-adding `get_ingestion_status` to "preserve the read path").
+    expect([...CHAT_INGEST_TOOL_NAMES]).toEqual(["ingest_directed"]);
+  });
+
+  it("CHAT_INGEST_ENABLED=false → start_async_ingestion AND get_ingestion_status absent from catalog", () => {
+    // Defence-in-depth: even if the constant were tampered with, on the
+    // flag-off branch ingest names cannot leak through. The catalog must
+    // expose only the 13 query names.
+    const mcp = makeMcpStub([...ALL_QUERY_TOOLS, ...ALL_INGEST_TOOLS]);
+    const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: false });
+
+    expect(catalog).toBeDefined();
+    expect(catalog!["start_async_ingestion"]).toBeUndefined();
+    expect(catalog!["get_ingestion_status"]).toBeUndefined();
+  });
+
+  it("CHAT_INGEST_ENABLED=true → start_async_ingestion AND get_ingestion_status absent from catalog", () => {
+    // Even with ingest enabled, the legacy v2.4 names MUST stay out of the
+    // chat catalog: only `ingest_directed` is the v2.8 chat-ingest entry.
+    // A regression that mounted the retired tools would resurrect the seam.
+    const mcp = makeMcpStub([...ALL_QUERY_TOOLS, ...ALL_INGEST_TOOLS]);
+    const catalog = buildChatToolCatalog(mcp, { CHAT_INGEST_ENABLED: true });
+
+    expect(catalog).toBeDefined();
+    expect(catalog!["start_async_ingestion"]).toBeUndefined();
+    expect(catalog!["get_ingestion_status"]).toBeUndefined();
+    // Positive control — `ingest_directed` IS present on this branch.
+    expect(catalog!["ingest_directed"]).toBeDefined();
+  });
 });
