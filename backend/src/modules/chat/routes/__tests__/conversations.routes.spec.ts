@@ -44,6 +44,8 @@ vi.mock("../../repository/chat.repository.js", () => ({
   insertIterationPair: vi.fn(),
   insertAssistantMessage: vi.fn(),
   listRecentMessages: vi.fn(),
+  listRecentRealTurns: vi.fn(),
+  countRealTurnsOlderThanRecentWindow: vi.fn(),
   listMessagesPaginated: vi.fn(),
   listOlderMessagesForSummary: vi.fn(),
   countUserTurns: vi.fn(),
@@ -939,6 +941,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
       id: "assistant-row-id",
       conversation_id: CID,
@@ -1027,6 +1031,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValueOnce({
       id: "tool-call-1",
       conversation_id: CID,
@@ -1135,6 +1141,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
       id: "tool-call-ingest",
       conversation_id: CID,
@@ -1240,6 +1248,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValueOnce({
       id: "tool-call-1",
       conversation_id: CID,
@@ -1594,6 +1604,8 @@ describe("POST /conversations/:id/messages — TC-be-002 graph_delta SSE project
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
       id: "tool-call-1",
       conversation_id: CID,
@@ -2282,5 +2294,151 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     expect(bootRecord!.chat_ingest_enabled).toBe(true);
     expect(bootRecord!.tool_count).toBe(13);
     await app.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // chat-context-fidelity TC-01 / BR-31 v2.9 — turn-based CHAT_RECENT_WINDOW
+  // boot log. The unit shift (rows -> turns) is breaking for operators; the
+  // dedicated `chat.recent_window_resolved` INFO line makes K explicit at boot
+  // independent of the chat.boot rollout-state line.
+  // ---------------------------------------------------------------------------
+  it("emits chat.recent_window_resolved{turns=K} at register-time (BR-31 v2.9)", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = {
+      ...baseEnv,
+      CHAT_INGEST_ENABLED: false,
+      CHAT_RECENT_WINDOW: 6,
+    } as Env;
+    const mcp = buildMcpWithAllChatTools();
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const rec = records.find(
+      (r) =>
+        typeof r === "object" &&
+        r !== null &&
+        (r as { event?: unknown }).event === "chat.recent_window_resolved"
+    ) as { event: string; turns: number } | undefined;
+    expect(rec).toBeDefined();
+    expect(rec!.turns).toBe(6);
+    await app.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // chat-context-fidelity TC-02 / BR-33 v2.9 — `CHAT_SUMMARY_AFTER_TURNS`
+  // deprecation boot log. v2.9 retires the env as a gate (overflow gate
+  // takes over) but keeps it REGISTERED on the schema for back-compat. When
+  // the operator explicitly sets the env, the route registrar emits a
+  // one-shot INFO so the unused configuration is visible.
+  // ---------------------------------------------------------------------------
+  it("emits chat.deprecated_env when CHAT_SUMMARY_AFTER_TURNS is set on the process env (BR-33 v2.9)", async () => {
+    const previous = process.env.CHAT_SUMMARY_AFTER_TURNS;
+    process.env.CHAT_SUMMARY_AFTER_TURNS = "30";
+    try {
+      const { logger, records } = buildCapturingLogger();
+      const env = {
+        ...baseEnv,
+        CHAT_INGEST_ENABLED: false,
+        CHAT_SUMMARY_AFTER_TURNS: 30,
+      } as Env;
+      const mcp = buildMcpWithAllChatTools();
+      const app = Fastify({
+        loggerInstance: silentLogger as never,
+        disableRequestLogging: true,
+      });
+      app.setErrorHandler(buildErrorHandler(silentLogger));
+      await app.register(
+        async (scoped) => {
+          await registerChatRoutes(scoped, {
+            mcp,
+            logger,
+            env,
+            pool: buildFakePool(),
+          });
+        },
+        { prefix: "/conversations" }
+      );
+      await app.ready();
+
+      const rec = records.find(
+        (r) =>
+          typeof r === "object" &&
+          r !== null &&
+          (r as { event?: unknown }).event === "chat.deprecated_env"
+      ) as
+        | { event: string; name: string; reason: string }
+        | undefined;
+      expect(rec).toBeDefined();
+      expect(rec!.name).toBe("CHAT_SUMMARY_AFTER_TURNS");
+      expect(rec!.reason).toBe("retired_as_gate_v2_9");
+      await app.close();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CHAT_SUMMARY_AFTER_TURNS;
+      } else {
+        process.env.CHAT_SUMMARY_AFTER_TURNS = previous;
+      }
+    }
+  });
+
+  it("does NOT emit chat.deprecated_env when CHAT_SUMMARY_AFTER_TURNS is unset (BR-33 v2.9)", async () => {
+    // Negative complement: the deprecation log is one-shot AND conditional.
+    // Without an explicit env value the registrar must stay silent so a
+    // greenfield deployment does not log a deprecation warning every boot.
+    const previous = process.env.CHAT_SUMMARY_AFTER_TURNS;
+    delete process.env.CHAT_SUMMARY_AFTER_TURNS;
+    try {
+      const { logger, records } = buildCapturingLogger();
+      const env = {
+        ...baseEnv,
+        CHAT_INGEST_ENABLED: false,
+      } as Env;
+      const mcp = buildMcpWithAllChatTools();
+      const app = Fastify({
+        loggerInstance: silentLogger as never,
+        disableRequestLogging: true,
+      });
+      app.setErrorHandler(buildErrorHandler(silentLogger));
+      await app.register(
+        async (scoped) => {
+          await registerChatRoutes(scoped, {
+            mcp,
+            logger,
+            env,
+            pool: buildFakePool(),
+          });
+        },
+        { prefix: "/conversations" }
+      );
+      await app.ready();
+
+      const rec = records.find(
+        (r) =>
+          typeof r === "object" &&
+          r !== null &&
+          (r as { event?: unknown }).event === "chat.deprecated_env"
+      );
+      expect(rec).toBeUndefined();
+      await app.close();
+    } finally {
+      if (previous !== undefined) {
+        process.env.CHAT_SUMMARY_AFTER_TURNS = previous;
+      }
+    }
   });
 });

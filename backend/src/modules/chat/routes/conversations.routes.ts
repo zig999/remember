@@ -779,7 +779,11 @@ export async function registerChatRoutes(
         }
       }
 
-      // ---- (10) Build the model context (BR-31).
+      // ---- (10) Build the model context (BR-31 v2.9 + BR-47 v2.9).
+      // Capture `now` ONCE per turn (BR-47 step 6) — every `messages.create`
+      // iteration inside the agentic loop must see the SAME BlockB string.
+      // `deps.now()` returns epoch-ms; wrap it in `Date` for the renderer.
+      const turnNow = new Date(now());
       const modelContext = await buildModelContext({
         pool: deps.pool,
         conversation,
@@ -788,10 +792,13 @@ export async function registerChatRoutes(
         // SAME reference for the process lifetime, which keeps the rendered
         // ontology block byte-stable and the Anthropic `cache_control`
         // prefix valid across turns). v1/v2 modules IGNORE the argument
-        // (backward-compat).
-        systemPrompt: getPromptModuleLazy().system(
+        // (backward-compat). Renamed from `systemPrompt` to `blockAText` at
+        // v2.9 to match BR-47 step 1 terminology.
+        blockAText: getPromptModuleLazy().system(
           deps.catalog ?? EMPTY_KG_CATALOG_SNAPSHOT
         ),
+        now: turnNow,
+        ownerTz: deps.env.OWNER_TZ,
         recentLimit: deps.env.CHAT_RECENT_WINDOW,
       });
 
@@ -1239,6 +1246,52 @@ function emitChatBootLog(deps: ChatRouteDeps): void {
     },
     "chat module routes registered"
   );
+
+  // BR-31 v2.9: CHAT_RECENT_WINDOW changed UNIT (rows -> turns) and DEFAULT
+  // (10 -> 6) in chat-context-fidelity TC-01. The shift is breaking for
+  // operators — emit a dedicated INFO line so a grep on
+  // `event=chat.recent_window_resolved` makes the resolved K explicit at boot.
+  deps.logger.info(
+    {
+      event: "chat.recent_window_resolved",
+      turns: deps.env.CHAT_RECENT_WINDOW,
+    },
+    "chat recent window resolved (turn-based, BR-31 v2.9)"
+  );
+
+  // BR-33 v2.9 — `CHAT_SUMMARY_AFTER_TURNS` was the legacy turn-count gate
+  // for the rolling-summary refresh; v2.9 retires it in favour of
+  // refresh-on-overflow. The env stays REGISTERED for back-compat (so a
+  // deployment's existing `.env` does not refuse to boot) but its value is
+  // IGNORED at runtime. When set explicitly on the deployment we surface a
+  // one-shot INFO so operators can find it and remove the line. We read
+  // `process.env` here rather than threading the raw source through to
+  // routes — the parsed env's default falls in when unset, so a value-equal
+  // comparison would either over-fire (operator set the same as the default)
+  // or under-fire (default value passes through). Checking PRESENCE on
+  // `process.env` is the only reliable signal of "operator intentionally
+  // configured this".
+  if (process.env.CHAT_SUMMARY_AFTER_TURNS !== undefined) {
+    deps.logger.info(
+      {
+        event: "chat.deprecated_env",
+        name: "CHAT_SUMMARY_AFTER_TURNS",
+        reason: "retired_as_gate_v2_9",
+      },
+      "chat deprecated env var detected (BR-33 v2.9 — retired as gate)"
+    );
+  }
+  // chat.back.md BR-47 step 4 — emit `chat.owner_tz_resolved { tz }` at boot
+  // AFTER `loadEnv` has validated the value. The log is emitted unconditionally
+  // because `OWNER_TZ` carries a fail-closed default (`America/Sao_Paulo`) —
+  // every running process has a resolved value.
+  deps.logger.info(
+    {
+      event: "chat.owner_tz_resolved",
+      tz: deps.env.OWNER_TZ,
+    },
+    "chat OWNER_TZ resolved"
+  );
 }
 
 function writeSseHeaders(reply: FastifyReply): void {
@@ -1560,9 +1613,14 @@ function scheduleDistillation(args: ScheduleDistillationArgs): void {
   const distillationEnv = {
     CHAT_UTILITY_MODEL: env.CHAT_UTILITY_MODEL,
     CHAT_RECENT_WINDOW: env.CHAT_RECENT_WINDOW,
+    // BR-33 v2.9 — value IGNORED at runtime (legacy turn-count gate retired);
+    // kept here for back-compat with the literal shape.
     CHAT_SUMMARY_AFTER_TURNS: env.CHAT_SUMMARY_AFTER_TURNS,
     CHAT_SUMMARY_ENABLED: env.CHAT_SUMMARY_ENABLED,
     CHAT_TITLE_ENABLED: env.CHAT_TITLE_ENABLED,
+    // BR-33 v2.9 step 2 + BR-46 — bounded overlap slice cap + prompt module.
+    CHAT_SUMMARY_OVERLAP_M: env.CHAT_SUMMARY_OVERLAP_M,
+    CHAT_SUMMARY_PROMPT_VERSION: env.CHAT_SUMMARY_PROMPT_VERSION,
   };
   maybeRefreshSummary({
     pool,

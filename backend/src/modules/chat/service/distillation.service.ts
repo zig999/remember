@@ -27,9 +27,9 @@
 //     `title IS NULL` for BR-34) — if not met, EARLY RETURN without making a
 //     LLM call.
 //   - Calling the utility model with the right slice of history and the
-//     correct utility prompt (`selectSummaryPromptModule`,
-//     `selectTitlePromptModule` — added to `modules/chat/prompts/index.ts` by
-//     this TC).
+//     correct utility prompt — `selectChatSummaryPromptModule` (BR-46;
+//     versioned registry under `modules/chat/prompts/chat-summary/`) for the
+//     rolling-summary fold, `selectTitlePromptModule` for the title.
 //   - Persisting via the repository's idempotent updates
 //     (`updateSummaryRolling`, `setTitleIfNull`) wrapped in `withTransaction`.
 
@@ -42,11 +42,19 @@ import {
   withTransaction,
 } from "../../curation/service/transaction.js";
 import * as repo from "../repository/chat.repository.js";
-import {
-  selectSummaryPromptModule,
-  selectTitlePromptModule,
-} from "../prompts/index.js";
+import { selectTitlePromptModule } from "../prompts/index.js";
+import { selectChatSummaryPromptModule } from "../prompts/chat-summary/index.js";
 import { sanitizeAnthropicSequence } from "./message-sequence.js";
+
+/**
+ * BR-33 v2.9 step 4 — hard cap on the final `summary_new` written to
+ * `chat_conversation.summary_rolling`. Output longer than this is REFUSED:
+ * `summary_prev` stays unchanged for this refresh and the function logs
+ * WARN `chat.summary_refresh_overflow`. The cap is a defensive guard against
+ * a misbehaving model — the persona instructs ~8 sentences (BR-46), which
+ * comfortably fits inside 2000 chars in pt-BR prose.
+ */
+const SUMMARY_MAX_CHARS = 2000;
 
 // ---------------------------------------------------------------------------
 // Anthropic utility-model surface — non-streaming `messages.create(...)`
@@ -83,15 +91,45 @@ export interface AnthropicUtilityLike {
 
 /**
  * Subset of `Env` the distillation jobs read. We narrow the dependency to
- * just the fields used — tests build a 5-field literal instead of a full
+ * just the fields used — tests build a small literal instead of a full
  * fixture.
  */
 export interface DistillationEnv {
   readonly CHAT_UTILITY_MODEL: string;
+  /**
+   * BR-31 v2.9 — number of recent REAL TURNS (NOT message rows) the
+   * context-builder keeps in-window. The distillation service consumes this
+   * field's TURN semantics directly: it is the K passed to
+   * `countRealTurnsOlderThanRecentWindow` (overflow gate, BR-33 v2.9 step 1)
+   * and to `listOlderMessagesForSummaryBounded` (bounded overlap slice,
+   * BR-33 v2.9 step 2).
+   */
   readonly CHAT_RECENT_WINDOW: number;
+  /**
+   * BR-33 v2.9 DEPRECATION — this field is registered for back-compat at the
+   * env layer but its VALUE is IGNORED by `maybeRefreshSummary`. The legacy
+   * turn-count gate is retired; the new gate is refresh-on-overflow (BR-33
+   * v2.9 step 1). Kept on the interface so the existing call site (which
+   * forwards a 5-field literal) compiles unchanged; remove together with the
+   * env field in a follow-up cleanup.
+   */
   readonly CHAT_SUMMARY_AFTER_TURNS: number;
   readonly CHAT_SUMMARY_ENABLED: boolean;
   readonly CHAT_TITLE_ENABLED: boolean;
+  /**
+   * BR-33 v2.9 step 2 — hard cap on the number of `chat_message` rows the
+   * fold pulls into the `bounded_overlap_slice` per refresh. Cut on REAL-turn
+   * boundaries by the repository slicer (`listOlderMessagesForSummaryBounded`).
+   * Default 40 in `env.ts`.
+   */
+  readonly CHAT_SUMMARY_OVERLAP_M: number;
+  /**
+   * BR-46 — chat-summary prompt module version (default `v2` — incremental
+   * fold). Unknown values trigger `UnknownChatSummaryPromptVersionError` at
+   * the first refresh; the route registrar may probe it at boot to fail
+   * earlier.
+   */
+  readonly CHAT_SUMMARY_PROMPT_VERSION: string;
 }
 
 export interface DistillationInput {
@@ -114,102 +152,183 @@ const TITLE_MAX_LENGTH = 80;
 // ---------------------------------------------------------------------------
 
 /**
- * BR-33 — refresh `chat_conversation.summary_rolling` when the conversation
- * has crossed the user-turn threshold.
+ * BR-33 v2.9 — refresh `chat_conversation.summary_rolling` via INCREMENTAL
+ * FOLD when at least one real turn has fallen out of the recent window.
  *
- * Policy:
+ * Policy (chat.back.md BR-33 v2.9):
  *
- *   1. `repository.countUserTurns(conversation_id)` under `withReadOnly`.
- *   2. If `count <= env.CHAT_SUMMARY_AFTER_TURNS` OR
- *      `env.CHAT_SUMMARY_ENABLED === false`: return (no work).
- *   3. `repository.listOlderMessagesForSummary(conversation_id,
- *      env.CHAT_RECENT_WINDOW)` under `withReadOnly` — returns the slice
- *      strictly OLDER than the recent window.
- *   4. `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL,
- *      stream: false, system: selectSummaryPromptModule(), messages: <older> })`.
- *   5. Extract the text from the response; on empty -> return (silent drop).
- *   6. `repository.updateSummaryRolling(conversation_id, summary)` under
- *      `withTransaction`.
- *   7. Log INFO `chat.summary_refresh_success` on success.
+ *   1. **Gate (refresh-on-overflow).** If `env.CHAT_SUMMARY_ENABLED === false`,
+ *      return. Otherwise read `repository.countRealTurnsOlderThanRecentWindow
+ *      (conversation_id, env.CHAT_RECENT_WINDOW)` under `withReadOnly`. If
+ *      the count is 0 (no overflow), return. `env.CHAT_SUMMARY_AFTER_TURNS`
+ *      is RETIRED — its value is NOT consulted.
+ *   2. **Slice (`bounded_overlap_slice`).** Read
+ *      `repository.listOlderMessagesForSummaryBounded(conversation_id,
+ *      env.CHAT_RECENT_WINDOW, env.CHAT_SUMMARY_OVERLAP_M)` under
+ *      `withReadOnly`. The repository cuts the start on a REAL-turn anchor;
+ *      the slice is Anthropic-valid by construction. If the slice is empty
+ *      (defensive — the gate should guarantee ≥ 1 turn) return.
+ *   3. **Fold (incremental).** Resolve `mod =
+ *      selectChatSummaryPromptModule(env.CHAT_SUMMARY_PROMPT_VERSION)` (BR-46;
+ *      throws on unknown version — caught and surfaced as WARN
+ *      `chat.summary_refresh_failure { phase: 'model_call' }`). Read
+ *      `summary_prev = conversation.summary_rolling` via
+ *      `repository.getConversationById` (may be `null` on the conversation's
+ *      very first refresh). Call `anthropic.messages.create({ model:
+ *      env.CHAT_UTILITY_MODEL, stream: false, system: mod.system, messages:
+ *      mod.buildUserTurn(summary_prev, slice), max_tokens: 512 })`.
+ *   4. **Oversize refusal (HARD CAP 2000 chars).** Extract the response text
+ *      and trim. If `summary_new.length > SUMMARY_MAX_CHARS`, log WARN
+ *      `chat.summary_refresh_overflow { conversation_id, chars }` and return
+ *      WITHOUT writing — `summary_prev` stays unchanged. If the trimmed
+ *      output is empty, return silently (defensive).
+ *   5. **Persist (idempotent).** `repository.updateSummaryRolling` under
+ *      `withTransaction`. The `set_updated_at` trigger bumps `updated_at`.
+ *      The UPDATE is idempotent on the row (last refresh wins; concurrent
+ *      refresh on the same conversation is impossible per BR-28).
+ *   6. **Observability.** On success, log INFO `chat.summary_refresh_fold`
+ *      with `prev_chars`, `new_messages`, `new_chars`, `prompt_version`.
  *
- * Errors at any step are caught, logged WARN, and silently swallowed.
- * NEVER throws.
+ * **Never throws into the caller.** Every exception is caught, logged WARN
+ * `chat.summary_refresh_failure { conversation_id, phase, reason }` where
+ * `phase ∈ {fetch_slice, model_call, persist}`, and silently swallowed. The
+ * HTTP response has already terminated by the time this runs.
  */
 export async function maybeRefreshSummary(
   input: DistillationInput
 ): Promise<void> {
   const { pool, conversationId, anthropic, env, logger } = input;
   const startedAt = Date.now();
+  // Tracks the current step so the WARN log carries an accurate `phase`
+  // discriminator (BR-33 v2.9 never-throws contract). Mutates as we progress.
+  let phase: "fetch_slice" | "model_call" | "persist" = "fetch_slice";
 
   try {
     // BR-33 short-circuit: disabled => permanent NULL.
     if (!env.CHAT_SUMMARY_ENABLED) return;
 
-    const userTurns = await withReadOnly(pool, (client) =>
-      repo.countUserTurns(client, conversationId)
-    );
-    if (userTurns <= env.CHAT_SUMMARY_AFTER_TURNS) return;
-
-    const olderSlice = await withReadOnly(pool, (client) =>
-      repo.listOlderMessagesForSummary(
+    // Step 1 — refresh-on-overflow gate. Single read under `withReadOnly`.
+    // The legacy turn-count gate (`CHAT_SUMMARY_AFTER_TURNS`) is RETIRED in
+    // v2.9 (BR-33 v2.9 deprecation note). When no real turn has overflowed
+    // the recent window, there is nothing to fold yet.
+    const overflowCount = await withReadOnly(pool, (client) =>
+      repo.countRealTurnsOlderThanRecentWindow(
         client,
         conversationId,
         env.CHAT_RECENT_WINDOW
       )
     );
-    if (olderSlice.length === 0) return;
+    if (overflowCount === 0) return;
+
+    // Step 2 — bounded overlap slice. The repository cuts the start on a
+    // REAL-turn anchor (BR-33 v2.9 step 2.c); the slice is Anthropic-valid by
+    // construction. We do NOT call `sanitizeAnthropicSequence` here because
+    // the bounded slicer's guarantees (start on anchor, ASC chronological)
+    // are stronger than what the sanitiser provides — running it would be a
+    // defensive no-op at best, OR would mask a slicer regression at worst.
+    const olderSlice = await withReadOnly(pool, (client) =>
+      repo.listOlderMessagesForSummaryBounded(
+        client,
+        conversationId,
+        env.CHAT_RECENT_WINDOW,
+        env.CHAT_SUMMARY_OVERLAP_M
+      )
+    );
+    if (olderSlice.length === 0) {
+      // Defensive: overflowCount > 0 implies there is at least one anchor
+      // older than the boundary, so the bounded slice should be non-empty.
+      // An empty slice here means a race or a defect; refuse to call the
+      // model with [] (Anthropic rejects empty messages[]).
+      return;
+    }
+
+    // Read `summary_prev` AFTER the slice — the conversation row is small
+    // (one round-trip) and we do not need it if the slice was empty.
+    const conversation = await withReadOnly(pool, (client) =>
+      repo.getConversationById(client, conversationId)
+    );
+    const summary_prev: string | null = conversation?.summary_rolling ?? null;
+
+    // Step 3 — incremental fold.
+    phase = "model_call";
+
+    // Resolve the prompt module BEFORE mapping the slice — an unknown
+    // version is a config error and we want the WARN log to surface it under
+    // `phase: 'model_call'` (the unfortunate truth that we even tried to call
+    // the model). `selectChatSummaryPromptModule` throws
+    // `UnknownChatSummaryPromptVersionError` — caught by the outer catch.
+    const mod = selectChatSummaryPromptModule(env.CHAT_SUMMARY_PROMPT_VERSION);
 
     // Cast the persisted jsonb `content` (`unknown[]` at the repo seam) to
-    // the Anthropic message content shape. BR-29 wrote Anthropic-shaped
-    // blocks, so the cast is sound by construction.
-    const rawMessages: Anthropic.Messages.MessageParam[] = olderSlice.map(
+    // the Anthropic message content shape. BR-29 v2.2 wrote Anthropic-shaped
+    // blocks faithfully, so the cast is sound by construction.
+    const newMessages: Anthropic.Messages.MessageParam[] = olderSlice.map(
       (row) => ({
         role: row.role,
         content: row.content as Anthropic.Messages.MessageParam["content"],
       })
     );
 
-    // v2.2: the older slice is a COUNT-bounded cut that can begin or end mid
-    // tool-turn (dangling `tool_result` at the front, dangling `tool_use` at
-    // the back). Trim those so the utility-model call is a valid sequence —
-    // otherwise it 400s (the historical `chat.title_distillation_failure` /
-    // summary-refresh failure). If nothing valid remains, skip the call.
-    const messages = sanitizeAnthropicSequence(rawMessages);
-    if (messages.length === 0) return;
+    const composedMessages = mod.buildUserTurn(summary_prev, newMessages);
 
     const response = await anthropic.messages.create({
       model: env.CHAT_UTILITY_MODEL,
-      system: selectSummaryPromptModule(),
+      system: mod.system,
       max_tokens: SUMMARY_MAX_TOKENS,
-      messages,
+      messages: composedMessages,
       stream: false,
     });
 
-    const summary = extractText(response).trim();
-    if (summary === "") return;
+    const summary_new = extractText(response).trim();
+    if (summary_new === "") return;
 
+    // Step 4 — oversize refusal. `summary_prev` stays unchanged; the next
+    // overflow trigger re-runs the fold with the same `summary_prev` plus
+    // whatever slice will exist then (BR-33 v2.9 step 4). NO write here.
+    if (summary_new.length > SUMMARY_MAX_CHARS) {
+      logger.warn(
+        {
+          event: "chat.summary_refresh_overflow",
+          conversation_id: conversationId,
+          chars: summary_new.length,
+        },
+        "chat summary refresh refused — output exceeds 2000 chars"
+      );
+      return;
+    }
+
+    // Step 5 — persist (idempotent UPDATE).
+    phase = "persist";
     await withTransaction(pool, (client) =>
-      repo.updateSummaryRolling(client, conversationId, summary)
+      repo.updateSummaryRolling(client, conversationId, summary_new)
     );
 
+    // Step 6 — observability. `chat.summary_refresh_fold` carries the
+    // dimensions an operator needs to verify the bounded-cost invariant
+    // (prev_chars ≤ ~2000; new_messages ≤ CHAT_SUMMARY_OVERLAP_M).
     logger.info(
       {
-        event: "chat.summary_refresh_success",
+        event: "chat.summary_refresh_fold",
         conversation_id: conversationId,
         latency_ms: Date.now() - startedAt,
-        user_turns: userTurns,
-        slice_size: olderSlice.length,
+        prev_chars: summary_prev?.length ?? 0,
+        new_messages: olderSlice.length,
+        new_chars: summary_new.length,
+        prompt_version: env.CHAT_SUMMARY_PROMPT_VERSION,
       },
-      "chat summary refresh succeeded"
+      "chat summary refresh (incremental fold) succeeded"
     );
   } catch (err) {
-    // BR-33 — NEVER throw. Log WARN and return.
+    // BR-33 v2.9 — NEVER throw. Log WARN with the `phase` discriminator and
+    // return. `summary_prev` (whatever it was at refresh start) stays
+    // unchanged on every failure path — the next overflow trigger will retry.
     logger.warn(
       {
         event: "chat.summary_refresh_failure",
         conversation_id: conversationId,
         latency_ms: Date.now() - startedAt,
-        err_name: errName(err),
+        phase,
+        reason: errName(err),
         err_message: errMessage(err),
       },
       "chat summary refresh failed"

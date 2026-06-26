@@ -153,13 +153,43 @@ const envSchema = z.object({
   // TOOL_RESULT_MAX_CHARS: truncation ceiling for tool results fed back to the
   //   model (BR-13). Unicode code points, not bytes.
   TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000),
-  // CHAT_RECENT_WINDOW: number of recent messages used by context-builder
-  //   (BR-31). Older messages are summarised into `summary_rolling` (BR-33).
-  //   chat.back.md v2.0.0 §8. NEW in TC-02.
-  CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(10),
-  // CHAT_SUMMARY_AFTER_TURNS: after this many USER turns on a conversation,
-  //   the rolling-summary policy fires (BR-33). chat.back.md v2.0.0 §8. NEW.
+  // CHAT_RECENT_WINDOW: number of recent REAL TURNS used by context-builder
+  //   (BR-31). v2.9 (chat-context-fidelity TC-01): UNIT SHIFT — was "K message
+  //   rows" (default 10), now "K real turns" (default 6). A real turn is one
+  //   user `chat_message` row with `idempotency_key IS NOT NULL`; the
+  //   context-builder reads via `listRecentRealTurns` and includes ALL
+  //   scaffolding rows (intermediate `assistant[tool_use]` rows, synthetic
+  //   `user[tool_result]` rows, terminal assistant rows) of each selected
+  //   turn. Older real turns are absorbed into `summary_rolling` (BR-33). The
+  //   chat module emits an INFO boot log `chat.recent_window_resolved
+  //   { turns: K }` at process start to make the unit shift explicit
+  //   (BR-31 v2.9; chat.back.md §12).
+  CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6),
+  // CHAT_SUMMARY_AFTER_TURNS: DEPRECATED v2.9 — kept in the schema for
+  //   back-compat boot. Up to v2.8 this was the turn-count gate for BR-33
+  //   (refresh fires when the count of natural-language user turns exceeds
+  //   this threshold). In chat-context-fidelity TC-02 the gate becomes
+  //   refresh-on-overflow (any real turn older than the recent window not yet
+  //   absorbed; BR-33 v2.9 step 1) and this env's VALUE is IGNORED at runtime.
+  //   When set on a deployment, the route registrar emits a one-shot INFO
+  //   `chat.deprecated_env { name: 'CHAT_SUMMARY_AFTER_TURNS', reason:
+  //   'retired_as_gate_v2_9' }` at boot so operators see the change.
   CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),
+  // CHAT_SUMMARY_OVERLAP_M: hard cap on the number of `chat_message` rows the
+  //   rolling-summary fold pulls into the `bounded_overlap_slice` per refresh
+  //   (BR-33 v2.9 step 2 / BR-46). The slice is cut on REAL-turn boundaries —
+  //   if the cap would land mid-turn, the slicer shrinks the start forward to
+  //   the nearest anchor row so the slice always begins on a real-turn anchor
+  //   (Anthropic-valid sequence). Bounded slice keeps per-refresh cost
+  //   constant regardless of conversation length. NEW v2.9 (TC-02).
+  CHAT_SUMMARY_OVERLAP_M: z.coerce.number().int().min(1).default(40),
+  // CHAT_SUMMARY_PROMPT_VERSION: chat summary prompt module version (BR-46).
+  //   `v2` is the incremental fold (NEW v2.9, default); `v1` is the legacy
+  //   single-input summariser of v2.0 (registered for back-compat tests; NOT
+  //   reachable via BR-33 v2.9). Unknown values -> boot fails
+  //   (`UnknownChatSummaryPromptVersionError` raised by
+  //   `prompts/chat-summary/index.ts`). NEW v2.9 (TC-02).
+  CHAT_SUMMARY_PROMPT_VERSION: z.string().min(1).default("v2"),
   // CHAT_TITLE_ENABLED: when `false`, the title-distillation job (BR-34) is
   //   skipped. chat.back.md v2.0.0 §8. NEW in TC-02.
   CHAT_TITLE_ENABLED: z
@@ -173,6 +203,13 @@ const envSchema = z.object({
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(true),
+  // OWNER_TZ: owner's local IANA timezone — used to render the dynamic
+  //   datetime BlockB on every chat turn's `system` array (chat.back.md
+  //   BR-47 v2.9). Single-owner -> a single value applies process-wide.
+  //   `loadEnv` validates the value against the runtime's IANA zone
+  //   database; an invalid / unknown zone -> the BFF refuses to start
+  //   (`InvalidOwnerTimezoneError`, fail-closed). NEW in v2.9 / TC-03.
+  OWNER_TZ: z.string().min(1).default("America/Sao_Paulo"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -211,7 +248,42 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ]);
   }
 
+  // chat.back.md BR-47 step 4 — fail-closed validation of `OWNER_TZ`. The
+  // datetime BlockB renderer (`renderDatetimeBlockB`) runs on EVERY chat turn;
+  // an invalid IANA zone would throw `RangeError` at request time instead of
+  // boot time, surfacing as a 500 mid-stream. We validate once here, at the
+  // same fail-closed seam as `LOCAL_OPERATOR_TOKEN`. The construction itself
+  // is the validator: `new Intl.DateTimeFormat(undefined, { timeZone })`
+  // throws `RangeError` on an unknown / unsupported zone (Node's bundled ICU).
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ });
+  } catch (err) {
+    throw new InvalidOwnerTimezoneError(parsed.data.OWNER_TZ, err);
+  }
+
   return Object.freeze(parsed.data);
+}
+
+/**
+ * Boot-time error for an unknown / unsupported IANA timezone in `OWNER_TZ`.
+ * Thrown by `loadEnv` per chat.back.md BR-47 step 4 — the BFF refuses to start
+ * with a bad zone rather than blowing up on the first chat turn. Same
+ * fail-closed family as `EnvValidationError`; kept distinct so callers (and
+ * tests) can pattern-match against the timezone-specific failure.
+ */
+export class InvalidOwnerTimezoneError extends Error {
+  public readonly timezone: string;
+
+  constructor(timezone: string, cause?: unknown) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Invalid OWNER_TZ: "${timezone}" is not a recognized IANA timezone. ` +
+        `Set OWNER_TZ to a valid IANA zone id (e.g. "America/Sao_Paulo"). ` +
+        `Underlying cause: ${causeMsg}`
+    );
+    this.name = "InvalidOwnerTimezoneError";
+    this.timezone = timezone;
+  }
 }
 
 /**
