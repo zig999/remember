@@ -52,6 +52,37 @@ vi.mock("../../../api/useNodeDetail", () => ({
   useNodeDetail: (): MockQueryState => mockState,
 }));
 
+// dev_tc_001 — the panel now renders the "Relações" section unconditionally
+// inside SuccessView; the structural test below still anchors on the
+// flat-file source so V9 is unaffected. The mock returns an empty success
+// state so component tests do not need a QueryClientProvider.
+vi.mock("../../../api/useNodeRelationships", () => ({
+  useNodeRelationships: () => ({
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+    data: { startingNodeId: "node-1", links: [] },
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
+
+// Phase C — `useProvenance` is invoked from `NodeAttributeRow` and
+// `NodeRelationshipRow`. The disclosure stays closed unless explicitly
+// opened so the hook returns disabled-idle state; mocking is still needed
+// because `useQuery` requires a QueryClient at runtime regardless of the
+// `enabled` flag.
+vi.mock("../../../api/useProvenance", () => ({
+  useProvenance: () => ({
+    isPending: false,
+    isError: false,
+    isSuccess: false,
+    data: undefined,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
+
 import { NodeDetailPanel, NODE_DETAIL_COPY } from "../NodeDetailPanel";
 
 let container: HTMLDivElement;
@@ -110,6 +141,7 @@ const SUCCESS_DATA = {
       state: "accepted" as const,
       validFromLabel: "10/01/2026",
       validToLabel: null,
+      provenance: [],
     },
     {
       id: "attr-2",
@@ -121,6 +153,7 @@ const SUCCESS_DATA = {
       state: "uncertain" as const,
       validFromLabel: null,
       validToLabel: null,
+      provenance: [],
     },
   ],
 };
@@ -414,10 +447,25 @@ describe("NodeDetailPanel — unidirectionality (V9, AC-U.3)", () => {
     const files = [
       "../NodeDetailPanel.tsx",
       "../NodeDetailPanel.types.ts",
+      "../NodeDetailPanel.copy.ts",
+      "../NodeDetailPanel.shell.tsx",
+      "../NodeDetailPanel.success.tsx",
+      "../NodeDetailPanel.curation.ts",
+      "../NodeAttributeRow.tsx",
+      "../NodeRelationshipRow.tsx",
+      "../NodeRelationshipsSection.tsx",
+      "../NodeProvenanceChain.tsx",
       "../../../api/useNodeDetail.ts",
+      "../../../api/useNodeRelationships.ts",
+      "../../../api/useProvenance.ts",
       "../../../api/_transforms.ts",
       "../../../api/_request.ts",
       "../../../api/keys.ts",
+      "../../../api/node-detail.types.ts",
+      "../../../api/traversal.types.ts",
+      "../../../api/traversal.transforms.ts",
+      "../../../api/provenance.types.ts",
+      "../../../api/provenance.transforms.ts",
     ];
     for (const rel of files) {
       const src = readFileSync(resolve(__dirname, rel), "utf-8");

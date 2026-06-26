@@ -77,11 +77,21 @@ export type { GraphEmptyStateProps } from "./components/GraphEmptyState";
 export { NodeDetailPanel } from "./components/NodeDetailPanel";
 export type { NodeDetailPanelProps } from "./components/NodeDetailPanel";
 
-/* ---------- api surface (TC-FE-08) ---------- */
-export { graphNodeKeys, useNodeDetail } from "./api";
+/* ---------- api surface (TC-FE-08 + dev_tc_001) ---------- */
+export {
+  graphNodeKeys,
+  useNodeDetail,
+  useNodeRelationships,
+  useProvenance,
+} from "./api";
 export type {
   NodeAliasView,
   NodeAttributeView,
   NodeDetailView,
   NodeDetailWire,
+  ProvenanceEntryView,
+  TraversalLinkView,
+  TraversalResultView,
+  ProvenanceKind,
+  ProvenanceResponseView,
 } from "./api";

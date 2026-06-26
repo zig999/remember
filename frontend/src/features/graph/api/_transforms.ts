@@ -26,6 +26,8 @@ import type {
   NodeDetailView,
   NodeDetailWire,
   NodeWireStatus,
+  ProvenanceEntryView,
+  ProvenanceEntryWire,
 } from "./node-detail.types";
 
 /* ---------- node-level status → StateBadge state -------------------- */
@@ -157,6 +159,68 @@ function toAttributeView(wire: AttributeWire): NodeAttributeView {
     state: mapAttributeStatusToBadge(wire.effective_status, wire.status),
     validFromLabel: formatDateLabel(wire.valid_from),
     validToLabel: formatDateLabel(wire.valid_to),
+    provenance: (wire.provenance ?? []).map(toProvenanceEntryView),
+  };
+}
+
+/* ---------- Phase A — ProvenanceEntry transform --------------------- */
+
+/**
+ * Format a confidence float (0..1) as a 0-decimal percentage label
+ * (`0.923 → "92%"`). Spec §9 "Response transforms" row.
+ *
+ * Returns `null` when the wire value was undefined/null — the row UI
+ * collapses the label gracefully (`"—"`) without falsely reporting `0%`.
+ */
+export function formatConfidenceLabel(
+  confidence: number | undefined | null,
+): string | null {
+  if (confidence === undefined || confidence === null) return null;
+  if (!Number.isFinite(confidence)) return null;
+  return `${Math.round(confidence * 100)}%`;
+}
+
+/** Memoised pt-BR formatter for ISO instants (`DD/MM/YYYY`). */
+const RECEIVED_AT_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  // `received_at` is a full ISO timestamp, not a date-only field — render in
+  // the user's local timezone so the day matches what they would read in a
+  // mail header. (Distinct from `valid_from` which is timezone-independent.)
+});
+
+/**
+ * Format a `received_at` ISO timestamp as a pt-BR date label `DD/MM/YYYY`.
+ * Returns the raw string on parse failure (never throws), `null` when input
+ * is absent.
+ */
+export function formatReceivedAtLabel(
+  iso: string | undefined | null,
+): string | null {
+  if (iso === undefined || iso === null) return null;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return RECEIVED_AT_FORMATTER.format(dt);
+}
+
+/** Wire → surface for a single Phase A `ProvenanceEntry`. */
+export function toProvenanceEntryView(
+  wire: ProvenanceEntryWire,
+): ProvenanceEntryView {
+  const confidence =
+    typeof wire.confidence === "number" && Number.isFinite(wire.confidence)
+      ? wire.confidence
+      : null;
+  return {
+    fragmentId: wire.fragment_id,
+    fragmentText: wire.fragment_text,
+    confidence,
+    confidenceLabel: formatConfidenceLabel(confidence),
+    rawInformationId: wire.raw_information_id ?? null,
+    sourceType: wire.source_type ?? null,
+    receivedAtLabel: formatReceivedAtLabel(wire.received_at),
+    excerpt: wire.excerpt ?? null,
   };
 }
 

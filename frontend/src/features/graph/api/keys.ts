@@ -22,6 +22,13 @@ export const graphNodeKeys = {
 
   /** Single node detail (canonical name + aliases + attributes). */
   detail: (id: string) => ["nodes", id] as const,
+
+  /** Phase B (dev_tc_001) — `GET /nodes/:id/traverse?depth=1` cache slot. */
+  relationships: (id: string) => ["graph", "node", id, "relationships"] as const,
+
+  /** Phase C (dev_tc_001) — `GET /provenance/{kind}/:id` cache slot. */
+  provenance: (kind: string, id: string) =>
+    ["graph", "provenance", kind, id] as const,
 } as const;
 
 /**
