@@ -268,7 +268,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<GetNodeInput, unknown>("query", {
     name: "get_node",
     description: QueryToolDescriptions.get_node,
-    inputSchema: GetNodeInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetNodeInputSchema,
     handler: makeHandler(
       GetNodeInputSchema,
       (input, client) =>
@@ -290,7 +290,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<TraverseInput, unknown>("query", {
     name: "traverse",
     description: QueryToolDescriptions.traverse,
-    inputSchema: TraverseInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: TraverseInputSchema,
     handler: makeHandler(
       TraverseInputSchema,
       (input, client) =>
@@ -315,7 +315,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<GetHistoryLinkInput, unknown>("query", {
     name: "get_history_link",
     description: QueryToolDescriptions.get_history_link,
-    inputSchema: GetHistoryLinkInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetHistoryLinkInputSchema,
     handler: makeHandler(
       GetHistoryLinkInputSchema,
       (input, client) => getLinkHistoryService(client, input.link_id, svcLogger),
@@ -327,7 +327,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<GetHistoryAttributeInput, unknown>("query", {
     name: "get_history_attribute",
     description: QueryToolDescriptions.get_history_attribute,
-    inputSchema: GetHistoryAttributeInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetHistoryAttributeInputSchema,
     handler: makeHandler(
       GetHistoryAttributeInputSchema,
       (input, client) =>
@@ -340,7 +340,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<GetHistoryAttributeKeyInput, unknown>("query", {
     name: "get_history_attribute_key",
     description: QueryToolDescriptions.get_history_attribute_key,
-    inputSchema: GetHistoryAttributeKeyInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetHistoryAttributeKeyInputSchema,
     handler: makeHandler(
       GetHistoryAttributeKeyInputSchema,
       (input, client) =>
@@ -358,7 +358,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<ListNodesInput, unknown>("query", {
     name: "list_nodes",
     description: QueryToolDescriptions.list_nodes,
-    inputSchema: ListNodesInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ListNodesInputSchema,
     handler: makeHandler(
       ListNodesInputSchema,
       (input, client) =>
@@ -377,7 +377,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<ListNodeTypesInput, unknown>("query", {
     name: "list_node_types",
     description: QueryToolDescriptions.list_node_types,
-    inputSchema: ListNodeTypesInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ListNodeTypesInputSchema,
     handler: makeHandler(
       ListNodeTypesInputSchema,
       (_input, client) => listNodeTypesService(client),
@@ -389,7 +389,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<ListLinkTypesInput, unknown>("query", {
     name: "list_link_types",
     description: QueryToolDescriptions.list_link_types,
-    inputSchema: ListLinkTypesInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ListLinkTypesInputSchema,
     handler: makeHandler(
       ListLinkTypesInputSchema,
       (input, client) =>
@@ -402,7 +402,7 @@ export function registerQueryToolset(deps: QueryToolsetDeps): void {
   mcp.registerTool<ListAttributeKeysInput, unknown>("query", {
     name: "list_attribute_keys",
     description: QueryToolDescriptions.list_attribute_keys,
-    inputSchema: ListAttributeKeysInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ListAttributeKeysInputSchema,
     handler: makeHandler(
       ListAttributeKeysInputSchema,
       (input, client) =>

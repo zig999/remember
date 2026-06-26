@@ -138,7 +138,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "propose_fragment",
     description: IngestToolDescriptions.propose_fragment,
-    inputSchema: ProposeFragmentMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ProposeFragmentMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       const parsed = ProposeFragmentMcpInputSchema.safeParse(rawInput);
       if (!parsed.success) {
@@ -163,7 +163,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "propose_node",
     description: IngestToolDescriptions.propose_node,
-    inputSchema: ProposeNodeMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ProposeNodeMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       const parsed = ProposeNodeMcpInputSchema.safeParse(rawInput);
       if (!parsed.success) {
@@ -189,7 +189,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "propose_link",
     description: IngestToolDescriptions.propose_link,
-    inputSchema: ProposeLinkMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ProposeLinkMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       const parsed = ProposeLinkMcpInputSchema.safeParse(rawInput);
       if (!parsed.success) {
@@ -216,7 +216,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "propose_attribute",
     description: IngestToolDescriptions.propose_attribute,
-    inputSchema: ProposeAttributeMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ProposeAttributeMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       const parsed = ProposeAttributeMcpInputSchema.safeParse(rawInput);
       if (!parsed.success) {
@@ -248,7 +248,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "ingest_document",
     description: IngestToolDescriptions.ingest_document,
-    inputSchema: IngestDocumentMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: IngestDocumentMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       const parsed = IngestDocumentMcpInputSchema.safeParse(rawInput);
       if (!parsed.success) {
@@ -288,7 +288,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "ingest_directed",
     description: IngestToolDescriptions.ingest_directed,
-    inputSchema: IngestDirectedMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: IngestDirectedMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       // The handler owns its own Zod parse (BR-34, TC-03) — no second parse
       // here. A parse failure surfaces as STRUCTURAL_INVALID; the run is
@@ -309,7 +309,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "health",
     description: IngestToolDescriptions.health,
-    inputSchema: HealthMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: HealthMcpInputSchema,
     handler: async (): Promise<McpEnvelopeJson> => {
       const report = await collectHealth(pool);
       return { ok: true, result: report };
@@ -320,7 +320,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "get_ingestion_status",
     description: IngestToolDescriptions.get_ingestion_status,
-    inputSchema: GetIngestionStatusMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetIngestionStatusMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       try {
         const { llm_run_id } = GetIngestionStatusMcpInputSchema.parse(rawInput);
@@ -338,7 +338,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   mcp.registerTool("ingest", {
     name: "list_recent_ingestions",
     description: IngestToolDescriptions.list_recent_ingestions,
-    inputSchema: ListRecentIngestionsMcpInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ListRecentIngestionsMcpInputSchema,
     handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
       try {
         const { limit } = ListRecentIngestionsMcpInputSchema.parse(rawInput);

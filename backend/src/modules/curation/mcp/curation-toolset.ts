@@ -253,7 +253,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "list_review_queue",
     description: CurationToolDescriptions.list_review_queue,
-    inputSchema: ListReviewQueueQuerySchema as unknown as z.ZodTypeAny,
+    inputSchema: ListReviewQueueQuerySchema,
     handler: makeHandler(ListReviewQueueQuerySchema, (input) =>
       listReviewQueueService({ pool }, input)
     ),
@@ -263,7 +263,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "resolve_entity_match",
     description: CurationToolDescriptions.resolve_entity_match,
-    inputSchema: ResolveEntityMatchToolInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: ResolveEntityMatchToolInputSchema,
     handler: makeHandler(ResolveEntityMatchToolInputSchema, (input) =>
       resolveEntityMatchService({ pool, logger }, input.node_id, {
         decision: input.decision,
@@ -277,7 +277,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "merge_nodes",
     description: CurationToolDescriptions.merge_nodes,
-    inputSchema: MergeNodesBodySchema as unknown as z.ZodTypeAny,
+    inputSchema: MergeNodesBodySchema,
     handler: makeHandler(MergeNodesBodySchema, (input) =>
       mergeNodesService(
         { pool, logger },
@@ -292,7 +292,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "resolve_dispute",
     description: CurationToolDescriptions.resolve_dispute,
-    inputSchema: ResolveDisputeBodySchema as unknown as z.ZodTypeAny,
+    inputSchema: ResolveDisputeBodySchema,
     handler: makeHandler(ResolveDisputeBodySchema, (input) =>
       resolveDisputeService({ pool, logger, catalog }, input)
     ),
@@ -302,7 +302,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "confirm_item",
     description: CurationToolDescriptions.confirm_item,
-    inputSchema: ConfirmItemBodySchema as unknown as z.ZodTypeAny,
+    inputSchema: ConfirmItemBodySchema,
     handler: makeHandler(ConfirmItemBodySchema, (input) =>
       confirmItemService(
         { pool, logger, catalog: ingestionCatalog },
@@ -315,7 +315,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "reject_item",
     description: CurationToolDescriptions.reject_item,
-    inputSchema: RejectItemBodySchema as unknown as z.ZodTypeAny,
+    inputSchema: RejectItemBodySchema,
     handler: makeHandler(RejectItemBodySchema, (input) =>
       rejectItemService(
         { pool, logger, catalog: ingestionCatalog },
@@ -328,7 +328,7 @@ export function registerCurationToolset(deps: CurationToolsetDeps): void {
   mcp.registerTool("curation", {
     name: "correct_item",
     description: CurationToolDescriptions.correct_item,
-    inputSchema: CorrectItemBodySchema as unknown as z.ZodTypeAny,
+    inputSchema: CorrectItemBodySchema,
     handler: makeHandler(CorrectItemBodySchema, (input) =>
       correctItemService(
         { pool, logger, catalog: ingestionCatalog },

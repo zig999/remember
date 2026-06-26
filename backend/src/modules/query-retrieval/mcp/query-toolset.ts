@@ -219,7 +219,7 @@ export function registerQueryRetrievalToolset(
   mcp.registerTool<SearchInput, unknown>("query", {
     name: "search",
     description: QueryRetrievalToolDescriptions.search,
-    inputSchema: SearchInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: SearchInputSchema,
     handler: makeHandler(
       SearchInputSchema,
       (input, client) =>
@@ -248,7 +248,7 @@ export function registerQueryRetrievalToolset(
   mcp.registerTool<GetProvenanceLinkInput, unknown>("query", {
     name: "get_provenance_link",
     description: QueryRetrievalToolDescriptions.get_provenance_link,
-    inputSchema: GetProvenanceLinkInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetProvenanceLinkInputSchema,
     handler: makeHandler(
       GetProvenanceLinkInputSchema,
       (input, client) =>
@@ -261,7 +261,7 @@ export function registerQueryRetrievalToolset(
   mcp.registerTool<GetProvenanceAttributeInput, unknown>("query", {
     name: "get_provenance_attribute",
     description: QueryRetrievalToolDescriptions.get_provenance_attribute,
-    inputSchema: GetProvenanceAttributeInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetProvenanceAttributeInputSchema,
     handler: makeHandler(
       GetProvenanceAttributeInputSchema,
       (input, client) =>
@@ -274,7 +274,7 @@ export function registerQueryRetrievalToolset(
   mcp.registerTool<GetProvenanceFragmentInput, unknown>("query", {
     name: "get_provenance_fragment",
     description: QueryRetrievalToolDescriptions.get_provenance_fragment,
-    inputSchema: GetProvenanceFragmentInputSchema as unknown as z.ZodTypeAny,
+    inputSchema: GetProvenanceFragmentInputSchema,
     handler: makeHandler(
       GetProvenanceFragmentInputSchema,
       (input, client) =>
