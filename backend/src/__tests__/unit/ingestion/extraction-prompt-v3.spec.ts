@@ -106,9 +106,12 @@ describe("extraction v3 prompt (Event classification)", () => {
   });
 });
 
-describe("prompt registry — v3 (recommended default)", () => {
-  it("recommends v3 for new runs", () => {
-    expect(DEFAULT_PROMPT_VERSION).toBe("v3");
+describe("prompt registry — v3 (still resolvable; default bumped to v4 in TC-04)", () => {
+  it("does NOT recommend v3 for new runs anymore (v4 is now default per BR-26 step 5a v1.4.2)", () => {
+    // TC-04 (BR-26 step 5a v1.4.2): the default was bumped to v4. v3 itself
+    // stays unchanged and resolvable for backward-compatibility (audit-trail
+    // honesty: existing v3 runs must still rehydrate the same prompt).
+    expect(DEFAULT_PROMPT_VERSION).not.toBe("v3");
   });
 
   it("dispatches 'v3' → v3 module", () => {
