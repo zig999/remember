@@ -10,6 +10,8 @@
 export { graphNodeKeys } from "./keys";
 
 export { useNodeDetail } from "./useNodeDetail";
+export { useNodeRelationships } from "./useNodeRelationships";
+export { useProvenance } from "./useProvenance";
 
 // Wire / surface types — exported so component tests can build fixtures
 // without re-declaring the shape, and so the panel can type its prop
@@ -25,12 +27,40 @@ export type {
   NodeDetailWire,
   NodeSummaryWire,
   NodeWireStatus,
+  ProvenanceEntryView,
+  ProvenanceEntryWire,
 } from "./node-detail.types";
+
+export type {
+  LinkDirection,
+  TraversalLinkView,
+  TraversalLinkWire,
+  TraversalResultView,
+  TraversalResultWire,
+} from "./traversal.types";
+
+export type {
+  ProvenanceKind,
+  ProvenanceResponseView,
+  ProvenanceResponseWire,
+  ProvenanceFragmentView,
+  ProvenanceChunkView,
+  ProvenanceRawInformationView,
+} from "./provenance.types";
 
 // Re-export pure transforms for unit tests.
 export {
+  formatConfidenceLabel,
   formatDateLabel,
+  formatReceivedAtLabel,
   mapAttributeStatusToBadge,
   mapNodeStatusToBadge,
   toNodeDetail,
+  toProvenanceEntryView,
 } from "./_transforms";
+
+export { toTraversalResult } from "./traversal.transforms";
+export {
+  formatReceivedAtDateTime,
+  toProvenanceResponse,
+} from "./provenance.transforms";

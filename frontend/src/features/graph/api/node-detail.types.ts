@@ -2,11 +2,14 @@
  * NodeDetail — wire + surface shapes for `GET /api/v1/nodes/:id` (TC-FE-08).
  *
  * Wire shapes mirror `docs/specs/domains/knowledge-graph/openapi.yaml`
- * (schemas `NodeDetail`, `NodeSummary`, `NodeAlias`, `AttributeDetail`). Only
- * the fields the SPA actually displays in the v1 `NodeDetailPanel` are
- * declared — the response includes a full `provenance[]` per attribute but
- * v1 hides provenance (deferred to the `/graph` full-screen wave, per
- * `NodeDetailPanel.component.spec.md §1 "Does NOT"`).
+ * (schemas `NodeDetail`, `NodeSummary`, `NodeAlias`, `AttributeDetail`,
+ * `ProvenanceEntry`, `TraversalResult`, `TraversalLink`, `ProvenanceResponse`).
+ *
+ * v2.0 (progressive-disclosure wave, dev_tc_001): the wire `AttributeWire`
+ * carries `provenance: ProvenanceEntry[]` (already returned by `getNodeById`)
+ * — Phase A renders it inline without any extra fetch. Two new request
+ * shapes are added: `TraversalResultWire` (Phase B, GET `/nodes/:id/traverse`)
+ * and `ProvenanceResponseWire` (Phase C, GET `/provenance/{kind}/:id`).
  *
  * Surface shapes (camelCase) are the post-transform form consumed by
  * `NodeDetailPanel`. The transform is intentionally minimal — most fields
@@ -55,7 +58,18 @@ export interface NodeAliasWire {
   readonly created_at?: string;
 }
 
-/** Wire attribute — only the fields used by the v1 panel are declared. */
+/** Wire `ProvenanceEntry` — openapi `ProvenanceEntry` schema. */
+export interface ProvenanceEntryWire {
+  readonly fragment_id: string;
+  readonly fragment_text: string;
+  readonly confidence?: number;
+  readonly raw_information_id?: string;
+  readonly source_type?: string;
+  readonly received_at?: string;
+  readonly excerpt?: string;
+}
+
+/** Wire attribute — fields used by the panel (v2.0 includes `provenance`). */
 export interface AttributeWire {
   readonly id: string;
   readonly node_id: string;
@@ -69,6 +83,8 @@ export interface AttributeWire {
   readonly confidence: number;
   readonly valid_from: string | null;
   readonly valid_to: string | null;
+  /** Phase A — inline provenance entries returned by `getNodeById`. */
+  readonly provenance?: ReadonlyArray<ProvenanceEntryWire>;
 }
 
 /** Wire node summary. */
@@ -91,6 +107,22 @@ export interface NodeDetailWire {
  * Surface shapes — camelCase, consumed by NodeDetailPanel.
  * ------------------------------------------------------------------------- */
 
+/** Phase A — provenance entry surface shape (camelCase). */
+export interface ProvenanceEntryView {
+  readonly fragmentId: string;
+  readonly fragmentText: string;
+  /** Confidence formatted as integer percent (e.g. `"92%"`) — `null` when
+   *  the wire field was missing. */
+  readonly confidenceLabel: string | null;
+  /** Raw 0..1 number kept for tests / future affordances. */
+  readonly confidence: number | null;
+  readonly rawInformationId: string | null;
+  readonly sourceType: string | null;
+  /** `DD/MM/YYYY` pt-BR label for `received_at` — `null` if absent. */
+  readonly receivedAtLabel: string | null;
+  readonly excerpt: string | null;
+}
+
 export interface NodeAttributeView {
   readonly id: string;
   readonly key: string;
@@ -105,6 +137,9 @@ export interface NodeAttributeView {
    *  was `null` (open-ended). */
   readonly validFromLabel: string | null;
   readonly validToLabel: string | null;
+  /** Phase A — inline provenance entries (already in `getNodeById` payload).
+   *  Defaults to `[]` when the wire field is absent. */
+  readonly provenance: ReadonlyArray<ProvenanceEntryView>;
 }
 
 export interface NodeAliasView {
