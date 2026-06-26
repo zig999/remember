@@ -1,10 +1,10 @@
 # Validation Report — Ingestion Domain
 
 > Triage: COMPLETED
-> Date: 2026-06-25
-> Mode: Incremental — back phase repair (Mode 1, repair_cycle=1)
-> Validator: u-spec-validator-sdd_ingestion_spec-validator-repair-1
-> Task: sdd_ingestion_spec-validator-repair-1 / attempt 1
+> Date: 2026-06-26
+> Mode: Incremental — back phase (Mode 1, repair_cycle=0)
+> Validator: u-spec-validator-sdd_ingestion_spec-validator
+> Task: sdd_ingestion_spec-validator / attempt 1
 > Result: **VALID**
 
 ---
@@ -13,63 +13,51 @@
 
 | Artifact | Path | Version | Status |
 |----------|------|---------|--------|
-| `openapi.yaml` | `docs/specs/domains/ingestion/openapi.yaml` | 1.4.1 | draft |
-| `ingestion.back.md` | `docs/specs/domains/ingestion/back/ingestion.back.md` | 1.4.1 | draft |
-| `ingestion.spec.md` | `docs/specs/domains/ingestion/ingestion.spec.md` | 1.4.0 | draft |
+| `openapi.yaml` | `docs/specs/domains/ingestion/openapi.yaml` | 1.4.2 | draft |
+| `ingestion.back.md` | `docs/specs/domains/ingestion/back/ingestion.back.md` | 1.4.2 | draft |
+| `ingestion.spec.md` | `docs/specs/domains/ingestion/ingestion.spec.md` | 1.4.1 | draft |
 | `error-codes.md` | `docs/specs/_global/error-codes.md` | — | canonical |
 
 ---
 
-## Requirement (UI intent — Requirement injected at activation)
+## Requirement (UI intent — injected at activation)
 
-> Replace async chat ingestion with synchronous ingest_directed tool. start_async_ingestion is retired from the ingestion toolset entirely.
+> Melhorar a fidelidade de contexto temporal e de memória do subsistema /chat (domínio chat; toca chat.back.md BR-18/BR-31/BR-33 e o contrato de env; mais um ajuste pequeno na ingestão). Cinco mudanças coesas: (1) JANELA EM TURNOS K=6; (2) RESUMO INCREMENTAL rolling sem migração, overlap M=40; (3) GATILHO refresh-on-overflow; (4) PROMPT DE RESUMO atualizado; (5) INJEÇÃO DE DATA/HORA LOCAL como segundo bloco system não-cacheado (OWNER_TZ=America/Sao_Paulo). Na ingestão: passar received_at como âncora de data relativa no prompt de extração v3. NO database migration / NO schema change (Variant 1).
 
 ---
 
 ## Validation Checks (Mode 1 — Incremental back phase)
 
-### Check 1 — INC-01 (was warning): openapi.yaml version corrected
+### Check 1 — UC ↔ BR Cross-Reference
 
-**Result: RESOLVED / PASS**
+Every BR references at least one existing UC in `ingestion.spec.md`.
 
-`openapi.yaml` `info.version` is now `"1.4.1"` (was `"1.3.0"`).
-
-Description text at line 49 now reads `(BR-34, v1.4.0 —` (was `v1.3.0`) and line 59 reads `**retired** in v1.4.0:` (was `v1.3.0`). Version attribution is consistent with `ingestion.back.md` changelog (BR-34 introduced at v1.4.0, corrected at v1.4.1; BR-32 withdrawn at v1.4.0).
-
-### Check 2 — INC-02 (was blocking): ingestion.spec.md updated to v1.4.0
-
-**Result: RESOLVED / PASS**
-
-`ingestion.spec.md` is now at version `1.4.0` (was `1.3.0`).
-
-- **UC-13 retired:** `### UC-13 — RETIRED in v1.4.0 (was: Start an asynchronous ingestion — intake now, extract in background)` is present with full traceability note. The UC number is reserved (not reused). `get_ingestion_status` (BR-31) correctly noted as NOT retired.
-- **UC-14 added:** `### UC-14 — Directed ingestion (deterministic composition; no server LLM)` is fully documented with actor, pre/post conditions, main flow (7 steps), alternative flows (6 alt-flows), and related endpoint/tool reference to MCP `ingest_directed`.
-- **Changelog entry:** v1.4.0 entry at line 688 documents the retirement of UC-13 and addition of UC-14 with full change rationale.
-
-All BRs in `ingestion.back.md` that reference UC-14 (BR-33, BR-34) now have a corresponding UC in the spec. All BRs referencing UC-13 historical context (BR-32 WITHDRAWN) correctly point to the retired placeholder.
-
-### Check 3 — INC-03 (was warning): BUSINESS_CHAT_INGEST_DISABLED description updated
-
-**Result: RESOLVED / PASS**
-
-`error-codes.md` `BUSINESS_CHAT_INGEST_DISABLED` "When it occurs" column now reads:
-> `ingest_directed` called from the chat agentic loop but `CHAT_INGEST_ENABLED` was not set to `true` at startup.
-
-The stale reference to `start_async_ingestion` has been replaced with `ingest_directed`.
-
-### Check 4 — Cross-ref UC ↔ BR (all BRs reference existing UCs)
-
-**Result: PASS**
-
-All 34 BRs in `ingestion.back.md` reference UCs that exist in `ingestion.spec.md` v1.4.0:
-
-| BR range | Referenced UCs | Exists in spec.md |
-|----------|---------------|------------------|
-| BR-01..BR-09 | UC-01 | Yes |
-| BR-10, BR-11 | UC-06 | Yes |
+| BR | Related UCs in back.md | UC exists in spec.md? |
+|----|------------------------|-----------------------|
+| BR-01 | UC-01 | Yes |
+| BR-02 | UC-01, UC-02 | Yes |
+| BR-03 | UC-01 | Yes |
+| BR-04 | UC-01 | Yes |
+| BR-05 | UC-01, UC-03 | Yes |
+| BR-06 | UC-01 | Yes |
+| BR-07 | UC-01 | Yes |
+| BR-08 | UC-01 | Yes |
+| BR-09 | UC-01 alt 4a | Yes |
+| BR-10 | UC-06 | Yes |
+| BR-11 | UC-06 | Yes |
 | BR-12 | UC-04 | Yes |
-| BR-13..BR-23 | UC-08..UC-11 | Yes |
-| BR-24 | UC-09 | Yes |
+| BR-13 | UC-08, UC-09, UC-10, UC-11 | Yes |
+| BR-14 | UC-08, UC-09, UC-10, UC-11 | Yes |
+| BR-15 | UC-10 | Yes |
+| BR-16 | UC-10, UC-11 | Yes |
+| BR-17 | UC-10, UC-11 | Yes |
+| BR-18 | UC-10, UC-11 | Yes |
+| BR-19 | UC-08, UC-09, UC-10, UC-11 | Yes |
+| BR-20 | UC-09 | Yes |
+| BR-21 | UC-08..UC-11 | Yes |
+| BR-22 | UC-08 | Yes |
+| BR-23 | UC-08..UC-11 | Yes |
+| BR-24 | UC-08..UC-11 | Yes |
 | BR-25 | UC-09 | Yes |
 | BR-26 | UC-12 | Yes |
 | BR-27 | UC-10, UC-11 | Yes |
@@ -77,121 +65,204 @@ All 34 BRs in `ingestion.back.md` reference UCs that exist in `ingestion.spec.md
 | BR-29 | UC-12 | Yes |
 | BR-30 | UC-01, UC-12 | Yes |
 | BR-31 | UC-04 | Yes |
-| BR-32 (WITHDRAWN) | Former UC-13 | Yes (RETIRED placeholder) |
-| BR-33 | UC-04, UC-09, UC-10, UC-11, UC-12, UC-14 | Yes (UC-14 added in v1.4.0) |
-| BR-34 | UC-01, UC-08..UC-11, UC-14 | Yes (UC-14 added in v1.4.0) |
+| BR-32 | UC-13 (RETIRED — traceability only) | Yes — UC-13 is retired but the UC number is reserved; reference is for traceability only |
+| BR-33 | UC-04, UC-09, UC-10, UC-11, UC-12, UC-14 | Yes |
+| BR-34 | UC-01, UC-08..UC-11, UC-14 | Yes |
 
-### Check 5 — Cross-ref BR ↔ OpenAPI (error.code and HTTP status match)
-
-**Result: PASS**
-
-| error.code | HTTP (catalog) | HTTP (openapi.yaml) | Match |
-|-----------|---------------|---------------------|-------|
-| `AUTH_UNAUTHORIZED` | 401 | 401 (Unauthorized response) | PASS |
-| `RESOURCE_NOT_FOUND` | 404 | 404 (NotFound response) | PASS |
-| `VALIDATION_REQUIRED_FIELD` | 422 | 422 (UnprocessableEntity response) | PASS |
-| `VALIDATION_INVALID_FORMAT` | 422 | 422 (UnprocessableEntity response) | PASS |
-| `VALIDATION_OUT_OF_RANGE` | 422 | 422 (UnprocessableEntity response) | PASS |
-| `BUSINESS_RUN_NOT_RETRYABLE` | 409 | 409 (retryLlmRun response) | PASS |
-| `BUSINESS_RUN_NOT_RUNNABLE` | 409 | 409 (runLlmExtraction response) | PASS |
-| `BUSINESS_RUN_NOT_RUNNING` | 409 | 409 (RunNotRunning shared response) | PASS |
-| `SYSTEM_LLM_PROVIDER_UNAVAILABLE` | 502 | 502 (LlmProviderUnavailable response) | PASS |
-| `SYSTEM_INTERNAL_ERROR` | 500 | 500 (InternalError response) | PASS |
-
-### Check 6 — Error codes in global catalog (completeness)
-
-**Result: PASS**
-
-All error codes used across `openapi.yaml`, `ingestion.spec.md` §6, and `ingestion.back.md` are present in `docs/specs/_global/error-codes.md`. MCP envelope codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are documented as intentional non-`BUSINESS_*` codes in the catalog note and in spec.md §6.2.
-
-### Check 7 — State machine consistency
-
-**Result: PASS**
-
-`ingestion.back.md` ST-01 (LLMRun lifecycle) is consistent with `ingestion.spec.md` §5.1 ST-LR:
-- `running → completed`: UC-12 clean finish (BR-26 step 6) ✓
-- `running → failed`: UC-12 fatal exception (BR-26 step 7) ✓
-- `failed → running`: UC-06 retry (BR-10) ✓
-
-`ingestion.back.md` ST-02 (InformationFragment) unchanged; references spec.md §5.2 ST-IF correctly ✓
-
-### Check 8 — Events (EV) triggered by actions described in UCs
-
-**Result: PASS (N/A)**
-
-`ingestion.back.md` §5 explicitly states: "N/A — no domain events in this version." No EVs to validate.
-
-### Check 9 — Version consistency across files
-
-**Result: PASS**
-
-| File | Version | Relationship |
-|------|---------|-------------|
-| `ingestion.spec.md` | 1.4.0 | Feature version: UC-13 retired, UC-14 added |
-| `ingestion.back.md` | 1.4.1 | Correction pass over v1.4.0: internal-consistency fixes to BR-34, no contract change |
-| `openapi.yaml` | 1.4.1 | Bumped to match back-spec correction; description references v1.4.0 for the feature events |
-
-### Check 10 — No active references to retired tool start_async_ingestion
-
-**Result: PASS**
-
-`start_async_ingestion` appears only in:
-- `ingestion.back.md` BR-32 (WITHDRAWN header) — historical reference ✓
-- `ingestion.back.md` BR-33, BR-34 — historical contrast against the retired tool ✓
-- `ingestion.spec.md` UC-13 retirement note — historical reference ✓
-- `openapi.yaml` line 58 — inside the retirement description ✓
-- `error-codes.md` — no longer present in active `BUSINESS_CHAT_INGEST_DISABLED` description ✓
-
-No code path treats `start_async_ingestion` as an active tool anywhere.
+**Result: PASS.** All 34 BRs have valid UC references. UC-13 is retired (reserved number) and BR-32 is withdrawn — both are preserved for traceability, not as active contracts.
 
 ---
 
-## Inconsistency Summary
+### Check 2 — BR ↔ OpenAPI Error Codes
 
-| # | Type | Severity | Description |
-|---|------|----------|-------------|
-| — | — | — | No inconsistencies found |
+Every `error.code` used in the back.md has correct HTTP status in `openapi.yaml`.
 
-All three inconsistencies from repair cycle 0 have been resolved.
+| error.code | HTTP in openapi.yaml | HTTP in back.md | Match? |
+|------------|---------------------|-----------------|--------|
+| `AUTH_UNAUTHORIZED` | 401 | 401 | Yes |
+| `RESOURCE_NOT_FOUND` | 404 | 404 | Yes |
+| `VALIDATION_REQUIRED_FIELD` | 422 | 422 | Yes |
+| `VALIDATION_INVALID_FORMAT` | 422 | 422 | Yes |
+| `VALIDATION_OUT_OF_RANGE` | 422 | 422 | Yes |
+| `BUSINESS_RUN_NOT_RETRYABLE` | 409 | 409 | Yes |
+| `BUSINESS_RUN_NOT_RUNNABLE` | 409 | 409 | Yes |
+| `BUSINESS_RUN_NOT_RUNNING` | 409 | 409 | Yes |
+| `SYSTEM_LLM_PROVIDER_UNAVAILABLE` | 502 | 502 | Yes |
+| `SYSTEM_INTERNAL_ERROR` | 500 | 500 | Yes |
 
----
+MCP envelope codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are internal to the MCP protocol layer and do not have HTTP statuses in `openapi.yaml` — this is correct and documented in `error-codes.md`.
 
-## Coverage Map (back phase)
-
-| UC | Endpoint / MCP tool | BRs in back.md | Status |
-|----|---------------------|----------------|--------|
-| UC-01 | `POST /api/v1/ingest/raw-information` (operationId `ingestRawInformation`) | BR-01..BR-09 | Covered |
-| UC-02 | (immutability — no endpoint) | BR-02 | Covered |
-| UC-03 | `GET /api/v1/ingest/raw-information/{id}/chunks` (operationId `listRawChunksByRawInformation`) | BR-05 | Covered |
-| UC-04 | `GET /api/v1/ingest/llm-runs/{id}` (operationId `getLlmRunById`) | BR-12 | Covered |
-| UC-05 | `GET /api/v1/ingest/llm-runs/{id}/tool-calls` (operationId `listToolCallsByLlmRun`) | BR-23 | Covered |
-| UC-06 | `POST /api/v1/ingest/llm-runs/{id}/retry` (operationId `retryLlmRun`) | BR-10, BR-11 | Covered |
-| UC-07 | (run close — internal BFF action, no public endpoint) | ST-01 | Covered |
-| UC-08 | `POST /llm-runs/{id}/propose-fragment` + MCP `propose_fragment` | BR-13..BR-23 | Covered |
-| UC-09 | `POST /llm-runs/{id}/propose-node` + MCP `propose_node` | BR-13..BR-25 | Covered |
-| UC-10 | `POST /llm-runs/{id}/propose-link` + MCP `propose_link` | BR-13..BR-27 | Covered |
-| UC-11 | `POST /llm-runs/{id}/propose-attribute` + MCP `propose_attribute` | BR-13..BR-27 | Covered |
-| UC-12 | `POST /api/v1/ingest/llm-runs/{id}/run` (operationId `runLlmExtraction`) | BR-26 | Covered |
-| UC-13 | RETIRED — MCP `start_async_ingestion` (withdrawn BR-32) | BR-32 (WITHDRAWN) | Retired — traceability preserved |
-| UC-14 | MCP `ingest_directed` (BR-34) — no REST mirror by design | BR-34 | Covered |
+**Result: PASS.** All REST error codes map correctly between back.md and openapi.yaml.
 
 ---
 
-## Result
+### Check 3 — Error Codes in Global Catalog
 
-- [x] UC coverage complete — all 14 UCs (incl. 1 retired) covered by BRs
-- [x] Error codes consistent — HTTP status matches across openapi.yaml, back.md, catalog
-- [x] No orphan specs — all BR references point to existing UCs
-- [x] Dependencies valid (back phase; no front specs yet)
-- [x] State machines consistent with spec.md
-- [x] All 3 INC-0x inconsistencies from repair cycle 0 resolved
+All `error.code` values used in `ingestion.back.md` are present in `docs/specs/_global/error-codes.md`.
 
-**Overall: VALID. Handoff allowed for the back phase.**
+| error.code | In global catalog? |
+|------------|--------------------|
+| `AUTH_UNAUTHORIZED` | Yes (Base Codes — AUTH_) |
+| `RESOURCE_NOT_FOUND` | Yes (Base Codes — RESOURCE_) |
+| `VALIDATION_REQUIRED_FIELD` | Yes (Base Codes — VALIDATION_) |
+| `VALIDATION_INVALID_FORMAT` | Yes (Base Codes — VALIDATION_) |
+| `VALIDATION_OUT_OF_RANGE` | Yes (Base Codes — VALIDATION_) |
+| `SYSTEM_INTERNAL_ERROR` | Yes (Base Codes — SYSTEM_) |
+| `SYSTEM_SERVICE_UNAVAILABLE` | Yes (Base Codes — SYSTEM_) |
+| `SYSTEM_LLM_PROVIDER_UNAVAILABLE` | Yes (Base Codes — SYSTEM_) |
+| `BUSINESS_RUN_NOT_RETRYABLE` | Yes (Ingestion section) |
+| `BUSINESS_RUN_NOT_RUNNABLE` | Yes (Ingestion section) |
+| `BUSINESS_RUN_NOT_RUNNING` | Yes (Ingestion section) |
+
+**Result: PASS.** All error codes are registered.
+
+---
+
+### Check 4 — State Machine Consistency
+
+`ST-01 (LLMRun)` in back.md corresponds to `ST-LR (§5.1)` in spec.md.
+
+Transitions cross-checked:
+
+| Transition | back.md ST-01 | spec.md ST-LR | Consistent? |
+|-----------|--------------|--------------|-------------|
+| `(nothing) → running` via `ingestRawInformation` | Yes | Yes | Yes |
+| `running → completed` via `runLlmExtraction` clean finish | Yes | Yes | Yes |
+| `running → failed` via `runLlmExtraction` fatal exception | Yes | Yes | Yes |
+| `failed → running` via `retryLlmRun` (attempts+=1, orphan fragments → rejected) | Yes | Yes | Yes |
+| `completed → terminal` | Yes | Yes | Yes |
+
+DB invariant `CHECK (status = 'running') = (finished_at IS NULL)` is referenced in both documents.
+
+**Result: PASS.** State machines are consistent.
+
+---
+
+### Check 5 — BR-26 Step 5a — The v1.4.2 Change
+
+The v1.4.2 change adds an explicit clarification in BR-26 step 5a that `rawInformationMetadata.received_at` is the canonical date-anchor for `extraction.v3` when resolving relative date expressions.
+
+Verification:
+
+1. **No new schema change**: BR-26 step 5a states "No new field on any DTO, no new column, no new MCP tool argument". `RawInformation` schema in `openapi.yaml` already carries `received_at` as `format: date-time`. **Confirmed — no schema change.**
+
+2. **No new endpoint**: No new operationId appears in `openapi.yaml` for v1.4.2 vs v1.4.1. The openapi.yaml `info.version` is now `1.4.2`, and the description block on lines 67–85 describes the `extraction.v3` `received_at` anchor as a descriptive change only. **Confirmed — no new endpoint.**
+
+3. **No new error code**: BR-26 step 5a explicitly states "No new BR, no new error code". **Confirmed.**
+
+4. **Variant 1 constraint holds**: The requirement specifies "NO database migration / NO schema change (Variant 1)". BR-26 step 5a is purely a prompt-builder contract clarification — the `received_at` field was already passed to `prompt.user({...})` in every prior version (the orchestrator read `rawInformationMetadata`). **Confirmed — Variant 1 constraint satisfied.**
+
+5. **received_at is already in `RawInformation` schema**: `openapi.yaml` `RawInformation` schema lists `received_at` as a required field (`type: string, format: date-time`). This field was present before v1.4.2. **Confirmed.**
+
+6. **`extraction.v3` is the DEFAULT_PROMPT_VERSION since v1.4.0**: The `openapi.yaml` description block (lines 68–69) states `DEFAULT_PROMPT_VERSION = 'v3'` since v1.4.0. BR-34 (v1.4.0 changelog) confirms `DEFAULT_PROMPT_VERSION = 'v3'` in the BR-32 context. **Confirmed.**
+
+**Result: PASS.** The v1.4.2 change is a correct additive clarification with no schema change, no new error code, and no new endpoint.
+
+---
+
+### Check 6 — DEFAULT_PROMPT_VERSION Consistency (Warning)
+
+The back.md §1 "Anthropic client config" row states `DEFAULT_PROMPT_VERSION = 'v2'` as the recommended version. However:
+
+- `openapi.yaml` description (lines 68–69) states: `extraction.v3.ts`, the registry default since v1.4.0 — `DEFAULT_PROMPT_VERSION = 'v3'`
+- The v1.2.9 changelog (BR-32) already mentions `DEFAULT_PROMPT_VERSION = 'v3'`
+- BR-34 (v1.4.0) confirms `DEFAULT_PROMPT_VERSION = 'v3'` as the fallback in BR-30
+- The v1.4.2 changelog explicitly confirms `extraction.v3` is the active prompt
+
+The §1 table row was written at v1.2.0 when v2 was the latest prompt, and was never updated as the default was promoted to v3. This is a **documentation inconsistency** (the v3 prompt is the actual live default), not a behavioral or schema error — the actual behavior is driven by the code registry, and both the openapi.yaml and the changelog are consistent on v3.
+
+This is a **warning-level inconsistency** (stale documentation in §1 back.md; does not block implementation).
+
+---
+
+### Check 7 — No DDL / Schema Change (Variant 1 constraint)
+
+Scanned all BR descriptions and the changelog entry for v1.4.2 for any DDL, migration, or schema change references.
+
+- Back.md header row: "Schema: `migrations/0001_init.sql` (single bootstrap; no DDL change required by this revision)" — explicitly confirms no migration.
+- BR-26 step 5a: "No new field on any DTO, no new column, no new MCP tool argument".
+- v1.4.2 changelog: "No new BR, no new error code, no OpenAPI surface change, no `LLMRun` / `ToolCall` / `RawInformation` schema change — purely internal prompt-builder semantics".
+
+**Result: PASS.** Variant 1 constraint holds. No DDL or schema change introduced.
+
+---
+
+### Check 8 — Orphan Spec Detection
+
+- All BRs reference existing UCs: **No orphan BRs.**
+- UC-13 (RETIRED): The UC number is reserved with a traceability note. BR-32 references it as WITHDRAWN. **No issue — by design.**
+- No UI-NN or FL-NN references to check (back phase only).
+- No EV declared in back.md without a consumer (back.md does not use EV notation).
+
+**Result: PASS.** No orphan spec issues.
+
+---
+
+### Check 9 — Version Consistency
+
+| Document | Version | Changelog entry |
+|----------|---------|----------------|
+| `ingestion.back.md` | 1.4.2 | Yes — v1.4.2 entry on 2026-06-26 |
+| `openapi.yaml` | 1.4.2 | Reflected in `info.version: "1.4.2"` |
+| `ingestion.spec.md` | 1.4.1 | Last entry is v1.4.0 (spec.md version is consistent since back.md 1.4.2 is a correction/clarification only; no new UC or BR added to spec.md) |
+
+The `ingestion.spec.md` at v1.4.1 is a minor version ahead of the previous v1.4.0 visible in the changelog. The back.md describes the change as "correction" — purely internal clarification in BR-26 step 5a; no UC or BR required changing in spec.md for this correction. This is consistent.
+
+**Result: PASS.** Versions are consistent.
+
+---
+
+## Coverage Map
+
+| UC | Endpoint / Tool | BRs | Status |
+|----|-----------------|-----|--------|
+| UC-01 | `POST /api/v1/ingest/raw-information` (`ingestRawInformation`) | BR-01, BR-02, BR-03, BR-04, BR-05, BR-06, BR-07, BR-08, BR-09 | Covered |
+| UC-02 | `GET /api/v1/ingest/raw-information/{id}` (`getRawInformationById`) | BR-02 | Covered |
+| UC-03 | `GET /api/v1/ingest/raw-information/{id}/chunks` (`listRawChunksByRawInformation`) | BR-05 | Covered |
+| UC-04 | `GET /api/v1/ingest/llm-runs/{id}` (`getLlmRunById`) | BR-12 | Covered |
+| UC-05 | `GET /api/v1/ingest/llm-runs/{id}/tool-calls` (`listToolCallsByLlmRun`) | — | Covered |
+| UC-06 | `POST /api/v1/ingest/llm-runs/{id}/retry` (`retryLlmRun`) | BR-10, BR-11 | Covered |
+| UC-07 | Internal — no public endpoint | — | Covered (internal) |
+| UC-08 | `POST /api/v1/ingest/llm-runs/{id}/propose-fragment` (`proposeFragment`) | BR-13, BR-14, BR-18, BR-19, BR-21, BR-22, BR-23, BR-24 | Covered |
+| UC-09 | `POST /api/v1/ingest/llm-runs/{id}/propose-node` (`proposeNode`) | BR-13, BR-14, BR-19, BR-20, BR-21, BR-23, BR-24, BR-25 | Covered |
+| UC-10 | `POST /api/v1/ingest/llm-runs/{id}/propose-link` (`proposeLink`) | BR-13..BR-19, BR-21, BR-23, BR-24, BR-27 | Covered |
+| UC-11 | `POST /api/v1/ingest/llm-runs/{id}/propose-attribute` (`proposeAttribute`) | BR-13..BR-19, BR-21, BR-23, BR-24, BR-27 | Covered |
+| UC-12 | `POST /api/v1/ingest/llm-runs/{id}/run` (`runLlmExtraction`) | BR-26, BR-29 | Covered |
+| UC-13 | RETIRED — no endpoint | BR-32 (WITHDRAWN) | Reserved — not active |
+| UC-14 | MCP tool `ingest_directed` (no REST mirror) | BR-34, BR-33 | Covered (MCP-only) |
+
+---
+
+## Summary
+
+| Check | Result | Severity |
+|-------|--------|----------|
+| 1. UC ↔ BR Cross-Reference | PASS | — |
+| 2. BR ↔ OpenAPI Error Codes | PASS | — |
+| 3. Error Codes in Global Catalog | PASS | — |
+| 4. State Machine Consistency | PASS | — |
+| 5. BR-26 Step 5a (v1.4.2 change) | PASS | — |
+| 6. DEFAULT_PROMPT_VERSION in §1 back.md | WARNING | warning |
+| 7. Variant 1 — No DDL/Schema Change | PASS | — |
+| 8. Orphan Spec Detection | PASS | — |
+| 9. Version Consistency | PASS | — |
+
+**Blocking inconsistencies: 0**
+**Warning inconsistencies: 1**
+**Overall result: VALID**
+
+---
+
+## Inconsistencies
+
+| # | Type | Source file | Expected target | Problem | Suggested fix | Agent | Severity | Selected |
+|---|------|-------------|-----------------|---------|---------------|-------|----------|----------|
+| W-01 | cross-ref | `ingestion.back.md` §1 "Anthropic client config" row | `openapi.yaml` + changelog | §1 Anthropic config row states `DEFAULT_PROMPT_VERSION = 'v2'` but the actual default has been `'v3'` since v1.4.0 (confirmed by openapi.yaml description, v1.2.9 changelog, BR-30, BR-34) | Update §1 Anthropic client config row to reflect `DEFAULT_PROMPT_VERSION = 'v3'` and add `extraction.v3.ts` to the registry list alongside `v1` and `v2` | Back Spec Agent | warning | [ ] |
 
 ---
 
 ## Triage History
 
-| Date | Selected items | Activated agents | Result |
-|------|---------------|-----------------|--------|
-| 2026-06-25 | INC-01 (warning), INC-02 (blocking), INC-03 (warning) | Spec Writer (INC-01, INC-02, INC-03) | VALID after repair cycle 1 |
+| Date | By | Action | Notes |
+|------|----|--------|-------|
+| 2026-06-26 | u-spec-validator-sdd_ingestion_spec-validator | Initial validation pass for v1.4.2 | VALID with 1 warning (stale §1 doc, non-blocking) |

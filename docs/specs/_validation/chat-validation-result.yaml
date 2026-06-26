@@ -1,66 +1,47 @@
 validation:
   domain: chat
-  artifact_version: "2.8.0"
-  spec_version: "2.4.0"
-  openapi_version: "2.6.0"
+  artifact_version: "2.9.0"
   mode: incremental_back
-  validated_by: u-spec-validator-sdd_chat_spec-validator
-  timestamp: "2026-06-25T15:43:00Z"
+  validated_by: u-spec-validator
+  timestamp: "2026-06-26T15:01:30Z"
   layer: permanent
-  task_id: sdd_chat_spec-validator
 
 status: VALID
 blocking_count: 0
-warning_count: 2
+warning_count: 3
 handoff_allowed: true
 
-checks:
-  - id: retired-tools-absent
-    description: "start_async_ingestion and get_ingestion_status absent from active chat catalog"
-    result: PASS
-  - id: ingest-directed-consistency
-    description: "ingest_directed consistently defined across openapi.yaml, chat.spec.md, chat.back.md"
-    result: PASS
-  - id: error-codes-in-catalog
-    description: "All error codes used in chat specs present in global error-codes.md"
-    result: PASS
-  - id: br-numbering
-    description: "BR numbering complete (BR-01..BR-45) with intentional retired placeholders"
-    result: PASS
-  - id: uc-11-retired-placeholder
-    description: "UC-11 has a proper retired placeholder in chat.spec.md"
-    result: PASS
-  - id: version-alignment
-    description: "back.md references correct versions of spec.md and openapi.yaml"
-    result: PASS
-  - id: state-machine-consistency
-    description: "ST-01 / ST-02 consistent between spec.md and back.md"
-    result: PASS
+blocking_issues: []
 
 warnings:
   - id: WARN-001
-    type: stale-description
-    source: "docs/specs/_global/error-codes.md line 107"
+    type: cross-ref
+    source: "docs/specs/_global/error-codes.md"
     description: >
       BUSINESS_CHAT_INGEST_DISABLED description still references start_async_ingestion /
       get_ingestion_status (retired in v2.6/v2.8). Description should be updated to reference
       ingest_directed and v2.6+. Non-blocking — the code itself is correct and registered.
-    severity: warning
-    agent: Spec Writer
 
   - id: WARN-002
-    type: version-naming-drift
+    type: cross-ref
     source: "docs/specs/domains/chat/chat.spec.md"
     description: >
-      BR annotations in spec.md use "v2.6" labels (e.g. BR-05 v2.6, BR-43 v2.6) for the
-      directed-ingestion changes, while back.md uses "v2.8" and the domain spec changelog
-      version is "2.4.0". No content contradictions; label-only inconsistency.
-    severity: warning
-    agent: Spec Writer
+      Version-naming drift: chat.spec.md header declares version 2.7.0 but its changelog's
+      last entry is 2.5.0 (the temporal fidelity entry). chat.back.md (v2.9.0) correctly
+      references chat.spec.md as v2.5.0, consistent with the changelog. The spec header
+      should be updated to 2.5.0 OR the changelog should add a 2.7.0 stub entry to match
+      the header. No content contradictions; label-only inconsistency.
 
-resolution_notes: >
-  2026-06-25: Full re-validation for sdd_chat_spec-validator (directed ingestion replaces async
-  ingestion). The three artifacts (openapi.yaml v2.6.0, chat.spec.md v2.4.0, chat.back.md v2.8.0)
-  are internally consistent on the ingest_directed contract. No retired tool names appear in active
-  catalog positions. UC-11 is properly retired with a placeholder. Error codes are all registered.
-  Handoff to implementation group is allowed.
+  - id: WARN-003
+    type: cross-ref
+    source: "docs/specs/domains/chat/back/chat.back.md"
+    description: >
+      chat.back.md §1 (Stack and Patterns) "External integration" row still contains
+      a sentence referencing the v2.4 async ingestion tools in the middle of the v2.8
+      description: "plus 2 ingest tools (start_async_ingestion, get_ingestion_status)
+      resolved via mcp.getTool('ingest', name) when env.CHAT_INGEST_ENABLED === true
+      (BR-05 v2.4 / BR-44)." This text is embedded in a long prose paragraph and
+      contradicts the v2.8 retirement of those tools. The authoritative section header
+      and the BR references later in the same paragraph are correct (BR-05 v2.8 / BR-44 v2.8);
+      only the parenthetical tool-name snippet is stale. Non-blocking since the authoritative
+      BR sections are correct. Spec Writer should remove the stale tool names from that sentence.

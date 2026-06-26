@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.6.0"
+  version: "2.7.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -88,6 +88,62 @@ info:
     REPORT the inline per-item result back to the Owner (no auto-loop —
     each command is a single tool call followed by the natural-language
     answer).
+
+    ## v2.7.0 — Temporal & memory fidelity (additive — no wire change, no migration)
+
+    Five cohesive context-builder + summary changes that improve the chat
+    agent's recall of older facts and inject the current date/time, WITHOUT
+    changing any HTTP/SSE wire shape, any persisted column, any error code,
+    or any endpoint. Documented here only because the chat domain's
+    description prose references the affected envs and the system-prompt
+    rendering rule. See chat.spec.md BR-31 v2.7 / BR-33 v2.7 / BR-46 (new)
+    / BR-47 (new) for the normative contract.
+
+      1. Recent window semantics — `CHAT_RECENT_WINDOW` now counts REAL TURNS
+         (user `chat_message` rows with `idempotency_key NOT NULL`) instead
+         of raw message rows. Default drops from `10 rows` to `6 turns`. All
+         scaffolding rows of selected turns (assistant `[text, tool_use]`,
+         synthetic user `[tool_result]`, terminal assistant `[text]`) are
+         included in full. Reconstructed sequence is sanitised by
+         `sanitizeAnthropicSequence` — Anthropic never sees a dangling
+         tool_use/tool_result pair.
+      2. Rolling-summary fold — `summary_new = summarize(summary_prev +
+         bounded_overlap_slice)`. New env `CHAT_SUMMARY_OVERLAP_M` (default
+         `40`) caps the slice. Prior summary is re-fed on every refresh, so
+         older facts persist without permanent loss; cost per refresh is
+         constant.
+      3. Refresh-on-overflow — `CHAT_SUMMARY_AFTER_TURNS` is RETIRED as a
+         gate. The refresh runs whenever at least one real turn is older
+         than the recent window and has not been absorbed yet. Still
+         fire-and-forget after the SSE response terminates, NEVER throws.
+      4. Summary prompt module v2 (new env `CHAT_SUMMARY_PROMPT_VERSION`,
+         default `v2`) — receives `(summary_prev, new_messages)` and emits a
+         pt-BR summary capped at ~8 sentences, treating slice content as
+         DATA, never instruction.
+      5. Datetime injection — the chat system field is sent as a TWO-BLOCK
+         array on every turn: Block A (persona + tools + directives,
+         `cache_control: ephemeral`) UNCHANGED; Block B (NEW)
+         `"Data/hora atual do dono: <ISO-8601 with offset> (<tz>)"` WITHOUT
+         `cache_control` (placing dynamic content in a cached block would
+         defeat the prefix cache). Rendered in new env `OWNER_TZ` (default
+         `America/Sao_Paulo`; invalid IANA zone -> boot ERROR fail-closed).
+         Block B is a HINT only — it does NOT compute `valid_from` for
+         `ingest_directed` (BR-43 v2.6's "stated, otherwise ask" rule
+         stands).
+
+    Cross-domain (additive, owned by `ingestion`): extraction.v3's user
+    prompt accepts an optional `received_at` argument and uses it as a
+    relative-date anchor when `document_date` is missing — chat does not
+    own or enforce that anchor; see chat.spec.md §7 v2.7.
+
+    Locked design parameters: `CHAT_RECENT_WINDOW` default = 6 turns;
+    `CHAT_SUMMARY_OVERLAP_M` default = 40 rows; `OWNER_TZ` default =
+    `America/Sao_Paulo`; refresh-on-overflow trigger; datetime as a SECOND
+    non-cached system block.
+
+    NO migration, NO schema change, NO new HTTP endpoint, NO new SSE frame,
+    NO new error code, NO new openapi schema. The chat catalog (BR-05 v2.6,
+    13 read tools + 0|1 `ingest_directed`) is UNCHANGED.
 
     ## v2.5.0 — Graph-view snapshot schema `v2` (`layout_algorithm`)
 
@@ -410,7 +466,10 @@ paths:
         The client supplies ONLY the new user `content`. The server reconstructs
         the model context from the database on every turn (BR-31): system prompt
         + (optional) `summary_rolling` block + the last `CHAT_RECENT_WINDOW`
-        messages. The client MUST NOT resend the history.
+        REAL TURNS (v2.7 semantic — default 6 turns; each selected turn
+        includes ALL its scaffolding rows). Block B of the system field
+        carries the current date/time in `OWNER_TZ` (BR-47). The client
+        MUST NOT resend the history.
 
         ## Idempotency-Key (REQUIRED, BR-26)
 
@@ -1279,9 +1338,17 @@ components:
           nullable: true
           description: |
             Distilled summary of the older portion of the conversation, refreshed
-            non-blockingly after `CHAT_SUMMARY_AFTER_TURNS` user turns
-            (chat.spec.md BR-33). Null when the conversation is short enough to
-            fit entirely in the recent window OR when `CHAT_SUMMARY_ENABLED=false`.
+            non-blockingly via the rolling FOLD (chat.spec.md BR-33 v2.7 /
+            BR-46): `summary_new = summarize(summary_prev +
+            bounded_overlap_slice)`, where the slice is capped by
+            `CHAT_SUMMARY_OVERLAP_M` (default 40 rows) and the previous
+            summary is re-fed on every refresh. The refresh runs ON OVERFLOW
+            (any time at least one real turn is older than the recent window
+            and not yet absorbed). Null when the conversation is short
+            enough to fit entirely in the recent window OR when
+            `CHAT_SUMMARY_ENABLED=false`. v2.7 NOTE:
+            `CHAT_SUMMARY_AFTER_TURNS` is DEPRECATED as a gate — only the
+            overflow trigger advances the summary now.
           example: null
         created_at:
           type: string

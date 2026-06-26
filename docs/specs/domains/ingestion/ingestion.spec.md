@@ -1,6 +1,6 @@
 # Ingestion -- Business Specification
 
-> Version: 1.4.0 | Status: draft | Layer: permanent
+> Version: 1.4.1 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml` (REST) + MCP toolset `ingest` (§14.1 of `remember-modelagem-v7.md`)
 >
 > Normative source: `remember-modelagem-v7.md` (§3.1, §3.2, §3.5, §4, §6.5, §8, §9, §11, §13, §14.1).

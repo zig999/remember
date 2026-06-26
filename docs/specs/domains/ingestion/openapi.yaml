@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember — Ingestion Domain API"
-  version: "1.4.1"
+  version: "1.4.2"
   description: |
     REST contract for the ingestion domain of the Remember system.
 
@@ -63,6 +63,26 @@ info:
     `ingest_directed` is rollout-flag-guarded on the chat side by
     `env.CHAT_INGEST_ENABLED` (boot-only); the tool itself is always
     registered on the `ingest` toolset regardless of the chat flag.
+
+    Extraction prompt v3 — `received_at` as date baseline (v1.4.2). The v3
+    extraction prompt module (`extraction.v3.ts`, the registry default since
+    v1.4.0 — `DEFAULT_PROMPT_VERSION = 'v3'`) instructs the model to resolve
+    relative-date words in chunk text ("hoje", "ontem", "amanhã", "semana que
+    vem") against `document_date` when present, and to **fall back to the
+    document's `received_at`** (already exposed to the prompt via
+    `rawInformationMetadata.received_at`, BR-26 step 5a) when `document_date` is
+    absent. With that baseline, the model proposes a concrete ISO date with
+    `valid_from_basis = "document"` (when `document_date` was used) or with
+    `valid_from_basis = "stated"` (when the resolved date is itself stated
+    textually) instead of omitting the date; the temporal validator (BR-16)
+    accepts both bases unchanged. The directive preserves the inviolable rule
+    "NEVER invent a date" — when neither baseline can resolve the relative
+    word (e.g. the document carries no `document_date` and the chunk has no
+    explicit temporal anchor) the model omits the date and the backend's
+    `received` fallback applies server-side per BR-16. Descriptive change
+    only: no schema change, no new endpoint, no new error code, no change to
+    any request/response shape — the prompt v3 module is the sole site of
+    the directive update.
 
 servers:
   - url: "http://localhost:3000"
