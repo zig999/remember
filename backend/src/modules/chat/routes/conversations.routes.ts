@@ -779,7 +779,11 @@ export async function registerChatRoutes(
         }
       }
 
-      // ---- (10) Build the model context (BR-31).
+      // ---- (10) Build the model context (BR-31 v2.9 + BR-47 v2.9).
+      // Capture `now` ONCE per turn (BR-47 step 6) — every `messages.create`
+      // iteration inside the agentic loop must see the SAME BlockB string.
+      // `deps.now()` returns epoch-ms; wrap it in `Date` for the renderer.
+      const turnNow = new Date(now());
       const modelContext = await buildModelContext({
         pool: deps.pool,
         conversation,
@@ -788,10 +792,13 @@ export async function registerChatRoutes(
         // SAME reference for the process lifetime, which keeps the rendered
         // ontology block byte-stable and the Anthropic `cache_control`
         // prefix valid across turns). v1/v2 modules IGNORE the argument
-        // (backward-compat).
-        systemPrompt: getPromptModuleLazy().system(
+        // (backward-compat). Renamed from `systemPrompt` to `blockAText` at
+        // v2.9 to match BR-47 step 1 terminology.
+        blockAText: getPromptModuleLazy().system(
           deps.catalog ?? EMPTY_KG_CATALOG_SNAPSHOT
         ),
+        now: turnNow,
+        ownerTz: deps.env.OWNER_TZ,
         recentLimit: deps.env.CHAT_RECENT_WINDOW,
       });
 
@@ -1274,6 +1281,17 @@ function emitChatBootLog(deps: ChatRouteDeps): void {
       "chat deprecated env var detected (BR-33 v2.9 — retired as gate)"
     );
   }
+  // chat.back.md BR-47 step 4 — emit `chat.owner_tz_resolved { tz }` at boot
+  // AFTER `loadEnv` has validated the value. The log is emitted unconditionally
+  // because `OWNER_TZ` carries a fail-closed default (`America/Sao_Paulo`) —
+  // every running process has a resolved value.
+  deps.logger.info(
+    {
+      event: "chat.owner_tz_resolved",
+      tz: deps.env.OWNER_TZ,
+    },
+    "chat OWNER_TZ resolved"
+  );
 }
 
 function writeSseHeaders(reply: FastifyReply): void {
