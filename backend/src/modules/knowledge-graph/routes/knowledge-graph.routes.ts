@@ -20,8 +20,10 @@
 //   - GET /api/v1/nodes/{node_id}/attributes/{key}/history    (UC-11)
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { Logger } from "pino";
+
+import { withReadOnly } from "../../../shared/pg-transaction.js";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
@@ -399,31 +401,3 @@ function handleReadError(
   return reply.status(statusCode).send(envelope);
 }
 
-/**
- * Run `fn` against an acquired connection in READ ONLY mode. The
- * knowledge-graph module owns no INSERT / UPDATE statements (BR-10); we
- * still take a transaction so multi-statement reads observe a stable
- * `current_date` (back spec §1 "Transaction policy"). The transaction
- * is rolled back unconditionally — there is nothing to commit.
- */
-async function withReadOnly<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN READ ONLY");
-    const result = await fn(client);
-    await client.query("ROLLBACK");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Swallow rollback failure — surface the original error.
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}

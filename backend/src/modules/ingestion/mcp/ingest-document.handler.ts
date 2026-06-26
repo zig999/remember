@@ -21,9 +21,10 @@
 // or 409). The tool reports `already_ingested` with the existing ids — never an
 // error.
 
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { Logger } from "pino";
 
+import { withTransaction } from "../../../shared/pg-transaction.js";
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import { ingestRawInformation } from "../service/ingestion.service.js";
 import {
@@ -82,29 +83,6 @@ export interface IngestDocumentDeps {
     pool: Pool,
     llmRunId: string
   ) => Promise<string | undefined>;
-}
-
-/** Minimal single-statement transaction wrapper (BR-19). */
-async function withTransaction<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Swallow ROLLBACK failures — the original error is what we surface.
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
 }
 
 /** Best-effort read of an LLMRun's status — used on the idempotent path so a

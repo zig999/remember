@@ -931,7 +931,7 @@ export async function registerChatRoutes(
 
           // BR-09: project to the SSE wire frame — drop persistence-only fields.
           const wireFrame = projectSseFrame(evt);
-          tryWrite(reply, wireFrame);
+          tryWrite(reply, wireFrame, deps.logger);
 
           // TC-be-002: synthesise a `graph_delta` frame AFTER the `tool_result`
           // frame for any tool that produces graph data (traverse / get_node /
@@ -959,7 +959,7 @@ export async function registerChatRoutes(
                 nodes: graphDelta.nodes,
                 links: graphDelta.links,
               };
-              tryWrite(reply, projectSseFrame(graphEvt));
+              tryWrite(reply, projectSseFrame(graphEvt), deps.logger);
             }
           }
 
@@ -990,7 +990,7 @@ export async function registerChatRoutes(
           code: "SYSTEM_INTERNAL_ERROR",
           message: "chat encountered an internal error",
         };
-        tryWrite(reply, frameJson("error", synthetic));
+        tryWrite(reply, frameJson("error", synthetic), deps.logger);
         terminalKind = "error";
         errorSyntheticStop = "internal_error";
       }
@@ -1104,10 +1104,10 @@ async function handleIdempotentReplay(
   const startedAt = now();
   reply.hijack();
   writeSseHeaders(reply);
-  tryWrite(reply, frameJson("llm_start", { iteration: 1 }));
+  tryWrite(reply, frameJson("llm_start", { iteration: 1 }), deps.logger);
   const storedText = extractTextFromContent(assistantRow.content);
   if (storedText.length > 0) {
-    tryWrite(reply, frameJson("text_delta", { delta: storedText }));
+    tryWrite(reply, frameJson("text_delta", { delta: storedText }), deps.logger);
   }
   // We surface the stored stop_reason on the done frame. Synthetic
   // `provider_error` / `internal_error` markers are mapped back to
@@ -1121,7 +1121,8 @@ async function handleIdempotentReplay(
       model: assistantRow.model ?? "",
       tokens_in: assistantRow.tokens_in ?? 0,
       tokens_out: assistantRow.tokens_out ?? 0,
-    })
+    }),
+    deps.logger
   );
   endRaw(reply, deps.logger);
 
@@ -1351,11 +1352,25 @@ function frameJson(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-function tryWrite(reply: FastifyReply, frame: string): boolean {
+function tryWrite(
+  reply: FastifyReply,
+  frame: string,
+  logger: Logger
+): boolean {
   if (reply.raw.writableEnded || reply.raw.destroyed) return false;
   try {
     return reply.raw.write(frame);
-  } catch {
+  } catch (err) {
+    // A mid-stream write failure (client disconnect, reset socket) is benign
+    // but operationally invisible if swallowed silently — log at debug so a
+    // dropped SSE frame is queryable during incident triage.
+    logger.debug(
+      {
+        event: "chat.sse_write_failed",
+        cause_message: err instanceof Error ? err.message : "unknown",
+      },
+      "SSE frame write failed (socket likely closed) — dropping frame"
+    );
     return false;
   }
 }

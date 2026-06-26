@@ -12,8 +12,10 @@
 //   - GET  /api/v1/fragments/accepted                  (TC-be-002, openapi v1.3.0)
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { Logger } from "pino";
+
+import { withReadOnly } from "../../../shared/pg-transaction.js";
 
 import type { CatalogSnapshot } from "../../knowledge-graph/index.js";
 import {
@@ -233,25 +235,3 @@ function handleProvenanceError(
   return reply.status(statusCode).send(envelope);
 }
 
-/** Run `fn` inside a READ ONLY transaction (BR — back spec §1). */
-async function withReadOnly<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN READ ONLY");
-    const result = await fn(client);
-    await client.query("ROLLBACK");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // swallow; surface original
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}

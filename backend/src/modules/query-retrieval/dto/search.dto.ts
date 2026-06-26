@@ -6,25 +6,12 @@
 
 import { z } from "zod";
 
+import { IntegerQuery } from "../../../shared/zod-coercion.js";
+
 /** Booleans surface as "true"/"false" strings on the wire — coerce. */
 const BooleanQuery = z
   .union([z.boolean(), z.enum(["true", "false"])])
   .transform((v) => (typeof v === "boolean" ? v : v === "true"));
-
-const IntegerQuery = z
-  .union([z.number(), z.string()])
-  .transform((v, ctx) => {
-    if (typeof v === "number") return v;
-    const parsed = Number(v);
-    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "must be an integer",
-      });
-      return z.NEVER;
-    }
-    return parsed;
-  });
 
 const IsoDateOnly = z
   .string()

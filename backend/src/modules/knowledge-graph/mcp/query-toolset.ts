@@ -27,6 +27,7 @@ import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import { withReadOnly } from "../../../shared/pg-transaction.js";
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
   AttributeIdParamSchema,
@@ -217,32 +218,9 @@ export interface McpEnvelopeJson {
 }
 
 // ---------------------------------------------------------------------------
-// Local read-only transaction wrapper. Mirrors the helper that lives inside
-// `routes/knowledge-graph.routes.ts` — duplicated rather than imported to keep
-// the MCP toolset independent of the REST routes file (Rule 3 surgical).
+// The read-only transaction wrapper is imported from
+// `shared/pg-transaction.ts` (single source for every module).
 // ---------------------------------------------------------------------------
-
-async function withReadOnly<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN READ ONLY");
-    const result = await fn(client);
-    await client.query("ROLLBACK");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Swallow rollback failure — surface the original error.
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}
 
 /**
  * Build the per-tool handler factory. Each handler:

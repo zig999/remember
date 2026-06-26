@@ -38,8 +38,10 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { Logger } from "pino";
+
+import { withTransaction } from "../../../shared/pg-transaction.js";
 import { z } from "zod";
 
 import { isPgUnavailable } from "../../../shared/error-mapping.js";
@@ -805,33 +807,6 @@ function synthesiseContent(
   }
   lines.push(`-- directed_at=${at.toISOString()} nonce=${nonce}`);
   return { content: lines.join("\n"), nonce };
-}
-
-/**
- * Run a single statement inside a short transaction. Mirrors the helper
- * in `ingest-document.handler.ts`; kept local so the orchestrator does not
- * have to take a dependency on a transport-specific module.
- */
-async function withTransaction<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* swallow — original error wins */
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
 }
 
 /**

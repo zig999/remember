@@ -46,6 +46,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
+
+import { withTransaction } from "../../../shared/pg-transaction.js";
 import { z } from "zod";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
@@ -585,33 +587,3 @@ class ProposeMirrorEnvelopeReject extends Error {
   }
 }
 
-/**
- * Run `fn` inside a single transaction. The caller passes the live `client`
- * to the service / repository. If `fn` throws, we ROLLBACK and re-throw so
- * the global error handler can map the error. We always release the client
- * back to the pool, no matter what.
- *
- * Implemented inline to keep transaction boundaries colocated with the route
- * layer (BR-19 of ingestion.back.md).
- */
-async function withTransaction<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Swallow ROLLBACK failures — the original error is what we surface.
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}

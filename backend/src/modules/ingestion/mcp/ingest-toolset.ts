@@ -25,9 +25,11 @@
 // Idempotency: `McpServer.registerTool` rejects duplicates by design; calling
 // this registrar twice in the same process throws. The boot wires it once.
 
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { Logger } from "pino";
 import { z, ZodError } from "zod";
+
+import { withReadOnly } from "../../../shared/pg-transaction.js";
 
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import { IngestToolDescriptions } from "../dto/index.js";
@@ -373,35 +375,12 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
 }
 
 // --------------------------------------------------------------------------
-// Read-only helpers for the three operational tools above. Mirrors the
-// `withReadOnly` + envelope pattern of `query-retrieval/mcp/query-toolset.ts`,
-// duplicated rather than imported to keep the ingest toolset independent of the
-// query-retrieval module (Rule 3 surgical). The error mapper handles the
-// ingestion-domain `ResourceNotFoundError` (the KG mapper recognises a
-// DIFFERENT class) plus Zod / pg-unavailable / unknown terminals.
+// Error mapping for the three operational tools above. The error mapper handles
+// the ingestion-domain `ResourceNotFoundError` (the KG mapper recognises a
+// DIFFERENT class) plus Zod / pg-unavailable / unknown terminals. The
+// `withReadOnly` wrapper is imported from `shared/pg-transaction.ts` (single
+// source for every module).
 // --------------------------------------------------------------------------
-
-async function withReadOnly<T>(
-  pool: Pool,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN READ ONLY");
-    const result = await fn(client);
-    await client.query("ROLLBACK");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Swallow rollback failure — surface the original error.
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}
 
 function mapReadError(err: unknown): McpEnvelopeJson {
   if (err instanceof ZodError) {

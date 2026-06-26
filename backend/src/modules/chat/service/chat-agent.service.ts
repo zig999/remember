@@ -337,8 +337,13 @@ async function* runTurnGenerator(
     if (activeStream !== undefined) {
       try {
         activeStream.abort();
-      } catch {
-        // Swallow — the SDK may have already ended.
+      } catch (err) {
+        // The SDK may have already ended the stream — aborting twice is benign.
+        // Log at debug so the swallow is observable without alarming.
+        ctx.logger.debug(
+          { cause_message: err instanceof Error ? err.message : "unknown" },
+          "chat stream abort (on signal) no-op — stream already ended"
+        );
       }
     }
   };
@@ -740,8 +745,13 @@ async function* runTurnGenerator(
     if (activeStream !== undefined) {
       try {
         activeStream.abort();
-      } catch {
-        // ignore
+      } catch (err) {
+        // Cleanup-path abort — stream may already be torn down. Benign; log at
+        // debug for observability rather than swallowing silently.
+        ctx.logger.debug(
+          { cause_message: err instanceof Error ? err.message : "unknown" },
+          "chat stream abort (cleanup) no-op — stream already ended"
+        );
       }
     }
   }
