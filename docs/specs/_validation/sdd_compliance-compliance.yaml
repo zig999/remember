@@ -1,238 +1,99 @@
 # =============================================================================
 # sdd_compliance-compliance.yaml
 # Compliance scan output — u-spec-compliance
-# Domains: chat, ingestion | Regulations: lgpd | Spec versions: chat 2.9.0 / ingestion 1.4.2
-# Generated: 2026-06-26T16:22:00Z
-# Supersedes: scan on chat-compliance.yaml (spec version 2.3.0 / 2026-06-22)
-# Improvement cycle: v2.9 temporal & memory fidelity (chat) + received_at date-anchor (ingestion)
+# Domain: NodeDetailPanel (features/graph) — front component spec v2.0.0
+# Regulations: lgpd
+# Generated: 2026-06-26T23:28:00Z
+# Supersedes: previous sdd_compliance-compliance.yaml (chat/ingestion v2.9/v1.4.2)
+# Improvement cycle: NodeDetailPanel progressive-disclosure wave (v2.0.0)
 # =============================================================================
 
 scan:
-  id: CMP-20260626-162200
+  id: CMP-20260626-232800
   reviewed_by: u-spec-compliance
-  domains:
-    - chat
-    - ingestion
-  spec_versions:
-    chat: "2.9.0"
-    ingestion: "1.4.2"
-  timestamp: "2026-06-26T16:22:00Z"
+  domain: NodeDetailPanel (features/graph)
+  spec_version: "2.0.0"
+  timestamp: "2026-06-26T23:28:00Z"
   layer: permanent
   regulations_checked:
     - lgpd
-  improvement_cycle_focus:
-    - "chat BR-31 v2.9: CHAT_RECENT_WINDOW semantics — turns not rows (K=6)"
-    - "chat BR-33 v2.9: rolling summary as incremental fold, refresh-on-overflow, M=40 overlap"
-    - "chat BR-47 (NEW): OWNER_TZ datetime injection as second non-cached system block"
-    - "ingestion BR-26 step 5a v1.4.2: received_at as relative-date anchor in extraction.v3"
 
-findings:
-  - id: CFND-001
-    regulation: lgpd
-    article_or_control: LGPD Art.18 (direito de eliminação) — erasure scope documentation
-    type: hardcoded_pii_in_spec_example
-    location:
-      file: docs/specs/domains/chat/openapi.yaml
-      section: "SSE stream examples (graph_delta) and ChatContentBlock text example"
-    gap_description: >
-      The OpenAPI examples include the realistic Portuguese first name "Rodrigo" in SSE stream
-      data values, graph_delta node canonical_name, text_delta strings, ChatMessage content,
-      and ChatContentBlock text example fields, constituting real-looking PII in spec example values.
-    required_spec_change: >
-      Replace the name "Rodrigo" in all example values with a clearly synthetic placeholder
-      such as "Entidade-Exemplo" or "AA-BB-CC".
-    action: add_warning
-    carry_forward_from: CMP-20260622-205100
-
-  - id: CFND-002
-    regulation: lgpd
-    article_or_control: LGPD Art.18 (direito de eliminação) — erasure scope documentation
-    type: hardcoded_pii_in_spec_example
-    location:
-      file: docs/specs/domains/ingestion/openapi.yaml
-      section: "RawInformation schema — metadata example"
-    gap_description: >
-      The metadata example field carries the real-looking full name "Maria Oliveira" as an
-      author value in three separate example objects (RawInformation schema, and two ingest
-      request body examples), constituting real-looking PII in spec example values.
-    required_spec_change: >
-      Replace the value "Maria Oliveira" in all example objects with a clearly synthetic
-      placeholder such as "A. Exemplo" or "Autor-Fictício".
-    action: add_warning
+findings: []
 
 verdict: compliant
 
 # =============================================================================
-# Compliance scan notes — improvement cycle v2.9 (informational)
+# Compliance scan notes — NodeDetailPanel v2.0.0 progressive-disclosure wave
 # =============================================================================
 #
-# LGPD rules evaluated against the five improvement-cycle changes.
-# Scope: chat domain v2.9.0 (chat.back.md) and ingestion domain v1.4.2 (ingestion.back.md).
-#
-# ── CHANGE 1: CHAT_RECENT_WINDOW semantics — turns not rows (BR-31 v2.9) ──
-#
-# LGPD impact assessment: NONE.
-#
-# 1. missing_data_retention_policy
-#    PASS — The semantic change is a query-scope adjustment (how many real turns
-#    are selected from existing chat_message rows). No new personal-data column is
-#    introduced; no new retention period is required. The existing cascade-delete
-#    contract (BR-37: DELETE /conversations/:id cascades via ON DELETE CASCADE) is
-#    unchanged.
-#
-# 2. missing_audit_log
-#    PASS — No write operation is introduced by this change; the context-builder
-#    is read-only (withReadOnly transactions). The audit trail (BR-32 chat_tool_call)
-#    is unaffected.
-#
-# 3. missing_right_to_erasure
-#    PASS — No new data surface is created; the erasure path covers all chat_message
-#    rows via the existing cascade. No gap introduced.
-#
-# ── CHANGE 2: Rolling summary as incremental fold (BR-33 v2.9, M=40 overlap) ──
-#
-# LGPD impact assessment: NONE requiring a blocking or CR-requiring finding.
-#
-# 1. missing_data_retention_policy
-#    PASS — summary_rolling is stored on the existing chat_conversation row (a
-#    nullable TEXT column, already in the schema). The rolling fold overwrites the
-#    same column on each refresh — no accumulation of extra rows. The column is
-#    covered by the same cascade-delete as the rest of chat_conversation (BR-37).
-#    No new retention period BR is structurally required: the conversation's own
-#    lifecycle (BR-37 deleteConversation / archived_at) is the governing lifecycle
-#    and is already documented.
-#
-#    Advisory note (informational): summary_rolling is a synthesised abstraction
-#    of conversation content. Under LGPD Art.16 (legitimate purpose and necessity),
-#    storing a distilled summary of conversations containing personal data is
-#    proportionate to the single-owner, personal knowledge-repository purpose (v7
-#    §2.3, A20). The data subject IS the owner-operator; no third-party personal
-#    data is collected from the owner's own conversations with the system.
-#    This is recorded here as an informational note, not a gap.
-#
-# 2. missing_audit_log
-#    PASS — The rolling-summary refresh is a background fire-and-forget operation
-#    whose failure is logged at WARN level (BR-33 v2.9 "Never throws into the
-#    caller"). No write-bearing MCP tool call is performed; no new auditable action
-#    arises. The pino observability record (BR-19) explicitly excludes summary_rolling
-#    from logged fields (BR-19: "NEVER logs summary_rolling").
-#
-# 3. missing_right_to_erasure
-#    PASS — summary_rolling resides in chat_conversation and is deleted by the same
-#    ON DELETE CASCADE path as all other conversation data (BR-37). Setting
-#    CHAT_SUMMARY_ENABLED=false clears no existing summaries but prevents future
-#    writes — this is a config concern, not an erasure gap.
-#
-# 4. missing_data_minimization
-#    PASS — The bounded_overlap_slice is capped at CHAT_SUMMARY_OVERLAP_M rows
-#    (default 40) and operates on rows already persisted for primary-purpose use
-#    (context replay). The summariser's output is bounded to ~8 sentences (BR-46).
-#    No excess data is collected beyond what is already stored for the turn replay
-#    purpose (BR-31 context window).
-#
-# ── CHANGE 3: Refresh-on-overflow gate (BR-33 v2.9 step 1) ──
-#
-# LGPD impact assessment: NONE.
-#
-# This is a trigger-condition change only (overflow replaces turn-count gate).
-# The write target (summary_rolling column) and the erasure path are unchanged.
-# No new LGPD gap introduced.
-#
-# ── CHANGE 4: OWNER_TZ datetime injection as second system block (BR-47, NEW) ──
-#
-# LGPD impact assessment: NONE — structural elements required by LGPD
-# are already present; one informational note recorded below.
-#
-# 1. pii_field_undeclared
-#    PASS — OWNER_TZ is an IANA timezone identifier (e.g. "America/Sao_Paulo"),
-#    not a personal-data field by the detection rule (the PII name-pattern list:
-#    email, name, phone, cpf, address, birth_date, ip_address). A timezone string
-#    does not match any of these patterns. OWNER_TZ is an env var never persisted
-#    to any database table or included in any stored log field (BR-19 explicitly
-#    excludes it; BR-47 §9 states "No persistence of BlockB").
-#
-# 2. missing_audit_log
-#    PASS — BlockB is a transient in-memory hint assembled at the start of each
-#    turn and forwarded verbatim to Anthropic; it is never persisted (BR-47 §9).
-#    The turn's audit trail (chat_tool_call, BR-32 and the turn pino record, BR-19)
-#    is unchanged; BlockB is specifically excluded from the per-turn log record.
-#    The LLM receiving a datetime hint does not constitute a data-modifying operation
-#    requiring an audit row.
-#
-# 3. missing_data_retention_policy
-#    PASS — BlockB is not stored. There is no retention-period concern for a field
-#    that exists only as a transient in-process variable per turn.
-#
-# 4. missing_consent_mechanism
-#    PASS — Single-owner system (v7 §2.3, A20); the Owner IS the sole operator and
-#    data subject. Injecting the owner's current local time into the system prompt
-#    is an operational configuration of the owner's own tool; no third-party personal
-#    data is involved and no consent mechanism is required.
-#
-#    Advisory note (informational): OWNER_TZ is an implicit, single-owner timezone
-#    configured at the BFF process level. Under LGPD Art.6 (legitimate purpose),
-#    inferring or storing the owner's timezone for the purpose of making the AI
-#    assistant temporally aware is proportionate to the declared purpose of a
-#    personal knowledge repository. The value is operator-configured (env var),
-#    not inferred from requests. This is recorded as an informational note, not a gap.
-#
-# ── CHANGE 5: received_at as date-anchor in extraction.v3 (ingestion BR-26 step 5a) ──
-#
-# LGPD impact assessment: NONE.
-#
-# 1. missing_data_retention_policy
-#    PASS — received_at is an existing column on raw_information (set to now() at
-#    intake, BR-02 of ingestion). The change is that extraction.v3's user() builder
-#    now passes this already-persisted timestamp to the LLM as a relative-date anchor
-#    in the user-turn message. No new column, no new field, no new retention period
-#    is required; the anchor is a transient value in the LLM call context, not a
-#    persisted datum.
-#
-# 2. missing_audit_log
-#    PASS — The received_at anchor is part of rawInformationMetadata, already
-#    included in the user-turn context delivered to the LLM (BR-26 step 5a). The
-#    audit trail (llm_run, tool_call rows) is unchanged; passing received_at as an
-#    additional context hint does not alter the auditable action (the propose_*
-#    calls remain the auditable boundary). Traceability from KnowledgeNode/Link/
-#    Attribute back to raw source (provenance, BR-18) is unchanged and unaffected.
-#
-# 3. missing_data_minimization
-#    PASS — received_at is already stored on raw_information (required for the
-#    idempotency contract and audit trail). Reusing it as a relative-date anchor
-#    in the prompt introduces no new data collection; the field is used for its
-#    originally declared purpose (documenting when the document was received).
-#
-# ── PII FIELD SCAN — OpenAPI schemas ──
-#
-# Fields scanned in chat/openapi.yaml and ingestion/openapi.yaml for PII name patterns
-# (email, name, phone, cpf, address, birth_date, ip_address):
-#
-# chat/openapi.yaml:
-#   - No schema property whose NAME matches the PII pattern list.
-#   - "canonical_name" on GraphNodeWire: the field name contains "name" as a suffix
-#     but per the detection rule this applies to name patterns for personal data
-#     storage; "canonical_name" is a knowledge-graph entity identifier, not a column
-#     storing a person's name as personal data. Detection rule is name-based and
-#     "canonical_name" does not match the standalone pattern "name". No gap.
-#   - Example VALUES containing "Rodrigo": flagged as CFND-001 (add_warning).
-#
-# ingestion/openapi.yaml:
-#   - No schema property whose NAME matches the PII pattern list.
-#   - metadata.author is a free-form metadata field (additionalProperties: true on
-#     the metadata object); the field name "author" does not appear in the PII
-#     pattern list (email, name, phone, cpf, address, birth_date, ip_address).
-#     No structural gap.
-#   - Example VALUES containing "Maria Oliveira": flagged as CFND-002 (add_warning).
+# LGPD rules evaluated against NodeDetailPanel.component.spec.md v2.0.0.
+# Scope: frontend component spec — read-only display of existing KG data.
 #
 # ── SINGLE-OWNER MODEL NOTE ──
 #
-# The system is single-owner by specification (v7 §2.3, A20): the Owner is both
-# the operator and the sole data subject. No User entity exists in any domain schema.
-# LGPD obligations relating to multi-tenant personal data processing (consent
-# mechanisms, data portability for third-party data subjects, etc.) do not arise.
-# The LGPD §11 compliance_delete flow (erasure) covers the ingestion-layer raw data
-# (RawInformation / RawChunk / InformationFragment) and is documented in
-# compliance-audit.spec.md. The chat domain's erasure path (BR-37 deleteConversation
-# + ON DELETE CASCADE) is independent and structurally documented. The five v2.9
-# improvement-cycle changes do not introduce any new personal-data fields, new data
-# subjects, or new processing purposes that would require additional LGPD controls.
+# The system is single-owner by specification (v7 §2.3, A20). The Owner is both
+# the operator and the sole data subject. LGPD obligations relating to third-party
+# personal data processing do not arise. This note applies to all rules below.
+#
+# ── RULE: missing_data_retention_policy ──
+#
+# PASS — The component is entirely read-only (GET endpoints only: getNodeById,
+# traverseNode depth=1, getProvenanceByLink, getProvenanceByAttribute). No new
+# personal-data columns are created or stored. Data retention is governed by the
+# ingestion and compliance-audit domain specs already cleared in prior scans.
+#
+# ── RULE: missing_consent_mechanism ──
+#
+# PASS — The component does not collect personal data. It reads and displays
+# existing KG data to the single-owner operator. No consent mechanism is required.
+#
+# ── RULE: missing_audit_log ──
+#
+# PASS — All three phases (A/B/C) are read-only. The detection rule applies only
+# to endpoints that create, modify, or delete sensitive data. No write operation
+# is introduced by this spec.
+#
+# ── RULE: pii_field_undeclared ──
+#
+# PASS — Field names present in the spec's data layer:
+#   received_at, fragment_text, source_type, source_label, chunk_index,
+#   offset_start, offset_end, excerpt, canonical_name, confidence, valid_from,
+#   valid_to, effective_status, metadata.title, metadata.document_date.
+# None of these field names match the PII pattern list
+# (email, name, phone, cpf, address, birth_date, ip_address).
+# "canonical_name" contains "name" as a suffix; per the detection rule and
+# consistent with the prior scan (CFND-001 rationale), "canonical_name" is a
+# KG entity identifier, not a personal-data field. No gap.
+#
+# ── RULE: missing_right_to_erasure ──
+#
+# PASS — No new erasure surface is introduced. The spec explicitly handles the
+# compliance-delete tombstone state: §3 "Success — lazy provenance tombstoned"
+# and §7 Scenario 4 document the 410 BUSINESS_RAW_INFORMATION_DELETED response
+# mapping to "Documento original removido por conformidade." with no retry
+# button, indicating that the UI correctly surfaces the erasure outcome without
+# attempting to bypass it.
+#
+# ── RULE: missing_data_minimization ──
+#
+# PASS — Phase C provenance data is fetched lazily (enabled gate on TanStack
+# Query — only fires when the user explicitly expands "Ver origem completa").
+# No pre-fetching of provenance occurs on mount, consistent with the Do/Don't
+# table in §6. No excess data is collected beyond what the user requests.
+#
+# ── RULE: hardcoded_pii_in_spec_example ──
+#
+# PASS — This is a component spec, not an OpenAPI schema file; the detection
+# rule applies to example: values in OpenAPI schemas. The BDD scenario text
+# in §7 uses "Rodrigo" and "Apollo" as illustrative node labels in scenario
+# prose, not in OpenAPI example: fields. No OpenAPI example: field is present
+# in this file. No finding raised.
+# (Advisory note: "Rodrigo" as a scenario label name is consistent with the
+# same name used in existing graph BDD tests and is informational only.)
+#
+# ── VERDICT ──
+#
+# The NodeDetailPanel v2.0.0 spec introduces no new LGPD structural gaps.
+# The component is read-only, single-owner, handles compliance-deleted tombstones
+# correctly, and introduces no new personal-data collection, consent requirements,
+# or audit obligations. Verdict: compliant (no findings).

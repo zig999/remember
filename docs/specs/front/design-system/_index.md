@@ -2,7 +2,7 @@
 
 > Path: `docs/specs/front/design-system/`
 > Implementation: `frontend/src/styles/theme.css` (Tailwind v4 `@theme` block, single source of CSS tokens)
-> Version: 1.3.0 | Layer: permanent
+> Version: 1.4.0 | Layer: permanent
 
 ---
 
@@ -44,10 +44,11 @@ Rationale: Remember is a personal workstation — data-dense exploration with th
 |---|---|---|
 | [`tokens.md`](./tokens.md) | Colors (incl. confidence states, NodeType colors, LinkType colors + temporal/stable stroke), spacing, typography, radius, shadow, glass-surface (3 levels), ambient-backdrop treatment, graph-depth overlay, 7 motion variants (4 state-change + 2 glass surface enter/exit + 1 CRT power-on), z-index scale | Whenever implementing visual styles |
 | [`composition.md`](./composition.md) | Glass effects, hierarchy, ChatWorkspace layout, density, motion composition | Building layouts or understanding component z-layer relationships |
-| [`components.md`](./components.md) | Component catalog — DS atoms (GlassSurface, StateBadge, GraphNode, ChatBubble, ConversationMenu), shadcn/ui primitives (incl. Select), feature-local reference tables (chat, auth, graph) | Implementing or invoking any shared component |
+| [`components.md`](./components.md) | Component catalog — DS atoms (GlassSurface, StateBadge, GraphNode, ChatBubble, ConversationMenu), shadcn/ui primitives (incl. Select), feature-local reference tables (chat, auth, graph including NodeDetailPanel sub-components) | Implementing or invoking any shared component |
 | [`implementation.md`](./implementation.md) | Accessibility QA checklist (global + chat + sign-in), motion factory table + `transitionCrtPowerOn` spec, known gotchas, QA viewports | QA review, implementing animations or a11y requirements |
 | [`../components/StateBadge.component.spec.md`](../components/StateBadge.component.spec.md) | Confidence-state badge atom | Implementing or invoking the state badge |
 | [`../components/GlassSurface.component.spec.md`](../components/GlassSurface.component.spec.md) | Frosted-glass container atom | Building any floating layer or theme-aware glass region |
+| [`../components/NodeDetailPanel.component.spec.md`](../components/NodeDetailPanel.component.spec.md) | Inline node detail panel with progressive disclosure (Phase A: attribute provenance, Phase B: relationships, Phase C: lazy full provenance) | Implementing NodeDetailPanel or its sub-components |
 
 ---
 
@@ -58,5 +59,6 @@ Rationale: Remember is a personal workstation — data-dense exploration with th
 | 1.0.0 | 2026-06-18 | Spec Writer | initial | Foundation wave: tokens + StateBadge + GlassSurface | -- |
 | 1.0.1 | 2026-06-19 | Front Spec Agent | patch | Cross-domain review: updated tokens.md file summary to reflect 6 motion variants (2 GlassSurface enter/exit variants added). | sdd_front |
 | 1.1.0 | 2026-06-20 | Front Spec Agent | minor | Auth/sign-in wave: file summary updated (7 motion variants — `transitionCrtPowerOn` added; composition.md + components.md + implementation.md added to table). `components.md` now catalogs auth feature-local components (SignInPanel, SignInForm) + shadcn/ui Label. `implementation.md` adds §1.3 sign-in a11y checklist + `transitionCrtPowerOn` spec (§2.2) + Stack Auth gotchas (§3.7, §3.8). | sdd_front |
-| 1.3.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: `components.md` file summary updated (Select added to primitives; graph feature-local table §4.3 added). No token changes — all graph tokens pre-existed. | sdd_front |
 | 1.2.0 | 2026-06-21 | Front Spec Agent | minor | Better Auth migration: `implementation.md` §3.7/§3.8 updated (Stack Auth gotchas → Better Auth `credentials:'include'` + error code casing). No DS token or component catalog changes — UI is identical; only the auth layer changes. | sdd_front |
+| 1.3.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: `components.md` file summary updated (Select added to primitives; graph feature-local table §4.3 added). No token changes — all graph tokens pre-existed. | sdd_front |
+| 1.4.0 | 2026-06-26 | Front Spec Agent | minor | Progressive-disclosure wave: file summary updated (NodeDetailPanel.component.spec.md v2.0 added to table). `components.md` updated to catalog 3 new NodeDetailPanel sub-components (NodeAttributeRow, NodeRelationshipRow, NodeProvenanceChain) and REQ-6 unidirectionality note. No token changes — all tokens pre-existed. | sdd_front |

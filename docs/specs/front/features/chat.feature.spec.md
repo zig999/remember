@@ -2,7 +2,7 @@
 
 > Route: `/chat` — **primary view** (owner decision 2026-06-20; `/` redirects here)
 > Domain: chat (single domain — all 9 operationIds)
-> Version: 1.2.0 | Status: draft | Layer: permanent
+> Version: 1.3.0 | Status: draft | Layer: permanent
 
 > This is the feature spec for the chat conversation workspace. It documents the implemented code;
 > the source of truth is `frontend/src/features/chat/` and `frontend/src/features/graph/`.
@@ -14,7 +14,7 @@
 
 ## §1 Consumed Endpoints
 
-> Selection map only — Method+Path and Auth are in `domains/chat/openapi.yaml` (chat operations) and `domains/knowledge-graph/openapi.yaml` (`getNodeById`).
+> Selection map only — Method+Path and Auth are in `domains/chat/openapi.yaml` (chat operations), `domains/knowledge-graph/openapi.yaml`, and `domains/query-retrieval/openapi.yaml`.
 >
 > **v2.3 note:** `start_async_ingestion` and `get_ingestion_status` are server-side tool dispatches inside the `sendMessage` SSE loop (gated by `CHAT_INGEST_ENABLED=true`). They are NOT REST operationIds and do NOT appear in this table. The SPA consumes them only as `tool_start`/`tool_result` SSE frames (see §4 Data Layer Notes / `chat-stream.ts`).
 
@@ -29,7 +29,10 @@
 | chat | `sendMessage` | Submit a user turn; SSE stream drives streaming bubble in `MessageStream` AND emits `graph_delta` frames consumed by `useGraphStore` (see §4.1) |
 | chat | `getConversationUsage` | Lazy token + tool-call aggregates shown in `UsageBadge` inside `Composer` |
 | chat | `cancelTurn` | Cooperative stop — invoked by `Composer` stop button via `useCancelTurn` |
-| knowledge-graph | `getNodeById` | Inline node detail in `NodeDetailPanel` (right column, replaces `GraphSpace` while open) — fetches aliases + current attributes for a selected node |
+| knowledge-graph | `getNodeById` | Inline node detail in `NodeDetailPanel` — fetches aliases + current attributes (Phase A provenance data already in response) |
+| knowledge-graph | `traverseNode` | `NodeDetailPanel` Phase B — load relationships depth=1 via `useNodeRelationships(nodeId)`; each link carries inline provenance |
+| query-retrieval | `getProvenanceByLink` | `NodeDetailPanel` Phase C — lazy full provenance chain for a link, fetched only when "Ver origem completa" is expanded |
+| query-retrieval | `getProvenanceByAttribute` | `NodeDetailPanel` Phase C — lazy full provenance chain for an attribute, fetched only when "Ver origem completa" is expanded |
 
 ---
 
@@ -621,9 +624,15 @@ Actions (chat → graph only; the graph pane never writes here from user interac
 - `settleTurn(frame: "done" | "error")` — terminal-frame reducer; `"done"` → `ready` if any delta arrived this turn, else stays `empty`; `"error"` → `error` only if a graph tool was in flight.
 - `dequeueReveal()` — pop one id; called by `useGraphReveal` on each tick.
 
-### `getNodeById` query — node detail (right column inline)
+### `getNodeById` / `traverseNode` / `getProvenance*` queries — node detail (right column inline)
 
-Defined in `features/graph/api/useNodeDetail.ts`. TanStack Query hook over the `knowledge-graph` domain. Enabled only while `selectedNode !== null` in `ChatWorkspace` (i.e., a `NodeDetailPanel` is mounted). Key: `["nodes", id, "detail"]`. `staleTime: 30s`. No cache invalidation needed on chat actions — the chat is read-only and the node detail is read-only too. Errors render an inline error state in `NodeDetailPanel` (no toast; panel-local affordance).
+`useNodeDetail` (`features/graph/api/useNodeDetail.ts`) — TanStack Query over `knowledge-graph`. Enabled only while `selectedNode !== null`. Key: `["nodes", id, "detail"]`. `staleTime: 5 min`. Phase A attribute provenance is included in the response — no extra fetch.
+
+`useNodeRelationships` (`features/graph/api/useNodeRelationships.ts`) — TanStack Query over `knowledge-graph.traverseNode`. Enabled after `useNodeDetail` resolves. Key: `["graph","node",id,"relationships"]`. `staleTime: 5 min`.
+
+`useProvenance(kind, id, enabled)` (`features/graph/api/useProvenance.ts`) — TanStack Query over `query-retrieval.getProvenanceByLink` or `query-retrieval.getProvenanceByAttribute`. `enabled` is true only when the user opens the "Ver origem completa" disclosure. Key: `["graph","provenance",kind,id]`. `staleTime: 5 min`.
+
+No cache invalidation needed on chat actions — the chat is read-only and the graph is read-only. All errors render inline in `NodeDetailPanel` (no toast; panel-local affordance). See `NodeDetailPanel.component.spec.md §9` for full hook signatures.
 
 ---
 
@@ -634,3 +643,4 @@ Defined in `features/graph/api/useNodeDetail.ts`. TanStack Query hook over the `
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Regenerated from implemented code. Primary view (`/`→`/chat`), 40/60 split, SSE streaming, ConversationMenu in Header, 10 UI states, data layer notes. |
 | 1.1.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | Chat ↔ GraphSpace integration documented (built under EPIC-FE-03 / TC-FE-01..TC-FE-11). §1 adds `getNodeById` (knowledge-graph). §2 adds UI-11..UI-14 (graph right-column states: empty / loading / revealing / ready / error). §3 adds the graph state-transition table driven by SSE `tool_start`/`graph_delta`/`tool_result`/`done`/`error`. §4 documents the 7th SSE frame `graph_delta` (chat-stream union) and the `useGraphStore` / `getNodeById` data layers. §10 adds the new components (`GraphSpace`, `GraphCanvas`, `GraphNodeAdapter`, `GraphEdgeAdapter`, `GraphStatusOverlay`, `GraphEmptyState`, `NodeDetailPanel`, `ChatStatusIndicator`) and records `ChatWorkspace` update. §11 adds the UC-CG-01..UC-CG-13 use-case table and the unidirectionality invariant (REQ-6). §12 (was §11) — removed "Chat ↔ Graph interaction" and "Graph explorer" rows; added new exclusions (write tools in chat, persist per-turn subgraph, click-to-traverse). Normative plan source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21. |
 | 1.2.0 | 2026-06-22 | Front Spec Agent | minor (additive) | **Async ingestion capability (chat.spec.md v2.3).** No new routes, no new components, no new REST operationIds. The v2.3 backend change adds two server-side tool dispatches (`start_async_ingestion` / `get_ingestion_status`) to the chat agentic loop behind `CHAT_INGEST_ENABLED=true`. Updates: §1 note (v2.3 annotation — these are NOT REST operationIds; they are SSE `tool_start`/`tool_result` frames only); §2 UI-04 (ToolCallChip list now can include ingestion tool chips via the same generic chip path); §4 `chat-stream.ts` note (tool_start union extended — ingestion tools are non-graph tools; no `graph_delta` emitted for them); §6 two new in-stream-not-terminal rows (`STRUCTURAL_INVALID` from layered-validation rejection of `start_async_ingestion`; `SYSTEM_SERVICE_UNAVAILABLE` ingestion-path from Postgres-down during intake); §9 Scenario 6 (async ingestion happy path via chat); §12 out-of-scope updated (v2.3 catalog is now 15 tools when flag is on; curation tools remain out). Revokes the v1.1.0 "13 read-only tools" framing in §12. Backend normative source: `chat.spec.md` v2.3 / `openapi.yaml` v2.3 (BR-43, BR-44, BR-45). | sdd_chat_async-ingestion |
+| 1.3.0 | 2026-06-26 | Front Spec Agent | minor (additive) | **Progressive-disclosure wave (NodeDetailPanel v2.0).** No new routes. §1: note updated to reference query-retrieval domain; 3 new operationIds added (`traverseNode`, `getProvenanceByLink`, `getProvenanceByAttribute`) consumed by `NodeDetailPanel` Phase B/C. §4: `getNodeById` data-layer note expanded to document `useNodeRelationships` and `useProvenance` hooks and their enabled/staleTime contracts. | sdd_front |

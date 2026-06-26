@@ -2,7 +2,7 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.2.0 | Status: draft
+> Version: 1.3.0 | Status: draft
 
 ---
 
@@ -121,7 +121,7 @@ The following components live inside `features/auth/components/`. Full specs are
 
 ### 4.3 Graph feature (`features/graph/components/`)
 
-The following components live inside `features/graph/components/`. Full spec is in `GraphSpace.component.spec.md` and `GraphEdge.component.spec.md`.
+The following components live inside `features/graph/components/`. Full spec is in `GraphSpace.component.spec.md`, `GraphEdge.component.spec.md`, and `NodeDetailPanel.component.spec.md`.
 
 | Component | Feature | Role | Notes |
 |---|---|---|---|
@@ -131,7 +131,10 @@ The following components live inside `features/graph/components/`. Full spec is 
 | `GraphEdgeAdapter` | graph | Custom RF edge — floating geometry via `useInternalNode` + `getEdgeParams` | REQ-1: connects at nearest node boundary, not fixed handle |
 | `GraphStatusOverlay` | graph | `aria-live="polite"` loading/error overlay | |
 | `GraphEmptyState` | graph | Centered empty state copy | |
-| `NodeDetailPanel` | graph | Inline node detail — replaces GraphSpace in right pane | Spec: `NodeDetailPanel.component.spec.md` |
+| `NodeDetailPanel` | graph | Inline node detail — replaces GraphSpace in right pane; progressive disclosure of attributes (Phase A), relationships (Phase B), and lazy full provenance (Phase C) | Spec: `NodeDetailPanel.component.spec.md` v2.0 |
+| `NodeAttributeRow` | graph | Single attribute row + Phase A inline provenance disclosure + Phase C lazy provenance disclosure | Sub-component of `NodeDetailPanel`; stays in `NodeDetailPanel/` directory |
+| `NodeRelationshipRow` | graph | Single relationship row + Phase B inline link provenance + Phase C lazy provenance disclosure | Sub-component of `NodeDetailPanel`; stays in `NodeDetailPanel/` directory |
+| `NodeProvenanceChain` | graph | Renders a `ProvenanceResponse` (Phase C result): chunk index/offsets/excerpt + RawInformation metadata | Reused by both `NodeAttributeRow` and `NodeRelationshipRow` |
 
 ---
 
@@ -146,6 +149,8 @@ Any feature may import from `components/ds/` or `components/ui/`. DS atoms are t
 Feature-local components (`features/<x>/components/`) may NOT be imported by a different feature (`features/<y>/`). Only `components/ds/`, `components/ui/`, `lib/`, and `state/` are shared.
 
 Exception: DS atoms in `components/ds/` may import types from `features/*/types.ts` when those types are data-only (no React, no runtime coupling). Current example: `ChatBubble.types.ts` imports `ToolCallData` from `features/chat/types.ts`.
+
+**REQ-6 (unidirectionality):** `features/graph/` MUST NOT import from `features/chat/`. A structural test enforces this. `NodeDetailPanel` and all its sub-components are confined to `features/graph/`.
 
 ### 5.3 CVA usage rule
 
@@ -171,5 +176,6 @@ Components with a single appearance do NOT use CVA. `SignInPanel` and `SignInFor
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Initial component catalog. DS atoms: GlassSurface, StateBadge, GraphNode, ChatBubble, ConversationMenu. Shadcn/ui primitives used in chat wave. Feature-local reference table. |
-| 1.2.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: §3 `Select` added to shadcn/ui primitives (algorithm selector). §4.3 graph feature-local reference table added (GraphCanvas Panel, invisible handles in GraphNodeAdapter, floating-edge GraphEdgeAdapter). |
 | 1.1.0 | 2026-06-20 | Front Spec Agent | minor | Auth wave: added `Input` + `Label` to shadcn/ui primitives table (sign-in uses them). Added §4.2 auth feature-local components (SignInPanel, SignInForm). §5.4: sign-in `animate={false}` CRT exception documented. |
+| 1.2.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave: §3 `Select` added to shadcn/ui primitives (algorithm selector). §4.3 graph feature-local reference table added (GraphCanvas Panel, invisible handles in GraphNodeAdapter, floating-edge GraphEdgeAdapter). |
+| 1.3.0 | 2026-06-26 | Front Spec Agent | minor | Progressive-disclosure wave: §4.3 updated — `NodeDetailPanel` description updated to cover Phase A/B/C. Added 3 new sub-components: `NodeAttributeRow`, `NodeRelationshipRow`, `NodeProvenanceChain`. §5.2 REQ-6 unidirectionality note added explicitly. |
