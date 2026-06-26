@@ -19,6 +19,7 @@
 
 import type { PoolClient } from "pg";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
 import { CHUNKING_VERSION } from "../chunker/config.js";
 import { chunkV1 } from "../chunker/v1.js";
 import {
@@ -136,7 +137,7 @@ export async function ingestRawInformation(
     // The chunker is supposed to emit at least one chunk for any non-empty
     // content (Zod min(1) guarantees that). Defensive guard — surface as
     // 500 if the invariant ever breaks.
-    throw new Error("chunkV1 returned no chunks for non-empty content");
+    throw new InvariantError("chunkV1 returned no chunks for non-empty content");
   }
 
   const chunkRows = await insertRawChunks(
@@ -161,7 +162,7 @@ export async function ingestRawInformation(
     // unlikely because we hold the row lock from the first INSERT in the
     // same transaction. Surface as 500 (the global handler maps it).
     if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) {
-      throw new Error(
+      throw new InvariantError(
         `llm_run idempotency_key collision on a freshly inserted raw_information (${rawInformationRow.id}); ` +
           `database is in an inconsistent state — manual intervention required.`
       );
@@ -203,13 +204,13 @@ async function noopExisting(
     // Should be impossible because we just hit the UNIQUE violation; but
     // surface as 500 rather than 404 — the database is in an unexpected
     // state, not the request.
-    throw new Error(
+    throw new InvariantError(
       `noopExisting: content_hash UNIQUE violated but no raw_information row found for ${contentHash}`
     );
   }
   const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);
   if (run === null) {
-    throw new Error(
+    throw new InvariantError(
       `noopExisting: raw_information ${existing.id} exists for content_hash ${contentHash} ` +
         `but no llm_run row matches idempotency_key ${idempotencyKey}. ` +
         `Database is inconsistent — BR-09 invariant violated.`

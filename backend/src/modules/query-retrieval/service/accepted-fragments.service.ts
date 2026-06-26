@@ -19,7 +19,7 @@ import type {
   AcceptedFragmentItem,
   AcceptedFragmentList,
 } from "../dto/fragment.dto.js";
-import type { SourceType } from "../dto/response.dto.js";
+import { toSourceType } from "../dto/response.dto.js";
 import {
   countAcceptedFragments,
   selectAcceptedFragments,
@@ -66,7 +66,7 @@ export async function listAcceptedFragmentsService(
     source: {
       raw_information_id: row.raw_information_id,
       chunk_index: row.chunk_index,
-      source_type: row.source_type as SourceType,
+      source_type: toSourceType(row.source_type),
       received_at: row.received_at.toISOString(),
       document_title: row.document_title,
     },

@@ -37,6 +37,8 @@ import { default as AnthropicClient } from "@anthropic-ai/sdk";
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
+
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
   IngestToolDescriptions,
@@ -821,7 +823,7 @@ async function loadRunContext(
     if (rawInfo === null) {
       // This is a referential-integrity violation — the FK in `llm_run`
       // already guarantees the row exists. Treat as 500.
-      throw new Error(
+      throw new InvariantError(
         `llm_run ${llmRunId} references missing raw_information ${runRow.input_raw_information_id}`
       );
     }

@@ -15,6 +15,7 @@
 
 import type { PoolClient } from "pg";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
 import type { RawChunkInput } from "../chunker/v1.js";
 import type { SourceType } from "../dto/source-type.js";
 import type {
@@ -90,7 +91,7 @@ export async function insertRawInformation(
   const row = result.rows[0];
   if (row === undefined) {
     // Programming error — the INSERT either succeeds or throws.
-    throw new Error("insertRawInformation: no row returned");
+    throw new InvariantError("insertRawInformation: no row returned");
   }
   return row;
 }
@@ -198,7 +199,7 @@ export async function insertLlmRun(
   );
   const row = result.rows[0];
   if (row === undefined) {
-    throw new Error("insertLlmRun: no row returned");
+    throw new InvariantError("insertLlmRun: no row returned");
   }
   return row;
 }

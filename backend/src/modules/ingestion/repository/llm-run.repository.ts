@@ -12,6 +12,7 @@
 
 import type { Pool, PoolClient } from "pg";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
 import type {
   IngestToolName,
   LlmRunStatus,
@@ -278,7 +279,7 @@ export async function insertToolCall(
   );
   const row = res.rows[0];
   if (row === undefined) {
-    throw new Error("insertToolCall: no row returned");
+    throw new InvariantError("insertToolCall: no row returned");
   }
   return row;
 }
@@ -381,7 +382,7 @@ export async function insertFragmentWithSources(
   );
   const fragmentId = fragRes.rows[0]?.id;
   if (fragmentId === undefined) {
-    throw new Error("insertFragmentWithSources: no fragment id returned");
+    throw new InvariantError("insertFragmentWithSources: no fragment id returned");
   }
   // Bulk insert fragment_source via unnest — single round trip.
   await client.query(

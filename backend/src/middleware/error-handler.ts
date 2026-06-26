@@ -130,16 +130,20 @@ export function classify(err: unknown): {
   // 5. Fastify-thrown HTTP errors with a known statusCode (e.g. 404 from the
   //    router). We forward the status but rewrite the body to our envelope.
   if (isFastifyHttpError(err)) {
+    const isServerError = err.statusCode >= 500;
     return {
       statusCode: err.statusCode,
       envelope: {
         ok: false,
         error: {
           code: codeFromHttpStatus(err.statusCode),
-          message: err.message,
+          // Never leak an internal message on a 5xx path (the file contract):
+          // 4xx messages are client-actionable and framework-generated, but a
+          // 5xx message may carry internal detail — use a generic string.
+          message: isServerError ? "Internal server error." : err.message,
         },
       },
-      logLevel: err.statusCode >= 500 ? "error" : "warn",
+      logLevel: isServerError ? "error" : "warn",
     };
   }
 
