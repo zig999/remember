@@ -5,6 +5,7 @@ import type {
   AssertionFlag,
   AssertionStatus,
   EffectiveStatus,
+  SourceType,
 } from "../dto/enums.dto.js";
 import type { AttributeDetailResponse } from "../dto/attribute.dto.js";
 import type { LinkDetailResponse } from "../dto/link.dto.js";
@@ -13,6 +14,7 @@ import type {
   NodeSummaryResponse,
 } from "../dto/node.dto.js";
 import type { ProvenanceEntryResponse } from "../dto/provenance.dto.js";
+import { InvariantError } from "../../../shared/invariant-error.js";
 import type {
   AttributeResolvedRow,
   KnowledgeNodeRow,
@@ -36,6 +38,16 @@ const EFFECTIVE_STATUS: ReadonlySet<EffectiveStatus> = new Set([
   "superseded",
   "deleted",
   "inactive",
+]);
+
+const SOURCE_TYPE: ReadonlySet<SourceType> = new Set([
+  "pdf",
+  "email",
+  "ata",
+  "chat",
+  "artigo",
+  "transcricao",
+  "outro",
 ]);
 
 /** Format a YYYY-MM-DD date from a `pg` Date (or pass through ISO strings). */
@@ -67,14 +79,21 @@ function toAssertionStatus(s: string): AssertionStatus {
   if (ASSERTION_STATUS.has(s as AssertionStatus)) {
     return s as AssertionStatus;
   }
-  throw new Error(`Unexpected assertion_status from DB: ${s}`);
+  throw new InvariantError(`Unexpected assertion_status from DB: ${s}`);
 }
 
 function toEffectiveStatus(s: string): EffectiveStatus {
   if (EFFECTIVE_STATUS.has(s as EffectiveStatus)) {
     return s as EffectiveStatus;
   }
-  throw new Error(`Unexpected effective_status from DB: ${s}`);
+  throw new InvariantError(`Unexpected effective_status from DB: ${s}`);
+}
+
+function toSourceType(s: string): SourceType {
+  if (SOURCE_TYPE.has(s as SourceType)) {
+    return s as SourceType;
+  }
+  throw new InvariantError(`Unexpected source_type from DB: ${s}`);
 }
 
 /**
@@ -170,7 +189,7 @@ export function toProvenanceEntry(row: ProvenanceRow): ProvenanceEntryResponse {
     fragment_text: row.fragment_text,
     confidence: toNumber(row.fragment_confidence),
     raw_information_id: row.raw_information_id,
-    source_type: row.source_type as ProvenanceEntryResponse["source_type"],
+    source_type: toSourceType(row.source_type),
     received_at:
       formatTimestamptz(row.received_at) ?? new Date(0).toISOString(),
     excerpt: row.excerpt,

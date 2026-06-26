@@ -11,6 +11,7 @@
 
 import type { PoolClient } from "pg";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
 import type { ComplianceDeletionAffected } from "../dto/compliance-delete.dto.js";
 
 // ---------------------------------------------------------------------------
@@ -239,7 +240,7 @@ export async function insertComplianceDeletion(
   );
   const row = res.rows[0];
   if (!row) {
-    throw new Error("insertComplianceDeletion returned no row");
+    throw new InvariantError("insertComplianceDeletion returned no row");
   }
   return row;
 }
@@ -378,7 +379,7 @@ export async function insertCurationAction(
   );
   const row = res.rows[0];
   if (!row) {
-    throw new Error("insertCurationAction returned no row");
+    throw new InvariantError("insertCurationAction returned no row");
   }
   return row;
 }

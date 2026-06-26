@@ -213,8 +213,7 @@ async function main(): Promise<void> {
     env: {
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
       INGEST_MODEL: env.INGEST_MODEL,
-      CHAT_INGEST_ENABLED:
-        (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true,
+      CHAT_INGEST_ENABLED: env.CHAT_INGEST_ENABLED,
     },
   });
 

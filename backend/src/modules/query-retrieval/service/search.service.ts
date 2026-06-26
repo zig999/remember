@@ -27,8 +27,8 @@ import type {
   SearchItem,
   SearchProvenanceEntry,
   SearchResponse,
-  SourceType,
 } from "../dto/response.dto.js";
+import { toSourceType } from "../dto/response.dto.js";
 import {
   findChunkFragmentLinks,
   findLinksMetadata,
@@ -497,7 +497,7 @@ function toProvenanceEntry(row: SearchProvenanceRow): SearchProvenanceEntry {
     fragment_text: row.fragment_text,
     confidence: Number(row.fragment_confidence),
     raw_information_id: row.raw_information_id,
-    source_type: row.source_type as SourceType,
+    source_type: toSourceType(row.source_type),
     received_at: row.received_at.toISOString(),
     excerpt: row.excerpt,
   };

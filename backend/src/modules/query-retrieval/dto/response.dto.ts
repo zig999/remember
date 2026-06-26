@@ -5,6 +5,8 @@
 // these interfaces; no runtime Zod parsing is needed for responses (TC-04
 // precedent).
 
+import { InvariantError } from "../../../shared/invariant-error.js";
+
 export type SearchKind = "node" | "link" | "fragment";
 export type SearchLayer = "fragment" | "node" | "chunk";
 export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
@@ -16,6 +18,27 @@ export type SourceType =
   | "artigo"
   | "transcricao"
   | "outro";
+
+const SOURCE_TYPES: ReadonlySet<SourceType> = new Set([
+  "pdf",
+  "email",
+  "ata",
+  "chat",
+  "artigo",
+  "transcricao",
+  "outro",
+]);
+
+/**
+ * Narrow a DB `source_type::text` column to the `SourceType` union. The value
+ * is DB-enum-constrained, so an out-of-domain value means TS/DB drift — a
+ * programmer/migration bug surfaced as a generic 500 (not a 422), never a
+ * silent `as` cast.
+ */
+export function toSourceType(s: string): SourceType {
+  if (SOURCE_TYPES.has(s as SourceType)) return s as SourceType;
+  throw new InvariantError(`Unexpected source_type from DB: ${s}`);
+}
 
 export interface SearchProvenanceEntry {
   readonly fragment_id: string;

@@ -353,12 +353,11 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       // is the sole LLM caller of the BFF (BR-29) — it needs the Anthropic key
       // and the default extraction model (INGEST_MODEL, default Sonnet 4.6).
       // CHAT_INGEST_ENABLED (BR-32) gates `start_async_ingestion` registration;
-      // it is read defensively until TC-02 declares it in env.ts (default false).
+      // declared on the env schema (boolean, default false).
       env: {
         ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
         INGEST_MODEL: env.INGEST_MODEL,
-        CHAT_INGEST_ENABLED:
-          (env as { CHAT_INGEST_ENABLED?: boolean }).CHAT_INGEST_ENABLED === true,
+        CHAT_INGEST_ENABLED: env.CHAT_INGEST_ENABLED,
       },
     });
   }

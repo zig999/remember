@@ -10,6 +10,7 @@
 
 import type { PoolClient } from "pg";
 
+import { InvariantError } from "../../../shared/invariant-error.js";
 import type {
   AssertionStatus,
   ItemKind,
@@ -465,7 +466,7 @@ export async function insertCorrectedRow(
     );
     const row = res.rows[0];
     if (!row) {
-      throw new Error("insertCorrectedRow returned no row for link");
+      throw new InvariantError("insertCorrectedRow returned no row for link");
     }
     return row.id;
   }
@@ -501,7 +502,7 @@ export async function insertCorrectedRow(
   );
   const row = res.rows[0];
   if (!row) {
-    throw new Error("insertCorrectedRow returned no row for attribute");
+    throw new InvariantError("insertCorrectedRow returned no row for attribute");
   }
   return row.id;
 }
@@ -614,7 +615,7 @@ export async function insertCurationAction(
   );
   const row = res.rows[0];
   if (!row) {
-    throw new Error("insertCurationAction returned no row");
+    throw new InvariantError("insertCurationAction returned no row");
   }
   return row;
 }

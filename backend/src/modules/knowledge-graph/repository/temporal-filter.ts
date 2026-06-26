@@ -24,6 +24,8 @@
 // Note: the `inEffectOnly` flag is meaningful only in mode 1 — when
 // `asOf` is provided, the valid_from check is already part of the filter.
 
+import { InvariantError } from "../../../shared/invariant-error.js";
+
 export interface TemporalFilterOptions {
   /** Optional valid-time anchor (ISO YYYY-MM-DD). */
   readonly asOf?: string;
@@ -57,7 +59,7 @@ export function applyTemporalFilter(
 ): TemporalFilterFragment {
   if (!isValidIdentifier(alias)) {
     // Programming bug — surfaces as 500 via the global handler.
-    throw new Error(
+    throw new InvariantError(
       `applyTemporalFilter: invalid alias "${alias}". Aliases must be SQL identifiers.`
     );
   }

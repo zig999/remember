@@ -188,9 +188,21 @@ const NodePosition = z.object({ x: z.number(), y: z.number() });
  *      `hydrate` owns the back-compat default for v1 rows, so the BE MUST
  *      persist v1 verbatim (no synthetic `layout_algorithm` injection).
  */
+// Snapshot nodes/links are the FE's React Flow view state — richer and more
+// volatile than the `graph_delta` wire shape — so we validate the invariant the
+// BE actually relies on (each entry is an object keyed by a string `id`) and
+// `.passthrough()` the presentation-only fields rather than coupling to the
+// FE's exact shape. Replaces the prior `z.any()` (no per-element validation).
+const GraphSnapshotNode = z.object({ id: z.string() }).passthrough();
+const GraphSnapshotLink = z.object({ id: z.string() }).passthrough();
+
 const GraphViewSnapshotBaseFields = {
-  nodes: z.array(z.any()).max(2000, "nodes must contain at most 2000 entries"),
-  links: z.array(z.any()).max(2000, "links must contain at most 2000 entries"),
+  nodes: z
+    .array(GraphSnapshotNode)
+    .max(2000, "nodes must contain at most 2000 entries"),
+  links: z
+    .array(GraphSnapshotLink)
+    .max(2000, "links must contain at most 2000 entries"),
   positions: z.record(z.string(), NodePosition),
   user_pinned: z.array(z.string()),
 } as const;

@@ -14,8 +14,8 @@ import type {
   ProvenanceChunk,
   ProvenanceFragment,
   ProvenanceResponse,
-  SourceType,
 } from "../dto/response.dto.js";
+import { toSourceType } from "../dto/response.dto.js";
 import {
   attributeExists,
   chainByAttribute,
@@ -174,7 +174,7 @@ function groupChain(rows: readonly ProvenanceChainRow[]): ProvenanceFragment[] {
       locator: c.locator,
       raw_information: {
         id: c.raw_information_id,
-        source_type: c.source_type as SourceType,
+        source_type: toSourceType(c.source_type),
         received_at: c.received_at.toISOString(),
         metadata: c.metadata,
       },
