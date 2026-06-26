@@ -1239,6 +1239,18 @@ function emitChatBootLog(deps: ChatRouteDeps): void {
     },
     "chat module routes registered"
   );
+
+  // BR-31 v2.9: CHAT_RECENT_WINDOW changed UNIT (rows -> turns) and DEFAULT
+  // (10 -> 6) in chat-context-fidelity TC-01. The shift is breaking for
+  // operators — emit a dedicated INFO line so a grep on
+  // `event=chat.recent_window_resolved` makes the resolved K explicit at boot.
+  deps.logger.info(
+    {
+      event: "chat.recent_window_resolved",
+      turns: deps.env.CHAT_RECENT_WINDOW,
+    },
+    "chat recent window resolved (turn-based, BR-31 v2.9)"
+  );
 }
 
 function writeSseHeaders(reply: FastifyReply): void {

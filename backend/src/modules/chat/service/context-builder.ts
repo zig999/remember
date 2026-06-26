@@ -6,8 +6,10 @@
 // route handler (BR-29 step 3). This module reads:
 //
 //   1. The (already-loaded) conversation row, to access `summary_rolling`.
-//   2. The last `env.CHAT_RECENT_WINDOW` messages via
-//      `repository.listRecentMessages` (already sorted ASC by the repo).
+//   2. The last `env.CHAT_RECENT_WINDOW` REAL TURNS via
+//      `repository.listRecentRealTurns` (BR-31 v2.9 — turn-based, not row-
+//      based; returns every row of each selected turn including scaffolding,
+//      already sorted ASC by the repo).
 //
 // And assembles the Anthropic-shaped context:
 //
@@ -65,9 +67,12 @@ export interface BuildModelContextInput {
    */
   readonly systemPrompt: string;
   /**
-   * Maximum number of recent messages to read (BR-31 step 4 — typically
-   * `env.CHAT_RECENT_WINDOW`, default 10). Must be >= 1; smaller values are
-   * a programmer error and would defeat the point of the builder.
+   * Number of recent REAL TURNS to include (BR-31 v2.9 — TURN-based, not
+   * row-based; typically `env.CHAT_RECENT_WINDOW`, default 6). A real turn is
+   * one user `chat_message` row with `idempotency_key IS NOT NULL`; the
+   * repository returns ALL rows of each selected turn (anchor + scaffolding +
+   * terminal assistant). Must be >= 1; smaller values are a programmer error
+   * and would defeat the point of the builder.
    */
   readonly recentLimit: number;
 }
@@ -94,11 +99,12 @@ export interface ModelContext {
  *   2. If `conversation.summary_rolling !== null`: prepend a synthetic
  *      `{ role: "user", content: [{ type: "text", text: <prefix><summary> }] }`
  *      block. The prefix is the constant exported above.
- *   3. Read the last `recentLimit` messages via `listRecentMessages` (already
- *      sorted ASC). Map them 1:1 to Anthropic message params: `role` stays
- *      `"user" | "assistant"`; the persisted jsonb `content` is passed
- *      through verbatim (the persistence layer already stored Anthropic-
- *      shaped content blocks, BR-29).
+ *   3. Read the last `recentLimit` REAL TURNS via `listRecentRealTurns`
+ *      (BR-31 v2.9 — turn-based; returns every row of each selected turn
+ *      including scaffolding, already sorted ASC). Map them 1:1 to Anthropic
+ *      message params: `role` stays `"user" | "assistant"`; the persisted
+ *      jsonb `content` is passed through verbatim (the persistence layer
+ *      already stored Anthropic-shaped content blocks, BR-29 v2.2).
  *
  * The user row inserted in BR-29 step 3 IS the last element of the resulting
  * messages array — the route handler inserted it BEFORE calling this
@@ -108,7 +114,7 @@ export async function buildModelContext(
   input: BuildModelContextInput
 ): Promise<ModelContext> {
   const recent: MessageRow[] = await withReadOnly(input.pool, (client) =>
-    repo.listRecentMessages(client, input.conversation.id, input.recentLimit)
+    repo.listRecentRealTurns(client, input.conversation.id, input.recentLimit)
   );
 
   const messages: Anthropic.Messages.MessageParam[] = [];

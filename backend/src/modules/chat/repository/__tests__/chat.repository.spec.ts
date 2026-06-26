@@ -22,6 +22,7 @@ import type { PoolClient, QueryResult } from "pg";
 
 import {
   attachToolCallsToMessage,
+  countRealTurnsOlderThanRecentWindow,
   deleteConversation,
   findUserByIdempotencyKey,
   getConversationUsage,
@@ -30,6 +31,7 @@ import {
   listConversations,
   listOlderMessagesForSummary,
   listRecentMessages,
+  listRecentRealTurns,
   setTitleIfNull,
   updateConversation,
   type ConversationRow,
@@ -373,6 +375,147 @@ describe("listRecentMessages (BR-31)", () => {
     expect(recorded[0]!.sql).toMatch(/ORDER BY created_at DESC, id DESC\s+LIMIT \$2/);
     expect(recorded[0]!.sql).toMatch(/ORDER BY created_at ASC, id ASC/);
     expect(recorded[0]!.params).toEqual(["conv-1", 10]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listRecentRealTurns — BR-31 v2.9 (turn-based recent window)
+// ---------------------------------------------------------------------------
+
+describe("listRecentRealTurns (BR-31 v2.9)", () => {
+  // Anchor predicate (real turn): role='user' AND idempotency_key IS NOT NULL.
+  // Scaffolding rows (intermediate assistant[tool_use], synthetic
+  // user[tool_result]) and terminal assistant rows are INCLUDED by virtue of
+  // sharing the conversation and falling at-or-after the boundary anchor's
+  // created_at. The query plan: CTE picks the boundary anchor (K-from-tail);
+  // outer SELECT returns all rows with `created_at >= boundary`.
+  it("issues ONE round-trip with the boundary CTE on the anchor predicate", async () => {
+    const anchorOldest = makeMessage({
+      id: "u-anchor-old",
+      role: "user",
+      idempotency_key: "k-1",
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+    const scaffoldAssistant = makeMessage({
+      id: "a-scaffold",
+      role: "assistant",
+      idempotency_key: null,
+      stop_reason: null,
+      content: [{ type: "tool_use", id: "t1", name: "list_node_types", input: {} }],
+      created_at: "2026-06-20T12:00:02.000Z",
+    });
+    const scaffoldUser = makeMessage({
+      id: "u-scaffold",
+      role: "user",
+      idempotency_key: null, // synthetic tool_result row — NOT an anchor
+      content: [{ type: "tool_result", tool_use_id: "t1", content: "5" }],
+      created_at: "2026-06-20T12:00:03.000Z",
+    });
+    const terminalAssistant = makeMessage({
+      id: "a-final",
+      role: "assistant",
+      idempotency_key: null,
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "Existem 5." }],
+      created_at: "2026-06-20T12:00:04.000Z",
+    });
+    const anchorNewest = makeMessage({
+      id: "u-anchor-new",
+      role: "user",
+      idempotency_key: "k-2",
+      created_at: "2026-06-20T12:00:05.000Z",
+    });
+
+    const { client, recorded } = makeClient([
+      result([
+        anchorOldest,
+        scaffoldAssistant,
+        scaffoldUser,
+        terminalAssistant,
+        anchorNewest,
+      ]),
+    ]);
+
+    const out = await listRecentRealTurns(client, "conv-1", 2);
+
+    expect(out).toHaveLength(5);
+    // The 2nd-most-recent anchor (K=2 from tail) is the boundary. The first
+    // row returned is that anchor itself (`anchorOldest`).
+    expect(out[0]!.id).toBe("u-anchor-old");
+    expect(out[4]!.id).toBe("u-anchor-new");
+
+    // One SQL round-trip, anchor predicate present, OFFSET = turn_count - 1.
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.sql).toMatch(/idempotency_key IS NOT NULL/);
+    expect(recorded[0]!.sql).toMatch(/OFFSET \$2/);
+    expect(recorded[0]!.params).toEqual(["conv-1", 1]); // K=2 -> offset=1
+  });
+
+  it("K > available real turns: returns all rows without error (no padding)", async () => {
+    // The boundary subquery returns no row (OFFSET past the anchor list);
+    // the fallback CTE supplies `min(created_at)` of the conversation, so the
+    // outer WHERE selects EVERY row of EVERY available turn — under-K branch
+    // of the BR-31 v2.9 contract.
+    const m1 = makeMessage({
+      id: "u-1",
+      role: "user",
+      idempotency_key: "k-1",
+      created_at: "2026-06-20T12:00:01.000Z",
+    });
+    const m2 = makeMessage({
+      id: "a-1",
+      role: "assistant",
+      idempotency_key: null,
+      stop_reason: "end_turn",
+      created_at: "2026-06-20T12:00:02.000Z",
+    });
+    const { client } = makeClient([result([m1, m2])]);
+    const out = await listRecentRealTurns(client, "conv-1", 99);
+    expect(out).toEqual([m1, m2]);
+  });
+
+  it("turn_count <= 0 short-circuits without querying", async () => {
+    const { client, recorded } = makeClient([]);
+    const out = await listRecentRealTurns(client, "conv-1", 0);
+    expect(out).toEqual([]);
+    expect(recorded).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// countRealTurnsOlderThanRecentWindow — BR-33 v2.9 step 1 (overflow gate)
+// ---------------------------------------------------------------------------
+
+describe("countRealTurnsOlderThanRecentWindow (BR-33 v2.9)", () => {
+  it("returns 0 when there are <= K real turns (boundary subquery empty)", async () => {
+    // In Postgres the boundary returns no row, so `created_at < NULL` is
+    // UNKNOWN and the count is 0. The repository surfaces the count straight
+    // from `count(*)::text` -> Number.
+    const { client, recorded } = makeClient([
+      result<{ count: string }>([{ count: "0" }]),
+    ]);
+    const out = await countRealTurnsOlderThanRecentWindow(client, "conv-1", 6);
+    expect(out).toBe(0);
+    expect(recorded[0]!.params).toEqual(["conv-1", 5]); // offset = K - 1
+    expect(recorded[0]!.sql).toMatch(/role = 'user'/);
+    expect(recorded[0]!.sql).toMatch(/idempotency_key IS NOT NULL/);
+  });
+
+  it("returns the anchor count strictly older than the K-from-tail boundary", async () => {
+    const { client } = makeClient([
+      result<{ count: string }>([{ count: "3" }]),
+    ]);
+    const out = await countRealTurnsOlderThanRecentWindow(client, "conv-1", 6);
+    expect(out).toBe(3);
+  });
+
+  it("turn_count <= 0: counts every anchor row (defensive fallback)", async () => {
+    const { client, recorded } = makeClient([
+      result<{ count: string }>([{ count: "42" }]),
+    ]);
+    const out = await countRealTurnsOlderThanRecentWindow(client, "conv-1", 0);
+    expect(out).toBe(42);
+    expect(recorded[0]!.sql).not.toMatch(/OFFSET/);
   });
 });
 

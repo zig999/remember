@@ -15,7 +15,8 @@
 //   BR-27  UNIQUE PARTIAL conflict on (conversation_id, idempotency_key) ->
 //          caller decides replay vs mismatch
 //   BR-29  user row insert pre-stream; assistant row insert post-terminal-frame
-//   BR-31  context-builder reads via listRecentMessages
+//   BR-31  context-builder reads via listRecentRealTurns (v2.9 turn-based
+//          window). listRecentMessages preserved for back-compat.
 //   BR-32  per-tool-call audit row + post-stream patch via
 //          attachToolCallsToMessage
 //   BR-33  rolling-summary inputs (countUserTurns,
@@ -201,6 +202,31 @@ export interface ChatRepository {
     conversation_id: string,
     limit: number
   ): Promise<MessageRow[]>;
+
+  // BR-31 v2.9: turn-based recent window. Returns every chat_message row that
+  // belongs to one of the last `turn_count` REAL turns (a real turn is anchored
+  // by a `role='user' AND idempotency_key IS NOT NULL` row), in chronological
+  // ASC order — including all scaffolding rows (intermediate
+  // `assistant[tool_use]` rows and synthetic `user[tool_result]` rows) and the
+  // terminal assistant row of each selected turn. When fewer than `turn_count`
+  // real turns exist, all rows from the available turns are returned (no error,
+  // no padding).
+  listRecentRealTurns(
+    client: PoolClient,
+    conversation_id: string,
+    turn_count: number
+  ): Promise<MessageRow[]>;
+
+  // BR-33 v2.9 trigger predicate. Counts REAL anchor rows (user,
+  // `idempotency_key IS NOT NULL`) whose `created_at` is strictly OLDER than
+  // the anchor at position K from the tail. Returns 0 when the conversation
+  // has K or fewer real turns (no overflow). Used by the refresh-on-overflow
+  // gate of BR-33 v2.9 step 1.
+  countRealTurnsOlderThanRecentWindow(
+    client: PoolClient,
+    conversation_id: string,
+    turn_count: number
+  ): Promise<number>;
 
   listMessagesPaginated(
     client: PoolClient,
@@ -612,6 +638,111 @@ export async function listRecentMessages(
   return res.rows;
 }
 
+// BR-31 v2.9: turn-based recent-window selection. Two-phase plan, both phases
+// scoped to ONE conversation and bounded:
+//   Phase 1 — DESC scan over the `(conversation_id, created_at, id)` index
+//     filtered on the REAL-turn anchor predicate
+//     `role='user' AND idempotency_key IS NOT NULL`, LIMIT `turn_count`. The
+//     row at the bottom of the result (or NULL when fewer than `turn_count`
+//     anchors exist) gives the inclusive boundary `created_at` from which the
+//     window starts.
+//   Phase 2 — bounded range scan over the same index returning ALL rows whose
+//     `created_at >= boundary` (so scaffolding rows persisted between the
+//     anchor and the terminal assistant row are included by construction; see
+//     BR-29 v2.2 faithful multi-row persistence), ordered ASC.
+// When `turn_count <= 0` we return an empty list defensively — callers
+// shouldn't pass that, but the guard avoids an OFFSET-style edge case in the
+// boundary subquery. When the conversation has 0 real turns the boundary
+// subquery returns NULL and the outer WHERE evaluates `created_at >= NULL ->
+// UNKNOWN`, filtering everything out; for that case we short-circuit too so
+// the caller never has to reason about it.
+export async function listRecentRealTurns(
+  client: PoolClient,
+  conversation_id: string,
+  turn_count: number
+): Promise<MessageRow[]> {
+  if (turn_count <= 0) return [];
+
+  // The Kth-from-tail anchor's `created_at` is the inclusive lower bound. We
+  // express it as a scalar subquery so the whole plan stays in one round-trip.
+  // OFFSET `turn_count - 1` walks back exactly K rows from the most-recent
+  // anchor; LIMIT 1 returns the boundary. If fewer than K anchor rows exist,
+  // the subquery returns no row -> COALESCE to the conversation's earliest
+  // `created_at` (still bounded to this conversation), which selects "all rows
+  // of all available turns" — the BR-31 v2.9 contract for the under-K branch.
+  const offset = turn_count - 1;
+  const res = await client.query<MessageRow>(
+    `WITH boundary AS (
+       SELECT created_at AS at
+         FROM chat_message
+        WHERE conversation_id = $1
+          AND role = 'user'
+          AND idempotency_key IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1 OFFSET $2
+     ),
+     fallback AS (
+       SELECT min(created_at) AS at
+         FROM chat_message
+        WHERE conversation_id = $1
+     )
+     SELECT ${MESSAGE_COLS}
+       FROM chat_message
+      WHERE conversation_id = $1
+        AND created_at >= COALESCE(
+          (SELECT at FROM boundary),
+          (SELECT at FROM fallback)
+        )
+      ORDER BY created_at ASC, id ASC`,
+    [conversation_id, offset]
+  );
+  return res.rows;
+}
+
+// BR-33 v2.9 step 1: count REAL anchor rows that fell OUT of the K-most-recent
+// window. The boundary is the same K-from-tail anchor used by
+// listRecentRealTurns; an anchor strictly OLDER than that boundary is "out".
+// Returns 0 when there are <= K real turns (the boundary subquery returns no
+// row -> the WHERE filter drops everything).
+export async function countRealTurnsOlderThanRecentWindow(
+  client: PoolClient,
+  conversation_id: string,
+  turn_count: number
+): Promise<number> {
+  if (turn_count <= 0) {
+    // Defensive: treat as "no window" -> every anchor is older.
+    const all = await client.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM chat_message
+        WHERE conversation_id = $1
+          AND role = 'user'
+          AND idempotency_key IS NOT NULL`,
+      [conversation_id]
+    );
+    return Number(all.rows[0]?.count ?? "0");
+  }
+
+  const offset = turn_count - 1;
+  const res = await client.query<{ count: string }>(
+    `SELECT count(*)::text AS count
+       FROM chat_message
+      WHERE conversation_id = $1
+        AND role = 'user'
+        AND idempotency_key IS NOT NULL
+        AND created_at < (
+          SELECT created_at
+            FROM chat_message
+           WHERE conversation_id = $1
+             AND role = 'user'
+             AND idempotency_key IS NOT NULL
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1 OFFSET $2
+        )`,
+    [conversation_id, offset]
+  );
+  return Number(res.rows[0]?.count ?? "0");
+}
+
 // BR-39: ASC pagination with optional `before` cursor (walks backwards in
 // time so the SPA can lazy-load older messages). Fetch `limit + 1` to detect
 // next page.
@@ -865,6 +996,8 @@ export const chatRepository: ChatRepository = {
   insertIterationPair,
   insertAssistantMessage,
   listRecentMessages,
+  listRecentRealTurns,
+  countRealTurnsOlderThanRecentWindow,
   listMessagesPaginated,
   listOlderMessagesForSummary,
   countUserTurns,

@@ -44,6 +44,8 @@ vi.mock("../../repository/chat.repository.js", () => ({
   insertIterationPair: vi.fn(),
   insertAssistantMessage: vi.fn(),
   listRecentMessages: vi.fn(),
+  listRecentRealTurns: vi.fn(),
+  countRealTurnsOlderThanRecentWindow: vi.fn(),
   listMessagesPaginated: vi.fn(),
   listOlderMessagesForSummary: vi.fn(),
   countUserTurns: vi.fn(),
@@ -939,6 +941,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
       id: "assistant-row-id",
       conversation_id: CID,
@@ -1027,6 +1031,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValueOnce({
       id: "tool-call-1",
       conversation_id: CID,
@@ -1135,6 +1141,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
       id: "tool-call-ingest",
       conversation_id: CID,
@@ -1240,6 +1248,8 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValueOnce({
       id: "tool-call-1",
       conversation_id: CID,
@@ -1594,6 +1604,8 @@ describe("POST /conversations/:id/messages — TC-be-002 graph_delta SSE project
       created_at: "2026-06-20T12:00:00.000Z",
     });
     vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
     vi.mocked(chatRepo.insertToolCall).mockResolvedValue({
       id: "tool-call-1",
       conversation_id: CID,
@@ -2281,6 +2293,49 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     // visible even when the catalog falls back.
     expect(bootRecord!.chat_ingest_enabled).toBe(true);
     expect(bootRecord!.tool_count).toBe(13);
+    await app.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // chat-context-fidelity TC-01 / BR-31 v2.9 — turn-based CHAT_RECENT_WINDOW
+  // boot log. The unit shift (rows -> turns) is breaking for operators; the
+  // dedicated `chat.recent_window_resolved` INFO line makes K explicit at boot
+  // independent of the chat.boot rollout-state line.
+  // ---------------------------------------------------------------------------
+  it("emits chat.recent_window_resolved{turns=K} at register-time (BR-31 v2.9)", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = {
+      ...baseEnv,
+      CHAT_INGEST_ENABLED: false,
+      CHAT_RECENT_WINDOW: 6,
+    } as Env;
+    const mcp = buildMcpWithAllChatTools();
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const rec = records.find(
+      (r) =>
+        typeof r === "object" &&
+        r !== null &&
+        (r as { event?: unknown }).event === "chat.recent_window_resolved"
+    ) as { event: string; turns: number } | undefined;
+    expect(rec).toBeDefined();
+    expect(rec!.turns).toBe(6);
     await app.close();
   });
 });

@@ -153,10 +153,18 @@ const envSchema = z.object({
   // TOOL_RESULT_MAX_CHARS: truncation ceiling for tool results fed back to the
   //   model (BR-13). Unicode code points, not bytes.
   TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(1).default(8000),
-  // CHAT_RECENT_WINDOW: number of recent messages used by context-builder
-  //   (BR-31). Older messages are summarised into `summary_rolling` (BR-33).
-  //   chat.back.md v2.0.0 §8. NEW in TC-02.
-  CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(10),
+  // CHAT_RECENT_WINDOW: number of recent REAL TURNS used by context-builder
+  //   (BR-31). v2.9 (chat-context-fidelity TC-01): UNIT SHIFT — was "K message
+  //   rows" (default 10), now "K real turns" (default 6). A real turn is one
+  //   user `chat_message` row with `idempotency_key IS NOT NULL`; the
+  //   context-builder reads via `listRecentRealTurns` and includes ALL
+  //   scaffolding rows (intermediate `assistant[tool_use]` rows, synthetic
+  //   `user[tool_result]` rows, terminal assistant rows) of each selected
+  //   turn. Older real turns are absorbed into `summary_rolling` (BR-33). The
+  //   chat module emits an INFO boot log `chat.recent_window_resolved
+  //   { turns: K }` at process start to make the unit shift explicit
+  //   (BR-31 v2.9; chat.back.md §12).
+  CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6),
   // CHAT_SUMMARY_AFTER_TURNS: after this many USER turns on a conversation,
   //   the rolling-summary policy fires (BR-33). chat.back.md v2.0.0 §8. NEW.
   CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),

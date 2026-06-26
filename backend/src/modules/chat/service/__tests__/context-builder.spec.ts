@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pool, PoolClient } from "pg";
 
 vi.mock("../../repository/chat.repository.js", () => ({
-  listRecentMessages: vi.fn(),
+  listRecentRealTurns: vi.fn(),
 }));
 
 import * as repo from "../../repository/chat.repository.js";
@@ -79,7 +79,7 @@ function assistantMessage(id: string, text: string): MessageRow {
 }
 
 beforeEach(() => {
-  vi.mocked(repo.listRecentMessages).mockReset();
+  vi.mocked(repo.listRecentRealTurns).mockReset();
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -87,7 +87,7 @@ afterEach(() => {
 
 describe("buildModelContext (BR-31)", () => {
   it("BR-31 step 1: returns the caller-supplied system prompt as `system`", async () => {
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
@@ -104,7 +104,7 @@ describe("buildModelContext (BR-31)", () => {
     // BR-31 — degenerate but legal state: fresh conversation, distillation
     // hasn't run yet. Builder returns an empty messages list (the route
     // inserted the user row BEFORE this call in normal flow).
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
@@ -125,7 +125,7 @@ describe("buildModelContext (BR-31)", () => {
       "Anna e a esposa do dono."
     );
     const u2 = userMessage("u2-2222-2222-2222-222222222222", "E o aniversario?");
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([u1, a1, u2]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([u1, a1, u2]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
@@ -144,7 +144,7 @@ describe("buildModelContext (BR-31)", () => {
     // context. The header text is the constant SUMMARY_ROLLING_PREFIX —
     // tests assert the verbatim concatenation.
     const u1 = userMessage("u1-3333-3333-3333-333333333333", "Continua?");
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([u1]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([u1]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
@@ -167,7 +167,7 @@ describe("buildModelContext (BR-31)", () => {
 
   it("BR-31 step 3: summary_rolling alone (empty recent window) still yields the recap block", async () => {
     // Edge: empty recent slice + a summary -> messages = [recap_block].
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
@@ -185,10 +185,10 @@ describe("buildModelContext (BR-31)", () => {
     ]);
   });
 
-  it("forwards `recentLimit` to repository.listRecentMessages", async () => {
+  it("forwards `recentLimit` to repository.listRecentRealTurns", async () => {
     // BR-31 step 4: the caller's recentLimit (typically
     // env.CHAT_RECENT_WINDOW) is honored end-to-end.
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([]);
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([]);
     const pool = buildFakePool();
     await buildModelContext({
       pool,
@@ -196,7 +196,7 @@ describe("buildModelContext (BR-31)", () => {
       systemPrompt: SYSTEM_PROMPT,
       recentLimit: 3,
     });
-    expect(repo.listRecentMessages).toHaveBeenCalledWith(
+    expect(repo.listRecentRealTurns).toHaveBeenCalledWith(
       expect.anything(),
       CONVERSATION_NO_SUMMARY.id,
       3
@@ -253,7 +253,7 @@ describe("buildModelContext (BR-31)", () => {
     const uToolResult = toolResultRow("r1-3333-3333-3333-333333333333", "toolu_X");
     const aText = assistantMessage("a2-3333-3333-3333-333333333333", "Existem 10.");
     const u2 = userMessage("u2-3333-3333-3333-333333333333", "E os link types?");
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([
       u1,
       aToolUse,
       uToolResult,
@@ -288,6 +288,54 @@ describe("buildModelContext (BR-31)", () => {
     ).toBe("toolu_X");
   });
 
+  it("BR-31 v2.9: forwards recentLimit as K REAL TURNS to listRecentRealTurns (turn-based, not row-based)", async () => {
+    // The contract changed in chat-context-fidelity TC-01: recentLimit is
+    // now a turn count, not a row count. The builder is dumb about it — the
+    // repository owns the K-turn boundary; the builder just threads the
+    // integer through. This regression guards against a future refactor
+    // that accidentally re-introduces a row-based read.
+    const anchor1 = userMessage(
+      "u1-4444-4444-4444-444444444444",
+      "Quem e Anna?"
+    );
+    anchor1.created_at as unknown; // (type-only — anchor structure stays)
+    const finalAssistant = assistantMessage(
+      "a1-4444-4444-4444-444444444444",
+      "Anna e a esposa do dono."
+    );
+    const anchor2 = userMessage(
+      "u2-4444-4444-4444-444444444444",
+      "E o aniversario?"
+    );
+    // The fixture: 2 selected turns -> 3 rows. The builder must replay all 3
+    // in ASC order and pass K=2 (not 3) to the repository.
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([
+      anchor1,
+      finalAssistant,
+      anchor2,
+    ]);
+    const pool = buildFakePool();
+    const ctx = await buildModelContext({
+      pool,
+      conversation: CONVERSATION_NO_SUMMARY,
+      systemPrompt: SYSTEM_PROMPT,
+      recentLimit: 2,
+    });
+    expect(repo.listRecentRealTurns).toHaveBeenCalledWith(
+      expect.anything(),
+      CONVERSATION_NO_SUMMARY.id,
+      2
+    );
+    expect(ctx.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    // The first user message is the anchor of the 2nd-oldest selected turn
+    // (which, with K=2 against the fixture, is the OLDEST selected turn).
+    expect(ctx.messages[0]).toEqual({ role: "user", content: anchor1.content });
+  });
+
   it("trims a recent window that was cut MID-PAIR (leading orphan tool_result)", async () => {
     // The window LIMIT sliced off the assistant[tool_use], leaving the
     // user[tool_result] orphaned at the front — feeding it verbatim 400s
@@ -297,7 +345,7 @@ describe("buildModelContext (BR-31)", () => {
       "toolu_GONE"
     );
     const u2 = userMessage("u9-3333-3333-3333-333333333333", "E os link types?");
-    vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([
       orphanToolResult,
       u2,
     ]);

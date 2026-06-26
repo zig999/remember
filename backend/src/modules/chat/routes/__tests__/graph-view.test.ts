@@ -34,6 +34,8 @@ vi.mock("../../repository/chat.repository.js", () => ({
   insertIterationPair: vi.fn(),
   insertAssistantMessage: vi.fn(),
   listRecentMessages: vi.fn(),
+  listRecentRealTurns: vi.fn(),
+  countRealTurnsOlderThanRecentWindow: vi.fn(),
   listMessagesPaginated: vi.fn(),
   listOlderMessagesForSummary: vi.fn(),
   countUserTurns: vi.fn(),

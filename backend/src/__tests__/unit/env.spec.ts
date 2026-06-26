@@ -205,7 +205,9 @@ describe("loadEnv", () => {
         // yield the spec defaults rather than a boot failure.
         const env = loadEnv(baseEnv);
         expect(env.CHAT_UTILITY_MODEL).toBe("claude-haiku-4-5");
-        expect(env.CHAT_RECENT_WINDOW).toBe(10);
+        // BR-31 v2.9 (chat-context-fidelity TC-01): UNIT SHIFT — rows -> real
+        // turns; default lowered 10 -> 6.
+        expect(env.CHAT_RECENT_WINDOW).toBe(6);
         expect(env.CHAT_SUMMARY_AFTER_TURNS).toBe(20);
         expect(env.CHAT_TITLE_ENABLED).toBe(true);
         expect(env.CHAT_SUMMARY_ENABLED).toBe(true);

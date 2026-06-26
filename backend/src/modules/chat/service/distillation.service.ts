@@ -88,6 +88,19 @@ export interface AnthropicUtilityLike {
  */
 export interface DistillationEnv {
   readonly CHAT_UTILITY_MODEL: string;
+  /**
+   * BR-31 v2.9 — number of recent REAL TURNS (NOT message rows) the
+   * context-builder keeps in-window. The distillation service consumes this
+   * field's CURRENT semantics only to forward it as `exclude_recent` to
+   * `repo.listOlderMessagesForSummary`; that repository function still
+   * interprets its parameter as "exclude the last N message ROWS" (its
+   * contract is unchanged in this TC — the incremental-fold rework is
+   * deferred to a later TC of the same workflow). We pass the turn count
+   * through unmodified; behaviour is conservative (older slice = slightly
+   * larger than v2.0 because K turns >= K rows by definition). This documents
+   * the semantic shift at the interface boundary so a future TC can replace
+   * the call without re-discovering the contract.
+   */
   readonly CHAT_RECENT_WINDOW: number;
   readonly CHAT_SUMMARY_AFTER_TURNS: number;
   readonly CHAT_SUMMARY_ENABLED: boolean;
