@@ -347,6 +347,41 @@ describe("buildModelContext (BR-31 v2.9 + BR-47 v2.9)", () => {
     ).toBe("toolu_X");
   });
 
+  it("AC-1 (K=2): full round-trip returns two-block system AND messages limited to exactly those 2 turns' rows", async () => {
+    // Combined round-trip: with recentLimit=2 the repo is asked for exactly 2
+    // rows, the builder maps them 1:1 (no recap, no summary), and the BR-47
+    // two-block system invariant holds. This is the end-to-end fidelity gate
+    // for the K=turns shift.
+    const u = userMessage("u1-4444-4444-4444-444444444444", "Pergunta?");
+    const a = assistantMessage(
+      "a1-4444-4444-4444-444444444444",
+      "Resposta."
+    );
+    vi.mocked(repo.listRecentRealTurns).mockResolvedValueOnce([u, a]);
+    const pool = buildFakePool();
+    const ctx = await buildModelContext({
+      pool,
+      conversation: CONVERSATION_NO_SUMMARY,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
+      recentLimit: 2,
+    });
+    // (a) BR-47 two-block system invariant.
+    expectSystemTwoBlockArray(ctx.system, SYSTEM_PROMPT, EXPECTED_BLOCK_B);
+    // (b) messages limited to exactly the 2 rows the repo returned.
+    expect(ctx.messages).toHaveLength(2);
+    // (c) exact row mapping, role + content preserved 1:1.
+    expect(ctx.messages[0]).toEqual({ role: "user", content: u.content });
+    expect(ctx.messages[1]).toEqual({ role: "assistant", content: a.content });
+    // (d) recentLimit=2 forwarded to the repo.
+    expect(repo.listRecentRealTurns).toHaveBeenCalledWith(
+      expect.anything(),
+      CONVERSATION_NO_SUMMARY.id,
+      2
+    );
+  });
+
   it("trims a recent window that was cut MID-PAIR (leading orphan tool_result)", async () => {
     // The window LIMIT sliced off the assistant[tool_use], leaving the
     // user[tool_result] orphaned at the front — feeding it verbatim 400s

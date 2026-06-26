@@ -126,6 +126,9 @@ const baseEnv: Env = Object.freeze({
   CHAT_SUMMARY_AFTER_TURNS: 20,
   CHAT_TITLE_ENABLED: true,
   CHAT_SUMMARY_ENABLED: true,
+  OWNER_TZ: "America/Sao_Paulo",
+  CHAT_SUMMARY_OVERLAP_M: 40,
+  CHAT_SUMMARY_PROMPT_VERSION: "v2",
 }) as Env;
 
 // ---------------------------------------------------------------------------
@@ -2440,5 +2443,48 @@ describe("registerChatRoutes — BR-44 boot log", () => {
         process.env.CHAT_SUMMARY_AFTER_TURNS = previous;
       }
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // chat-context-fidelity / BR-47 v2.9 — owner timezone boot log. The dynamic
+  // BlockB datetime is rendered in OWNER_TZ; the registrar emits a one-shot
+  // INFO at register-time so operators can verify the resolved zone without
+  // tailing per-request logs.
+  // ---------------------------------------------------------------------------
+  it("emits chat.owner_tz_resolved{tz} at register-time (BR-47 v2.9)", async () => {
+    const { logger, records } = buildCapturingLogger();
+    const env = {
+      ...baseEnv,
+      CHAT_INGEST_ENABLED: false,
+      OWNER_TZ: "America/Sao_Paulo",
+    } as Env;
+    const mcp = buildMcpWithAllChatTools();
+    const app = Fastify({
+      loggerInstance: silentLogger as never,
+      disableRequestLogging: true,
+    });
+    app.setErrorHandler(buildErrorHandler(silentLogger));
+    await app.register(
+      async (scoped) => {
+        await registerChatRoutes(scoped, {
+          mcp,
+          logger,
+          env,
+          pool: buildFakePool(),
+        });
+      },
+      { prefix: "/conversations" }
+    );
+    await app.ready();
+
+    const rec = records.find(
+      (r) =>
+        typeof r === "object" &&
+        r !== null &&
+        (r as { event?: unknown }).event === "chat.owner_tz_resolved"
+    ) as { event: string; tz: string } | undefined;
+    expect(rec).toBeDefined();
+    expect(rec!.tz).toBe("America/Sao_Paulo");
+    await app.close();
   });
 });
