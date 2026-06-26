@@ -154,8 +154,17 @@ export interface ChatRunStats {
 // ---------------------------------------------------------------------------
 
 export interface ChatRunInput {
-  /** From `context-builder.buildModelContext().system`. */
-  readonly system: string;
+  /**
+   * From `context-builder.buildModelContext().system`.
+   *
+   * BR-47 v2.9: the chat agent receives the FULLY ASSEMBLED two-block
+   * `TextBlockParam[]` (BlockA cached + BlockB dynamic-datetime) and
+   * forwards it VERBATIM to `anthropic.messages.create` on every iteration
+   * of the turn. The `string` form is kept for back-compat with stub
+   * fixtures that predate the v2.9 deviation; production callers (the
+   * route handler) always pass an array.
+   */
+  readonly system: string | ReadonlyArray<Anthropic.Messages.TextBlockParam>;
   /** From `context-builder.buildModelContext().messages`. */
   readonly messages: ReadonlyArray<Anthropic.Messages.MessageParam>;
   /** Resolved Anthropic model id (override OR `env.CHAT_MODEL`). */

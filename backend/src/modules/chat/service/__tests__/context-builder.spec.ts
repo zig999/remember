@@ -1,10 +1,15 @@
-// Unit tests for context-builder — BR-31.
+// Unit tests for context-builder — BR-31 v2.9 + BR-47 v2.9.
 //
-// The three branches BR-31 must cover:
+// The branches BR-31 must cover:
 //   1. No summary_rolling => system + recent messages only.
 //   2. summary_rolling present => synthetic recap block prepended.
 //   3. Empty conversation (zero recent messages) => system + only the
 //      summary block (if any) OR an empty messages array.
+//
+// BR-47 v2.9: `system` is now a TWO-ELEMENT TextBlockParam array (BlockA
+// cached, BlockB dynamic datetime). The tests below verify both shapes —
+// the shared `expectSystemTwoBlockArray` helper asserts the BR-47 invariant
+// once; per-test assertions focus on `messages` reshuffling.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pool, PoolClient } from "pg";
@@ -31,6 +36,45 @@ function buildFakePool(): Pool {
 }
 
 const SYSTEM_PROMPT = "TEST SYSTEM PROMPT BODY (fixture)";
+
+// BR-47: fixed `now` used across the suite so BlockB renders deterministically.
+// `2026-06-26T14:00:00Z` in `America/Sao_Paulo` (UTC-3, no DST in 2026) is
+// `11:00:00`. The expected BlockB string mirrors the BR-47 step 2 example.
+const FIXED_NOW = new Date("2026-06-26T14:00:00Z");
+const OWNER_TZ = "America/Sao_Paulo";
+const EXPECTED_BLOCK_B =
+  "Data/hora atual do dono: 2026-06-26T11:00:00-03:00 (America/Sao_Paulo)";
+
+/**
+ * Shared two-block-system-array assertion (BR-47). Asserts:
+ *   - `system` is an array of exactly TWO TextBlockParams.
+ *   - Index 0 carries the BlockA text + `cache_control: { type: "ephemeral" }`.
+ *   - Index 1 carries the rendered BlockB text + NO `cache_control` key.
+ */
+function expectSystemTwoBlockArray(
+  system: ReadonlyArray<{
+    type?: string;
+    text?: string;
+    cache_control?: { type?: string };
+  }>,
+  blockAText: string,
+  expectedBlockBText: string
+): void {
+  expect(Array.isArray(system)).toBe(true);
+  expect(system).toHaveLength(2);
+  expect(system[0]).toEqual({
+    type: "text",
+    text: blockAText,
+    cache_control: { type: "ephemeral" },
+  });
+  expect(system[1]).toEqual({ type: "text", text: expectedBlockBText });
+  // Defensive: explicitly verify BlockB has NO cache_control key (the
+  // `toEqual` above would technically pass with an `undefined` key in
+  // some object-shape edge cases).
+  expect(Object.prototype.hasOwnProperty.call(system[1], "cache_control")).toBe(
+    false
+  );
+}
 
 const CONVERSATION_NO_SUMMARY: ConversationRow = {
   id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -85,19 +129,22 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("buildModelContext (BR-31)", () => {
-  it("BR-31 step 1: returns the caller-supplied system prompt as `system`", async () => {
+describe("buildModelContext (BR-31 v2.9 + BR-47 v2.9)", () => {
+  it("BR-47 steps 1+2: returns `system` as a two-block array (BlockA cached + BlockB dynamic)", async () => {
     vi.mocked(repo.listRecentMessages).mockResolvedValueOnce([]);
     const pool = buildFakePool();
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     // The caller resolves selectChatPromptModule(...).system() — the
-    // builder just threads it through. Identity equality is the contract.
-    expect(ctx.system).toBe(SYSTEM_PROMPT);
+    // builder threads it through as BlockA AND appends BlockB rendered
+    // from (now, ownerTz). BlockA carries cache_control; BlockB does not.
+    expectSystemTwoBlockArray(ctx.system, SYSTEM_PROMPT, EXPECTED_BLOCK_B);
   });
 
   it("no summary + no messages -> empty messages array", async () => {
@@ -109,7 +156,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     expect(ctx.messages).toEqual([]);
@@ -130,7 +179,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     expect(ctx.messages).toHaveLength(3);
@@ -149,7 +200,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_WITH_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     expect(ctx.messages).toHaveLength(2);
@@ -172,7 +225,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_WITH_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     expect(ctx.messages).toHaveLength(1);
@@ -193,7 +248,9 @@ describe("buildModelContext (BR-31)", () => {
     await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 3,
     });
     expect(repo.listRecentMessages).toHaveBeenCalledWith(
@@ -264,7 +321,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
 
@@ -305,7 +364,9 @@ describe("buildModelContext (BR-31)", () => {
     const ctx = await buildModelContext({
       pool,
       conversation: CONVERSATION_NO_SUMMARY,
-      systemPrompt: SYSTEM_PROMPT,
+      blockAText: SYSTEM_PROMPT,
+      now: FIXED_NOW,
+      ownerTz: OWNER_TZ,
       recentLimit: 10,
     });
     // The orphan is trimmed; the sequence starts on a clean user turn.

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { EnvValidationError, loadEnv } from "../../config/env.js";
+import { EnvValidationError, InvalidOwnerTimezoneError, loadEnv } from "../../config/env.js";
 
 const baseEnv = {
   NODE_ENV: "test",
@@ -271,6 +271,47 @@ describe("loadEnv", () => {
         const env = loadEnv(baseEnv);
         expect(env.MAX_HISTORY_MESSAGES).toBe(40);
         expect(env.MAX_CONTENT_LENGTH).toBe(32_768);
+      });
+    });
+
+    // --- v2.9 / BR-47 — OWNER_TZ IANA-zone fail-closed validation -------
+    describe("OWNER_TZ (BR-47 v2.9)", () => {
+      it("defaults OWNER_TZ to 'America/Sao_Paulo' (BR-47 step 3)", () => {
+        // chat.back.md §8: single-owner default; never required to set.
+        const env = loadEnv(baseEnv);
+        expect(env.OWNER_TZ).toBe("America/Sao_Paulo");
+      });
+
+      it("accepts an explicit valid IANA zone (UTC)", () => {
+        // UTC is a stable canonical alias every ICU build knows; covers the
+        // common case of operators running the BFF in a UTC-only container.
+        const env = loadEnv({ ...baseEnv, OWNER_TZ: "UTC" });
+        expect(env.OWNER_TZ).toBe("UTC");
+      });
+
+      it("accepts an explicit valid IANA zone (Europe/Lisbon)", () => {
+        // A DST-bearing zone — confirms `Intl.DateTimeFormat`'s zone DB
+        // accepts the canonical IANA id.
+        const env = loadEnv({ ...baseEnv, OWNER_TZ: "Europe/Lisbon" });
+        expect(env.OWNER_TZ).toBe("Europe/Lisbon");
+      });
+
+      it("throws InvalidOwnerTimezoneError on an unknown IANA zone (fail-closed)", () => {
+        // BR-47 step 4 — the BFF must REFUSE to start with a bad zone rather
+        // than blow up on the first chat turn with a runtime 500.
+        expect(() =>
+          loadEnv({ ...baseEnv, OWNER_TZ: "Invalid/Zone" })
+        ).toThrowError(InvalidOwnerTimezoneError);
+      });
+
+      it("InvalidOwnerTimezoneError carries the bad zone string", () => {
+        // Helps the operator log line the actual misconfigured value.
+        const err = grabError(() =>
+          loadEnv({ ...baseEnv, OWNER_TZ: "Bogus/Zone" })
+        ) as InvalidOwnerTimezoneError;
+        expect(err).toBeInstanceOf(InvalidOwnerTimezoneError);
+        expect(err.timezone).toBe("Bogus/Zone");
+        expect(err.message).toMatch(/Bogus\/Zone/);
       });
     });
   });

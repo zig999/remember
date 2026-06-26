@@ -173,6 +173,13 @@ const envSchema = z.object({
     .union([z.boolean(), z.enum(["true", "false"])])
     .transform((v) => (typeof v === "boolean" ? v : v === "true"))
     .default(true),
+  // OWNER_TZ: owner's local IANA timezone — used to render the dynamic
+  //   datetime BlockB on every chat turn's `system` array (chat.back.md
+  //   BR-47 v2.9). Single-owner -> a single value applies process-wide.
+  //   `loadEnv` validates the value against the runtime's IANA zone
+  //   database; an invalid / unknown zone -> the BFF refuses to start
+  //   (`InvalidOwnerTimezoneError`, fail-closed). NEW in v2.9 / TC-03.
+  OWNER_TZ: z.string().min(1).default("America/Sao_Paulo"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -211,7 +218,42 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ]);
   }
 
+  // chat.back.md BR-47 step 4 — fail-closed validation of `OWNER_TZ`. The
+  // datetime BlockB renderer (`renderDatetimeBlockB`) runs on EVERY chat turn;
+  // an invalid IANA zone would throw `RangeError` at request time instead of
+  // boot time, surfacing as a 500 mid-stream. We validate once here, at the
+  // same fail-closed seam as `LOCAL_OPERATOR_TOKEN`. The construction itself
+  // is the validator: `new Intl.DateTimeFormat(undefined, { timeZone })`
+  // throws `RangeError` on an unknown / unsupported zone (Node's bundled ICU).
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ });
+  } catch (err) {
+    throw new InvalidOwnerTimezoneError(parsed.data.OWNER_TZ, err);
+  }
+
   return Object.freeze(parsed.data);
+}
+
+/**
+ * Boot-time error for an unknown / unsupported IANA timezone in `OWNER_TZ`.
+ * Thrown by `loadEnv` per chat.back.md BR-47 step 4 — the BFF refuses to start
+ * with a bad zone rather than blowing up on the first chat turn. Same
+ * fail-closed family as `EnvValidationError`; kept distinct so callers (and
+ * tests) can pattern-match against the timezone-specific failure.
+ */
+export class InvalidOwnerTimezoneError extends Error {
+  public readonly timezone: string;
+
+  constructor(timezone: string, cause?: unknown) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Invalid OWNER_TZ: "${timezone}" is not a recognized IANA timezone. ` +
+        `Set OWNER_TZ to a valid IANA zone id (e.g. "America/Sao_Paulo"). ` +
+        `Underlying cause: ${causeMsg}`
+    );
+    this.name = "InvalidOwnerTimezoneError";
+    this.timezone = timezone;
+  }
 }
 
 /**
