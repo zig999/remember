@@ -187,6 +187,9 @@ export async function registerComplianceAuditRoutes(
  *    code we can infer (VALIDATION_REQUIRED_FIELD vs VALIDATION_OUT_OF_RANGE).
  *  - anything else -> VALIDATION_INVALID_FORMAT.
  */
+/** HTTP status for all validation (`VALIDATION_*`) failures on these routes. */
+const VALIDATION_STATUS = 422;
+
 function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
   if (!(err instanceof ZodError)) {
     throw err;
@@ -195,7 +198,7 @@ function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
   if (
     err.issues.some((i) => i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE")
   ) {
-    return reply.status(422).send({
+    return reply.status(VALIDATION_STATUS).send({
       ok: false,
       error: {
         code: "VALIDATION_OUT_OF_RANGE",
@@ -224,7 +227,7 @@ function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
     return false;
   });
   if (reqField) {
-    return reply.status(422).send({
+    return reply.status(VALIDATION_STATUS).send({
       ok: false,
       error: {
         code: "VALIDATION_REQUIRED_FIELD",
@@ -243,7 +246,7 @@ function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
         i.path[0] === "reason"
     )
   ) {
-    return reply.status(422).send({
+    return reply.status(VALIDATION_STATUS).send({
       ok: false,
       error: {
         code: "VALIDATION_OUT_OF_RANGE",
@@ -253,7 +256,7 @@ function handleZodError(err: unknown, reply: FastifyReply): FastifyReply {
       },
     });
   }
-  return reply.status(422).send({
+  return reply.status(VALIDATION_STATUS).send({
     ok: false,
     error: {
       code: "VALIDATION_INVALID_FORMAT",

@@ -87,12 +87,16 @@ export interface AppDependencies {
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
   const { env, logger, pool, auth, mcp, catalog, ingestionCatalog } = deps;
 
+  // 11 MiB — headroom for `ingest_document` one-shot payloads (a full document
+  // plus envelope), above the largest expected single-document ingest.
+  const BODY_LIMIT_BYTES = 11 * 1024 * 1024;
+
   const app = Fastify({
     // pino's `Logger` satisfies Fastify's `FastifyBaseLogger` structurally
     // (msgPrefix is optional on pino loggers but required by FastifyBaseLogger).
     // The cast is safe because Fastify only calls methods present on pino.
     loggerInstance: logger as unknown as FastifyBaseLogger,
-    bodyLimit: 11 * 1024 * 1024,
+    bodyLimit: BODY_LIMIT_BYTES,
     disableRequestLogging: false,
     trustProxy: env.NODE_ENV === "production",
   });

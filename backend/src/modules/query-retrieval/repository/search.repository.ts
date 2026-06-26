@@ -339,7 +339,7 @@ export async function listProvenanceForLinks(
  * file as a known spec-vs-schema gap and is consistent with BR-19's
  * "empty provenance is a 500 alarm" policy applied at the layer level.
  */
-export interface NodeProvenanceRow extends SearchProvenanceRow {}
+export type NodeProvenanceRow = SearchProvenanceRow;
 
 export async function listProvenanceForNodes(
   client: PoolClient,

@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import {
   EntityMatchDecisionSchema,
-  ReasonOptionalSchema,
   ReasonRequiredSchema,
   UuidSchema,
 } from "./enums.dto.js";
@@ -78,7 +77,3 @@ export const MergeNodesBodySchema = z
   });
 
 export type MergeNodesBody = z.infer<typeof MergeNodesBodySchema>;
-
-// Suppress unused warning; ReasonOptionalSchema is re-exported via the barrel
-// only when ResolveEntityMatchBodySchema needs a discriminator for tests.
-void ReasonOptionalSchema;

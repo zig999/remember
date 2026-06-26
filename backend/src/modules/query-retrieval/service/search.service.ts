@@ -163,20 +163,15 @@ export async function searchKnowledgeService(
         )
       : [];
 
-  // Build a `raw_chunk_id -> Set<fragment_id>` map; any chunk in the map
-  // is removed from the chunk result and folded into the fragments.
-  const collapsedChunks = new Set<string>();
-  const fragmentToCollapsedChunks = new Map<string, ChunkHitRow[]>();
+  // Count chunk hits that a fragment in the result set anchors (BR-10). The
+  // per-fragment collapse map is not needed: chunks are dropped from the final
+  // list unconditionally (see the BR-10 note below), so only the metric count
+  // is consumed (logged as `dedup_collapsed_count`).
   const chunksById = new Map(chunkHits.map((c) => [c.id, c] as const));
   let dedupCollapsedCount = 0;
 
   for (const link of dedupLinks) {
     if (!chunksById.has(link.raw_chunk_id)) continue;
-    collapsedChunks.add(link.raw_chunk_id);
-    const list =
-      fragmentToCollapsedChunks.get(link.fragment_id) ?? [];
-    list.push(chunksById.get(link.raw_chunk_id)!);
-    fragmentToCollapsedChunks.set(link.fragment_id, list);
     dedupCollapsedCount += 1;
   }
 
@@ -205,21 +200,6 @@ export async function searchKnowledgeService(
       const provenance = (provByFragment.get(f.id) ?? []).map(
         toProvenanceEntry
       );
-      // Fold any collapsed chunks into the fragment's provenance — the
-      // chunk's excerpt is what the user actually matched.
-      const extra = fragmentToCollapsedChunks.get(f.id) ?? [];
-      for (const chunk of extra) {
-        // Locate the underlying raw_information for the chunk via the
-        // provenance rows we already fetched — every collapsed chunk
-        // belongs to a `fragment_source` row anchored on this fragment,
-        // so a provenance row with matching raw_chunk_id must exist.
-        const match = (provByFragment.get(f.id) ?? []).find(
-          (p) => p.raw_chunk_id === chunk.id
-        );
-        if (match !== undefined) continue; // already in the fragment chain
-        // Defensive fallback — the dedup join SHOULD imply the row exists,
-        // but skip silently rather than fabricate data.
-      }
 
       const confidence = Number(f.confidence);
       const flags = computeFlags({
