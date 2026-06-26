@@ -240,6 +240,21 @@ export interface ChatRepository {
     exclude_recent: number
   ): Promise<MessageRow[]>;
 
+  // BR-33 v2.9 step 2: bounded overlap slice for the incremental-fold
+  // refresh. Returns the rows OLDER than the K-real-turn boundary (same pivot
+  // as `listRecentRealTurns` / `countRealTurnsOlderThanRecentWindow`), capped
+  // at the most recent `overlap_m` rows, with the START cut on a REAL-TURN
+  // anchor so the slice is always Anthropic-valid (no leading orphan
+  // `tool_result`). When the cap would land mid-turn the slicer shrinks the
+  // start FORWARD to the nearest anchor row — fewer rows is acceptable; an
+  // invalid sequence is not. Returns rows in chronological ASC order.
+  listOlderMessagesForSummaryBounded(
+    client: PoolClient,
+    conversation_id: string,
+    turn_count: number,
+    overlap_m: number
+  ): Promise<MessageRow[]>;
+
   countUserTurns(
     client: PoolClient,
     conversation_id: string
@@ -828,6 +843,80 @@ export async function listOlderMessagesForSummary(
   return res.rows;
 }
 
+// BR-33 v2.9 step 2: bounded overlap slice. Returns the rows OLDER than the
+// K-real-turn boundary (same pivot as `listRecentRealTurns` /
+// `countRealTurnsOlderThanRecentWindow`), capped at the most recent
+// `overlap_m` rows, with the START cut on a REAL-TURN ANCHOR so the slice is
+// always Anthropic-valid (no leading orphan `tool_result`).
+//
+// Algorithm (single round-trip; the planner pushes the CTEs into the same
+// `(conversation_id, created_at, id)` index scans):
+//   1. `boundary`: the K-real-turn anchor's `created_at` (LIMIT 1 OFFSET K-1
+//      on the DESC real-turn-anchor scan) — the start of the recent window.
+//      Rows with `created_at < boundary` are the "older" rows.
+//   2. `older_cap_start`: take the most recent `overlap_m` older rows by
+//      `(created_at DESC, id DESC)`, then in those rows pick the OLDEST
+//      anchor row (`role='user' AND idempotency_key IS NOT NULL`) by
+//      `(created_at ASC, id ASC)` — that anchor's `created_at` is the slice
+//      start. If no anchor exists inside the M-row tail, the slice is empty
+//      (the older history is all scaffolding without any anchor — defensive;
+//      should never happen because the boundary itself is an anchor).
+//   3. Final result: every "older" row with `created_at >= older_cap_start`,
+//      ordered ASC. By construction the slice starts on an anchor row and the
+//      row count is ≤ `overlap_m` (it can be LESS — the shrink-forward step
+//      may drop the leading non-anchor rows of the M-row tail; that is the
+//      intended behaviour per BR-33 v2.9 step 2.c).
+//
+// Defensive edge cases:
+//   - `turn_count <= 0` or `overlap_m <= 0` -> return [].
+//   - Conversation has ≤ K real turns -> no older rows -> return [].
+//   - The M-row tail of older rows contains zero anchors -> return [] (the
+//     slice would have to start mid-turn; shrinking forward leaves nothing).
+export async function listOlderMessagesForSummaryBounded(
+  client: PoolClient,
+  conversation_id: string,
+  turn_count: number,
+  overlap_m: number
+): Promise<MessageRow[]> {
+  if (turn_count <= 0 || overlap_m <= 0) return [];
+
+  const offset = turn_count - 1;
+  const res = await client.query<MessageRow>(
+    `WITH boundary AS (
+       SELECT created_at AS at
+         FROM chat_message
+        WHERE conversation_id = $1
+          AND role = 'user'
+          AND idempotency_key IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1 OFFSET $2
+     ),
+     older_tail AS (
+       SELECT id, created_at, role, idempotency_key
+         FROM chat_message
+        WHERE conversation_id = $1
+          AND created_at < (SELECT at FROM boundary)
+        ORDER BY created_at DESC, id DESC
+        LIMIT $3
+     ),
+     anchor_start AS (
+       SELECT created_at AS at
+         FROM older_tail
+        WHERE role = 'user' AND idempotency_key IS NOT NULL
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+     )
+     SELECT ${MESSAGE_COLS}
+       FROM chat_message
+      WHERE conversation_id = $1
+        AND created_at < (SELECT at FROM boundary)
+        AND created_at >= (SELECT at FROM anchor_start)
+      ORDER BY created_at ASC, id ASC`,
+    [conversation_id, offset, overlap_m]
+  );
+  return res.rows;
+}
+
 // BR-33 trigger predicate. Counts REAL user turns only. v2.2: synthetic user
 // rows carrying `tool_result` blocks (idempotency_key NULL) are NOT user turns
 // — counting them would trip the summary threshold far too early (one extra
@@ -1000,6 +1089,7 @@ export const chatRepository: ChatRepository = {
   countRealTurnsOlderThanRecentWindow,
   listMessagesPaginated,
   listOlderMessagesForSummary,
+  listOlderMessagesForSummaryBounded,
   countUserTurns,
   getFirstUserAndAssistant,
   insertToolCall,

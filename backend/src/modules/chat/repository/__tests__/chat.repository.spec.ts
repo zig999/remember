@@ -30,6 +30,7 @@ import {
   insertUserMessage,
   listConversations,
   listOlderMessagesForSummary,
+  listOlderMessagesForSummaryBounded,
   listRecentMessages,
   listRecentRealTurns,
   setTitleIfNull,
@@ -538,6 +539,47 @@ describe("listOlderMessagesForSummary (BR-33)", () => {
     const out = await listOlderMessagesForSummary(client, "conv-1", 0);
     expect(out).toEqual([m1]);
     expect(recorded[0]!.sql).not.toMatch(/OFFSET/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listOlderMessagesForSummaryBounded — BR-33 v2.9 step 2 (bounded slice cut
+// on real-turn boundaries; capped at CHAT_SUMMARY_OVERLAP_M rows)
+// ---------------------------------------------------------------------------
+
+describe("listOlderMessagesForSummaryBounded (BR-33 v2.9)", () => {
+  it("emits the boundary + older_tail + anchor_start CTEs and forwards (turn_count-1, overlap_m)", async () => {
+    const m1 = makeMessage();
+    const { client, recorded } = makeClient([result([m1])]);
+    const out = await listOlderMessagesForSummaryBounded(client, "conv-1", 6, 40);
+    expect(out).toEqual([m1]);
+    // Params: [$1 conversation_id, $2 = turn_count - 1 (OFFSET), $3 = overlap_m (LIMIT).
+    expect(recorded[0]!.params).toEqual(["conv-1", 5, 40]);
+    // The query stages all three CTE names that document the algorithm
+    // (boundary -> older_tail -> anchor_start). Regression guard against an
+    // accidental rewrite that drops the anchor-snap-forward step.
+    expect(recorded[0]!.sql).toMatch(/boundary AS/);
+    expect(recorded[0]!.sql).toMatch(/older_tail AS/);
+    expect(recorded[0]!.sql).toMatch(/anchor_start AS/);
+    // Anchor predicate must be present so the slice ALWAYS starts on a
+    // real-turn anchor row (otherwise the summariser would 400 on a leading
+    // orphan tool_result).
+    expect(recorded[0]!.sql).toMatch(/role = 'user'/);
+    expect(recorded[0]!.sql).toMatch(/idempotency_key IS NOT NULL/);
+  });
+
+  it("returns [] without hitting the DB when turn_count <= 0 (defensive)", async () => {
+    const { client, recorded } = makeClient([]);
+    const out = await listOlderMessagesForSummaryBounded(client, "conv-1", 0, 40);
+    expect(out).toEqual([]);
+    expect(recorded).toEqual([]);
+  });
+
+  it("returns [] without hitting the DB when overlap_m <= 0 (defensive)", async () => {
+    const { client, recorded } = makeClient([]);
+    const out = await listOlderMessagesForSummaryBounded(client, "conv-1", 6, 0);
+    expect(out).toEqual([]);
+    expect(recorded).toEqual([]);
   });
 });
 

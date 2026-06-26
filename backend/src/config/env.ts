@@ -165,9 +165,31 @@ const envSchema = z.object({
   //   { turns: K }` at process start to make the unit shift explicit
   //   (BR-31 v2.9; chat.back.md §12).
   CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6),
-  // CHAT_SUMMARY_AFTER_TURNS: after this many USER turns on a conversation,
-  //   the rolling-summary policy fires (BR-33). chat.back.md v2.0.0 §8. NEW.
+  // CHAT_SUMMARY_AFTER_TURNS: DEPRECATED v2.9 — kept in the schema for
+  //   back-compat boot. Up to v2.8 this was the turn-count gate for BR-33
+  //   (refresh fires when the count of natural-language user turns exceeds
+  //   this threshold). In chat-context-fidelity TC-02 the gate becomes
+  //   refresh-on-overflow (any real turn older than the recent window not yet
+  //   absorbed; BR-33 v2.9 step 1) and this env's VALUE is IGNORED at runtime.
+  //   When set on a deployment, the route registrar emits a one-shot INFO
+  //   `chat.deprecated_env { name: 'CHAT_SUMMARY_AFTER_TURNS', reason:
+  //   'retired_as_gate_v2_9' }` at boot so operators see the change.
   CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),
+  // CHAT_SUMMARY_OVERLAP_M: hard cap on the number of `chat_message` rows the
+  //   rolling-summary fold pulls into the `bounded_overlap_slice` per refresh
+  //   (BR-33 v2.9 step 2 / BR-46). The slice is cut on REAL-turn boundaries —
+  //   if the cap would land mid-turn, the slicer shrinks the start forward to
+  //   the nearest anchor row so the slice always begins on a real-turn anchor
+  //   (Anthropic-valid sequence). Bounded slice keeps per-refresh cost
+  //   constant regardless of conversation length. NEW v2.9 (TC-02).
+  CHAT_SUMMARY_OVERLAP_M: z.coerce.number().int().min(1).default(40),
+  // CHAT_SUMMARY_PROMPT_VERSION: chat summary prompt module version (BR-46).
+  //   `v2` is the incremental fold (NEW v2.9, default); `v1` is the legacy
+  //   single-input summariser of v2.0 (registered for back-compat tests; NOT
+  //   reachable via BR-33 v2.9). Unknown values -> boot fails
+  //   (`UnknownChatSummaryPromptVersionError` raised by
+  //   `prompts/chat-summary/index.ts`). NEW v2.9 (TC-02).
+  CHAT_SUMMARY_PROMPT_VERSION: z.string().min(1).default("v2"),
   // CHAT_TITLE_ENABLED: when `false`, the title-distillation job (BR-34) is
   //   skipped. chat.back.md v2.0.0 §8. NEW in TC-02.
   CHAT_TITLE_ENABLED: z
