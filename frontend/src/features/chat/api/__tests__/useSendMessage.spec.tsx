@@ -49,14 +49,12 @@ vi.mock("../../../../lib/env", () => ({
 
 import {
   useSendMessage,
-  mapWireToGraphDelta,
   type SendMessageResult,
 } from "../useSendMessage";
 import { useChatTurnStore } from "../../state/chat-turn";
 import { conversationKeys } from "../keys";
 import { useAuthStore } from "../../../../state/auth";
 import { useGraphStore } from "../../../graph";
-import type { ChatSSEFrameGraphDelta } from "../chat-stream";
 
 /* ---------- rig ---------- */
 
@@ -405,174 +403,12 @@ describe("useSendMessage — error path", () => {
  * TC-FE-04 — graph_delta dispatching, chatStatus state machine, GraphStatus
  * coupling, conversation-change clear. The tests below pin the contract
  * described in the Task Contract's validation criteria + the plan §7.3 / §12.
+ *
+ * The pure-mapper assertions for `mapWireToGraphDelta` live alongside the
+ * function itself at `features/graph/api/__tests__/mapWireToGraphDelta.spec.ts`
+ * (dev_tc_001 extraction). The dispatch tests below still exercise the
+ * mapper indirectly via the SSE turn.
  * ------------------------------------------------------------------------- */
-
-describe("mapWireToGraphDelta — pure mapper", () => {
-  // The mapper is exported on the dispatcher module (lives next to it
-  // because the graph feature must stay unaware of chat — REQ-6). Testing
-  // it in isolation here keeps the assertions tight.
-
-  it("maps a wire frame into surface GraphDelta (nodes + links)", () => {
-    const frame: ChatSSEFrameGraphDelta = {
-      type: "graph_delta",
-      sourceTool: "traverse",
-      nodes: [
-        {
-          id: "n1",
-          node_type: "person",
-          canonical_name: "Rodrigo",
-          status: "active",
-        },
-        {
-          id: "n2",
-          node_type: "project",
-          canonical_name: "Remember",
-          status: "needs_review",
-        },
-      ],
-      links: [
-        {
-          id: "l1",
-          source_node_id: "n1",
-          target_node_id: "n2",
-          link_type: "participates_in",
-          is_temporal: true,
-        },
-      ],
-    };
-    const delta = mapWireToGraphDelta(frame);
-    expect(delta.sourceTool).toBe("traverse");
-    expect(delta.nodes).toHaveLength(2);
-    expect(delta.nodes[0]).toEqual({
-      id: "n1",
-      type: "person",
-      label: "Rodrigo",
-      state: "accepted",
-    });
-    expect(delta.nodes[1]).toEqual({
-      id: "n2",
-      type: "project",
-      label: "Remember",
-      state: "uncertain",
-    });
-    expect(delta.links).toHaveLength(1);
-    expect(delta.links[0]).toMatchObject({
-      id: "l1",
-      source: "n1",
-      target: "n2",
-      label: "participates_in",
-      isTemporal: true,
-      state: "accepted",
-    });
-    // Wire did not carry `link_type_label` → mapper falls back to the
-    // humanized slug. Pins the contract: the surface ALWAYS exposes a
-    // non-empty `linkTypeLabel`, never `undefined` (GraphEdge.spec §7
-    // Scenario 8). Without this assertion, a future regression that
-    // dropped the fallback would surface as `undefined` text on the canvas.
-    expect(delta.links[0]?.linkTypeLabel).toBe("participates in");
-  });
-
-  it("projects wire `link_type_label` into surface `linkTypeLabel` (pt-BR)", () => {
-    // The new wire field (BR / dev_tc_001) carries the catalog-resolved
-    // pt-BR display label. The mapper MUST pass it through unchanged — the
-    // visible canvas text comes from the backend, not from the frontend.
-    // Regression guard: a refactor that lower-cased / title-cased the
-    // value would silently change the rendered label.
-    const frame: ChatSSEFrameGraphDelta = {
-      type: "graph_delta",
-      sourceTool: "traverse",
-      nodes: [
-        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
-        { id: "n2", node_type: "person", canonical_name: "B", status: "active" },
-      ],
-      links: [
-        {
-          id: "l1",
-          source_node_id: "n1",
-          target_node_id: "n2",
-          link_type: "participates_in",
-          link_type_label: "participa de",
-          is_temporal: true,
-        },
-      ],
-    };
-    const delta = mapWireToGraphDelta(frame);
-    expect(delta.links[0]?.label).toBe("participates_in");
-    expect(delta.links[0]?.linkTypeLabel).toBe("participa de");
-  });
-
-  it("filters out merged/deleted nodes (I-2) and orphan links", () => {
-    const frame: ChatSSEFrameGraphDelta = {
-      type: "graph_delta",
-      sourceTool: "list_nodes",
-      nodes: [
-        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
-        { id: "n2", node_type: "person", canonical_name: "B", status: "merged" },
-        { id: "n3", node_type: "person", canonical_name: "C", status: "deleted" },
-      ],
-      links: [
-        // n1→n2 — orphan (n2 filtered): drop
-        { id: "l1", source_node_id: "n1", target_node_id: "n2", link_type: "x", is_temporal: false },
-        // n2→n3 — both filtered: drop
-        { id: "l2", source_node_id: "n2", target_node_id: "n3", link_type: "x", is_temporal: false },
-      ],
-    };
-    const delta = mapWireToGraphDelta(frame);
-    expect(delta.nodes.map((n) => n.id)).toEqual(["n1"]);
-    expect(delta.links).toHaveLength(0);
-  });
-
-  it("falls back to 'concept' for unknown node_type slugs (G-B)", () => {
-    const frame: ChatSSEFrameGraphDelta = {
-      type: "graph_delta",
-      sourceTool: "get_node",
-      nodes: [
-        {
-          id: "n1",
-          node_type: "mystery_type_not_in_union",
-          canonical_name: "X",
-          status: "active",
-        },
-      ],
-      links: [],
-    };
-    const delta = mapWireToGraphDelta(frame);
-    expect(delta.nodes[0]?.type).toBe("concept");
-  });
-
-  it("preserves inEffect when present and elides it when absent (exactOptional)", () => {
-    const frame: ChatSSEFrameGraphDelta = {
-      type: "graph_delta",
-      sourceTool: "traverse",
-      nodes: [
-        { id: "n1", node_type: "person", canonical_name: "A", status: "active" },
-        { id: "n2", node_type: "person", canonical_name: "B", status: "active" },
-      ],
-      links: [
-        // with explicit is_in_effect: false
-        {
-          id: "l1",
-          source_node_id: "n1",
-          target_node_id: "n2",
-          link_type: "x",
-          is_temporal: true,
-          is_in_effect: false,
-        },
-        // without is_in_effect — must not appear on the surface link
-        {
-          id: "l2",
-          source_node_id: "n1",
-          target_node_id: "n2",
-          link_type: "x",
-          is_temporal: false,
-        },
-      ],
-    };
-    const delta = mapWireToGraphDelta(frame);
-    expect(delta.links[0]?.inEffect).toBe(false);
-    expect("inEffect" in (delta.links[1] ?? {})).toBe(false);
-  });
-});
 
 describe("useSendMessage — graph_delta dispatch (TC-FE-04)", () => {
   it("first graph_delta of a response REPLACES any prior graph (non-cumulative)", async () => {

@@ -64,3 +64,11 @@ export {
   formatReceivedAtDateTime,
   toProvenanceResponse,
 } from "./provenance.transforms";
+
+// dev_tc_001 — wire→surface mapper extracted from `features/chat`. Both
+// `/chat` (SSE dispatcher) and `/ingest` (traverse-assembled deltas)
+// consume it from here to avoid a cross-feature import.
+export {
+  mapWireToGraphDelta,
+  type MapWireToGraphDeltaInput,
+} from "./mapWireToGraphDelta";

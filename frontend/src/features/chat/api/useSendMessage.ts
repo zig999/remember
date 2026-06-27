@@ -64,16 +64,8 @@ import {
 import { getEnv } from "@/lib/env";
 import { useAuthStore } from "@/state/auth";
 import {
-  deriveLinkState,
-  deriveNodeState,
-  mapLinkTypeLabel,
-  mapNodeType,
+  mapWireToGraphDelta,
   useGraphStore,
-  type GraphDelta,
-  type GraphLinkData,
-  type GraphLinkWire,
-  type GraphNodeData,
-  type GraphNodeWire,
 } from "@/features/graph";
 import type {
   ChatContentBlock,
@@ -83,7 +75,6 @@ import type {
 import {
   streamChat,
   type ChatSSEFrame,
-  type ChatSSEFrameGraphDelta,
 } from "./chat-stream";
 import { conversationKeys } from "./keys";
 import { useChatTurnStore, type ChatStatus } from "../state/chat-turn";
@@ -347,84 +338,6 @@ const GRAPH_TOOLS: ReadonlySet<string> = new Set<string>([
 
 function isGraphTool(toolName: string): boolean {
   return GRAPH_TOOLS.has(toolName);
-}
-
-/* ---------- internal: wire → GraphDelta mapping ---------- */
-
-/**
- * Map a `graph_delta` SSE frame (wire shape, snake_case) into the surface
- * `GraphDelta` consumed by `useGraphStore.addNodes`.
- *
- * Filter rule (I-2): nodes whose `status` maps to `undefined` (currently
- * `merged` / `deleted`) are dropped — they have no visible representation
- * in the surface store and would render as ghosts. Links anchored on a
- * filtered-out endpoint are dropped too (consistent with the orphan-link
- * cleanup in `useGraphStore.removeNodes`).
- *
- * Pure function — exported for unit testing in isolation from the dispatcher.
- */
-export function mapWireToGraphDelta(
-  frame: ChatSSEFrameGraphDelta,
-): GraphDelta {
-  const mappedNodes: GraphNodeData[] = [];
-  const visibleIds = new Set<string>();
-  for (const wireNode of frame.nodes as readonly GraphNodeWire[]) {
-    const state = deriveNodeState(wireNode.status);
-    if (state === undefined) {
-      // Filtered out (merged / deleted) — do not propagate to the surface
-      // store. Re-affirmation of a previously visible id by a `merged`
-      // status is intentionally NOT applied here either; the dispatcher
-      // would need an explicit `removeNodes` to take such a node down.
-      continue;
-    }
-    const node: GraphNodeData = {
-      id: wireNode.id,
-      type: mapNodeType(wireNode.node_type),
-      label: wireNode.canonical_name,
-      state,
-    };
-    mappedNodes.push(node);
-    visibleIds.add(wireNode.id);
-  }
-
-  const mappedLinks: GraphLinkData[] = [];
-  for (const wireLink of frame.links as readonly GraphLinkWire[]) {
-    // Drop links whose endpoints are not in the visible set for THIS delta
-    // AND not already in the store. The store dedupes by id on merge, so a
-    // link whose endpoints were established by a prior delta still lands;
-    // a link whose endpoints would be orphan after the filter is dropped.
-    const sourceVisible =
-      visibleIds.has(wireLink.source_node_id) ||
-      useGraphStore.getState().nodes.has(wireLink.source_node_id);
-    const targetVisible =
-      visibleIds.has(wireLink.target_node_id) ||
-      useGraphStore.getState().nodes.has(wireLink.target_node_id);
-    if (!sourceVisible || !targetVisible) continue;
-
-    const link: GraphLinkData = {
-      id: wireLink.id,
-      source: wireLink.source_node_id,
-      target: wireLink.target_node_id,
-      label: wireLink.link_type,
-      // The visible label — pt-BR catalog-resolved when the backend projected
-      // it, otherwise a humanized slug. The slug (`label` above) stays the
-      // color-lookup key; only this string is rendered as text on the canvas.
-      // See GraphEdge.component.spec.md §2.
-      linkTypeLabel: mapLinkTypeLabel(wireLink.link_type, wireLink.link_type_label),
-      isTemporal: wireLink.is_temporal,
-      state: deriveLinkState(wireLink.status, wireLink.flags),
-      ...(wireLink.is_in_effect === undefined
-        ? {}
-        : { inEffect: wireLink.is_in_effect }),
-    };
-    mappedLinks.push(link);
-  }
-
-  return {
-    sourceTool: frame.sourceTool,
-    nodes: mappedNodes,
-    links: mappedLinks,
-  };
 }
 
 /* ---------- internal: frame dispatcher ---------- */
