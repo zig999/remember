@@ -52,3 +52,9 @@ export {
   type RunLlmExtractionRequestWire,
   type SourceTypeWire,
 } from "./_transforms";
+
+export {
+  useIngestGraphAssembly,
+  type IngestAffectedNode,
+  type UseIngestGraphAssemblyResult,
+} from "./useIngestGraphAssembly";
