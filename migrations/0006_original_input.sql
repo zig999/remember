@@ -1,4 +1,4 @@
--- 0002_original_input.sql — additive, reversible, no backfill.
+-- 0006_original_input.sql — additive, reversible, no backfill.
 --
 -- TC-01 / BR-34: capture the verbatim user turn (chat-directed ingestion) on
 -- the source row. The `content` column keeps holding the synthesised payload

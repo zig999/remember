@@ -264,15 +264,18 @@ Sem workspaces na raiz — rodar **dentro** de `backend/` ou `frontend/` (o `fro
 
 ```
 remember-modelagem-v7.md   # FONTE NORMATIVA — especificação fechada (v7; v6 deprecated)
-migrations/
+migrations/                       # ESTRUTURA (DDL) na raiz; SEEDS (dados/catálogo) em seeds/; ops/ destrutivo
   0001_init.sql                   # Bootstrap ESTRUTURAL (100% DDL): extensões, configs de full-text,
                                   #   funções, tipos enum, tabelas (incl. colunas de tombstone de
                                   #   compliance), índices, views, triggers
-  0001_seed.sql                   # Catálogo seed da §15 — aplicar DEPOIS do init (resolve FKs por nome):
-                                  #   8 NodeTypes, 10 LinkTypes +22 regras, 10 AttributeKeys
-  0002_catalog_tier1.sql          # Extensão ADITIVA do catálogo (Tier 1, deviation do §15 fechado):
-                                  #   +Document, +concerns/delivered_to/sponsors (+6 regras),
-                                  #   +6 AttributeKeys -> totais 9/13/28/16. Exige RESTART do BFF.
+  0004_chat_persistence.sql       # ESTRUTURA: tabelas chat_conversation/message/tool_call
+  0005_chat_graph_view.sql        # ESTRUTURA: tabela chat_graph_view (snapshot do grafo por conversa)
+  0006_original_input.sql         # ESTRUTURA (aditivo): raw_information.original_input (captura do turno de chat)
+  seeds/                          # SEED (ingestão de dados de catálogo §15 — só DML, sem DDL). Aplicar DEPOIS do init.
+    0001_seed.sql                 #   Catálogo §15 completo: 9 NodeTypes, 13 LinkTypes (+28 regras), 16 AttributeKeys, 9 valid_values
+    0002_ontology_status_task.sql #   Extensão ADITIVA: Project.status_text (fechado) + NodeType Task. Exige RESTART do BFF.
+    0003_event_type_taxonomy.sql  #   Extensão ADITIVA: +5 valid_values em Event.event_type
+  ops/                            # Scripts DESTRUTIVOS de manutenção (truncate) — fora da sequência, on-demand + aprovação
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
 docs/specs/                       # Specs SDD (specs_dir)
   front/                          #   front.md (global), features/*.feature.spec.md,
@@ -403,8 +406,9 @@ Orchestrators refuse to spawn if `nesting_depth >= 3`. If this error appears, th
   O `0001_init.sql` inclui as colunas de tombstone de compliance (`raw_information.status`/
   `superseded_at`, `raw_chunk.status`/`superseded_at`, `information_fragment.superseded_at`)
   exigidas pelo UC-01 de compliance-audit.
-- Seeds: `migrations/0001_seed.sql` — catálogo obrigatório da §15 (NodeTypes/LinkTypes/regras/
-  AttributeKeys), aplicado após o `0001_init.sql`. Novos tipos de catálogo entram por migração
+- Seeds: `migrations/seeds/0001_seed.sql` — catálogo obrigatório da §15 (NodeTypes/LinkTypes/regras/
+  AttributeKeys), aplicado após o `0001_init.sql`. Seeds vivem em `migrations/seeds/` (só DML);
+  estrutura (DDL) fica na raiz de `migrations/`. Novos tipos de catálogo entram por migração
   versionada (§12).
 - Business logic: invariantes de aplicação são garantidos pelo **backend** (não exprimíveis em
   DDL — ver cabeçalho da 0001); o banco carrega funções de apoio (`norm`, `immutable_unaccent`,
