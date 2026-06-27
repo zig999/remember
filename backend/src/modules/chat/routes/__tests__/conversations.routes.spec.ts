@@ -2488,3 +2488,172 @@ describe("registerChatRoutes — BR-44 boot log", () => {
     await app.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// TC-02 — Path-1 chat capture: route threads body.content and the
+// (conversation_id, message_id) pointer into ChatRunInput so the chat agent
+// can forward them as `invocation_context` to the directed-ingest handler.
+// ---------------------------------------------------------------------------
+
+describe("POST /conversations/:id/messages — TC-02 Path-1 chat capture", () => {
+  it("threads body.content VERBATIM into ChatRunInput.current_user_turn", async () => {
+    // WHY: the whole §13 traceability fix lives on the verbatim text reaching
+    // the chat agent. A trimmed/transformed value (or a missing one) would
+    // silently kill capture for the chat path while REST/MCP-direct tests
+    // stayed green.
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
+      id: "user-row-tc02-a",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "  Acompanahr o projeto Apollo  " }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: "claude-opus-4-8",
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-27T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "assistant-row-tc02-a",
+      conversation_id: CID,
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 1,
+      tokens_out: 1,
+      latency_ms: 1,
+      created_at: "2026-06-27T12:00:01.000Z",
+    });
+
+    const { app, capturedRunInput } = await buildApp();
+    const VERBATIM = "  Acompanahr o projeto Apollo  ";
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: VERBATIM },
+    });
+    expect(res.statusCode).toBe(200);
+
+    expect(capturedRunInput.current).toBeDefined();
+    // VERBATIM: surrounding spaces, original spelling — unchanged.
+    expect(capturedRunInput.current!.current_user_turn).toBe(VERBATIM);
+    await app.close();
+  });
+
+  it("threads (conversation_id, message_id) as invocation_pointer when insertUserMessage returns an id", async () => {
+    // WHY: the pointer is what lands in RawInformation.metadata as a non-PII
+    // reference to the chat row. The route MUST extract the user row id from
+    // the insert return value — a regression that swallowed the return value
+    // and recomputed the id elsewhere would drop the pointer silently.
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
+    vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
+      id: "user-row-tc02-b",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "ingere isto" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: "claude-opus-4-8",
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-27T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "assistant-row-tc02-b",
+      conversation_id: CID,
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 1,
+      tokens_out: 1,
+      latency_ms: 1,
+      created_at: "2026-06-27T12:00:01.000Z",
+    });
+
+    const { app, capturedRunInput } = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "ingere isto" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    expect(capturedRunInput.current?.invocation_pointer).toEqual({
+      conversation_id: CID,
+      message_id: "user-row-tc02-b",
+    });
+    await app.close();
+  });
+
+  it("recovery path (existingUserRow): pointer uses the existing user row id", async () => {
+    // WHY: BR-27 recovery — the original turn died before the assistant row
+    // landed, so the route reuses the existing user row instead of inserting
+    // a new one. The pointer must still carry the chat row id (otherwise the
+    // recovered ingestion loses its provenance link).
+    mockExistingConversation();
+    vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue({
+      id: "user-row-existing-tc02",
+      conversation_id: CID,
+      role: "user",
+      content: [{ type: "text", text: "hi" }],
+      stop_reason: null,
+      idempotency_key: IDEMP,
+      model: "claude-opus-4-8",
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: null,
+      created_at: "2026-06-27T12:00:00.000Z",
+    });
+    vi.mocked(chatRepo.findAssistantSuccessor).mockResolvedValue(null);
+    vi.mocked(chatRepo.listRecentMessages).mockResolvedValue([]);
+    vi.mocked(chatRepo.listRecentRealTurns).mockResolvedValue([]);
+    vi.mocked(chatRepo.countRealTurnsOlderThanRecentWindow).mockResolvedValue(0);
+    vi.mocked(chatRepo.insertAssistantMessage).mockResolvedValue({
+      id: "assistant-row-tc02-c",
+      conversation_id: CID,
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      stop_reason: "end_turn",
+      idempotency_key: null,
+      model: "claude-opus-4-8",
+      tokens_in: 1,
+      tokens_out: 1,
+      latency_ms: 1,
+      created_at: "2026-06-27T12:00:02.000Z",
+    });
+
+    const { app, capturedRunInput } = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "hi" },
+    });
+    expect(res.statusCode).toBe(200);
+    // insertUserMessage was NOT called (existing-row recovery).
+    expect(chatRepo.insertUserMessage).not.toHaveBeenCalled();
+    expect(capturedRunInput.current?.invocation_pointer).toEqual({
+      conversation_id: CID,
+      message_id: "user-row-existing-tc02",
+    });
+    expect(capturedRunInput.current?.current_user_turn).toBe("hi");
+    await app.close();
+  });
+});

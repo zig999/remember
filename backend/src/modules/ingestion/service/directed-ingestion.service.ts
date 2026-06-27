@@ -279,6 +279,19 @@ export interface DirectedIngestionDeps {
    * `synthesiseContent` (so `content_hash` is unaffected).
    */
   readonly sourceExcerpt?: string;
+  /**
+   * Non-PII pointer back to the chat row that triggered this directed run
+   * (TC-02 / BR-34). When the chat-agent dispatch invoked the tool the route
+   * supplies `{ conversation_id, message_id }` so the orchestrator can merge
+   * it into the `RawInformation.metadata` jsonb. REST / MCP-direct callers
+   * omit this field; the orchestrator emits a metadata document without the
+   * pointer keys. NEVER participates in `content_hash` (lives in metadata,
+   * not in the synthesised content).
+   */
+  readonly metadataPointer?: {
+    readonly conversation_id: string;
+    readonly message_id: string;
+  };
 }
 
 /**
@@ -328,6 +341,13 @@ export async function directedIngestionService(
   };
   if (payload.source_label !== undefined) {
     intakeMetadata.source_label = payload.source_label;
+  }
+  // TC-02 / BR-34 — chat-row pointer (non-PII; the verbatim text lives in
+  // `original_input`, not here). Merged in only when the chat dispatch
+  // supplied it; REST / MCP-direct calls emit metadata without these keys.
+  if (deps.metadataPointer !== undefined) {
+    intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+    intakeMetadata.message_id = deps.metadataPointer.message_id;
   }
 
   let intake;

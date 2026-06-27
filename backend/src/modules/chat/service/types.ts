@@ -171,6 +171,27 @@ export interface ChatRunInput {
   readonly model: string;
   /** Bound to `req.raw.on('close')` AND to `cancelTurn` (BR-12, BR-38). */
   readonly abortSignal: AbortSignal;
+  /**
+   * Verbatim operator turn (TC-02 / BR-34 — Path 1 capture). The route threads
+   * `body.content` here unmodified; the chat agent forwards it to ALL tool
+   * handlers via `invocation_context.source_excerpt`. Only `ingest_directed`
+   * consumes it; the other 13 read-only handlers ignore it. Absent when the
+   * route did not thread a value (e.g. legacy tests) — the agent then omits
+   * `source_excerpt` from the invocation_context payload entirely.
+   */
+  readonly current_user_turn?: string;
+  /**
+   * Non-PII pointer back to the chat row that originated this turn
+   * (TC-02 / BR-34). When present, the chat agent forwards it to all tool
+   * handlers via `invocation_context.pointer`; only `ingest_directed`
+   * consumes it (merges into `RawInformation.metadata`). Required ids:
+   * `conversation_id` (the route param) + `message_id` (the user
+   * chat_message row id).
+   */
+  readonly invocation_pointer?: {
+    readonly conversation_id: string;
+    readonly message_id: string;
+  };
 }
 
 // ---------------------------------------------------------------------------

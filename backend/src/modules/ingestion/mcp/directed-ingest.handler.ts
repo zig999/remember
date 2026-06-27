@@ -89,6 +89,13 @@ export interface IngestDirectedDeps {
  * `RawInformation` row. REST / MCP-direct callers omit this argument — the
  * handler treats it as `undefined` and the orchestrator stores `null`.
  *
+ * TC-02 / BR-34 adds the optional `pointer` field: when chat is the
+ * transport, the route supplies `{ conversation_id, message_id }` so the
+ * orchestrator can merge a non-PII pointer into the `RawInformation.metadata`
+ * jsonb. The LLM never sees these ids (they live entirely in the request
+ * pipeline). Both ids are required when `pointer` is present — partial
+ * pointers are dropped.
+ *
  * Why an additional argument (and not a tool-schema field):
  *   - Capture is SERVER-SIDE deterministic — the LLM never relays the
  *     verbatim text (which would re-introduce paraphrase / typo-fix).
@@ -97,6 +104,10 @@ export interface IngestDirectedDeps {
  */
 export interface IngestDirectedInvocationContext {
   readonly source_excerpt?: string;
+  readonly pointer?: {
+    readonly conversation_id: string;
+    readonly message_id: string;
+  };
 }
 
 /**
@@ -163,6 +174,20 @@ export async function ingestDirectedHandler(
     // does not collide with the orchestrator's default.
     ...(invocationContext?.source_excerpt !== undefined
       ? { sourceExcerpt: invocationContext.source_excerpt }
+      : {}),
+    // TC-02 / BR-34 — forward the chat-row pointer (conversation_id +
+    // message_id) so the orchestrator can merge it into the RawInformation
+    // metadata jsonb. Both ids are mandatory together — a partial pointer is
+    // dropped (omitted) rather than persisted with a missing field.
+    ...(invocationContext?.pointer !== undefined &&
+    typeof invocationContext.pointer.conversation_id === "string" &&
+    typeof invocationContext.pointer.message_id === "string"
+      ? {
+          metadataPointer: {
+            conversation_id: invocationContext.pointer.conversation_id,
+            message_id: invocationContext.pointer.message_id,
+          },
+        }
       : {}),
   };
 

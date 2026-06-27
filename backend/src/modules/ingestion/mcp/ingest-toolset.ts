@@ -289,16 +289,31 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
     name: "ingest_directed",
     description: IngestToolDescriptions.ingest_directed,
     inputSchema: IngestDirectedMcpInputSchema,
-    handler: async (rawInput: unknown): Promise<McpEnvelopeJson> => {
+    handler: async (
+      rawInput: unknown,
+      invocation_context?: Record<string, unknown>
+    ): Promise<McpEnvelopeJson> => {
       // The handler owns its own Zod parse (BR-34, TC-03) — no second parse
       // here. A parse failure surfaces as STRUCTURAL_INVALID; the run is
       // never opened so there is no `tool_call` row to audit against.
-      return await ingestDirectedHandler(rawInput, {
-        pool,
-        logger,
-        catalog,
-        now,
-      });
+      //
+      // TC-02 / BR-34 (Path 1): `invocation_context` is the transport-neutral
+      // 2nd-arg seam — present when the chat-agent dispatch invoked the tool
+      // (carries `source_excerpt` + the `{conversation_id, message_id}`
+      // pointer); absent on REST / MCP-direct (handler treats those fields
+      // as `null`). Forwarded structurally; the handler validates shape.
+      return await ingestDirectedHandler(
+        rawInput,
+        {
+          pool,
+          logger,
+          catalog,
+          now,
+        },
+        invocation_context as
+          | import("./directed-ingest.handler.js").IngestDirectedInvocationContext
+          | undefined
+      );
     },
   });
 

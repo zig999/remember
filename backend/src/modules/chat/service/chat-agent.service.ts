@@ -350,6 +350,26 @@ async function* runTurnGenerator(
 
   turnController.signal.addEventListener("abort", abortActive);
 
+  // TC-02 / BR-34 (Path 1) — assemble the transport-neutral invocation_context
+  // ONCE per turn. The same record is forwarded to every tool handler via
+  // `raceToolHandler` (generic — no per-tool branch at the dispatch site). Only
+  // `ingest_directed` actually consumes it (reads `source_excerpt` +
+  // `pointer`); the other 13 read-only handlers receive the argument and
+  // ignore it. We omit either key (rather than passing `undefined`) when the
+  // route did not thread a value, so handlers can use `key in ctx` semantics
+  // cleanly. When neither field is present the record is `undefined` and the
+  // dispatch passes no second argument.
+  const invocationContext: Record<string, unknown> | undefined = (() => {
+    const out: Record<string, unknown> = {};
+    if (ctx.input.current_user_turn !== undefined) {
+      out.source_excerpt = ctx.input.current_user_turn;
+    }
+    if (ctx.input.invocation_pointer !== undefined) {
+      out.pointer = ctx.input.invocation_pointer;
+    }
+    return Object.keys(out).length === 0 ? undefined : out;
+  })();
+
   let iteration = 0;
   let lastModel = ctx.input.model;
 
@@ -637,10 +657,16 @@ async function* runTurnGenerator(
           } else {
             // BR-17: per-tool wall-clock race. Failure (timeout) feeds an
             // envelope back to the model and DOES NOT end the turn.
+            //
+            // TC-02 / BR-34 (Path 1): pass the turn-scoped `invocationContext`
+            // through generically. Every handler receives it; only
+            // `ingest_directed` reads `source_excerpt` + `pointer`. The other
+            // 13 read-only handlers ignore it silently — no per-tool branch.
             toolEnvelope = await raceToolHandler(
               tool.handler,
               block.input,
-              ctx.env.TOOL_TIMEOUT_MS
+              ctx.env.TOOL_TIMEOUT_MS,
+              invocationContext
             );
           }
 
@@ -884,10 +910,17 @@ interface ToolEnvelope {
  * `SYSTEM_INTERNAL_ERROR` so the loop does not crash. This is defensive —
  * the resolved tool handlers are expected to return envelopes themselves.
  */
-async function raceToolHandler(
-  handler: (input: unknown) => Promise<unknown>,
+// Exported for unit tests (TC-02). The dispatch loop calls this internally;
+// tests exercise the invocation_context forwarding contract directly without
+// spinning up the whole Anthropic streaming surface.
+export async function raceToolHandler(
+  handler: (
+    input: unknown,
+    invocation_context?: Record<string, unknown>
+  ) => Promise<unknown>,
   input: unknown,
-  timeoutMs: number
+  timeoutMs: number,
+  invocation_context?: Record<string, unknown>
 ): Promise<ToolEnvelope> {
   let timer: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<ToolEnvelope>((resolve) => {
@@ -902,8 +935,16 @@ async function raceToolHandler(
     }, timeoutMs);
   });
   try {
+    // TC-02 / BR-34 (Path 1): forward `invocation_context` GENERICALLY to
+    // every handler. When the caller omitted it we call `handler(input)`
+    // with no second argument so legacy 1-arg handlers (and stubs in tests)
+    // continue to type-check and run unchanged. The handler ignores extras
+    // it does not know how to read.
+    const invocation = invocation_context === undefined
+      ? handler(input)
+      : handler(input, invocation_context);
     const result = await Promise.race([
-      handler(input).then(
+      invocation.then(
         (envelope) => coerceEnvelope(envelope),
         (err) => synthesiseInternalErrorEnvelope(err)
       ),
