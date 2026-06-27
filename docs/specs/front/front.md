@@ -1,7 +1,7 @@
 # Front-end Spec — Global (Remember)
 
 > Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP
-> Version: 1.5.0 | Status: draft | Layer: permanent
+> Version: 1.6.0 | Status: draft | Layer: permanent
 
 > This is the global frontend architecture document for the Remember SPA — written once, updated as the project evolves. Per-feature configurations (data fetching, error mapping, transforms) go in each `.feature.spec.md`. The foundation of the design system lives in `design-system/`. This wave specifies **the foundation only**; the five functional areas (Graph / Search / Ingest / Curation / History) are out of scope here and will be specified in subsequent `/u-spec` waves.
 
@@ -142,7 +142,7 @@ The chat workspace (`/chat`) is the primary view (owner decision 2026-06-20). Th
 | `/sign-in` | Authentication entry | **Specified (auth wave):** `sign-in.feature.spec.md`; CRT animation + `GlassSurface panel` + RHF/Zod form + Stack Auth SDK; no header/footer/chrome. Direct child of `RootRoute`. |
 | `/graph` | Graph explorer (standalone full-screen — later wave) | Reserved; currently a stub; NOT the root redirect destination |
 | `/search` | Lexical search | Reserved (specified in a later wave) |
-| `/ingest` | Ingest a document | Reserved (specified in a later wave) |
+| `/ingest` | Ingest a document | **Specified (ingest wave):** `ingest.feature.spec.md`; 40%/60% container-query split — `IngestPanel` left + `GraphSpace` right; REST+polling flow (Opção B); rota protegida herdada de `protectedLayoutRoute` |
 | `/curation` | Review queues | Reserved (specified in a later wave) |
 | `/history` | Runs and audit trail | Reserved (specified in a later wave) |
 | `/not-found` | Fallback | Foundation: rendered inside `GlassSurface` |
@@ -264,7 +264,7 @@ The BFF returns a logical envelope (`{ ok, result, error }`) — REST returns it
 | `SYSTEM_*` (500+) | `500` / `502` / `503` | Toast `danger` "Algo deu errado. Tente novamente." + capture into the global error boundary if the page cannot render | sonner + `ErrorBoundary` |
 | `SYSTEM_ABORTED` | — | **Silent** — no toast, no redirect, no boundary. TanStack Query request cancellation on component unmount is silent by design (the user never asked for the result). | `lib/error-routing.ts` |
 | Network offline | — | Toast `warning` "Sem conexão." with auto-retry from TanStack Query (1 retry) | `NetworkBoundary` wrapper |
-| Request timeout (client-side) on **ingest** | — | **Never a failure** — see `CLAUDE.md` note "ingest_document client timeout ≠ failure". UI displays "A extração continua no servidor — você pode sair" and lets the user revisit via History | `/ingest` feature (later wave) |
+| Request timeout (client-side) on **ingest** | — | **Never a failure** — see `CLAUDE.md` note "ingest_document client timeout ≠ failure". UI auto-switches to polling mode (`getLlmRunById` at 5s interval); progress copy changes to "Verificando extração…" — server continues. | `/ingest` feature — `ingest.feature.spec.md` §2 UI-05 / §3 |
 
 ### 5.1 ErrorBoundary
 
@@ -314,7 +314,7 @@ frontend/src/
                                 # GraphStatusOverlay, GraphEmptyState, NodeDetailPanel
       hooks/                    # useForceLayout, useGraphReveal
       state/                    # useGraphStore (ephemeral subgraph state)
-      lib/                      # map.ts (mapWireToGraphDelta, mapNodeType, deriveState)
+      lib/                      # map.ts (mapWireToGraphDelta, mapNodeType, deriveState). NOTE: mapWireToGraphDelta is the shared wire→surface transform used by both features/chat and features/ingest — source lives in features/graph/api/ (not features/chat/api/)
       types.ts
     auth/
       api/                      # useSignIn mutation hook
@@ -406,7 +406,7 @@ The first live consumer of the `@xyflow/react` v12 + `d3-force` stack is the **c
 | `useForceLayout` | `features/graph/hooks/useForceLayout.ts` | Layout dispatcher: reads `layoutAlgorithm` from the store and delegates to `runForceLayout` (`d3-force`), `runTreeLayout` (`d3-hierarchy` tidy tree), or `runRadialLayout` (`d3-hierarchy` radial tree). All three pure runners share the same signature and honour the pin set uniformly. |
 | `useGraphReveal` | `features/graph/hooks/useGraphReveal.ts` | Drains `revealQueue` at `revealStaggerMs` ticks; respects `prefers-reduced-motion`. |
 
-**Driver:** the chat SSE pipeline. The BFF emits a 7th frame `graph_delta { sourceTool, nodes[], links[] }` after each `tool_result` for a graph-producing tool (`traverse`, `get_node`, `list_nodes`, `search`). `features/chat/api/useSendMessage.ts` dispatches it to `useGraphStore.addNodes(delta)`. Source of truth for the wire format: `domains/chat/openapi.yaml` (sendMessage SSE event schemas) and `temp/chat-graphspace-plan.md §4.1`.
+**Driver:** the chat SSE pipeline (for `/chat`) and the ingest traverse assembly (for `/ingest`). The BFF emits a 7th frame `graph_delta { sourceTool, nodes[], links[] }` after each `tool_result` for a graph-producing tool (`traverse`, `get_node`, `list_nodes`, `search`). `features/chat/api/useSendMessage.ts` dispatches it to `useGraphStore.addNodes(delta)`. For `/ingest`, `features/ingest/api/useIngestGraphAssembly.ts` fires parallel `traverseNode` calls and uses the shared `mapWireToGraphDelta` (in `features/graph/api/`) to assemble the delta, then calls `useGraphStore.replaceNodes(delta)`. Source of truth for the wire format: `domains/chat/openapi.yaml` (sendMessage SSE event schemas), `domains/knowledge-graph/openapi.yaml` (traverseNode) and `temp/chat-graphspace-plan.md §4.1`.
 
 **Unidirectionality:** the graph column is a **sink** (chat → graph only). Graph components do not import any action from `useChatTurnStore` or any mutation from `features/chat/api/*`. This is verified by `import/no-restricted-paths` lint rules.
 
@@ -565,5 +565,6 @@ The foundation specifies **only** the global frame, the layer system, the tokens
 | 1.2.0 | 2026-06-20 | Front Spec Agent | minor | §3 — root route changed from `/graph` to `/chat` (owner decision: chat workspace is the primary view); route map updated with `/chat` (primary) and `/graph` (standalone later wave); `?conversation` search param added to §3.2 URL state table. §4.3 — registered `useChatTurnStore` (ephemeral streaming turn state, no persistence). | chat-wave |
 | 1.2.1 | 2026-06-20 | Front Spec Agent | patch | §3.1 — noted `ChatWorkspace` 40%/60% container-query split in route map entry for `/chat`. | chat-wave |
 | 1.3.0 | 2026-06-20 | Front Spec Agent | minor | Auth/sign-in wave: §3 routing deviation note (guard moved to `protectedLayoutRoute`; `AmbientBackdrop` moved to `__root`; `/sign-in` direct child of root without chrome); §3.1 route map `/sign-in` updated from stub to specified; §6.1 folder structure updated (auth feature, `transitionCrtPowerOn` in motion.ts); §11 `@stackframe/react` added as approved exception; §12 sign-in removed from out-of-scope. | sdd_front |
-| 1.5.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave (REQ-1 floating edges + REQ-2 multi-algorithm layout): §1 graph-viz line updated (add d3-hierarchy); §7.1 Decision table updated (Layout row → three algorithms `force`/`tree`/`radial`; new Edge routing row for floating edges + invisible handles); §7.4 element table updated (GraphCanvas Panel, GraphNodeAdapter invisible handles, GraphEdgeAdapter floating geometry, useGraphStore layoutAlgorithm, useForceLayout dispatcher); §11 `d3-hierarchy` + `@types/d3-hierarchy` added as Permitted. | sdd_front |
 | 1.4.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | EPIC-FE-03 chat ↔ graph wave: §7 adds §7.4 documenting the live realization of the React Flow + d3-force stack as the chat right-column GraphSpace (was a static stub in v1.3.0). Lists the 7 graph components (`GraphSpace`, `GraphCanvas`, `GraphNodeAdapter`, `GraphEdgeAdapter`, `GraphStatusOverlay`, `GraphEmptyState`, `NodeDetailPanel`), the 3 hooks/stores (`useGraphStore`, `useForceLayout`, `useGraphReveal`), and the unidirectionality invariant (REQ-6). §6.1 folder structure updated (adds `features/chat/` and `features/graph/` with their subfolders). Normative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21. | EPIC-FE-03 |
+| 1.5.0 | 2026-06-23 | Front Spec Agent | minor | Graph-improvement wave (REQ-1 floating edges + REQ-2 multi-algorithm layout): §1 graph-viz line updated (add d3-hierarchy); §7.1 Decision table updated (Layout row → three algorithms `force`/`tree`/`radial`; new Edge routing row for floating edges + invisible handles); §7.4 element table updated (GraphCanvas Panel, GraphNodeAdapter invisible handles, GraphEdgeAdapter floating geometry, useGraphStore layoutAlgorithm, useForceLayout dispatcher); §11 `d3-hierarchy` + `@types/d3-hierarchy` added as Permitted. | sdd_front |
+| 1.6.0 | 2026-06-27 | Front Spec Agent | minor | Ingest wave: §3.1 `/ingest` route updated from "Reserved" to "Specified" (`ingest.feature.spec.md`; 40/60 split, REST+polling, Opção B). §6.1 `graph/lib/` note updated — `mapWireToGraphDelta` is extracted to `features/graph/api/` to be shared with `features/ingest` (no cross-feature imports). §7 Driver note updated to cover `/ingest` traverse-assembly path. | sdd_improve_1_spec-front |
