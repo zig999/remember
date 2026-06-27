@@ -592,6 +592,7 @@ describe("query-retrieval — GET /api/v1/provenance/links/:link_id", () => {
         source_type: "ata",
         received_at: new Date(),
         metadata: {},
+        original_input: null,
       },
     ]);
     store.tombstones.set(rawId, deletedAt);
@@ -705,6 +706,7 @@ describe("query-retrieval — GET /api/v1/provenance/fragments/:fragment_id", ()
         source_type: "ata",
         received_at: new Date("2026-06-11T18:30:00Z"),
         metadata: { title: "Ata Apollo" },
+        original_input: null,
       },
     ]);
     const app = await buildAppWith(store, fixture);

@@ -78,6 +78,11 @@ export interface ProvenanceRawInformation {
   readonly source_type: SourceType;
   readonly received_at: string; // ISO-8601
   readonly metadata: Record<string, unknown>;
+  // v1.4.0 — verbatim user turn that triggered directed-chat ingestion.
+  // `null` (or omitted) for non-chat sources and for rows that predate the
+  // feature; `'[REDACTED]'` after compliance_delete (BR-18 of
+  // compliance-audit). NOT part of the content_hash; NOT searchable.
+  readonly original_input: string | null;
 }
 
 export interface ProvenanceChunk {

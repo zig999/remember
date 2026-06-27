@@ -143,6 +143,7 @@ interface RawInformationRow {
   status: "active" | "needs_review" | "merged" | "deleted";
   superseded_at: Date | null;
   metadata: Record<string, unknown>;
+  original_input: string | null;
 }
 interface RawChunkRow {
   id: string;
@@ -645,14 +646,19 @@ function buildFakeClient(store: Store): any {
       }
 
       // ============ Compliance: tombstoneRawInformation ============
+      // BR-04 + BR-18: same UPDATE redacts content AND original_input
+      // (CASE preserves null; non-null becomes '[REDACTED]').
       if (
         text.includes("UPDATE raw_information") &&
-        text.includes("SET content       = '[REDACTED]'")
+        text.includes("content        = '[REDACTED]'")
       ) {
         const id = String(params[0]);
         const row = store.raws.find((r) => r.id === id);
         if (!row) return { rows: [], rowCount: 0 };
         row.content = "[REDACTED]";
+        if (row.original_input !== null && row.original_input !== undefined) {
+          row.original_input = "[REDACTED]";
+        }
         row.metadata = { ...row.metadata, compliance_deleted: true };
         row.status = "deleted";
         row.superseded_at = new Date();
@@ -1693,6 +1699,7 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       status: "active",
       superseded_at: null,
       metadata: {},
+      original_input: null,
     });
     return store;
   }

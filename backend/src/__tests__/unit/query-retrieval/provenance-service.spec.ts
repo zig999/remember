@@ -80,6 +80,7 @@ describe("getProvenanceByLinkService — BR-17 (410 on tombstoned raw)", () => {
               source_type: "ata",
               received_at: new Date(),
               metadata: {},
+              original_input: null,
             },
           ],
           rowCount: 1,
@@ -179,6 +180,117 @@ describe("getProvenanceByFragmentService — BR-16 (404 BUSINESS_FRAGMENT_NOT_AC
   });
 });
 
+describe("getProvenanceByFragmentService — original_input round-trip (v1.4.0)", () => {
+  // WHY: the provenance walk now surfaces `raw_information.original_input`
+  // (verbatim chat turn) so the SPA can render the operator's pristine text
+  // in the provenance chain. Two invariants are pinned here so a refactor
+  // that drops the SELECT column or the mapping step fails loudly.
+
+  it("returns original_input = null when the raw row has no captured turn", async () => {
+    const fragmentId = "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0010";
+    const chunkId = "cc1c1e2f-0e57-4d3f-99b1-1d22ce5e0010";
+    const rawId = "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0010";
+
+    const client = buildFakeClient((sql) => {
+      if (sql.includes("FROM information_fragment") && sql.includes("WHERE id = $1")) {
+        return { rows: [{ id: fragmentId, status: "accepted" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM information_fragment f") && sql.includes("JOIN fragment_source")) {
+        return {
+          rows: [
+            {
+              fragment_id: fragmentId,
+              fragment_text: "Some text",
+              fragment_confidence: 0.9,
+              fragment_status: "accepted",
+              raw_chunk_id: chunkId,
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 9,
+              excerpt: "Some text",
+              locator: null,
+              raw_information_id: rawId,
+              source_type: "ata",
+              received_at: new Date("2026-06-11T18:30:00Z"),
+              metadata: {},
+              original_input: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("FROM compliance_deletion")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const body = await getProvenanceByFragmentService(
+      client,
+      fragmentId,
+      silentLogger
+    );
+
+    expect(body.fragments[0]?.chunks[0]?.raw_information.original_input).toBeNull();
+  });
+
+  it("returns original_input = verbatim text when the raw row was captured from chat", async () => {
+    const fragmentId = "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0011";
+    const chunkId = "cc1c1e2f-0e57-4d3f-99b1-1d22ce5e0011";
+    const rawId = "7a1c1e2f-0e57-4d3f-99b1-1d22ce5e0011";
+    const verbatim = "Cria o projeto Acompanahr";
+
+    const client = buildFakeClient((sql) => {
+      if (sql.includes("FROM information_fragment") && sql.includes("WHERE id = $1")) {
+        return { rows: [{ id: fragmentId, status: "accepted" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM information_fragment f") && sql.includes("JOIN fragment_source")) {
+        return {
+          rows: [
+            {
+              fragment_id: fragmentId,
+              fragment_text: "Acompanhar projeto",
+              fragment_confidence: 0.91,
+              fragment_status: "accepted",
+              raw_chunk_id: chunkId,
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 26,
+              excerpt: "Acompanhar projeto",
+              locator: null,
+              raw_information_id: rawId,
+              source_type: "chat",
+              received_at: new Date("2026-06-11T18:30:00Z"),
+              metadata: { conversation_id: "c1", message_id: "m1" },
+              original_input: verbatim,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("FROM compliance_deletion")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const body = await getProvenanceByFragmentService(
+      client,
+      fragmentId,
+      silentLogger
+    );
+
+    // Pin BOTH the verbatim survival (typo `Acompanahr` not silently
+    // normalised) AND the source_type carries the chat marker.
+    expect(body.fragments[0]?.chunks[0]?.raw_information.original_input).toBe(
+      verbatim
+    );
+    expect(body.fragments[0]?.chunks[0]?.raw_information.source_type).toBe(
+      "chat"
+    );
+  });
+});
+
 describe("getProvenanceByFragmentService — 200 (successful chain)", () => {
   it("returns a non-empty fragments[] with chunks[] on the happy path", async () => {
     const fragmentId = "ff1c1e2f-0e57-4d3f-99b1-1d22ce5e0001";
@@ -207,6 +319,7 @@ describe("getProvenanceByFragmentService — 200 (successful chain)", () => {
               source_type: "ata",
               received_at: new Date("2026-06-11T18:30:00Z"),
               metadata: { title: "Ata Apollo" },
+              original_input: null,
             },
           ],
           rowCount: 1,

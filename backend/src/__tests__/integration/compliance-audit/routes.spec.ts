@@ -42,6 +42,7 @@ interface RawInformationRow {
   status: "active" | "needs_review" | "merged" | "deleted";
   superseded_at: Date | null;
   metadata: Record<string, unknown>;
+  original_input: string | null;
 }
 interface RawChunkRow {
   id: string;
@@ -178,14 +179,19 @@ function buildFakeClient(store: Store): any {
       }
 
       // ----------- tombstoneRawInformation -----------
+      // BR-04 + BR-18: same UPDATE redacts content AND original_input
+      // (CASE preserves null; non-null becomes the literal '[REDACTED]').
       if (
         text.includes("UPDATE raw_information") &&
-        text.includes("SET content       = '[REDACTED]'")
+        text.includes("content        = '[REDACTED]'")
       ) {
         const id = String(params[0]);
         const row = store.raws.find((r) => r.id === id);
         if (!row) return { rows: [], rowCount: 0 };
         row.content = "[REDACTED]";
+        if (row.original_input !== null && row.original_input !== undefined) {
+          row.original_input = "[REDACTED]";
+        }
         row.metadata = { ...row.metadata, compliance_deleted: true };
         row.status = "deleted";
         row.superseded_at = new Date();
@@ -665,6 +671,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       status: "active",
       superseded_at: null,
       metadata: { author: "alice" },
+      original_input: null,
     });
     store.chunks.push(
       { id: CHUNK_1, raw_information_id: RAW_1, status: "active", superseded_at: null },
@@ -756,6 +763,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       status: "active",
       superseded_at: null,
       metadata: {},
+      original_input: null,
     });
 
     const app = await buildAppWith(store, fixture);
@@ -821,6 +829,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
       status: "deleted",
       superseded_at: new Date(),
       metadata: { compliance_deleted: true },
+      original_input: null,
     });
 
     const app = await buildAppWith(store, fixture);
@@ -853,6 +862,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
         status: "active",
         superseded_at: null,
         metadata: {},
+        original_input: null,
       },
       {
         id: RAW_2,
@@ -861,6 +871,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
         status: "active",
         superseded_at: null,
         metadata: {},
+        original_input: null,
       }
     );
     store.chunks.push(
@@ -908,6 +919,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
         status: "active",
         superseded_at: null,
         metadata: {},
+        original_input: null,
       },
       {
         id: RAW_2,
@@ -916,6 +928,7 @@ describe("Compliance-Audit — UC-01 complianceDeleteRawInformation", () => {
         status: "active",
         superseded_at: null,
         metadata: {},
+        original_input: null,
       }
     );
     store.chunks.push(
