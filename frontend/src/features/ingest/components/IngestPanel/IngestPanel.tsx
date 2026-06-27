@@ -25,6 +25,7 @@ import type { IngestPanelProps } from "./IngestPanel.types";
 import { IngestSummary } from "./IngestSummary";
 import { IngestErrorBand } from "./_IngestErrorBand";
 import { IngestNoopNotice } from "./_IngestNoopNotice";
+import { IngestDropzone } from "../IngestDropzone";
 
 const SOURCE_TYPE_OPTIONS: ReadonlyArray<{
   readonly value: IngestSourceType;
@@ -111,6 +112,7 @@ export const IngestPanel: FC<IngestPanelProps> = ({
   const showNoopNotice = phase === "noop";
   const showError = phase === "error";
   const progress = progressCopy(phase);
+  const showDropzone = phase === "idle" || isReadyPhase;
 
   return (
     <section
@@ -138,6 +140,13 @@ export const IngestPanel: FC<IngestPanelProps> = ({
         }}
         data-testid="ingest-form"
       >
+        {showDropzone ? (
+          <IngestDropzone
+            onContent={onContentChange}
+            disabled={disabled}
+          />
+        ) : null}
+
         <div className="flex flex-col gap-xs">
           <label
             htmlFor="ingest-content"
