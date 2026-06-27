@@ -512,6 +512,59 @@ describe("IngestWorkspace — error path (UI-06) + retry", () => {
   });
 });
 
+describe("IngestWorkspace — reset clears form (BUG-05)", () => {
+  it("clicking 'Ingerir outro documento' from a terminal state clears content/sourceType and disables submit", () => {
+    renderWS();
+
+    let ingestOnSuccess: ((data: unknown) => void) | undefined;
+    ingestMutateImpl.current = (_vars, opts) => {
+      ingestOnSuccess = opts?.onSuccess;
+    };
+
+    // Fill form and submit so we land on UI-04 (`noop_existing`) — that path
+    // exposes the `ingest-reset` button next to `ingest-assemble-existing`
+    // and does not depend on the extraction mutation succeeding.
+    changeTextarea(
+      $("ingest-content") as HTMLTextAreaElement,
+      "Conteúdo duplicado.",
+    );
+    changeSelect($("ingest-source-type") as HTMLSelectElement, "ata");
+
+    const submit = $("ingest-submit") as HTMLButtonElement;
+    // Before submit, the button is enabled (both fields filled).
+    expect(submit.disabled).toBe(false);
+
+    act(() => {
+      ($("ingest-form") as HTMLFormElement).requestSubmit();
+    });
+    act(() => {
+      ingestOnSuccess?.({
+        outcome: "noop_existing",
+        llmRunId: "run-1",
+        rawInformationId: "raw-1",
+        contentHash: "h",
+        chunkCount: 1,
+        idempotencyKey: "k",
+        affectedNodes: [],
+      });
+    });
+    expect($("ingest-noop-notice")).not.toBeNull();
+
+    // Click "Ingerir outro documento" inside the noop notice.
+    clickButton($("ingest-reset"));
+
+    // After reset: textarea is empty, source-type is placeholder, submit is
+    // disabled, and the noop notice is gone.
+    const textareaAfter = $("ingest-content") as HTMLTextAreaElement;
+    const selectAfter = $("ingest-source-type") as HTMLSelectElement;
+    const submitAfter = $("ingest-submit") as HTMLButtonElement;
+    expect(textareaAfter.value).toBe("");
+    expect(selectAfter.value).toBe("");
+    expect(submitAfter.disabled).toBe(true);
+    expect($("ingest-noop-notice")).toBeNull();
+  });
+});
+
 describe("IngestWorkspace — node selection (UI-09)", () => {
   it("mounts NodeDetailPanel when a node is selected and restores GraphSpace on close", () => {
     renderWS();
