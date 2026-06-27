@@ -1,7 +1,7 @@
 # Component Spec — NodeDetailPanel
 
 > File: `frontend/src/features/graph/components/NodeDetailPanel.tsx`
-> Version: 2.0.0 | Status: draft
+> Version: 2.1.0 | Status: draft
 
 > `NodeDetailPanel` is an inline detail view that renders inside the graph pane (the 60% right column
 > of `ChatWorkspace`) when the user clicks a node in `GraphSpace`. It fetches node aliases and
@@ -16,8 +16,16 @@
 > (C) full provenance lazy — per-link / per-attribute `useProvenance(kind, id)` via the
 >     query-retrieval provenance endpoints, triggered only when expanded.
 >
+> **v2.1 (original-input capture wave):** `ProvenanceRawInformation` gains an optional,
+> nullable field `original_input` (verbatim user turn from directed chat ingestion).
+> `NodeProvenanceChain.tsx` renders a collapsible "Texto original do operador" block when
+> `original_input` is a non-null, non-`'[REDACTED]'` string; renders a muted redaction
+> indicator when the value is `'[REDACTED]'`; silently omits the block when `null` / absent.
+>
 > Normative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21 decisions D4 / I-3;
-> `docs/specs/front/features/chat.feature.spec.md` UI-14.
+> `docs/specs/front/features/chat.feature.spec.md` UI-14;
+> `temp/option-c-original-input-plan.md` (approved 2026-06-27);
+> `query-retrieval/openapi.yaml` v1.4.0 `ProvenanceRawInformation.original_input`.
 
 ---
 
@@ -36,6 +44,11 @@
   detail (Phase C).
 - Under each attribute: render a lazy "Ver origem completa" `<details>` that calls
   `useProvenance('attributes', attributeId)` only when expanded (Phase C).
+- **Phase C — original input (v2.1):** within `NodeProvenanceChain`, when the resolved
+  `ProvenanceRawInformation.original_input` is a non-null, non-`'[REDACTED]'` string, render
+  a collapsible block labeled "Texto original do operador" showing the verbatim text.
+  When `original_input` is `'[REDACTED]'`, render a muted indicator "Texto original redigido."
+  When `null` or absent, render nothing (silent omission).
 - Provide a close action (`onClose`) that returns to the graph canvas view.
 - Show a loading state while the primary fetch is in flight.
 - Show an error state when `getNodeById` fails.
@@ -48,6 +61,7 @@
 - Allow editing of node data (read-only — graph is read-only).
 - Show historical attribute versions or lineage chains (those use the `history` endpoints — deferred).
 - Paginate relationships (depth=1 traversal is bounded by the graph size — no UI pagination control).
+- Allow the user to search, filter, or act on `original_input` — it is display-only.
 
 ---
 
@@ -59,6 +73,21 @@
 | `nodeLabel` | `string \| undefined` | no | `undefined` | Canonical name already known from `GraphNodeData` — displayed immediately in the loading skeleton to reduce perceived latency. |
 | `onClose` | `() => void` | yes | — | Callback fired when the user dismisses the panel; parent unmounts the component and restores the graph canvas view. |
 | `className` | `string` | no | `""` | Additional Tailwind classes merged via `cn()`. |
+
+### NodeProvenanceChain sub-component props (v2.1)
+
+`NodeProvenanceChain` receives the resolved `ProvenanceResponse` (Phase C) and renders the chain.
+The `ProvenanceRawInformation` nested object now carries the optional `original_input` field:
+
+| Prop | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `provenanceChunk` | `ProvenanceChunk` | yes | — | Resolved Phase C payload (contains `raw_information: ProvenanceRawInformation`). |
+
+`ProvenanceRawInformation` shape relevant to v2.1:
+
+| Field | Type | Notes |
+|---|---|---|
+| `original_input` | `string \| null \| undefined` | Non-null non-`'[REDACTED]'` → show disclosure block. `'[REDACTED]'` → show muted indicator. `null` / absent → render nothing. |
 
 ---
 
@@ -74,6 +103,8 @@
 | Success — lazy provenance loading | `useProvenance` is `isPending` after user expands "Ver origem completa" | Disclosure body shows a spinner skeleton |
 | Success — lazy provenance error | `getProvenanceBy{Link\|Attribute}` returns an error | Disclosure body shows "Não foi possível carregar a origem. " + retry button |
 | Success — lazy provenance tombstoned | `getProvenanceBy{Link\|Attribute}` returns 410 `BUSINESS_RAW_INFORMATION_DELETED` | Disclosure body shows "Documento original removido por conformidade." |
+| Success — lazy provenance with original input | Phase C resolves AND `raw_information.original_input` is a non-null, non-`'[REDACTED]'` string | `NodeProvenanceChain` renders all Phase C fields plus a collapsed `<details>` labeled "Texto original do operador" containing the verbatim `original_input` text |
+| Success — lazy provenance with redacted input | Phase C resolves AND `raw_information.original_input === '[REDACTED]'` | `NodeProvenanceChain` renders all Phase C fields plus a muted inline line "Texto original redigido." (no disclosure, no expandable block) |
 | Error (not found) | `getNodeById` returns 404 (`RESOURCE_NOT_FOUND`) | Inline notice "Nó não encontrado." + close button |
 | Error (deleted) | `getNodeById` returns 410 (`BUSINESS_NODE_DELETED`) | Inline notice "Este nó foi removido por conformidade." + close button |
 | Error (network / 5xx) | Network error or 5xx | Inline notice "Não foi possível carregar os detalhes. Tente novamente." + "Tentar novamente" button + close button |
@@ -114,6 +145,9 @@
 | Show direction arrow (← source node / → target node) per link based on `source_node_id === nodeId` | Show direction without indicating which role the current node plays |
 | Format `confidence` as a percentage with 0 decimal places (e.g., "92%") | Show raw float (0.92) without formatting |
 | Format dates (`valid_from`, `valid_to`, `received_at`) in pt-BR via `Intl.DateTimeFormat` | Render ISO dates verbatim |
+| In `NodeProvenanceChain`, render "Texto original do operador" disclosure only when `original_input` is a non-null, non-`'[REDACTED]'` string | Render the block when `original_input` is `null`, `undefined`, or `'[REDACTED]'` |
+| When `original_input === '[REDACTED]'`, render a muted line "Texto original redigido." — no disclosure, no expandable | Show the `'[REDACTED]'` literal verbatim as if it were actual content |
+| Treat `original_input` as display-only — no copy button, no search trigger | Bind any write/action to the `original_input` field (it is purely informational) |
 
 ---
 
@@ -189,6 +223,27 @@
 **Then** no file imports from `@/features/chat`
 **And** `NodeDetailPanel` and its sub-components are confined to `features/graph/`
 
+### Scenario 9 — NodeProvenanceChain renders original_input block (v2.1)
+
+**Given** the "Ver origem completa" disclosure on a row is opened
+**When** `useProvenance` resolves and `raw_information.original_input` is `"Cria o projeto Acompanahr"` (non-null, non-`'[REDACTED]'`)
+**Then** `NodeProvenanceChain` renders the standard Phase C fields (chunk, excerpt, metadata)
+**And** renders a collapsed `<details>` labeled "Texto original do operador"
+**When** the user expands "Texto original do operador"
+**Then** the disclosure body shows the verbatim string `"Cria o projeto Acompanahr"`
+**And** no action buttons, copy controls, or interactive elements are present inside the disclosure
+
+**Given** the "Ver origem completa" disclosure on a row is opened
+**When** `useProvenance` resolves and `raw_information.original_input` is `null`
+**Then** `NodeProvenanceChain` renders the standard Phase C fields
+**And** no "Texto original do operador" block and no "Texto original redigido." indicator appear
+
+**Given** the "Ver origem completa" disclosure on a row is opened
+**When** `useProvenance` resolves and `raw_information.original_input` is `'[REDACTED]'`
+**Then** `NodeProvenanceChain` renders the standard Phase C fields
+**And** renders a muted inline line "Texto original redigido." (no expandable `<details>`, no verbatim content)
+**And** the literal string `'[REDACTED]'` is not visible to the user
+
 ---
 
 ## §8 Accessibility Contract
@@ -206,6 +261,8 @@
 | Relationships section | `<section aria-label="Relações">` wrapping the list; each row is a `<li>` with readable text |
 | Relationship provenance disclosures (Phase B inline) | Native `<details>`/`<summary>`; `<summary>` text: "Proveniência do link ({n} entrada)" |
 | Lazy provenance disclosures (Phase C) | Native `<details>`/`<summary>`; `<summary>` text: "Ver origem completa". When loading, `aria-busy="true"` on the disclosure body. When error, `role="alert"` on the error notice. |
+| Original input disclosure (v2.1) | Native `<details>`/`<summary>` inside `NodeProvenanceChain`; `<summary>` text: "Texto original do operador". Rendered only when `original_input` is non-null and non-`'[REDACTED]'`. Disclosure body is plain text — no interactive content. |
+| Redaction indicator (v2.1) | Muted `<p>` or `<span>` with `aria-label="Texto original redigido por conformidade."` for screen-reader clarity; visually styled with `text-content-muted`. |
 | Relationships loading | `aria-busy="true"` on the relationships section while `useNodeRelationships` is pending |
 | Aliases list | `<ul aria-label="Aliases">` |
 | Status badge | `StateBadge` component (see `StateBadge.component.spec.md`) |
@@ -302,6 +359,7 @@ export function useProvenance(kind: ProvenanceKind, id: string, enabled: boolean
 | Phase B — neighbor canonical name | Look up `nodeId` in `result.nodes` (from `TraversalResult`) by `source_node_id` or `target_node_id` depending on direction |
 | Phase C — `raw_information.received_at` | Format as `DD/MM/YYYY HH:mm` via `Intl.DateTimeFormat('pt-BR', {dateStyle:'short', timeStyle:'short'})` |
 | Phase C — `chunk.offset_start`/`offset_end` | Display as "chars {start}–{end}" |
+| Phase C — `raw_information.original_input` (v2.1) | Render disclosure "Texto original do operador" only when value is a non-null, non-`'[REDACTED]'` string; render muted "Texto original redigido." for `'[REDACTED]'`; omit entirely for `null` / absent |
 | Attribute row sort | `in_effect` first, then alphabetical by `key` (same rule as v1.1.0) |
 
 ### Query key factory additions
@@ -350,7 +408,7 @@ Each file in `features/graph/components/NodeDetailPanel/` must remain under 300 
 | `NodeDetailPanel.tsx` | Main panel shell: header, aliases, orchestration of sub-sections |
 | `NodeAttributeRow.tsx` | Single attribute row + Phase A disclosure + Phase C lazy disclosure |
 | `NodeRelationshipRow.tsx` | Single relationship row + Phase B inline provenance + Phase C lazy disclosure |
-| `NodeProvenanceChain.tsx` | Reusable component for rendering a `ProvenanceResponse` (Phase C result) |
+| `NodeProvenanceChain.tsx` | Reusable component for rendering a `ProvenanceResponse` (Phase C result); includes the "Texto original do operador" disclosure block (v2.1) — shown when `raw_information.original_input` is non-null and non-`'[REDACTED]'`; muted "Texto original redigido." indicator for `'[REDACTED]'`; silent omission for `null` / absent |
 | `index.ts` | Re-exports `NodeDetailPanel` only |
 
 ---
@@ -359,6 +417,7 @@ Each file in `features/graph/components/NodeDetailPanel/` must remain under 300 
 
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
+| 2.1.0 | 2026-06-27 | Front Spec Agent | spec-change | Original-input capture wave (`option-c-original-input-plan.md`). §1 updated: added Phase C original-input rendering responsibility + "Does NOT" entry (display-only, no user action). §2 updated: added `NodeProvenanceChain` sub-component props table with `ProvenanceRawInformation.original_input` field. §3 updated: 2 new states ("lazy provenance with original input", "lazy provenance with redacted input"). §6 updated: 3 new Do/Don't rows for `original_input` display rules. §7 updated: new Scenario 9 covering non-null display, null omission, and `'[REDACTED]'` indicator cases. §8 updated: 2 new accessibility rows (original input disclosure + redaction indicator). §9 updated: new "Phase C — `raw_information.original_input`" row in Response transforms. §11 updated: `NodeProvenanceChain.tsx` description extended to describe `original_input` block. |
 | 2.0.0 | 2026-06-26 | Front Spec Agent | spec-change | Progressive-disclosure wave. §1 updated: removed "Does NOT show provenance / link traversal" clause — replaced with full Phase A/B/C scope. §3 updated: 6 new states (relationships loading/error/empty, lazy provenance loading/error/tombstoned). §7 updated: 8 BDD scenarios (3 new: Phase B, Phase C happy path, Phase C tombstoned, REQ-6 structural isolation). §8 updated: provenance and relationships a11y contracts. §9 updated: 2 new hooks (useNodeRelationships / useProvenance), 2 new query key entries, response transforms for direction/provenance. §10 added: API error → UI mapping table covering all 3 phases. §11 added: file-size constraint and suggested split. Consumed endpoints now span both knowledge-graph and query-retrieval domains. |
 | 1.1.0 | 2026-06-22 | Front Spec Agent | spec-change | §9 updated: `useNodeDetail` code snippet aligned with actual implementation (direct `http<NodeDetailWire>()` call, no `fetchNodeDetail` wrapper). Documented that the BFF now returns `{ ok: true, result: NodeDetail }` on success (BR-27) and that `http()` unwraps the envelope — no `envelope:false` workaround. |
 | 1.0.0 | 2026-06-21 | Front Spec Agent | initial | GraphSpace wave. Inline node detail panel mounted by `ChatWorkspace` inside the graph pane on node click. Fetches `getNodeById`; shows aliases + attributes; 5 states; 5 BDD scenarios; full a11y contract. |

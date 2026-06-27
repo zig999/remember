@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Query / Retrieval API"
-  version: "1.3.0"
+  version: "1.4.0"
   description: |
     Read-side retrieval contract: the deterministic full-text + graph pipeline of section 7
     and the cross-layer provenance walk of section 14.3.
@@ -54,6 +54,26 @@ info:
     `searchKnowledge`. Tombstoned `RawInformation` rows (compliance-deleted, section
     11) are EXCLUDED from results -- the picker never surfaces fragments whose source
     document was deleted (consistent with `getProvenanceByFragment` 410 semantics).
+
+    **v1.4.0 (additive, this revision).** The `ProvenanceRawInformation` schema
+    gains an optional, nullable field `original_input` -- the verbatim user turn
+    that triggered the underlying ingestion when (and only when) the
+    `RawInformation` came in through the directed-chat path
+    (`ingestion.back.md` BR-34 capture step; `chat.back.md` directed-ingest
+    flow). The column `raw_information.original_input` is `null` for every
+    non-chat ingestion (REST / MCP `propose_*` / `ingest_document` never
+    populate it) and the field is omitted from the response (or returned as
+    `null`) when absent. It is covered by `compliance_delete` (section 11) --
+    on tombstone, the same `UPDATE` that redacts `content` also rewrites
+    `original_input` to the literal `'[REDACTED]'` when it was non-null
+    (`null` stays `null`). `original_input` is NEVER part of the
+    `content_hash` (the hash is computed over the synthesised `content`
+    only) -- idempotency, re-affirmation and the section 6.6 consolidation
+    chain are unaffected. No new endpoint, no new error code; the schema
+    change is REST/MCP symmetric (the three `get_provenance_*` walks expose
+    it under both transports via the shared service layer, ADR A28). The
+    column is created by the additive migration `0002_original_input.sql`
+    owned by `ingestion.back.md` BR-34; this domain only reads it.
 
     Out of scope for THIS domain (other domains):
       - Writes against `RawInformation`, `RawChunk`, `InformationFragment` -> `ingestion` domain.
@@ -1082,10 +1102,34 @@ components:
           description: |
             `raw_information.metadata` (jsonb). Holds author, origin, title and, when
             present, `document_date` (used in the dates justification chain, section 6.5).
+            For directed-chat ingestions (v1.4.0) it also carries the structural
+            pointers `conversation_id` and `message_id` (not-PII) that locate the
+            chat turn associated with `original_input` below.
           example:
             title: "Ata da reuniao Apollo"
             author: "joao.silva@example.com"
             document_date: "2026-06-11"
+        original_input:
+          type: string
+          nullable: true
+          description: |
+            **v1.4.0 (additive).** Verbatim user turn that triggered this directed
+            ingestion (chat path) -- the raw, pristine `body.content` posted to
+            `POST /api/v1/conversations/{id}/messages` and threaded server-side as
+            `invocation_context.source_excerpt` to the `ingest_directed` handler
+            (`ingestion.back.md` BR-34 capture step; `chat.back.md` directed-ingest
+            flow). `null` (or omitted) when the underlying `RawInformation` came
+            in through a non-chat path (REST / MCP `propose_*` / `ingest_document`
+            never populate it); also rewritten to the literal string `'[REDACTED]'`
+            after `compliance_delete` redaction (section 11; `compliance-audit`
+            back-spec BR-18). The field is NEVER part of the `content_hash` -- it
+            has no effect on idempotency, re-affirmation, or the section 6.6
+            consolidation chain. The companion conversation pointer
+            (`conversation_id`, `message_id`) lives in `metadata` above
+            (not-PII, structural pointers only). The column is created by the
+            additive migration `0002_original_input.sql` owned by `ingestion`;
+            this domain only reads it.
+          example: "Cria o projeto Acompanahr"
 
     ProvenanceChunk:
       type: object
