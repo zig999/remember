@@ -98,6 +98,10 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
   const { settled, className } = props;
   const cells = buildCells(props);
   const skeleton = !settled || cells.length === 0;
+  // Lead = acceptance rate (always cells[0] when buildCells returns rows);
+  // counts = the four queue breakdowns. Destructure so the strict index
+  // access is narrowed once, then guarded in the render below.
+  const [lead, ...counts] = cells;
 
   return (
     <GlassSurface
@@ -105,29 +109,49 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
       role="region"
       aria-label="Métricas de curadoria"
       aria-busy={skeleton || undefined}
-      className={cn(
-        "grid grid-cols-2 gap-sm p-md sm:grid-cols-5",
-        className,
-      )}
+      className={cn("flex flex-col gap-sm p-md", className)}
     >
-      {skeleton
-        ? Array.from({ length: 5 }, (_unused, i) => (
+      {skeleton || lead === undefined ? (
+        // Loading: a quiet 2-col grid of pulse cells. Never a 5-across row —
+        // that collides the long labels in this narrow queue column (root
+        // font is 13px, so even @sm ≈ 312px triggers inside a ~340px column).
+        <div className="grid grid-cols-2 gap-x-md gap-y-sm">
+          {Array.from({ length: 5 }, (_unused, i) => (
             <div
               key={i}
               role="status"
               aria-label="Carregando métrica"
               className="flex flex-col gap-xs"
             >
-              <span className="h-4 w-16 animate-pulse rounded-sm bg-elevated" />
-              <span className="h-6 w-12 animate-pulse rounded-sm bg-elevated" />
-            </div>
-          ))
-        : cells.map((cell) => (
-            <div key={cell.label} className="flex flex-col gap-xs">
-              <span className="text-caption text-body">{cell.label}</span>
-              <span className="text-heading text-content">{cell.value}</span>
+              <span className="h-3 w-16 animate-pulse rounded-sm bg-elevated" />
+              <span className="h-5 w-10 animate-pulse rounded-sm bg-elevated" />
             </div>
           ))}
+        </div>
+      ) : (
+        <>
+          {/* Lead: acceptance rate is the calibration headline — one
+              emphasized number, not five competing ones. */}
+          <div className="flex items-baseline justify-between gap-sm">
+            <span className="text-caption text-muted">{lead.label}</span>
+            <span className="text-heading tabular-nums text-content">
+              {lead.value}
+            </span>
+          </div>
+          {/* Queue breakdown: 2 columns so the longer labels ("Fila
+              entidades") get room and never collide. */}
+          <div className="grid grid-cols-2 gap-x-md gap-y-sm">
+            {counts.map((cell) => (
+              <div key={cell.label} className="flex flex-col gap-xs">
+                <span className="text-caption text-muted">{cell.label}</span>
+                <span className="text-subheading tabular-nums text-content">
+                  {cell.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </GlassSurface>
   );
 };

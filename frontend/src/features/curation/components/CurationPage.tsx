@@ -170,44 +170,58 @@ export const CurationPage: FC = () => {
       className="@container min-h-0 w-full flex-1"
       data-testid="curation-page"
     >
-      <div className="flex h-full w-full flex-col gap-md p-lg @md:flex-row">
+      {/* Side-by-side only once the container is genuinely wide enough for a
+          1/3 + fill split to be usable (@3xl ≈ 624px at the 13px root). Below
+          that — phones, narrow splits — the columns stack so neither gets
+          squeezed to an unreadable ~110px. */}
+      <div className="flex h-full w-full flex-col gap-md p-lg @3xl:flex-row">
         {/* Queue column — full width below @md, 1/3 at @md, 1/4 at @xl. */}
         <section
           aria-label="Fila de curadoria"
           aria-busy={isPending}
           data-testid="curation-queue-region"
           className={cn(
-            "flex min-h-0 flex-1 flex-col gap-sm",
-            "@md:w-1/3 @md:flex-none",
-            "@xl:w-1/4",
+            // gap-lg separates the two clusters (context vs. queue); each
+            // cluster keeps its own tighter gap-sm. Rhythm, not a uniform stack.
+            "flex min-h-0 flex-1 flex-col gap-lg",
+            "@3xl:w-1/3 @3xl:flex-none",
+            "@5xl:w-1/4",
           )}
         >
-          <header className="flex items-center justify-between gap-sm">
-            <h2 className="text-heading text-content">Curadoria</h2>
-            <PollingPill delta={delta} onAck={() => updateLastSeen(total)} />
-          </header>
+          {/* Context cluster — title + advisory calibration metrics. Does
+              not grow; sits above the working queue. */}
+          <div className="flex flex-col gap-sm">
+            <header className="flex items-center justify-between gap-sm">
+              <h2 className="text-heading text-content">Curadoria</h2>
+              <PollingPill delta={delta} onAck={() => updateLastSeen(total)} />
+            </header>
 
-          <MetricsStrip
-            metrics={metricsQuery.data ?? null}
-            settled={!metricsQuery.isPending}
-            hasError={metricsQuery.isError}
-            fallback={metricsFallback}
-          />
-
-          <QueueTabs value={kindFilter} onChange={setKindFilter} />
-
-          {isError ? (
-            <QueueErrorBanner onRetry={() => void queueQuery.refetch()} />
-          ) : isEmpty ? (
-            <EmptyQueue />
-          ) : (
-            <QueueList
-              items={items}
-              selected={selectedItem}
-              onSelect={handleSelect}
-              skeleton={isPending}
+            <MetricsStrip
+              metrics={metricsQuery.data ?? null}
+              settled={!metricsQuery.isPending}
+              hasError={metricsQuery.isError}
+              fallback={metricsFallback}
             />
-          )}
+          </div>
+
+          {/* Queue cluster — the actual task. Grows to fill and scrolls
+              internally (QueueList owns its own overflow). */}
+          <div className="flex min-h-0 flex-1 flex-col gap-sm">
+            <QueueTabs value={kindFilter} onChange={setKindFilter} />
+
+            {isError ? (
+              <QueueErrorBanner onRetry={() => void queueQuery.refetch()} />
+            ) : isEmpty ? (
+              <EmptyQueue />
+            ) : (
+              <QueueList
+                items={items}
+                selected={selectedItem}
+                onSelect={handleSelect}
+                skeleton={isPending}
+              />
+            )}
+          </div>
         </section>
 
         {/* Decision column (with inline evidence) — fills the rest and
