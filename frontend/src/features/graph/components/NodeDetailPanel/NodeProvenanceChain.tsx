@@ -62,7 +62,18 @@ interface ChunkDetailsProps {
   readonly receivedAtLabel: string;
   readonly title: string | null;
   readonly documentDateLabel: string | null;
+  /**
+   * Raw passthrough of `raw_information.original_input` (TC-04, v2.1):
+   *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
+   *  - `'[REDACTED]'` → render muted redaction indicator.
+   *  - `null` / `undefined` → render nothing.
+   */
+  readonly originalInput: string | null | undefined;
 }
+
+/** Sentinel value the BFF writes to `original_input` after a §11
+ * `compliance_delete` redacts the row. Must NEVER be rendered verbatim. */
+const REDACTED_SENTINEL = "[REDACTED]";
 
 const ChunkDetails: FC<ChunkDetailsProps> = ({
   chunkIndex,
@@ -72,6 +83,7 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
   receivedAtLabel,
   title,
   documentDateLabel,
+  originalInput,
 }) => {
   return (
     <div
@@ -113,6 +125,33 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
           </div>
         )}
       </dl>
+      {/* TC-04 (v2.1) — original_input three branches: disclosure / muted indicator / silence. */}
+      {typeof originalInput === "string" &&
+        originalInput !== REDACTED_SENTINEL && (
+          <details
+            className="text-body-sm text-content"
+            data-testid="node-provenance-original-input"
+          >
+            <summary className="cursor-pointer text-muted">
+              {NODE_DETAIL_COPY.originalInputSummary}
+            </summary>
+            <p
+              className="mt-xs whitespace-pre-wrap"
+              data-testid="node-provenance-original-input-text"
+            >
+              {originalInput}
+            </p>
+          </details>
+        )}
+      {originalInput === REDACTED_SENTINEL && (
+        <p
+          className="text-caption text-muted italic"
+          aria-label={NODE_DETAIL_COPY.originalInputRedactedAria}
+          data-testid="node-provenance-original-input-redacted"
+        >
+          {NODE_DETAIL_COPY.originalInputRedacted}
+        </p>
+      )}
     </div>
   );
 };
@@ -246,6 +285,7 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
               receivedAtLabel={chunk.rawInformation.receivedAtLabel}
               title={chunk.rawInformation.title}
               documentDateLabel={chunk.rawInformation.documentDateLabel}
+              originalInput={chunk.rawInformation.originalInput}
             />
           ))}
         </article>

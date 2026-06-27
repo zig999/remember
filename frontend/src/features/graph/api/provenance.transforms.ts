@@ -62,13 +62,22 @@ function readMetadataDocumentDate(
 function toRawInformationView(
   wire: ProvenanceRawInformationWire,
 ): ProvenanceRawInformationView {
-  return {
+  const base: ProvenanceRawInformationView = {
     id: wire.id,
     sourceType: wire.source_type,
     receivedAtLabel: formatReceivedAtDateTime(wire.received_at),
     title: readMetadataTitle(wire.metadata),
     documentDateLabel: readMetadataDocumentDate(wire.metadata),
   };
+  // Raw passthrough (v2.1 — TC-04): NodeProvenanceChain interprets the
+  // three branches (non-null/non-REDACTED → disclosure; '[REDACTED]' →
+  // muted indicator; null/undefined → nothing). Only set the field when
+  // the wire actually carried a value — TS strict `exactOptionalPropertyTypes`
+  // forbids assigning `undefined` to an optional property.
+  if (wire.original_input !== undefined) {
+    return { ...base, originalInput: wire.original_input };
+  }
+  return base;
 }
 
 function toChunkView(wire: ProvenanceChunkWire): ProvenanceChunkView {

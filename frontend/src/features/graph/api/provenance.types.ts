@@ -27,6 +27,13 @@ export interface ProvenanceRawInformationWire {
   readonly source_type: string;
   readonly received_at: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
+  /**
+   * Verbatim user turn captured by directed chat ingestion (v2.1 — TC-04).
+   * `null` / absent outside the chat path. `'[REDACTED]'` after a
+   * `compliance_delete` redacted the row. Otherwise, the original operator
+   * text. Display-only — never a write/action target.
+   */
+  readonly original_input?: string | null;
 }
 
 export interface ProvenanceChunkWire {
@@ -64,6 +71,13 @@ export interface ProvenanceRawInformationView {
   readonly title: string | null;
   /** `metadata.document_date` (pt-BR `DD/MM/YYYY`) if present, else `null`. */
   readonly documentDateLabel: string | null;
+  /**
+   * Raw passthrough of `wire.original_input` (v2.1 — TC-04). Three meanings:
+   *  - non-null, non-`'[REDACTED]'` string → render disclosure block.
+   *  - `'[REDACTED]'` → render muted redaction indicator.
+   *  - `null` / `undefined` → render nothing.
+   */
+  readonly originalInput?: string | null;
 }
 
 export interface ProvenanceChunkView {
