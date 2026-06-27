@@ -88,7 +88,7 @@ describe("IngestPanel — progress region aria-busy (BUG-02)", () => {
 });
 
 describe("IngestPanel — form validation aria-invalid (BUG-04)", () => {
-  it("sets aria-invalid='false' when no validationMessage is provided", () => {
+  it("omits aria-invalid when no validationMessage is provided", () => {
     act(() => {
       root.render(
         <IngestPanel {...baseProps({ phase: "idle", content: "abc" })} />,
@@ -96,8 +96,11 @@ describe("IngestPanel — form validation aria-invalid (BUG-04)", () => {
     });
     const textarea = $("ingest-content") as HTMLTextAreaElement;
     const select = $("ingest-source-type") as HTMLSelectElement;
-    expect(textarea.getAttribute("aria-invalid")).toBe("false");
-    expect(select.getAttribute("aria-invalid")).toBe("false");
+    // The shared Textarea / SelectTrigger emit `aria-invalid` only when
+    // invalid (`invalid || undefined`); a valid field has no attribute,
+    // which AT treats the same as "false".
+    expect(textarea.getAttribute("aria-invalid")).toBeNull();
+    expect(select.getAttribute("aria-invalid")).toBeNull();
     expect($("ingest-validation")).toBeNull();
   });
 

@@ -215,15 +215,46 @@ function changeTextarea(el: HTMLTextAreaElement, value: string): void {
   });
 }
 
-/** Drive a controlled `<select>` — same trick as the textarea. */
-function changeSelect(el: HTMLSelectElement, value: string): void {
+/** value → visible label for the shared Select options (mirrors
+ *  IngestPanel's SOURCE_TYPE_OPTIONS). */
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  pdf: "PDF",
+  email: "E-mail",
+  ata: "Ata",
+  chat: "Chat",
+  artigo: "Artigo",
+  transcricao: "Transcrição",
+  outro: "Outro",
+};
+
+/** Drive the shared (Radix) Select: open the trigger, then click the option
+ *  whose visible label matches `value`. Options render in a portal on
+ *  document.body; Radix opens on pointer events (jsdom DOM-API shims live in
+ *  vitest.setup.ts). Replaces the old native-`<select>` value-setter trick. */
+function changeSelect(trigger: HTMLElement, value: string): void {
+  const fire = (el: Element, type: string): void => {
+    el.dispatchEvent(
+      new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }),
+    );
+  };
   act(() => {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLSelectElement.prototype,
-      "value",
-    )?.set;
-    setter?.call(el, value);
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    fire(trigger, "pointerdown");
+    fire(trigger, "pointerup");
+    fire(trigger, "click");
+  });
+  const label = SOURCE_TYPE_LABELS[value] ?? value;
+  const option = Array.from(
+    document.querySelectorAll('[role="option"]'),
+  ).find((el) => el.textContent?.trim() === label);
+  if (option == null) {
+    throw new Error(
+      `changeSelect: no Select option labelled "${label}" (value="${value}")`,
+    );
+  }
+  act(() => {
+    fire(option, "pointerdown");
+    fire(option, "pointerup");
+    fire(option, "click");
   });
 }
 

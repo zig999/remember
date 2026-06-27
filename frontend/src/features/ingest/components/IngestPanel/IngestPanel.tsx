@@ -20,6 +20,16 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { IngestSourceType } from "../../api";
 import type { IngestPanelProps } from "./IngestPanel.types";
 import { IngestSummary } from "./IngestSummary";
@@ -113,6 +123,8 @@ export const IngestPanel: FC<IngestPanelProps> = ({
   const showError = phase === "error";
   const progress = progressCopy(phase);
   const showDropzone = phase === "idle" || isReadyPhase;
+  const hasValidation =
+    validationMessage !== undefined && validationMessage.length > 0;
 
   return (
     <section
@@ -147,65 +159,47 @@ export const IngestPanel: FC<IngestPanelProps> = ({
           />
         ) : null}
 
-        <div className="flex flex-col gap-xs">
-          <label
-            htmlFor="ingest-content"
-            className="text-label text-content"
-          >
-            Conteúdo do documento
-          </label>
-          <textarea
+        <div className="flex flex-1 flex-col gap-xs">
+          <Label htmlFor="ingest-content">Conteúdo do documento</Label>
+          <Textarea
             id="ingest-content"
             data-testid="ingest-content"
-            className={cn(
-              "min-h-32 flex-1 rounded-md border border-border bg-surface p-md text-body-sm text-content",
-              "focus:border-border-focus focus:outline-none",
-            )}
+            className="min-h-32 flex-1"
             placeholder="Cole aqui o conteúdo do documento…"
             value={content}
             disabled={disabled}
             aria-label="Conteúdo do documento"
-            aria-invalid={
-              validationMessage !== undefined && validationMessage.length > 0
-            }
+            invalid={hasValidation}
             onChange={(e) => onContentChange(e.target.value)}
           />
         </div>
 
         <div className="flex flex-col gap-xs">
-          <label
-            htmlFor="ingest-source-type"
-            className="text-label text-content"
-          >
-            Tipo de fonte
-          </label>
-          <select
-            id="ingest-source-type"
-            data-testid="ingest-source-type"
-            className={cn(
-              "rounded-md border border-border bg-surface p-md text-body-sm text-content",
-              "focus:border-border-focus focus:outline-none",
-            )}
+          <Label htmlFor="ingest-source-type">Tipo de fonte</Label>
+          <Select
             value={sourceType}
             disabled={disabled}
-            aria-label="Tipo de fonte"
-            aria-invalid={
-              validationMessage !== undefined && validationMessage.length > 0
-            }
-            onChange={(e) =>
-              onSourceTypeChange(e.target.value as IngestSourceType | "")
-            }
+            onValueChange={(v) => onSourceTypeChange(v as IngestSourceType)}
           >
-            <option value="">Selecione o tipo…</option>
-            {SOURCE_TYPE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              id="ingest-source-type"
+              data-testid="ingest-source-type"
+              aria-label="Tipo de fonte"
+              aria-invalid={hasValidation || undefined}
+            >
+              <SelectValue placeholder="Selecione o tipo…" />
+            </SelectTrigger>
+            <SelectContent>
+              {SOURCE_TYPE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        {validationMessage !== undefined && validationMessage.length > 0 ? (
+        {hasValidation ? (
           <p
             data-testid="ingest-validation"
             className="text-body-sm text-state-disputed"
@@ -215,20 +209,16 @@ export const IngestPanel: FC<IngestPanelProps> = ({
         ) : null}
 
         {showSubmit ? (
-          <button
+          <Button
             type="submit"
             data-testid="ingest-submit"
             disabled={!canSubmit || isSendingPhase}
-            aria-disabled={!canSubmit || isSendingPhase}
+            loading={isSendingPhase}
             aria-label={isSendingPhase ? "Ingerindo…" : "Ingerir"}
-            className={cn(
-              "self-start rounded-md bg-action px-lg py-md text-label text-content-inverse",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              "hover:bg-action-hover focus:outline-none focus:bg-action-active",
-            )}
+            className="self-start"
           >
             {isSendingPhase ? "Enviando…" : "Ingerir"}
-          </button>
+          </Button>
         ) : null}
       </form>
 
@@ -280,14 +270,16 @@ export const IngestPanel: FC<IngestPanelProps> = ({
                 Alguns nós aguardam revisão. Acesse Curadoria para detalhes.
               </p>
             ) : null}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               data-testid="ingest-reset"
               onClick={onReset}
-              className="self-start text-body-sm text-action underline"
+              className="self-start"
             >
               Ingerir outro documento
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>

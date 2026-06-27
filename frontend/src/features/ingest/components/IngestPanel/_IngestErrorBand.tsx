@@ -10,6 +10,7 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
 
 export interface IngestErrorBandProps {
   /** Error message — displayed under the heading. Falls back to a generic
@@ -45,26 +46,24 @@ export const IngestErrorBand: FC<IngestErrorBandProps> = ({
       </p>
       <div className="flex flex-wrap gap-sm">
         {isRetryable ? (
-          <button
+          <Button
             type="button"
+            size="sm"
             data-testid="ingest-retry"
             onClick={onRetry}
-            className={cn(
-              "rounded-md bg-action px-md py-xs text-label text-content-inverse",
-              "hover:bg-action-hover focus:outline-none focus:bg-action-active",
-            )}
           >
             Tentar novamente
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           data-testid="ingest-reset"
           onClick={onReset}
-          className="text-body-sm text-action underline"
         >
           Ingerir outro documento
-        </button>
+        </Button>
       </div>
     </div>
   );
