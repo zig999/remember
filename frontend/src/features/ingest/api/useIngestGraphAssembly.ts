@@ -221,6 +221,8 @@ export function useIngestGraphAssembly(
     // Merge each traverse result.
     for (const r of results) {
       if (r.status !== "success") continue;
+      // `r.data` is typed as `unknown` by useQueries when the queryFn is generic;
+      // we narrow here because our queryFn always returns TraverseResultMinWire.
       const wire = r.data as TraverseResultMinWire | undefined;
       if (wire === undefined) continue;
       for (const wn of wire.nodes ?? []) {
