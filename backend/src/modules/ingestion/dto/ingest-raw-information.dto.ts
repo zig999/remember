@@ -32,6 +32,16 @@ export const IngestRawInformationRequestSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
   model: z.string().min(1, "model is required"),
   prompt_version: z.string().min(1, "prompt_version is required"),
+  /**
+   * Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
+   * BR-34). Omitted (or explicit `null`) on every non-chat path. Never
+   * factored into `content_hash`. Capped at 10 MiB to match `content`.
+   */
+  original_input: z
+    .string()
+    .max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")
+    .nullable()
+    .optional(),
 });
 
 export type IngestRawInformationRequest = z.infer<

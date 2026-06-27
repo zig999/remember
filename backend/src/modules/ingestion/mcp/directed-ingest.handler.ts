@@ -82,13 +82,35 @@ export interface IngestDirectedDeps {
 }
 
 /**
+ * Optional transport-neutral invocation context (TC-01 / BR-34 — Path 1).
+ *
+ * The chat agent dispatch supplies `source_excerpt` (the operator's verbatim
+ * turn) here so the orchestrator can persist it as `original_input` on the
+ * `RawInformation` row. REST / MCP-direct callers omit this argument — the
+ * handler treats it as `undefined` and the orchestrator stores `null`.
+ *
+ * Why an additional argument (and not a tool-schema field):
+ *   - Capture is SERVER-SIDE deterministic — the LLM never relays the
+ *     verbatim text (which would re-introduce paraphrase / typo-fix).
+ *   - Path-neutral: same handler shape for chat (with excerpt) and for
+ *     REST / MCP direct (without). No `if`-by-tool branching upstream.
+ */
+export interface IngestDirectedInvocationContext {
+  readonly source_excerpt?: string;
+}
+
+/**
  * Drive the `ingest_directed` MCP tool. `rawInput` is the verbatim arguments
  * object from the MCP request — `unknown` because the SDK kernel hands it
- * over before any schema validation. Returns the MCP envelope. Never throws.
+ * over before any schema validation. `invocationContext` is the optional
+ * transport-neutral second argument supplied by the chat-agent dispatch
+ * (TC-01 / BR-34); REST and direct MCP callers omit it. Returns the MCP
+ * envelope. Never throws.
  */
 export async function ingestDirectedHandler(
   rawInput: unknown,
-  deps: IngestDirectedDeps
+  deps: IngestDirectedDeps,
+  invocationContext?: IngestDirectedInvocationContext
 ): Promise<McpEnvelopeJson> {
   // ---- Step 1 — Zod parse (STRUCTURAL_INVALID on failure, no service call) ----
   const parsed = IngestDirectedMcpInputSchema.safeParse(rawInput);
@@ -135,6 +157,12 @@ export async function ingestDirectedHandler(
       : {}),
     ...(deps.verifyNodePin !== undefined
       ? { verifyNodePin: deps.verifyNodePin }
+      : {}),
+    // TC-01 / BR-34 — forward the verbatim user turn captured by the chat
+    // dispatch. Omitted (not set to `undefined`) so `exactOptionalPropertyTypes`
+    // does not collide with the orchestrator's default.
+    ...(invocationContext?.source_excerpt !== undefined
+      ? { sourceExcerpt: invocationContext.source_excerpt }
       : {}),
   };
 
