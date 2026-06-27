@@ -240,3 +240,178 @@ describe("NodeProvenanceChain — success body", () => {
     ).toContain(NODE_DETAIL_COPY.originNotFound);
   });
 });
+
+/**
+ * Scenario 9 — original_input three branches (TC-04, NodeDetailPanel spec
+ * v2.1). The display rule lives in `ChunkDetails` and is driven solely by
+ * `chunk.rawInformation.originalInput`. Each branch is a distinct contract,
+ * so each gets its own test:
+ *
+ *  1. non-null, non-`'[REDACTED]'` string → collapsible disclosure with
+ *     verbatim text and NO interactive controls beyond the native summary.
+ *  2. `'[REDACTED]'` sentinel → muted indicator with aria-label; the literal
+ *     `'[REDACTED]'` must NEVER reach the user.
+ *  3. `null` / `undefined` / absent → no block of any kind rendered.
+ */
+function makeDataWithOriginalInput(
+  originalInput: string | null | undefined,
+): ProvenanceResponseView {
+  return {
+    fragments: [
+      {
+        id: "frag-x",
+        text: "Cria o projeto Acompanhar.",
+        confidence: 0.9,
+        confidenceLabel: "90%",
+        status: "accepted",
+        chunks: [
+          {
+            id: "chunk-x",
+            chunkIndex: 0,
+            offsetStart: 0,
+            offsetEnd: 30,
+            offsetRangeLabel: "chars 0–30",
+            excerpt: "Cria o projeto Acompanhar.",
+            locator: {},
+            rawInformation: {
+              id: "raw-x",
+              sourceType: "chat",
+              receivedAtLabel: "27/06/2026 14:00",
+              title: null,
+              documentDateLabel: null,
+              originalInput,
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("NodeProvenanceChain — original_input (Scenario 9 / v2.1)", () => {
+  it("renders the disclosure with verbatim text when original_input is a non-null, non-'[REDACTED]' string", () => {
+    act(() =>
+      root.render(
+        <NodeProvenanceChain
+          isPending={false}
+          isError={false}
+          error={null}
+          data={makeDataWithOriginalInput("Cria o projeto Acompanahr")}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    const disclosure = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="node-provenance-original-input"]',
+    );
+    expect(disclosure).not.toBeNull();
+    expect(disclosure!.tagName.toLowerCase()).toBe("details");
+    // Summary text matches the frozen pt-BR copy.
+    const summary = disclosure!.querySelector("summary");
+    expect(summary?.textContent).toBe(NODE_DETAIL_COPY.originalInputSummary);
+    // Verbatim text rendered in the body (with the typo intact — the WHOLE
+    // point of capturing the user's original phrasing).
+    const text = container.querySelector(
+      '[data-testid="node-provenance-original-input-text"]',
+    );
+    expect(text?.textContent).toBe("Cria o projeto Acompanahr");
+    // The redaction indicator must NOT appear in this branch.
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input-redacted"]',
+      ),
+    ).toBeNull();
+    // No interactive elements inside the disclosure body beyond the native
+    // <summary> — no buttons, no inputs, no links (§6 Do/Don't: display-only).
+    const interactiveInsideBody = disclosure!.querySelectorAll(
+      "button, input, a, textarea, select",
+    );
+    expect(interactiveInsideBody).toHaveLength(0);
+  });
+
+  it("renders the muted redaction indicator (with aria-label) when original_input === '[REDACTED]'; the literal '[REDACTED]' is NEVER visible", () => {
+    act(() =>
+      root.render(
+        <NodeProvenanceChain
+          isPending={false}
+          isError={false}
+          error={null}
+          data={makeDataWithOriginalInput("[REDACTED]")}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    const indicator = container.querySelector(
+      '[data-testid="node-provenance-original-input-redacted"]',
+    );
+    expect(indicator).not.toBeNull();
+    expect(indicator?.textContent).toBe(NODE_DETAIL_COPY.originalInputRedacted);
+    expect(indicator?.getAttribute("aria-label")).toBe(
+      NODE_DETAIL_COPY.originalInputRedactedAria,
+    );
+    // The literal sentinel must never reach the rendered DOM text.
+    const chunk = container.querySelector(
+      '[data-testid="node-provenance-chunk"]',
+    );
+    expect(chunk?.textContent).not.toContain("[REDACTED]");
+    // And the disclosure branch must NOT render in this case.
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("renders nothing when original_input is null", () => {
+    act(() =>
+      root.render(
+        <NodeProvenanceChain
+          isPending={false}
+          isError={false}
+          error={null}
+          data={makeDataWithOriginalInput(null)}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    // Neither branch appears — silent omission.
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input"]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input-redacted"]',
+      ),
+    ).toBeNull();
+    // Sanity: the surrounding chunk + fragment still render normally.
+    expect(
+      container.querySelector('[data-testid="node-provenance-chunk"]'),
+    ).not.toBeNull();
+  });
+
+  it("renders nothing when original_input is undefined (field absent on the wire)", () => {
+    act(() =>
+      root.render(
+        <NodeProvenanceChain
+          isPending={false}
+          isError={false}
+          error={null}
+          data={makeDataWithOriginalInput(undefined)}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input"]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid="node-provenance-original-input-redacted"]',
+      ),
+    ).toBeNull();
+  });
+});

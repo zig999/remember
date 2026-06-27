@@ -160,6 +160,128 @@ describe("toProvenanceResponse (Phase C — full chain transform)", () => {
     expect(c.rawInformation.receivedAtLabel).toMatch(/\d{2}\/\d{2}\/\d{4}/);
   });
 
+  it("passes original_input through unchanged for the three branches (TC-04 v2.1)", () => {
+    // Branch 1 — non-null, non-'[REDACTED]' verbatim string.
+    const verbatim = toProvenanceResponse({
+      fragments: [
+        {
+          id: "f",
+          text: "t",
+          confidence: 0.5,
+          status: "accepted",
+          chunks: [
+            {
+              id: "c",
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 10,
+              excerpt: "x",
+              raw_information: {
+                id: "r",
+                source_type: "chat",
+                received_at: "2026-06-27T14:00:00Z",
+                original_input: "Cria o projeto Acompanahr",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      verbatim.fragments[0]!.chunks[0]!.rawInformation.originalInput,
+    ).toBe("Cria o projeto Acompanahr");
+
+    // Branch 2 — sentinel string is preserved verbatim (component owns the
+    // policy of NOT displaying it; the transform is a pure passthrough).
+    const redacted = toProvenanceResponse({
+      fragments: [
+        {
+          id: "f",
+          text: "t",
+          confidence: 0.5,
+          status: "accepted",
+          chunks: [
+            {
+              id: "c",
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 10,
+              excerpt: "x",
+              raw_information: {
+                id: "r",
+                source_type: "chat",
+                received_at: "2026-06-27T14:00:00Z",
+                original_input: "[REDACTED]",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      redacted.fragments[0]!.chunks[0]!.rawInformation.originalInput,
+    ).toBe("[REDACTED]");
+
+    // Branch 3 — absent field → undefined on the view (component renders nothing).
+    const absent = toProvenanceResponse({
+      fragments: [
+        {
+          id: "f",
+          text: "t",
+          confidence: 0.5,
+          status: "accepted",
+          chunks: [
+            {
+              id: "c",
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 10,
+              excerpt: "x",
+              raw_information: {
+                id: "r",
+                source_type: "ata",
+                received_at: "2026-06-11T18:30:00Z",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      absent.fragments[0]!.chunks[0]!.rawInformation.originalInput,
+    ).toBeUndefined();
+
+    // Branch 3b — explicit null on the wire → null on the view.
+    const nullInput = toProvenanceResponse({
+      fragments: [
+        {
+          id: "f",
+          text: "t",
+          confidence: 0.5,
+          status: "accepted",
+          chunks: [
+            {
+              id: "c",
+              chunk_index: 0,
+              offset_start: 0,
+              offset_end: 10,
+              excerpt: "x",
+              raw_information: {
+                id: "r",
+                source_type: "ata",
+                received_at: "2026-06-11T18:30:00Z",
+                original_input: null,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      nullInput.fragments[0]!.chunks[0]!.rawInformation.originalInput,
+    ).toBeNull();
+  });
+
   it("defaults metadata.title / document_date to null when absent", () => {
     const r = toProvenanceResponse({
       fragments: [

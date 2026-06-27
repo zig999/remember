@@ -47,6 +47,14 @@ export const NODE_DETAIL_COPY = Object.freeze({
   originNotFound: "Origem não encontrada.",
   originDeleted: "Documento original removido por conformidade.",
   originRetry: "Tentar novamente",
+
+  /* ---------- Phase C — original_input capture (TC-04, v2.1) ---------- */
+  /** `<summary>` label for the verbatim user-turn disclosure. */
+  originalInputSummary: "Texto original do operador",
+  /** Muted indicator shown when `original_input === '[REDACTED]'`. */
+  originalInputRedacted: "Texto original redigido.",
+  /** aria-label tied to the redaction indicator for screen readers. */
+  originalInputRedactedAria: "Texto original redigido por conformidade.",
 });
 
 export type NodeDetailCopy = typeof NODE_DETAIL_COPY;
