@@ -1,60 +1,39 @@
 /**
- * Ingest api — public surface.
+ * features/ingest/api — public surface (dev_tc_005).
  *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §10 (Components to
- *    Create / Update — hooks listed).
- *  - CLAUDE.md "Conventions" — no `export *` barrels; explicit re-exports
- *    only. The per-feature `api/index.ts` is the documented exception
- *    (mirrors `features/curation/api/index.ts` shape).
+ * Per-feature barrel: explicit re-exports only (no `export *`).
  */
-
 export { ingestKeys } from "./keys";
 
-export {
-  useIngestRawInformation,
-  type UseIngestRawInformationVariables,
-} from "./useIngestRawInformation";
+export { useIngestRawInformation } from "./useIngestRawInformation";
+export type { IngestRawInformationVariables } from "./useIngestRawInformation";
 
-export {
-  useRunLlmExtraction,
-  type UseRunLlmExtractionVariables,
-} from "./useRunLlmExtraction";
+export { useRunLlmExtraction } from "./useRunLlmExtraction";
+export type { RunLlmExtractionVariables } from "./useRunLlmExtraction";
 
-export {
-  useIngestRunStatus,
-  type UseIngestRunStatusParams,
-  INGEST_RUN_POLL_MS,
-} from "./useIngestRunStatus";
+export { useIngestRunStatus } from "./useIngestRunStatus";
+export type { UseIngestRunStatusOptions } from "./useIngestRunStatus";
 
-export {
-  useRetryLlmRun,
-  type UseRetryLlmRunVariables,
-} from "./useRetryLlmRun";
+export { useRetryLlmRun } from "./useRetryLlmRun";
+export type { RetryLlmRunVariables } from "./useRetryLlmRun";
 
-export {
-  toIngestRawInformationResult,
-  toLlmRun,
-  toLlmRunSummary,
-  toAffectedNode,
-  type AffectedNode,
-  type AffectedNodeWire,
-  type ChunkRefWire,
-  type IngestRawInformationRequestWire,
-  type IngestRawInformationResponseWire,
-  type IngestRawInformationResult,
-  type LlmRun,
-  type LlmRunStatusWire,
-  type LlmRunSummary,
-  type LlmRunSummaryWire,
-  type LlmRunWire,
-  type RetryLlmRunRequestWire,
-  type RunLlmExtractionRequestWire,
-  type SourceTypeWire,
-} from "./_transforms";
-
-export {
-  useIngestGraphAssembly,
-  type IngestAffectedNode,
-  type UseIngestGraphAssemblyResult,
+export { useIngestGraphAssembly } from "./useIngestGraphAssembly";
+export type {
+  UseIngestGraphAssemblyOptions,
+  UseIngestGraphAssemblyResult,
 } from "./useIngestGraphAssembly";
+
+export type {
+  AffectedNode,
+  AffectedNodeWire,
+  IngestOutcome,
+  IngestRawInformationRequest,
+  IngestRawInformationResponse,
+  IngestRawInformationResponseWire,
+  IngestSourceType,
+  LlmRun,
+  LlmRunStatus,
+  LlmRunSummary,
+  LlmRunSummaryWire,
+  LlmRunWire,
+} from "./types";

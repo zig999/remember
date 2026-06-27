@@ -1,137 +1,60 @@
 /**
- * IngestPanel — public type contract (TC-04).
+ * IngestPanel — public type contract (dev_tc_005).
  *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §2 (UI states UI-01..UI-09),
- *    §5 (Input validations / ingestFormSchema), §7 (Component adapters),
- *    §10 (Components to create).
+ * The left column of `IngestWorkspace`. The workspace owns the orchestration
+ * state machine and passes the panel pure props: current form values, the
+ * current UI phase, an optional summary (for UI-07), an optional error
+ * message + code (for UI-06), and the four callbacks the panel raises
+ * (submit, retry, reset, idempotency-CTA).
  *
- * The IngestPanel is the left-column container of `/ingest`. It owns the form
- * (RHF v7 + Zod v4) but does NOT own the mutations — the parent
- * (`IngestWorkspace`, TC-05) owns the network layer and drives `phase` /
- * `progressMessage` / `summary` / `errorCode` via props.
+ * Single-use, feature-local — does not qualify for a global
+ * `component.spec.md` (spec §10 note).
  */
-import type { CSSProperties } from "react";
+import type { IngestSourceType, LlmRunSummary } from "../../api";
 
-/**
- * Source-type enum (matches `ingestFormSchema` in §5).
- * Backend accepts these snake_case values; UI maps to pt-BR labels (see
- * `SOURCE_TYPE_LABELS` in IngestPanel.tsx).
- */
-export type IngestSourceType =
-  | "pdf"
-  | "email"
-  | "ata"
-  | "chat"
-  | "artigo"
-  | "transcricao"
-  | "outro";
-
-/**
- * IngestPanel phase — drives UI states UI-01..UI-09 (excluding UI-09 which
- * is owned by the parent IngestWorkspace, since it swaps right-column panes).
- *  - `idle`         — UI-01 (empty form, button disabled).
- *  - `ready`        — UI-02 (both fields filled, button enabled).
- *  - `sending`      — UI-03 (POST ingestRawInformation in flight).
- *  - `noop`         — UI-04 (idempotency noop_existing — already ingested).
- *  - `extracting`   — UI-05 (runLlmExtraction blocking + polling).
- *  - `revealing`    — UI-08 (graph revealing 1-by-1).
- *  - `complete`     — UI-07 (extraction done — summary visible).
- *  - `error`        — UI-06 (error band, retry/restart available).
- *  - `node_selected`— UI-09 (right column shows NodeDetailPanel; panel itself
- *                    is unaffected, but parent may want to pass this so the
- *                    panel can stay frozen in its prior visual state).
- */
+/** UI phases driven by `IngestWorkspace`. Mirrors `ingest.feature.spec.md
+ *  §2` UI-01..UI-08; UI-09 (node-selected) is invisible to the panel — it
+ *  affects only the right column. */
 export type IngestPhase =
-  | "idle"
-  | "ready"
-  | "sending"
-  | "noop"
-  | "extracting"
-  | "revealing"
-  | "complete"
-  | "error"
-  | "node_selected";
-
-/**
- * Subset of `LlmRunSummary` rendered by IngestSummary (UI-07). The 7 outcome
- * keys mirror spec §2 UI-07. `superseded_previous` and `orphaned_fragments`
- * exist in the wire schema but are intentionally omitted from this display
- * (out of scope v1).
- */
-export interface IngestRunSummary {
-  readonly accepted: number;
-  readonly consolidated: number;
-  readonly needs_review: number;
-  readonly uncertain: number;
-  readonly disputed: number;
-  readonly rejected: number;
-  readonly error: number;
-}
-
-export interface IngestSubmitPayload {
-  readonly content: string;
-  readonly source_type: IngestSourceType;
-}
+  | "idle" // UI-01 — empty form
+  | "ready" // UI-02 — content + source_type filled, button enabled
+  | "sending" // UI-03 — POST ingestRawInformation in flight
+  | "noop" // UI-04 — idempotent reuse, awaiting "Ver grafo existente"
+  | "extracting" // UI-05 — runLlmExtraction (or polling) in flight
+  | "polling" // UI-05 (polling sub-state) — connection drop fallback
+  | "revealing" // UI-08 — graph animating in (summary already shown)
+  | "complete" // UI-07 — extraction done, summary visible
+  | "error"; // UI-06 — error band
 
 export interface IngestPanelProps {
-  /**
-   * Current UI phase — see `IngestPhase`. The parent
-   * (`IngestWorkspace`, TC-05) maps mutation/query state to one of these.
-   */
+  /** Current UI phase — drives which subview is rendered. */
   readonly phase: IngestPhase;
-
-  /**
-   * Optional progress message override. Used by the polling-fallback case
-   * (UI-05 — switch from "Extraindo conhecimento…" to "Verificando
-   * extração…" when the client connection drops). When omitted, the panel
-   * uses the canonical per-phase message.
-   */
-  readonly progressMessage?: string;
-
-  /**
-   * Extraction summary — required when phase is `complete`. Ignored in other
-   * phases (the panel renders the progress copy / error band instead).
-   */
-  readonly summary?: IngestRunSummary;
-
-  /**
-   * Error code from the §6 mapping table — required when phase is `error`.
-   * The panel resolves it to the pt-BR message via the local error map.
-   */
+  /** Current textarea content. Controlled. */
+  readonly content: string;
+  /** Current source-type selection. Empty string = unselected. */
+  readonly sourceType: IngestSourceType | "";
+  /** Inline form validation message (Zod / submit guard). */
+  readonly validationMessage?: string;
+  /** Optional summary — shown in UI-07/UI-08. */
+  readonly summary?: LlmRunSummary;
+  /** Optional error message — shown in UI-06. */
+  readonly errorMessage?: string;
+  /** Optional error code — used by the panel to gate the "Tentar novamente"
+   *  CTA (only for retryable codes). */
   readonly errorCode?: string;
 
-  /**
-   * Invoked when the user clicks "Ingerir". Parent owns the mutation; this
-   * panel only validates the form (Zod) and emits the payload on success.
-   */
-  readonly onSubmit: (payload: IngestSubmitPayload) => void;
-
-  /**
-   * Invoked when the user clicks "Ver grafo existente" in UI-04. Parent fires
-   * the traverse-assembly with the already-known `affected_nodes` from the
-   * `noop_existing` response.
-   */
-  readonly onVerGrafoExistente?: () => void;
-
-  /**
-   * Invoked when the user clicks "Ingerir outro documento" — reset form to
-   * UI-01 and clear the graph. Available in UI-04, UI-06, UI-07.
-   */
-  readonly onIngerirOutro?: () => void;
-
-  /**
-   * Invoked when the user clicks "Tentar novamente" in UI-06 (only when the
-   * run is `failed` — the parent decides whether to expose it based on the
-   * error code).
-   */
-  readonly onRetry?: () => void;
-
-  /**
-   * Optional className merged onto the root GlassSurface via `cn()`.
-   */
+  /** Raised on textarea change. */
+  readonly onContentChange: (content: string) => void;
+  /** Raised on source-type change. */
+  readonly onSourceTypeChange: (sourceType: IngestSourceType | "") => void;
+  /** Raised on "Ingerir" click — passes through. */
+  readonly onSubmit: () => void;
+  /** Raised on "Ver grafo existente" click in UI-04. */
+  readonly onAssembleExisting: () => void;
+  /** Raised on "Tentar novamente" click in UI-06. */
+  readonly onRetry: () => void;
+  /** Raised on "Ingerir outro documento" click in UI-04, UI-06, UI-07. */
+  readonly onReset: () => void;
+  /** Additional Tailwind classes — merged via `cn()`. */
   readonly className?: string;
-
-  /** Optional inline style passthrough for parent layout positioning. */
-  readonly style?: CSSProperties;
 }

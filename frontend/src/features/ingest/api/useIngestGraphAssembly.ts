@@ -1,230 +1,248 @@
 /**
- * useIngestGraphAssembly — parallel traverse + graph assembly for /ingest
- * (TC-03 of EPIC-01).
+ * useIngestGraphAssembly — parallel traverse + GraphDelta assembly (dev_tc_005).
  *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §1 (traverseNode
- *    operationId), §4 Step 4 (parallel useQueries, staleTime 5min, link
- *    dedup), §4 Composed models, §2 UI-08 (revealing state), §2 FL-08
- *    (absent `affected_nodes` → no graph fetch).
- *  - docs/specs/front/_flows/ingest.flow.md Sub-flow A steps 12-15;
- *    Sub-flow C step 6-7; FL-08.
+ * Step 4 of the ingest flow (`ingest.feature.spec.md §4`). When the caller
+ * has a populated `affectedNodes` list (either from `noop_existing` or from
+ * a completed `runLlmExtraction`/polling), we fan out one
+ * `GET /api/v1/nodes/:id/traverse?depth=1` request per node via
+ * `useQueries`, merge the results into a `GraphDelta`, and (once every query
+ * has resolved) call `useGraphStore.replaceNodes(delta)`.
  *
- * Behaviour:
- *  1. For each entry in `affectedNodes`, fires a parallel
- *     `GET /api/v1/nodes/:id/traverse?depth=1` via `useQueries`. `staleTime`
- *     is 5 min and `refetchOnWindowFocus` is `false` — graph links do NOT
- *     change during an ingest session (Step 4 of the feature spec).
- *  2. When ALL queries succeed: dedupes links by `id` (the same link may
- *     appear in multiple traversals), maps the wire payload to the surface
- *     `GraphDelta` shape, and calls `useGraphStore.replaceNodes(delta)` +
- *     `useGraphStore.setStatus("revealing")` — exactly once per assembly.
- *  3. When `affectedNodes` is `null` or `undefined` (FL-08): NO queries are
- *     fired and the store is NOT touched. The graph remains in
- *     `status='empty'` after extraction; the operator sees the no-graph
- *     fallback in the right pane.
+ * Why `replaceNodes` (not `addNodes`):
+ *  - Each ingest is its own "session" — the spec explicitly says (UI-07 +
+ *    UI-08) the graph reflects ONLY this ingest's affected nodes. The
+ *    non-cumulative replace is the right primitive (project memory:
+ *    "graph-non-cumulative-and-zustand-spyon").
  *
- * Why the wire mapping lives inline (not imported from `features/chat`):
- *  - Cross-feature imports are forbidden (`Constraint`: "No imports from
- *    `features/chat`"). The chat dispatcher will be migrated to a shared
- *    `features/graph/api/mapWireToGraphDelta.ts` in a follow-up Task
- *    Contract; until then, the assembly hook holds its own minimal mapper
- *    that uses the public `features/graph/lib/map.ts` primitives
- *    (`mapNodeType`, `mapLinkTypeLabel`, `deriveNodeState`,
- *    `deriveLinkState`).
+ * Link deduplication:
+ *  - The same `KnowledgeLink` row may appear in multiple traversals (when
+ *    both endpoints are in `affectedNodes`). We dedupe by `id` while merging
+ *    — last-write-wins is fine because every traverse returns the same row.
  *
- * Wire shape assumption (`assumptions_allowed` in tc-003.md):
- *  - The traverse endpoint returns `{ nodes: GraphNodeWire[], links:
- *    GraphLinkWire[] }` with the same field shape as the SSE `graph_delta`
- *    frame — i.e. `link_type_label`, `is_temporal`, `flags` projected by
- *    the backend `graph-normalizer.ts`. The wire `LinkDetail` in
- *    `openapi.yaml` is a superset; the mapper reads only the fields it
- *    needs and ignores the rest.
+ * Wire → surface mapping:
+ *  - `affectedNodes` already carry id/canonical_name/node_type → mapped to
+ *    `GraphNodeData` directly (status defaults to `active` since there is no
+ *    confidence state in the affected_nodes payload).
+ *  - Traverse `nodes` add depth-1 neighbours; their wire status is mapped via
+ *    `deriveNodeState`.
+ *  - Traverse `links` use the same shape as the chat dispatcher uses
+ *    (`mapLinkTypeLabel`, `deriveLinkState`); the wire field for
+ *    `source_node_id`/`target_node_id` maps to surface `source`/`target`.
  */
-import { useEffect, useRef } from "react";
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { http } from "@/lib/http";
-import {
-  useGraphStore,
-  type GraphLinkData,
-  type GraphNodeData,
-  type GraphDelta,
-  type GraphLinkWire,
-  type GraphNodeWire,
-} from "@/features/graph";
+import { authHeader } from "./_request";
+import { ingestKeys } from "./keys";
 import {
   deriveLinkState,
   deriveNodeState,
   mapLinkTypeLabel,
   mapNodeType,
-} from "@/features/graph/lib/map";
-import { authHeader } from "./_request";
+  useGraphStore,
+  type GraphDelta,
+  type GraphLinkData,
+  type GraphNodeData,
+} from "@/features/graph";
+import type { AffectedNode } from "./types";
 
-const STALE_MS = 5 * 60_000;
-
-/** Minimum subset of an affected node the assembly hook needs. Sourced from
- *  the `affected_nodes` array on the extraction result (FL-08 / Step 4). */
-export interface IngestAffectedNode {
-  readonly id: string;
-  readonly canonical_name: string;
-  readonly node_type: string;
-}
-
-/** Traverse wire payload — the slice of the response the assembly hook
- *  actually consumes. Mirrors the shape projected by the backend
- *  `graph-normalizer.ts` (see `assumptions_allowed` in tc-003.md). */
-interface IngestTraverseWire {
-  readonly nodes: readonly GraphNodeWire[];
-  readonly links: readonly GraphLinkWire[];
-}
-
-export interface UseIngestGraphAssemblyResult {
-  /** Any traverse query is still in flight. `false` when `affectedNodes`
-   *  is absent (FL-08). */
-  readonly isLoading: boolean;
-  /** At least one traverse query failed. `false` when `affectedNodes` is
-   *  absent (FL-08). */
-  readonly isError: boolean;
-  /** All traverse queries resolved AND the store was updated. `false`
-   *  when `affectedNodes` is absent (FL-08). */
-  readonly isSuccess: boolean;
-}
+const TRAVERSE_STALE_MS = 5 * 60_000;
 
 /**
- * Run depth-1 traversals for every affected node in parallel and assemble
- * the resulting subgraph into a single `GraphDelta` written to
- * `useGraphStore`.
- *
- * @param affectedNodes — list of nodes whose neighbourhoods to fetch.
- *   `null` / `undefined` triggers the FL-08 no-op path (no queries,
- *   no store mutation, `isLoading/isError/isSuccess` all `false`).
+ * Minimum subset of the traverse response we depend on. We keep the type
+ * narrow — the ingest flow only consumes `depth=1&direction=both` and only
+ * needs node + link basics.
  */
-export function useIngestGraphAssembly(
-  affectedNodes: ReadonlyArray<IngestAffectedNode> | null | undefined,
-): UseIngestGraphAssemblyResult {
-  const nodes = affectedNodes ?? [];
-  // The `enabled` predicate guards against the FL-08 path: `useQueries`
-  // produces an empty result list, and the empty derived flags below all
-  // collapse to `false` (the result the spec mandates for FL-08).
-  const enabled = affectedNodes != null && affectedNodes.length > 0;
+interface TraverseNodeMinWire {
+  readonly id: string;
+  readonly node_type: string;
+  readonly canonical_name: string;
+  readonly status?: "active" | "needs_review" | "merged" | "deleted";
+}
 
-  const queries = useQueries({
-    queries: nodes.map((node) => ({
-      queryKey: ["ingest", "traverse", node.id] as const,
-      queryFn: async (): Promise<IngestTraverseWire> => {
-        const wire = await http<IngestTraverseWire>(
-          `/api/v1/nodes/${encodeURIComponent(node.id)}/traverse?depth=1`,
+interface TraverseLinkMinWire {
+  readonly id: string;
+  readonly source_node_id: string;
+  readonly target_node_id: string;
+  readonly link_type: string;
+  readonly link_type_label?: string;
+  readonly is_temporal?: boolean;
+  readonly is_in_effect?: boolean;
+  readonly status?: string;
+  readonly flags?: ReadonlyArray<"uncertain" | "disputed" | "low_confidence">;
+}
+
+interface TraverseResultMinWire {
+  readonly starting_node_id?: string;
+  readonly nodes?: ReadonlyArray<TraverseNodeMinWire>;
+  readonly links?: ReadonlyArray<TraverseLinkMinWire>;
+}
+
+function mapTraverseNode(wire: TraverseNodeMinWire): GraphNodeData {
+  const base: GraphNodeData = {
+    id: wire.id,
+    type: mapNodeType(wire.node_type),
+    label: wire.canonical_name,
+  };
+  if (wire.status === undefined) return base;
+  const state = deriveNodeState(wire.status);
+  if (state === undefined) return base;
+  return { ...base, state };
+}
+
+function mapTraverseLink(wire: TraverseLinkMinWire): GraphLinkData {
+  const base: GraphLinkData = {
+    id: wire.id,
+    source: wire.source_node_id,
+    target: wire.target_node_id,
+    label: wire.link_type,
+    linkTypeLabel: mapLinkTypeLabel(wire.link_type, wire.link_type_label),
+    isTemporal: wire.is_temporal === true,
+  };
+  // `deriveLinkState` requires both status and flags — only call when we have
+  // them; otherwise omit `state` (renders as default-confidence).
+  const state =
+    wire.status !== undefined
+      ? deriveLinkState(wire.status, wire.flags)
+      : undefined;
+  if (wire.is_in_effect !== undefined && state !== undefined) {
+    return { ...base, inEffect: wire.is_in_effect, state };
+  }
+  if (wire.is_in_effect !== undefined) {
+    return { ...base, inEffect: wire.is_in_effect };
+  }
+  if (state !== undefined) {
+    return { ...base, state };
+  }
+  return base;
+}
+
+/** Inputs to the assembly hook. */
+export interface UseIngestGraphAssemblyOptions {
+  /** Affected nodes returned by `ingestRawInformation` (noop) or by the
+   *  completed run (success). When `null` no traverse runs. */
+  readonly affectedNodes: ReadonlyArray<AffectedNode> | null;
+  /** Caller-controlled gate — set `true` once the upstream step (extraction
+   *  or noop reveal CTA) is ready to populate the graph. */
+  readonly enabled: boolean;
+}
+
+/** Output exposed to the workspace. */
+export interface UseIngestGraphAssemblyResult {
+  /** `true` while any traverse query is in flight. */
+  readonly isAssembling: boolean;
+  /** `true` once at least one traverse query has failed. */
+  readonly hasError: boolean;
+  /** Number of traverse queries that have settled successfully so far. */
+  readonly settledCount: number;
+  /** Number of traverse queries dispatched (=== affectedNodes.length). */
+  readonly totalCount: number;
+}
+
+export function useIngestGraphAssembly(
+  options: UseIngestGraphAssemblyOptions,
+): UseIngestGraphAssemblyResult {
+  const { affectedNodes, enabled } = options;
+
+  // Memoize the id list so React Query's `queries` array identity is stable
+  // across re-renders (avoids the "queries changed" thrash in dev mode).
+  const ids = useMemo(
+    () => (affectedNodes ?? []).map((n) => n.id),
+    [affectedNodes],
+  );
+
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ingestKeys.traverse(id),
+      queryFn: async () => {
+        return http<TraverseResultMinWire>(
+          `/api/v1/nodes/${encodeURIComponent(id)}/traverse?depth=1&direction=both`,
           { method: "GET", headers: authHeader() },
         );
-        return wire;
       },
       enabled,
-      staleTime: STALE_MS,
+      staleTime: TRAVERSE_STALE_MS,
       refetchOnWindowFocus: false,
     })),
   });
 
-  const isLoading = enabled && queries.some((q) => q.isLoading);
-  const isError = enabled && queries.some((q) => q.isError);
-  const isSuccess =
-    enabled && queries.length > 0 && queries.every((q) => q.isSuccess);
+  // Stable identity for the result tuple so the effect doesn't re-run on
+  // every render. We only care whether (a) all settled, (b) any errored.
+  const totalCount = ids.length;
+  const settledCount = results.filter(
+    (r) => r.status === "success" || r.status === "error",
+  ).length;
+  const successCount = results.filter((r) => r.status === "success").length;
+  const hasError = results.some((r) => r.status === "error");
+  const isAssembling =
+    enabled && totalCount > 0 && settledCount < totalCount && !hasError;
 
-  // Idempotency latch — `replaceNodes` + `setStatus` fire EXACTLY ONCE per
-  // successful assembly. Without the latch, every re-render after success
-  // would re-replace the graph and re-trigger the reveal animation. The ref
-  // is keyed by the concatenated affected-node ids: a different ingest
-  // session (different set of affected ids) MUST be allowed to re-assemble.
-  const assembledForKeyRef = useRef<string | null>(null);
-  const affectedKey = enabled ? nodes.map((n) => n.id).join("|") : null;
-
+  // Apply `replaceNodes(delta)` exactly once per (enabled + completion). Use
+  // a ref to ensure we don't push the same delta twice if React re-renders.
+  const lastAppliedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isSuccess) return;
-    if (affectedKey === null) return;
-    if (assembledForKeyRef.current === affectedKey) return;
+    if (!enabled) return;
+    if (totalCount === 0) {
+      // Nothing to traverse — emit an empty delta so the graph clears and
+      // we can move out of "loading" cleanly.
+      const key = "empty";
+      if (lastAppliedRef.current === key) return;
+      lastAppliedRef.current = key;
+      const delta: GraphDelta = {
+        sourceTool: "ingest_assembly",
+        nodes: [],
+        links: [],
+      };
+      useGraphStore.getState().replaceNodes(delta);
+      useGraphStore.getState().setStatus("ready");
+      return;
+    }
+    if (successCount !== totalCount) return; // wait for all to settle
+    // Build a stable key from the id list — if the caller re-runs the
+    // assembly with the same affected nodes (e.g. user clicks "Ver grafo
+    // existente" twice) we don't redundantly replace.
+    const key = ids.slice().sort().join("|");
+    if (lastAppliedRef.current === key) return;
+    lastAppliedRef.current = key;
 
-    const delta = assembleDelta(queries);
+    const nodeMap = new Map<string, GraphNodeData>();
+    const linkMap = new Map<string, GraphLinkData>();
+
+    // Seed with affected nodes (canonical labels straight from the ingest
+    // response).
+    for (const n of affectedNodes ?? []) {
+      nodeMap.set(n.id, {
+        id: n.id,
+        type: mapNodeType(n.nodeType),
+        label: n.canonicalName,
+      });
+    }
+
+    // Merge each traverse result.
+    for (const r of results) {
+      if (r.status !== "success") continue;
+      const wire = r.data as TraverseResultMinWire | undefined;
+      if (wire === undefined) continue;
+      for (const wn of wire.nodes ?? []) {
+        // Don't overwrite the affected-node entry with a thinner traverse
+        // node (the affected list is the source of truth for the label).
+        if (!nodeMap.has(wn.id)) {
+          nodeMap.set(wn.id, mapTraverseNode(wn));
+        }
+      }
+      for (const wl of wire.links ?? []) {
+        linkMap.set(wl.id, mapTraverseLink(wl));
+      }
+    }
+
+    const delta: GraphDelta = {
+      sourceTool: "ingest_assembly",
+      nodes: Array.from(nodeMap.values()),
+      links: Array.from(linkMap.values()),
+    };
     useGraphStore.getState().replaceNodes(delta);
     useGraphStore.getState().setStatus("revealing");
-    assembledForKeyRef.current = affectedKey;
-  }, [isSuccess, affectedKey, queries]);
+  }, [enabled, totalCount, successCount, ids, affectedNodes, results]);
 
-  return { isLoading, isError, isSuccess };
-}
-
-/* -------------------------------------------------------------------------
- * Internal: assemble the deduplicated GraphDelta from N traverse results.
- *
- * Pure code (Golden Rule 5 — no LLM), exported under-test only via the
- * hook surface. Kept private to this file because it depends on the wire
- * shape contract enforced by the queryFn above.
- * ------------------------------------------------------------------------- */
-function assembleDelta(
-  queries: ReadonlyArray<UseQueryResult<IngestTraverseWire>>,
-): GraphDelta {
-  // Deduplicate by id using Maps — same node / link may appear in
-  // multiple traversals (a hub node neighboured by two affected ids will
-  // surface twice). Last write wins; the wire payload is identical across
-  // calls because traverse is read-only and `staleTime: 5min` pins the
-  // cache, so "last wins" is benign.
-  const nodesById = new Map<string, GraphNodeData>();
-  const linksById = new Map<string, GraphLinkData>();
-
-  for (const q of queries) {
-    const data = q.data;
-    if (!data) continue;
-
-    // Nodes — drop those whose status maps to `undefined` (`merged` /
-    // `deleted`, per I-2): they have no visible representation and would
-    // render as ghosts in the canvas.
-    for (const wireNode of data.nodes) {
-      const state = deriveNodeState(wireNode.status);
-      if (state === undefined) continue;
-      const node: GraphNodeData = {
-        id: wireNode.id,
-        type: mapNodeType(wireNode.node_type),
-        label: wireNode.canonical_name,
-        state,
-      };
-      nodesById.set(wireNode.id, node);
-    }
-
-    // Links — dedupe by id; drop those whose endpoints are not in the
-    // accumulated visible-node set. We resolve this AFTER the node pass so
-    // the dedup horizon is the FULL union of all traversals.
-    for (const wireLink of data.links) {
-      const link: GraphLinkData = {
-        id: wireLink.id,
-        source: wireLink.source_node_id,
-        target: wireLink.target_node_id,
-        label: wireLink.link_type,
-        linkTypeLabel: mapLinkTypeLabel(
-          wireLink.link_type,
-          wireLink.link_type_label,
-        ),
-        isTemporal: wireLink.is_temporal,
-        state: deriveLinkState(wireLink.status, wireLink.flags),
-        ...(wireLink.is_in_effect === undefined
-          ? {}
-          : { inEffect: wireLink.is_in_effect }),
-      };
-      linksById.set(wireLink.id, link);
-    }
-  }
-
-  // Filter orphan links AFTER the union: a link arriving in traversal A
-  // whose endpoint shows up only in traversal B is legitimately retained.
-  // Without this second pass we would race the ordering and drop valid
-  // edges between affected-node neighbourhoods.
-  const orphanFiltered: GraphLinkData[] = [];
-  for (const link of linksById.values()) {
-    if (nodesById.has(link.source) && nodesById.has(link.target)) {
-      orphanFiltered.push(link);
-    }
-  }
-
-  return {
-    sourceTool: "traverseNode",
-    nodes: Array.from(nodesById.values()),
-    links: orphanFiltered,
-  };
+  return { isAssembling, hasError, settledCount, totalCount };
 }

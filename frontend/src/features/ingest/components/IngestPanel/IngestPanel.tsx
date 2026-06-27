@@ -1,408 +1,342 @@
 /**
- * IngestPanel — left-column container of `/ingest` (TC-04).
+ * IngestPanel — left column of `/ingest` (dev_tc_005).
  *
- * Spec references:
- *  - docs/specs/front/features/ingest.feature.spec.md §2 (UI-01..UI-09),
- *    §5 (ingestFormSchema — Zod), §7 (Textarea/Select/GlassSurface adapters),
- *    §8 (WCAG 2.2 AA — labels, aria-invalid, aria-describedby), §10
- *    (components to create).
+ * Pure-controlled, presentational component. The state machine
+ * (idle → sending → extracting → polling → complete | error | noop) lives in
+ * `IngestWorkspace`; this panel just renders the current view and raises the
+ * callback the user clicked.
  *
- * Responsibilities:
- *  - Owns the form (RHF v7 + Zod v4): content (1..10MiB) + source_type enum.
- *  - Renders dropzone + textarea + source-type select + "Ingerir" button.
- *  - Mounts the IngestProgressArea (aria-live region) which switches between
- *    sending / extracting / noop / error / summary panels driven by `phase`.
- *  - Disables inputs during sending/extracting/revealing (UI-03/05/07).
+ * Form structure (`ingest.feature.spec.md §2`):
+ *  - `<textarea>` (content) + `<select>` (source_type) + `<button>` (Ingerir)
+ *  - progress / summary / error region (`aria-live="polite"`, `role="alert"`
+ *    on error band)
  *
- * Does NOT do:
- *  - Network calls — `onSubmit` hands the payload to the parent IngestWorkspace
- *    (TC-05), which owns the mutations + graph wiring.
- *  - Right-column rendering (GraphSpace / NodeDetailPanel) — parent's job.
- *
- * Forbidden imports (TC-04 constraints):
- *  - `features/chat/**` — `/ingest` reuses graph primitives via the
- *    `features/graph/` and global `components/`, never via `chat`.
+ * Accessibility (`ingest.feature.spec.md §8`):
+ *  - `<label htmlFor>` for both inputs (visible labels)
+ *  - `aria-busy="true"` on the progress region while sending/extracting
+ *  - `role="alert"` on the error band
+ *  - `aria-disabled` reflects `disabled`
+ *  - All form controls disabled while the run is in flight
  */
-import { useCallback, useEffect, useId, useRef } from "react";
 import type { FC } from "react";
-import {
-  useForm,
-  type FieldValues,
-  type Resolver,
-  type SubmitHandler,
-} from "react-hook-form";
-import { z, type ZodType } from "zod";
-import { Loader2 } from "lucide-react";
-import { GlassSurface } from "@/components/ds/GlassSurface";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/cn";
-import { IngestDropzone } from "../IngestDropzone";
-import { IngestProgressArea } from "../IngestProgressArea";
-import type {
-  IngestPanelProps,
-  IngestPhase,
-  IngestSourceType,
-} from "./IngestPanel.types";
+import type { IngestSourceType } from "../../api";
+import type { IngestPanelProps } from "./IngestPanel.types";
+import { IngestSummary } from "./IngestSummary";
 
-/* ---------- spec-derived constants ---------- */
-
-/** §5 ingestFormSchema: max 10 MiB (10_485_760 chars). */
-const MAX_CONTENT_LENGTH = 10_485_760;
-
-/** §5 user messages — verbatim. */
-const MSG_CONTENT_EMPTY =
-  "Cole ou arraste o conteúdo do documento antes de ingerir.";
-const MSG_CONTENT_TOO_LONG =
-  "O conteúdo excede o limite de 10 MiB. Reduza o texto.";
-const MSG_SOURCE_TYPE_REQUIRED =
-  "Selecione o tipo de fonte antes de ingerir.";
-
-/** §8 pt-BR source-type labels. */
-const SOURCE_TYPE_LABELS: Readonly<Record<IngestSourceType, string>> = Object.freeze({
-  pdf: "PDF",
-  email: "E-mail",
-  ata: "Ata",
-  chat: "Chat",
-  artigo: "Artigo",
-  transcricao: "Transcrição",
-  outro: "Outro",
-});
-
-const SOURCE_TYPE_OPTIONS: ReadonlyArray<IngestSourceType> = [
-  "pdf",
-  "email",
-  "ata",
-  "chat",
-  "artigo",
-  "transcricao",
-  "outro",
+const SOURCE_TYPE_OPTIONS: ReadonlyArray<{
+  readonly value: IngestSourceType;
+  readonly label: string;
+}> = [
+  { value: "pdf", label: "PDF" },
+  { value: "email", label: "E-mail" },
+  { value: "ata", label: "Ata" },
+  { value: "chat", label: "Chat" },
+  { value: "artigo", label: "Artigo" },
+  { value: "transcricao", label: "Transcrição" },
+  { value: "outro", label: "Outro" },
 ];
 
-const CONTENT_LABEL = "Conteúdo do documento";
-const CONTENT_ARIA_LABEL = "Conteúdo do documento";
-const CONTENT_PLACEHOLDER = "Cole aqui o conteúdo do documento…";
-const SOURCE_TYPE_LABEL = "Tipo de fonte";
-const SOURCE_TYPE_PLACEHOLDER = "Selecione o tipo…";
+/** Codes that map to "retryable" errors — show the "Tentar novamente" CTA. */
+const RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "SYSTEM_LLM_PROVIDER_UNAVAILABLE",
+  "SYSTEM_INTERNAL_ERROR",
+  "SYSTEM_UPSTREAM",
+  "SYSTEM_TIMEOUT",
+  "SYSTEM_NETWORK",
+  // The polling loop ends in `status: 'failed'` — caller surfaces this as
+  // `RUN_FAILED` (synthetic, not in the openapi). Treat it as retryable.
+  "RUN_FAILED",
+]);
 
-const INGERIR_LABEL = "Ingerir";
-const INGERIR_BUSY_LABEL = "Enviando…";
-const INGERIR_ARIA_BUSY_LABEL = "Ingerindo…";
-
-/* ---------- Zod schema (§5) ---------- */
-
-const ingestFormSchema = z.object({
-  content: z
-    .string()
-    .min(1, MSG_CONTENT_EMPTY)
-    .max(MAX_CONTENT_LENGTH, MSG_CONTENT_TOO_LONG),
-  source_type: z.enum(
-    ["pdf", "email", "ata", "chat", "artigo", "transcricao", "outro"],
-    MSG_SOURCE_TYPE_REQUIRED,
-  ),
-});
-
-type IngestFormValues = z.infer<typeof ingestFormSchema>;
-
-/**
- * `safeParse`-based Zod resolver — same pattern as Composer.tsx (avoids the
- * `@hookform/resolvers/zod` v3 + Zod v4 `.errors`/`.issues` rename hazard).
- * Single-form scope; do NOT promote to a shared util until the project-wide
- * resolver upgrade lands.
- */
-function safeZodResolver<TValues extends FieldValues, TSchema extends ZodType>(
-  schema: TSchema,
-): Resolver<TValues> {
-  return async (values) => {
-    const result = schema.safeParse(values);
-    if (result.success) {
-      return { values: result.data as TValues, errors: {} };
-    }
-    const errors: Record<string, { type: string; message: string }> = {};
-    for (const issue of result.error.issues) {
-      const path = issue.path.join(".");
-      if (errors[path] === undefined) {
-        errors[path] = { type: issue.code, message: issue.message };
-      }
-    }
-    return {
-      values: {} as TValues,
-      errors: errors as never,
-    };
-  };
+function isInputDisabled(phase: IngestPanelProps["phase"]): boolean {
+  switch (phase) {
+    case "sending":
+    case "extracting":
+    case "polling":
+    case "revealing":
+    case "complete":
+    case "noop":
+      return true;
+    default:
+      return false;
+  }
 }
 
-/* ---------- phase helpers ---------- */
-
-function isFormDisabled(phase: IngestPhase): boolean {
-  return (
-    phase === "sending" ||
-    phase === "extracting" ||
-    phase === "revealing" ||
-    phase === "complete" ||
-    phase === "noop" ||
-    phase === "node_selected"
-  );
+function isProgressBusy(phase: IngestPanelProps["phase"]): boolean {
+  return phase === "sending" || phase === "extracting" || phase === "polling";
 }
 
-/** §2 — "Ingerir" is hidden in UI-04, UI-05, UI-07. We hide it in any phase
- * that is not idle/ready/sending/error (sending shows the spinner state of
- * the same button; error keeps the button visible for retry on the form). */
-function showIngerirButton(phase: IngestPhase): boolean {
-  return phase === "idle" || phase === "ready" || phase === "sending" || phase === "error";
+function progressCopy(phase: IngestPanelProps["phase"]): string | null {
+  switch (phase) {
+    case "sending":
+      return "Enviando documento…";
+    case "extracting":
+      return "Extraindo conhecimento… (pode levar alguns minutos)";
+    case "polling":
+      return "Verificando extração…";
+    case "revealing":
+      return "Compondo o grafo…";
+    default:
+      return null;
+  }
 }
-
-/* ---------- component ---------- */
 
 export const IngestPanel: FC<IngestPanelProps> = ({
   phase,
-  progressMessage,
+  content,
+  sourceType,
+  validationMessage,
   summary,
+  errorMessage,
   errorCode,
+  onContentChange,
+  onSourceTypeChange,
   onSubmit,
-  onVerGrafoExistente,
-  onIngerirOutro,
+  onAssembleExisting,
   onRetry,
+  onReset,
   className,
-  style,
 }) => {
-  const reactId = useId();
-  const contentId = `ingest-content-${reactId}`;
-  const sourceTypeId = `ingest-source-type-${reactId}`;
-  const contentErrorId = `ingest-content-error-${reactId}`;
-  const sourceTypeErrorId = `ingest-source-type-error-${reactId}`;
-
-  const form = useForm<IngestFormValues>({
-    resolver: safeZodResolver<IngestFormValues, typeof ingestFormSchema>(
-      ingestFormSchema,
-    ),
-    // §5: primary gate is onSubmit; oversized-content live error is handled
-    // by RHF mode `onChange`. We use `onChange` so both the empty-on-submit
-    // and the >10MiB live error surface correctly (the validation step is
-    // identical — the difference is purely a UX-timing decision).
-    mode: "onChange",
-    defaultValues: {
-      content: "",
-      // `source_type` starts unset (the placeholder option is selected). We
-      // use an empty-string sentinel that the Zod enum rejects — this gives
-      // us the "not selected" guard on submit without needing a separate
-      // required-flag.
-      source_type: "" as unknown as IngestSourceType,
-    },
-  });
-
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    reset,
-    formState: { errors },
-  } = form;
-
-  const contentValue = watch("content");
-  const sourceTypeValue = watch("source_type");
-  const formDisabled = isFormDisabled(phase);
-  // §2 UI-01 / UI-02 — button enabled only when both fields are provided.
-  // Zod enforces this at validation time, but for the button-disabled gate
-  // we look at the field values directly so the button reflects field state
-  // before any submit attempt.
-  const canSubmit =
-    !formDisabled &&
-    contentValue.length > 0 &&
-    SOURCE_TYPE_OPTIONS.includes(sourceTypeValue as IngestSourceType);
-
-  const contentError = errors.content?.message;
-  const sourceTypeError = errors.source_type?.message;
-
-  const submitHandler = useCallback<SubmitHandler<IngestFormValues>>(
-    (values) => {
-      onSubmit({
-        content: values.content,
-        source_type: values.source_type,
-      });
-    },
-    [onSubmit],
-  );
-
-  /** When the parent resets to `idle` (e.g. after "Ingerir outro documento"),
-   * clear the form. We use a ref-based latch to detect the transition rather
-   * than tracking previous phase — simpler + sufficient. */
-  const prevPhaseRef = useRef<IngestPhase>(phase);
-  useEffect(() => {
-    if (prevPhaseRef.current !== "idle" && phase === "idle") {
-      reset({
-        content: "",
-        source_type: "" as unknown as IngestSourceType,
-      });
-    }
-    prevPhaseRef.current = phase;
-  }, [phase, reset]);
-
-  /** Dropzone → form integration: setValue with shouldValidate so the
-   * onChange validators run and the submit button enables immediately. */
-  const onDropzoneContent = useCallback(
-    (text: string) => {
-      setValue("content", text, { shouldValidate: true, shouldDirty: true });
-    },
-    [setValue],
-  );
+  const disabled = isInputDisabled(phase);
+  const isReadyPhase: boolean = phase === "ready";
+  const isSendingPhase: boolean = phase === "sending";
+  const canSubmit = isReadyPhase && content.length >= 1 && sourceType !== "";
+  const showSubmit = phase === "idle" || isReadyPhase || isSendingPhase;
+  const isRetryable = errorCode !== undefined && RETRYABLE_ERROR_CODES.has(errorCode);
+  const showSummary =
+    summary !== undefined && (phase === "complete" || phase === "revealing");
+  const showNoopNotice = phase === "noop";
+  const showError = phase === "error";
+  const progress = progressCopy(phase);
 
   return (
-    <GlassSurface
-      level="ambient"
-      role="region"
-      aria-label="Ingerir documento"
-      animate={false}
+    <section
+      data-testid="ingest-panel"
+      aria-label="Ingestão de documento"
       className={cn(
-        "flex flex-col gap-md h-full p-lg",
+        "flex h-full flex-col gap-lg p-lg",
+        "bg-surface-glass-ambient",
         className,
       )}
-      style={style}
-      data-testid="ingest-panel"
-      data-phase={phase}
     >
+      <header className="flex flex-col gap-xs">
+        <h2 className="text-heading text-content">Ingerir documento</h2>
+        <p className="text-body-sm text-muted">
+          Cole o texto ou arraste um arquivo .txt para extrair conhecimento
+          estruturado.
+        </p>
+      </header>
+
       <form
+        className="flex flex-1 flex-col gap-md"
         onSubmit={(e) => {
-          void handleSubmit(submitHandler)(e);
+          e.preventDefault();
+          if (canSubmit) onSubmit();
         }}
-        noValidate
-        className="flex flex-col gap-md"
-        data-testid="ingest-panel-form"
+        data-testid="ingest-form"
       >
-        <IngestDropzone
-          onContent={onDropzoneContent}
-          disabled={formDisabled}
-        />
-
-        {/* Content textarea — §7 Textarea adapter */}
         <div className="flex flex-col gap-xs">
           <label
-            htmlFor={contentId}
-            className="text-label font-semibold text-content"
+            htmlFor="ingest-content"
+            className="text-label text-content"
           >
-            {CONTENT_LABEL}
+            Conteúdo do documento
           </label>
-          <Textarea
-            id={contentId}
-            placeholder={CONTENT_PLACEHOLDER}
-            aria-label={CONTENT_ARIA_LABEL}
-            invalid={contentError !== undefined}
-            disabled={formDisabled}
-            aria-describedby={
-              contentError !== undefined ? contentErrorId : undefined
+          <textarea
+            id="ingest-content"
+            data-testid="ingest-content"
+            className={cn(
+              "min-h-32 flex-1 rounded-md border border-border bg-surface p-md text-body-sm text-content",
+              "focus:border-border-focus focus:outline-none",
+            )}
+            placeholder="Cole aqui o conteúdo do documento…"
+            value={content}
+            disabled={disabled}
+            aria-label="Conteúdo do documento"
+            aria-invalid={
+              validationMessage !== undefined && validationMessage.length > 0
             }
-            data-testid="ingest-content-textarea"
-            {...register("content")}
+            onChange={(e) => onContentChange(e.target.value)}
           />
-          {contentError !== undefined && (
-            <p
-              id={contentErrorId}
-              role="alert"
-              className="text-caption text-state-disputed-fg"
-              data-testid="ingest-content-error"
-            >
-              {contentError}
-            </p>
-          )}
         </div>
 
-        {/* Source type select — §7 Select adapter */}
         <div className="flex flex-col gap-xs">
           <label
-            htmlFor={sourceTypeId}
-            className="text-label font-semibold text-content"
+            htmlFor="ingest-source-type"
+            className="text-label text-content"
           >
-            {SOURCE_TYPE_LABEL}
+            Tipo de fonte
           </label>
-          <Select
-            // exactOptionalPropertyTypes: omit `value` entirely when the
-            // form has no selection (the placeholder is shown via SelectValue).
-            {...(SOURCE_TYPE_OPTIONS.includes(sourceTypeValue as IngestSourceType)
-              ? { value: sourceTypeValue }
-              : {})}
-            onValueChange={(v) => {
-              setValue("source_type", v as IngestSourceType, {
-                shouldValidate: true,
-                shouldDirty: true,
-              });
-            }}
-            disabled={formDisabled}
+          <select
+            id="ingest-source-type"
+            data-testid="ingest-source-type"
+            className={cn(
+              "rounded-md border border-border bg-surface p-md text-body-sm text-content",
+              "focus:border-border-focus focus:outline-none",
+            )}
+            value={sourceType}
+            disabled={disabled}
+            aria-label="Tipo de fonte"
+            aria-invalid={
+              validationMessage !== undefined && validationMessage.length > 0
+            }
+            onChange={(e) =>
+              onSourceTypeChange(e.target.value as IngestSourceType | "")
+            }
           >
-            <SelectTrigger
-              id={sourceTypeId}
-              aria-label={SOURCE_TYPE_LABEL}
-              aria-invalid={sourceTypeError !== undefined || undefined}
-              aria-describedby={
-                sourceTypeError !== undefined ? sourceTypeErrorId : undefined
-              }
-              data-testid="ingest-source-type-trigger"
-            >
-              <SelectValue placeholder={SOURCE_TYPE_PLACEHOLDER} />
-            </SelectTrigger>
-            <SelectContent>
-              {SOURCE_TYPE_OPTIONS.map((key) => (
-                <SelectItem key={key} value={key} data-testid={`ingest-source-type-option-${key}`}>
-                  {SOURCE_TYPE_LABELS[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {sourceTypeError !== undefined && (
-            <p
-              id={sourceTypeErrorId}
-              role="alert"
-              className="text-caption text-state-disputed-fg"
-              data-testid="ingest-source-type-error"
-            >
-              {sourceTypeError}
-            </p>
-          )}
+            <option value="">Selecione o tipo…</option>
+            {SOURCE_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Ingerir button — hidden in UI-04/UI-05/UI-07 */}
-        {showIngerirButton(phase) && (
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              variant="default"
-              size="md"
-              disabled={!canSubmit}
-              aria-busy={phase === "sending" || undefined}
-              aria-label={
-                phase === "sending" ? INGERIR_ARIA_BUSY_LABEL : INGERIR_LABEL
-              }
-              data-testid="ingest-submit-button"
-            >
-              {phase === "sending" ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  {INGERIR_BUSY_LABEL}
-                </>
-              ) : (
-                INGERIR_LABEL
-              )}
-            </Button>
-          </div>
-        )}
+        {validationMessage !== undefined && validationMessage.length > 0 ? (
+          <p
+            data-testid="ingest-validation"
+            className="text-body-sm text-state-disputed"
+          >
+            {validationMessage}
+          </p>
+        ) : null}
+
+        {showSubmit ? (
+          <button
+            type="submit"
+            data-testid="ingest-submit"
+            disabled={!canSubmit || isSendingPhase}
+            aria-disabled={!canSubmit || isSendingPhase}
+            aria-label={isSendingPhase ? "Ingerindo…" : "Ingerir"}
+            className={cn(
+              "self-start rounded-md bg-action px-lg py-md text-label text-content-inverse",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              "hover:bg-action-hover focus:outline-none focus:bg-action-active",
+            )}
+          >
+            {isSendingPhase ? "Enviando…" : "Ingerir"}
+          </button>
+        ) : null}
       </form>
 
-      <IngestProgressArea
-        phase={phase}
-        {...(progressMessage !== undefined ? { progressMessage } : {})}
-        {...(summary !== undefined ? { summary } : {})}
-        {...(errorCode !== undefined ? { errorCode } : {})}
-        {...(onVerGrafoExistente !== undefined ? { onVerGrafoExistente } : {})}
-        {...(onIngerirOutro !== undefined ? { onIngerirOutro } : {})}
-        {...(onRetry !== undefined ? { onRetry } : {})}
-      />
-    </GlassSurface>
+      <div
+        data-testid="ingest-progress"
+        role="region"
+        aria-label="Progresso da ingestão"
+        aria-live="polite"
+        aria-busy={isProgressBusy(phase)}
+        className="flex flex-col gap-md"
+      >
+        {progress !== null ? (
+          <p
+            data-testid="ingest-progress-copy"
+            className="text-body-sm text-content"
+          >
+            {progress}
+          </p>
+        ) : null}
+
+        {showNoopNotice ? (
+          <div
+            data-testid="ingest-noop-notice"
+            className="flex flex-col gap-sm rounded-md border border-border-glass bg-surface-glass-ambient p-md"
+          >
+            <p className="text-label text-content">Documento já ingerido</p>
+            <p className="text-body-sm text-muted">
+              Este conteúdo já foi processado anteriormente. O grafo abaixo
+              mostra os nós extraídos.
+            </p>
+            <div className="flex flex-wrap gap-sm">
+              <button
+                type="button"
+                data-testid="ingest-assemble-existing"
+                onClick={onAssembleExisting}
+                className={cn(
+                  "rounded-md bg-action px-md py-xs text-label text-content-inverse",
+                  "hover:bg-action-hover focus:outline-none focus:bg-action-active",
+                )}
+              >
+                Ver grafo existente
+              </button>
+              <button
+                type="button"
+                data-testid="ingest-reset"
+                onClick={onReset}
+                className="text-body-sm text-action underline"
+              >
+                Ingerir outro documento
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showError ? (
+          <div
+            data-testid="ingest-error"
+            role="alert"
+            className={cn(
+              "flex flex-col gap-sm rounded-md border border-border-error p-md",
+              "bg-surface",
+            )}
+          >
+            <p className="text-label text-content">Erro na ingestão</p>
+            <p className="text-body-sm text-content">
+              {errorMessage ?? "Algo deu errado. Tente novamente."}
+            </p>
+            <div className="flex flex-wrap gap-sm">
+              {isRetryable ? (
+                <button
+                  type="button"
+                  data-testid="ingest-retry"
+                  onClick={onRetry}
+                  className={cn(
+                    "rounded-md bg-action px-md py-xs text-label text-content-inverse",
+                    "hover:bg-action-hover focus:outline-none focus:bg-action-active",
+                  )}
+                >
+                  Tentar novamente
+                </button>
+              ) : null}
+              <button
+                type="button"
+                data-testid="ingest-reset"
+                onClick={onReset}
+                className="text-body-sm text-action underline"
+              >
+                Ingerir outro documento
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showSummary && summary !== undefined ? (
+          <div
+            data-testid="ingest-complete"
+            className="flex flex-col gap-sm rounded-md border border-border-glass p-md"
+          >
+            <p className="text-label text-content">Extração concluída</p>
+            <IngestSummary summary={summary} />
+            {summary.needsReview > 0 ? (
+              <p
+                data-testid="ingest-needs-review-notice"
+                className="text-body-sm text-state-uncertain"
+              >
+                Alguns nós aguardam revisão. Acesse Curadoria para detalhes.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              data-testid="ingest-reset"
+              onClick={onReset}
+              className="self-start text-body-sm text-action underline"
+            >
+              Ingerir outro documento
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 };
