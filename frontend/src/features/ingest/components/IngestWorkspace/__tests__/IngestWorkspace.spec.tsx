@@ -512,6 +512,104 @@ describe("IngestWorkspace — error path (UI-06) + retry", () => {
   });
 });
 
+describe("IngestWorkspace — polling resolution (BDD Scenario 3, BUG-02)", () => {
+  it("transitions polling → revealing when a polled run resolves to 'completed'", () => {
+    // Why this test exists: BDD Scenario 3 of ingest.feature.spec.md §3 — the
+    // connection drops mid-run, the workspace silently switches to polling
+    // (`useIngestRunStatus`), and when the polled status flips to 'completed'
+    // the phase must advance to 'revealing'. Without this assertion the
+    // polling effect could regress to a no-op and the progress copy would
+    // hang on "Verificando extração…" forever.
+    renderWS();
+
+    let ingestOnSuccess: ((data: unknown) => void) | undefined;
+    let runOnError: ((err: unknown) => void) | undefined;
+    ingestMutateImpl.current = (_vars, opts) => {
+      ingestOnSuccess = opts?.onSuccess;
+    };
+    runMutateImpl.current = (_vars, opts) => {
+      runOnError = opts?.onError;
+    };
+
+    changeTextarea(
+      $("ingest-content") as HTMLTextAreaElement,
+      "Conteúdo do documento.",
+    );
+    changeSelect($("ingest-source-type") as HTMLSelectElement, "ata");
+    act(() => {
+      ($("ingest-form") as HTMLFormElement).requestSubmit();
+    });
+    act(() => {
+      ingestOnSuccess?.({
+        outcome: "created",
+        llmRunId: "run-1",
+        rawInformationId: "raw-1",
+        contentHash: "h",
+        chunkCount: 1,
+        idempotencyKey: "k",
+      });
+    });
+
+    // Simulate the LLM connection dropping — anything that isn't 409/422 and
+    // isn't a "real" SYSTEM_LLM_PROVIDER_UNAVAILABLE counts as a drop per
+    // `isConnectionDropError`. Use SYSTEM_NETWORK explicitly.
+    act(() => {
+      runOnError?.(
+        new EnvelopeError({
+          code: "SYSTEM_NETWORK",
+          httpStatus: 0,
+          message: "Conexão interrompida.",
+        }),
+      );
+    });
+    expect($("ingest-progress-copy")?.textContent).toContain(
+      "Verificando extração",
+    );
+
+    // Now the polled status resolves to 'completed'. Update `pollData.current`
+    // (the mock backing `useIngestRunStatus`) and force a re-render so the
+    // hook returns the new `data` reference — the orchestration hook's
+    // `useEffect` will then transition phase to 'revealing'.
+    pollData.current = {
+      id: "run-1",
+      model: "claude-opus-4-8",
+      promptVersion: "v3",
+      startedAt: "2026-01-01T00:00:00Z",
+      finishedAt: "2026-01-01T00:00:10Z",
+      status: "completed",
+      attempts: 1,
+      inputRawInformationId: "raw-1",
+      idempotencyKey: "k",
+      summary: {
+        accepted: 2,
+        consolidated: 0,
+        supersededPrevious: 0,
+        needsReview: 0,
+        uncertain: 0,
+        disputed: 0,
+        rejected: 0,
+        error: 0,
+        orphanedFragments: 0,
+      },
+      affectedNodes: [],
+    };
+    // Force a re-render. The orchestration hook subscribes to graph store
+    // status — bouncing it through a distinct value forces a fresh render
+    // and the mocked `useIngestRunStatus` returns the updated pollData.
+    act(() => {
+      useGraphStore.getState().setStatus("error");
+    });
+    act(() => {
+      useGraphStore.getState().setStatus("loading");
+    });
+
+    // Phase has advanced to 'revealing' — observable via the progress copy.
+    expect($("ingest-progress-copy")?.textContent).toContain(
+      "Compondo o grafo",
+    );
+  });
+});
+
 describe("IngestWorkspace — reset clears form (BUG-05)", () => {
   it("clicking 'Ingerir outro documento' from a terminal state clears content/sourceType and disables submit", () => {
     renderWS();
