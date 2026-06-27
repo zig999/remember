@@ -55,6 +55,11 @@ const CurationPage = lazy(() =>
     default: m.CurationPage,
   })),
 );
+const IngestWorkspace = lazy(() =>
+  import("@/features/ingest/components/IngestWorkspace").then((m) => ({
+    default: m.IngestWorkspace,
+  })),
+);
 
 /**
  * ProtectedLayout — workspace chrome (AppShell) for authenticated routes.
@@ -186,7 +191,21 @@ export const searchRoute = createRoute({
 export const ingestRoute = createRoute({
   getParentRoute: () => protectedLayoutRoute,
   path: "/ingest",
-  component: () => <StubPage title="Ingestão" testId="ingest-page" />,
+  component: () => (
+    <Suspense
+      fallback={
+        <div
+          className="m-auto text-body-sm text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          Carregando ingestão…
+        </div>
+      }
+    >
+      <IngestWorkspace />
+    </Suspense>
+  ),
 });
 
 /**
