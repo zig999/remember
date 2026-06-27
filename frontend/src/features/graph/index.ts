@@ -83,6 +83,7 @@ export {
   useNodeDetail,
   useNodeRelationships,
   useProvenance,
+  mapWireToGraphDelta,
 } from "./api";
 export type {
   NodeAliasView,
@@ -94,4 +95,5 @@ export type {
   TraversalResultView,
   ProvenanceKind,
   ProvenanceResponseView,
+  MapWireToGraphDeltaInput,
 } from "./api";
