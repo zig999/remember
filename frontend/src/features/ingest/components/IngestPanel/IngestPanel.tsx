@@ -23,6 +23,8 @@ import { cn } from "@/lib/cn";
 import type { IngestSourceType } from "../../api";
 import type { IngestPanelProps } from "./IngestPanel.types";
 import { IngestSummary } from "./IngestSummary";
+import { IngestErrorBand } from "./_IngestErrorBand";
+import { IngestNoopNotice } from "./_IngestNoopNotice";
 
 const SOURCE_TYPE_OPTIONS: ReadonlyArray<{
   readonly value: IngestSourceType;
@@ -239,76 +241,19 @@ export const IngestPanel: FC<IngestPanelProps> = ({
         ) : null}
 
         {showNoopNotice ? (
-          <div
-            data-testid="ingest-noop-notice"
-            className="flex flex-col gap-sm rounded-md border border-border-glass bg-surface-glass-ambient p-md"
-          >
-            <p className="text-label text-content">Documento já ingerido</p>
-            <p className="text-body-sm text-muted">
-              Este conteúdo já foi processado anteriormente. O grafo abaixo
-              mostra os nós extraídos.
-            </p>
-            <div className="flex flex-wrap gap-sm">
-              <button
-                type="button"
-                data-testid="ingest-assemble-existing"
-                onClick={onAssembleExisting}
-                className={cn(
-                  "rounded-md bg-action px-md py-xs text-label text-content-inverse",
-                  "hover:bg-action-hover focus:outline-none focus:bg-action-active",
-                )}
-              >
-                Ver grafo existente
-              </button>
-              <button
-                type="button"
-                data-testid="ingest-reset"
-                onClick={onReset}
-                className="text-body-sm text-action underline"
-              >
-                Ingerir outro documento
-              </button>
-            </div>
-          </div>
+          <IngestNoopNotice
+            onAssembleExisting={onAssembleExisting}
+            onReset={onReset}
+          />
         ) : null}
 
         {showError ? (
-          <div
-            data-testid="ingest-error"
-            role="alert"
-            className={cn(
-              "flex flex-col gap-sm rounded-md border border-border-error p-md",
-              "bg-surface",
-            )}
-          >
-            <p className="text-label text-content">Erro na ingestão</p>
-            <p className="text-body-sm text-content">
-              {errorMessage ?? "Algo deu errado. Tente novamente."}
-            </p>
-            <div className="flex flex-wrap gap-sm">
-              {isRetryable ? (
-                <button
-                  type="button"
-                  data-testid="ingest-retry"
-                  onClick={onRetry}
-                  className={cn(
-                    "rounded-md bg-action px-md py-xs text-label text-content-inverse",
-                    "hover:bg-action-hover focus:outline-none focus:bg-action-active",
-                  )}
-                >
-                  Tentar novamente
-                </button>
-              ) : null}
-              <button
-                type="button"
-                data-testid="ingest-reset"
-                onClick={onReset}
-                className="text-body-sm text-action underline"
-              >
-                Ingerir outro documento
-              </button>
-            </div>
-          </div>
+          <IngestErrorBand
+            errorMessage={errorMessage}
+            isRetryable={isRetryable}
+            onRetry={onRetry}
+            onReset={onReset}
+          />
         ) : null}
 
         {showSummary && summary !== undefined ? (
