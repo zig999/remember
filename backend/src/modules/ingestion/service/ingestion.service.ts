@@ -119,6 +119,10 @@ export async function ingestRawInformation(
       content: input.content,
       content_hash: contentHash,
       metadata: input.metadata,
+      // TC-01 / BR-34: pass-through of the verbatim user turn from the
+      // chat-directed path. `content_hash` is computed above over `content`
+      // only — `original_input` never affects idempotency.
+      original_input: input.original_input ?? null,
     });
   } catch (err) {
     if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {

@@ -41,6 +41,13 @@ export interface RawInformationRow {
   readonly content_hash: string;
   readonly received_at: Date;
   readonly metadata: Record<string, unknown>;
+  /**
+   * Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
+   * BR-34). `null` for every non-chat path (REST, MCP direct, document
+   * ingestion). NEVER participates in `content_hash`. Covered by §11
+   * `compliance_delete`.
+   */
+  readonly original_input: string | null;
 }
 
 /** Shape returned by `INSERT INTO raw_chunk ... RETURNING *`. */
@@ -80,13 +87,26 @@ export async function insertRawInformation(
     content: string;
     content_hash: string;
     metadata: Record<string, unknown>;
+    /**
+     * Optional verbatim user turn (TC-01 / BR-34). Omitted / `undefined` /
+     * explicit `null` ALL persist as SQL NULL — the column has no default.
+     * Never mixed into `content_hash` (the caller computes that over
+     * `content` only).
+     */
+    original_input?: string | null;
   }
 ): Promise<RawInformationRow> {
   const result = await client.query<RawInformationRow>(
-    `INSERT INTO raw_information (source_type, content, content_hash, metadata)
-     VALUES ($1, $2, $3, $4::jsonb)
-     RETURNING id, source_type, content, storage_ref, content_hash, received_at, metadata`,
-    [args.source_type, args.content, args.content_hash, JSON.stringify(args.metadata)]
+    `INSERT INTO raw_information (source_type, content, content_hash, metadata, original_input)
+     VALUES ($1, $2, $3, $4::jsonb, $5)
+     RETURNING id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input`,
+    [
+      args.source_type,
+      args.content,
+      args.content_hash,
+      JSON.stringify(args.metadata),
+      args.original_input ?? null,
+    ]
   );
   const row = result.rows[0];
   if (row === undefined) {
@@ -102,7 +122,7 @@ export async function findRawInformationByHash(
   contentHash: string
 ): Promise<RawInformationRow | null> {
   const result = await client.query<RawInformationRow>(
-    `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata
+    `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input
        FROM raw_information
       WHERE content_hash = $1
       LIMIT 1`,
@@ -117,7 +137,7 @@ export async function findRawInformationById(
   id: string
 ): Promise<RawInformationRow | null> {
   const result = await client.query<RawInformationRow>(
-    `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata
+    `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input
        FROM raw_information
       WHERE id = $1
       LIMIT 1`,

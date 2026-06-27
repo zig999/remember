@@ -271,6 +271,14 @@ export interface DirectedIngestionDeps {
   readonly proposeLink?: typeof proposeLinkHandler;
   /** Test seam — defaults to the real pin verifier. */
   readonly verifyNodePin?: typeof verifyNodePin;
+  /**
+   * Verbatim user turn that triggered this directed run (TC-01 / BR-34).
+   * Path 1 capture: the chat agent dispatch threads `invocation_context.
+   * source_excerpt` here; REST / MCP direct callers omit it. Forwarded as
+   * `original_input` to `ingestRawInformation`; NEVER mixed into
+   * `synthesiseContent` (so `content_hash` is unaffected).
+   */
+  readonly sourceExcerpt?: string;
 }
 
 /**
@@ -331,6 +339,11 @@ export async function directedIngestionService(
         metadata: intakeMetadata,
         model: DIRECTED_MODEL,
         prompt_version: DIRECTED_PROMPT_VERSION,
+        // TC-01 / BR-34 — verbatim user turn from the chat dispatch's
+        // `invocation_context.source_excerpt`; `null` for REST / MCP direct
+        // callers. `synthesiseContent` is unchanged: `content_hash` is
+        // unaffected.
+        original_input: deps.sourceExcerpt ?? null,
       });
     });
   } catch (err) {
