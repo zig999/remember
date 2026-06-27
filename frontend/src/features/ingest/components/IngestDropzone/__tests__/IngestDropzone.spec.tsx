@@ -120,3 +120,50 @@ describe("IngestDropzone — keyboard accessibility (BUG-03)", () => {
     expect(zone.getAttribute("aria-disabled")).toBe("true");
   });
 });
+
+describe("IngestDropzone — non-.txt rejection feedback", () => {
+  function selectFile(file: File): void {
+    const input = $("ingest-dropzone-input") as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    act(() => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
+  // Why this matters: a dropped/picked PDF used to be rejected SILENTLY —
+  // nothing happened and the user had no idea why. The dropzone must surface
+  // the rejection (ingest.feature.spec.md §6 erro→UI; WCAG: role="alert").
+  it("shows an assertive alert when a non-.txt file is selected, and does not emit content", () => {
+    const onContent = vi.fn();
+    act(() => {
+      root.render(<IngestDropzone onContent={onContent} />);
+    });
+    selectFile(new File(["%PDF-1.4 binary"], "relatorio.pdf", { type: "application/pdf" }));
+
+    const err = $("ingest-dropzone-error");
+    expect(err).not.toBeNull();
+    expect(err!.getAttribute("role")).toBe("alert");
+    expect(err!.getAttribute("aria-live")).toBe("assertive");
+    expect(err!.textContent).toContain("Formato não suportado");
+    // The rejected file must not leak into the form content.
+    expect(onContent).not.toHaveBeenCalled();
+  });
+
+  it("does not show the error for a valid .txt file (and emits its text)", async () => {
+    const onContent = vi.fn();
+    act(() => {
+      root.render(<IngestDropzone onContent={onContent} />);
+    });
+    selectFile(new File(["conteúdo de teste"], "nota.txt", { type: "text/plain" }));
+    // FileReader.readAsText resolves asynchronously in jsdom — poll (flushing
+    // inside act) until onload fires, so the state update is applied first.
+    for (let i = 0; i < 50 && onContent.mock.calls.length === 0; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+      });
+    }
+
+    expect($("ingest-dropzone-error")).toBeNull();
+    expect(onContent).toHaveBeenCalledWith("conteúdo de teste");
+  });
+});

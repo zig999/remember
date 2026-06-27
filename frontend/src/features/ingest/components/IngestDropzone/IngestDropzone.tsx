@@ -27,6 +27,8 @@ import type { IngestDropzoneProps } from "./IngestDropzone.types";
 const ZONE_LABEL = "Área para arrastar ou carregar arquivo .txt";
 const HELPER_TEXT = "Arraste um .txt ou cole o texto abaixo.";
 const ACCEPT = ".txt,text/plain";
+const REJECT_MESSAGE =
+  "Formato não suportado: envie um arquivo .txt (ou cole o texto abaixo).";
 
 /**
  * Validate that a file is a text file by extension or MIME type. We do not
@@ -50,6 +52,7 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
   const helperId = `ingest-dropzone-helper-${reactId}`;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   const openPicker = useCallback(() => {
     if (disabled) return;
@@ -61,11 +64,17 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
       if (files === null || files.length === 0) return;
       const file = files[0];
       if (!file) return;
-      if (!isTxtFile(file)) return;
+      if (!isTxtFile(file)) {
+        // Surface the rejection instead of failing silently — a dropped PDF
+        // would otherwise do nothing with no explanation (§6 erro→UI).
+        setError(REJECT_MESSAGE);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result;
         if (typeof result !== "string") return;
+        setError(null);
         onContent(result);
         onFile?.(file.name, file.size);
       };
@@ -168,6 +177,16 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
       >
         {HELPER_TEXT}
       </p>
+      {error !== null && (
+        <p
+          role="alert"
+          aria-live="assertive"
+          className="text-caption text-danger"
+          data-testid="ingest-dropzone-error"
+        >
+          {error}
+        </p>
+      )}
       <input
         ref={inputRef}
         type="file"
