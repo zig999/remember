@@ -12,18 +12,16 @@
 --    Recriar a ontologia gera ids novos; manter dados antigos deixaria FKs
 --    inválidas. Logo, "recriar a ontologia do zero" implica um reset completo.
 --
--- USO TÍPICO:
---   1) rodar este script;
---   2) rodar `0001_seed.sql` (re-popular a ontologia — é idempotente);
---   3) RESTART do BFF (recarrega o CatalogSnapshot);
---   4) re-ingerir os dados, se desejado.
+-- ESCOPO: este script APENAS trunca as tabelas abaixo. Repopular a ontologia
+--    (seeds) e reiniciar o BFF são passos separados, de responsabilidade do
+--    operador — fora do escopo deste arquivo.
 --
 -- (Se quiser apagar SÓ os dados e manter a ontologia, use
 --  ops/truncate_ingested_data.sql.)
 -- ============================================================================
 
 TRUNCATE
-  -- dados ingeridos / derivados (14)
+  -- dados ingeridos / derivados + histórico de chat (18)
   provenance,
   fragment_source,
   node_attribute,
@@ -38,6 +36,11 @@ TRUNCATE
   llm_run,
   raw_chunk,
   raw_information,
+  -- chat (subgrafo isolado; não alcançado por CASCADE a partir das tabelas acima)
+  chat_graph_view,
+  chat_tool_call,
+  chat_message,
+  chat_conversation,
   -- ONTOLOGIA / catálogo (5)
   attribute_valid_value,
   attribute_key,

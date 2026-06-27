@@ -6,8 +6,13 @@
 --    bootstrap (por isso vive em ops/, fora da sequência numerada 0001…). Rodar
 --    APENAS sob demanda e com APROVAÇÃO EXPLÍCITA do dono (Safety Rule do CLAUDE.md).
 --
--- O QUE APAGA (14 tabelas): camada de origem, auditoria, extração, grafo
--- consolidado, proveniência e curadoria.
+-- O QUE APAGA (18 tabelas): camada de origem, auditoria, extração, grafo
+-- consolidado, proveniência, curadoria E o histórico de chat (conversas +
+-- snapshots de grafo por conversa). O chat é um subgrafo de FK isolado — não é
+-- alcançado pelo CASCADE a partir das tabelas de domínio (nada fora do chat o
+-- referencia), por isso é listado explicitamente; do contrário sobreviveriam
+-- conversas e snapshots (chat_graph_view.snapshot guarda ids de nó por valor,
+-- sem FK) apontando para um grafo que acabou de ser apagado.
 -- O QUE PRESERVA: a ONTOLOGIA / catálogo — node_type, link_type, link_type_rule,
 --    attribute_key, attribute_valid_value (intactos).
 --
@@ -30,5 +35,10 @@ TRUNCATE
   tool_call,
   llm_run,
   raw_chunk,
-  raw_information
+  raw_information,
+  -- chat (subgrafo isolado; não alcançado por CASCADE a partir das tabelas acima)
+  chat_graph_view,
+  chat_tool_call,
+  chat_message,
+  chat_conversation
   RESTART IDENTITY CASCADE;
