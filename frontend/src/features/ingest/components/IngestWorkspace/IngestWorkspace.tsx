@@ -229,7 +229,7 @@ export const IngestWorkspace: FC<IngestWorkspaceProps> = ({ className }) => {
           // outcome === "created" — fire extraction immediately.
           setPhase("extracting");
           runMutation.mutate(
-            { llmRunId: data.llmRunId },
+            { llm_run_id: data.llmRunId },
             {
               onSuccess: (run) => {
                 setSummary(run.summary);
@@ -301,11 +301,11 @@ export const IngestWorkspace: FC<IngestWorkspaceProps> = ({ className }) => {
     setErrorMessage(null);
     setPhase("extracting");
     retryMutation.mutate(
-      { llmRunId },
+      { llm_run_id: llmRunId },
       {
         onSuccess: () => {
           runMutation.mutate(
-            { llmRunId },
+            { llm_run_id: llmRunId },
             {
               onSuccess: (run) => {
                 setSummary(run.summary);

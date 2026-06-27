@@ -44,7 +44,7 @@ import {
   type GraphLinkData,
   type GraphNodeData,
 } from "@/features/graph";
-import type { AffectedNode } from "./types";
+import type { AffectedNode } from "./_transforms";
 
 const TRAVERSE_STALE_MS = 5 * 60_000;
 

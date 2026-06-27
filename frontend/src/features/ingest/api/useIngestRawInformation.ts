@@ -1,45 +1,61 @@
 /**
- * useIngestRawInformation — POST /api/v1/ingest/raw-information (dev_tc_005).
+ * `useIngestRawInformation` — Step 1 of the ingest flow.
  *
- * Step 1 of the ingest flow (`ingest.feature.spec.md §4`). On 201
- * (`outcome: "created"`) the caller fires `useRunLlmExtraction`; on 200
- * (`outcome: "noop_existing"`) the caller skips extraction and goes
- * straight to step 4 (graph assembly).
+ * Spec references:
+ *  - docs/specs/front/features/ingest.feature.spec.md §1 (consumed:
+ *    `ingestRawInformation`), §4 (request order; step 1 fires on submit),
+ *    §3 (UI-02 → UI-03 transition).
+ *  - docs/specs/domains/ingestion/openapi.yaml — `POST
+ *    /api/v1/ingest/raw-information` returns `IngestRawInformationResponse`
+ *    on 201 (`outcome: "created"`) or 200 (`outcome: "noop_existing"`).
+ *
+ * Design:
+ *  - Mutation (TanStack `useMutation`); no cache key.
+ *  - Calls the ingest-feature carve-out `httpIngest<T>()` because ingest
+ *    REST returns bare body on 2xx (no envelope unwrap — see `_request.ts`
+ *    header).
+ *  - **No `ingest: true`** on this call: `ingestRawInformation` is fast
+ *    (chunking + insert, no LLM call). The 30s cutoff is appropriate; the
+ *    LLM-bound exception applies to `runLlmExtraction` (the next step).
+ *  - Caller is responsible for chaining: on `outcome === "created"` →
+ *    fire `useRunLlmExtraction`; on `outcome === "noop_existing"` → skip
+ *    to graph assembly (TC-05 wires this).
  */
-import { useMutation, type UseMutationResult } from "@tanstack/react-query";
-import { http } from "@/lib/http";
-import { authHeader } from "./_request";
-import { toIngestRawInformationResponse } from "./_transforms";
-import type {
-  IngestRawInformationRequest,
-  IngestRawInformationResponse,
-  IngestRawInformationResponseWire,
-} from "./types";
 
-export type IngestRawInformationVariables = IngestRawInformationRequest;
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+
+import { authHeader, httpIngest } from "./_request";
+import {
+  toIngestRawInformationResult,
+  type IngestRawInformationResponseWire,
+  type IngestRawInformationResult,
+  type SourceTypeWire,
+} from "./_transforms";
+
+export interface UseIngestRawInformationVariables {
+  readonly source_type: SourceTypeWire;
+  readonly content: string;
+  readonly model: string;
+  readonly prompt_version: string;
+  readonly metadata?: Record<string, unknown>;
+}
 
 export function useIngestRawInformation(): UseMutationResult<
-  IngestRawInformationResponse,
+  IngestRawInformationResult,
   Error,
-  IngestRawInformationVariables
+  UseIngestRawInformationVariables
 > {
   return useMutation({
     mutationFn: async (vars) => {
-      const wire = await http<IngestRawInformationResponseWire>(
+      const wire = await httpIngest<IngestRawInformationResponseWire>(
         "/api/v1/ingest/raw-information",
         {
           method: "POST",
-          headers: {
-            ...authHeader(),
-            "Content-Type": "application/json",
-          },
+          headers: { ...authHeader(), "Content-Type": "application/json" },
           body: JSON.stringify(vars),
-          // ingest endpoint — no client-side 30s cutoff (chunking can be
-          // expensive on large documents).
-          ingest: true,
         },
       );
-      return toIngestRawInformationResponse(wire);
+      return toIngestRawInformationResult(wire);
     },
   });
 }
