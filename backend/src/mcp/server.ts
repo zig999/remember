@@ -44,12 +44,27 @@ export type ToolsetName = "ingest" | "query" | "curation";
  * - `handler`: pure function (or service-backed function) that returns the
  *    raw result payload. Throwing escapes through the dispatcher and gets
  *    wrapped in the MCP error envelope.
+ *
+ * `invocation_context` (TC-02 / BR-34 — Path 1, transport-neutral): optional
+ * second argument supplied by the **chat-agent dispatch** so the orchestrator
+ * can capture per-invocation provenance that the LLM MUST NOT relay
+ * (e.g. the operator's verbatim turn, and the `(conversation_id, message_id)`
+ * pointer back to the chat row). REST and MCP-direct callers omit it; the
+ * handler treats the absence as "no chat context" and persists `null` for
+ * those fields. The argument is passed GENERICALLY to every tool — only
+ * `ingest_directed` actually consumes it; the other handlers receive it and
+ * ignore it silently. Keeping the signature uniform on `McpTool.handler`
+ * avoids per-tool branching at the chat dispatch site (chat-agent.service.ts
+ * lines 619-624).
  */
 export interface McpTool<I = unknown, O = unknown> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: ZodTypeAny;
-  readonly handler: (input: I) => Promise<O>;
+  readonly handler: (
+    input: I,
+    invocation_context?: Record<string, unknown>
+  ) => Promise<O>;
 }
 
 /**

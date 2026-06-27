@@ -722,14 +722,16 @@ export async function registerChatRoutes(
       }
 
       // ---- (9) Insert the user row (BR-29 step 3).
-      // The inserted row is not consumed downstream — the user row is
-      // ALREADY at the tail of `modelContext.messages` via the recent-window
-      // read below (BR-31 step 5: "the user row inserted in step 3 IS the
-      // last element of the result by construction"). We persist for
-      // durability; we do not re-thread the value.
+      // The inserted row is not consumed downstream for the recent-window
+      // context — that already includes it via the BR-31 read. We DO capture
+      // its id so the chat dispatch can thread `(conversation_id, message_id)`
+      // as a non-PII pointer into the directed-ingestion metadata (TC-02 /
+      // BR-34). Recovery branches resolve the id from the existing row read
+      // a few lines up.
+      let userMessageId: string | null = existingUserRow?.id ?? null;
       if (existingUserRow === null) {
         try {
-          await withTransaction(deps.pool, (client) =>
+          const inserted = await withTransaction(deps.pool, (client) =>
             chatRepo.insertUserMessage(client, {
               conversation_id: id,
               content: [...persistedContentBlock],
@@ -737,6 +739,7 @@ export async function registerChatRoutes(
               model: resolvedModel,
             })
           );
+          userMessageId = inserted.id;
         } catch (err) {
           if (isUniqueViolation(err)) {
             // BR-27: concurrent insert won the race. Re-read + resolve replay
@@ -814,11 +817,29 @@ export async function registerChatRoutes(
 
       // ---- (12) Get the AsyncIterable BEFORE hijack — a factory throw must
       //          still surface as the REST envelope (BR-21).
+      //
+      // TC-02 / BR-34 (Path 1): thread the verbatim turn (`body.content`,
+      // unmodified — never trimmed or transformed) and the non-PII
+      // `(conversation_id, message_id)` pointer to the chat agent. The agent
+      // forwards both to ALL tool handlers via `invocation_context`; only
+      // `ingest_directed` consumes them. We pass the pointer only when both
+      // ids are present — `userMessageId` is non-null on every normal path
+      // (insert-success or existing-row-recovery), defensive guard preserved
+      // for the rare race where step (9) failed to record one.
       const chatInput: ChatRunInput = {
         system: modelContext.system,
         messages: modelContext.messages,
         model: resolvedModel,
         abortSignal: abortController.signal,
+        current_user_turn: body.content,
+        ...(userMessageId !== null
+          ? {
+              invocation_pointer: {
+                conversation_id: id,
+                message_id: userMessageId,
+              },
+            }
+          : {}),
       };
       let iterable: AsyncIterable<ChatEvent>;
       try {
