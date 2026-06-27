@@ -73,6 +73,12 @@ export interface ProvenanceChainRow {
   readonly source_type: string;
   readonly received_at: Date;
   readonly metadata: Record<string, unknown>;
+  // v1.4.0 — verbatim chat user turn captured by `ingest_directed`
+  // (`ingestion.back.md` BR-34). Null for non-chat sources and rows that
+  // predate the feature. `'[REDACTED]'` after `compliance_delete` (BR-18 of
+  // compliance-audit). NOT part of the content_hash; NOT indexed by
+  // full-text — surface-only field.
+  readonly original_input: string | null;
 }
 
 /**
@@ -138,7 +144,8 @@ async function runChainSql(
                ri.id       AS raw_information_id,
                ri.source_type::text AS source_type,
                ri.received_at,
-               ri.metadata
+               ri.metadata,
+               ri.original_input
           FROM information_fragment f
           JOIN fragment_source fs ON fs.fragment_id = f.id
           JOIN raw_chunk rc       ON rc.id = fs.raw_chunk_id
@@ -161,7 +168,8 @@ async function runChainSql(
                ri.id       AS raw_information_id,
                ri.source_type::text AS source_type,
                ri.received_at,
-               ri.metadata
+               ri.metadata,
+               ri.original_input
           FROM provenance p
           JOIN information_fragment f ON f.id = p.fragment_id
           JOIN fragment_source fs     ON fs.fragment_id = f.id

@@ -177,6 +177,7 @@ function groupChain(rows: readonly ProvenanceChainRow[]): ProvenanceFragment[] {
         source_type: toSourceType(c.source_type),
         received_at: c.received_at.toISOString(),
         metadata: c.metadata,
+        original_input: c.original_input ?? null,
       },
     }));
     fragments.push({

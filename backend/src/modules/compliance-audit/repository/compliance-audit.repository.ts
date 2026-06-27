@@ -43,12 +43,21 @@ export async function loadRawInformationForUpdate(
 }
 
 /**
- * BR-04 + BR-05 — single UPDATE redacts content, sets the compliance flag in
+ * BR-04 + BR-05 + BR-18 — single UPDATE redacts content, the v1.3.0
+ * `original_input` column (chat verbatim capture), sets the compliance flag in
  * metadata (shallow JSON merge), and transitions status + superseded_at.
  * content_hash is intentionally left untouched (BR-04).
  *
  * The `[REDACTED]` literal is hardcoded — never read from config (constraint
  * "[REDACTED] literal is hardcoded in the service").
+ *
+ * BR-18 — `original_input` is redacted in the SAME UPDATE statement using a
+ * CASE expression so null stays null (rows never ingested through the
+ * directed-chat path) and non-null is rewritten to the 10-character literal
+ * `[REDACTED]`. The CASE preserves the audit-honest distinction between
+ * "this row never carried a captured chat turn" (null after tombstone) and
+ * "this row did carry a verbatim chat turn, which has been redacted under §11"
+ * (`[REDACTED]` after tombstone). Atomic with `content` redaction.
  */
 export async function tombstoneRawInformation(
   client: PoolClient,
@@ -56,10 +65,11 @@ export async function tombstoneRawInformation(
 ): Promise<number> {
   const res = await client.query(
     `UPDATE raw_information
-        SET content       = '[REDACTED]',
-            metadata      = metadata || jsonb_build_object('compliance_deleted', true),
-            status        = 'deleted',
-            superseded_at = now()
+        SET content        = '[REDACTED]',
+            original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END,
+            metadata       = metadata || jsonb_build_object('compliance_deleted', true),
+            status         = 'deleted',
+            superseded_at  = now()
       WHERE id = $1
       RETURNING id`,
     [rawInformationId]
