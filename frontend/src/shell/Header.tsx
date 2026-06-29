@@ -11,6 +11,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Diamond,
+  MessageSquare,
   Network,
   Search,
   Upload,
@@ -29,6 +30,7 @@ export interface HeaderProps {
 }
 
 const NAV = [
+  { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/graph", label: "Grafo", icon: Network },
   { to: "/search", label: "Buscar", icon: Search },
   { to: "/ingest", label: "Ingerir", icon: Upload },

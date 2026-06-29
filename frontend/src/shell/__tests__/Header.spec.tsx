@@ -140,7 +140,7 @@ describe("Header — ConversationMenu conditional mount (TC-02)", () => {
   it("keeps the primary NAV tabs visible on /chat (no regression to existing Header structure)", () => {
     useLocationMock.mockReturnValue({ pathname: "/chat", search: {} });
     render(<Header />);
-    // 5 areas per NAV in Header.tsx
-    expect(container.querySelectorAll("nav a").length).toBe(5);
+    // 6 areas per NAV in Header.tsx (Chat + the 5 original areas)
+    expect(container.querySelectorAll("nav a").length).toBe(6);
   });
 });
