@@ -27,7 +27,7 @@ export const Settings_: Story = {
   name: "Settings menu",
   render: () => {
     function Demo() {
-      const [light, setLight] = useState(false);
+      const [notify, setNotify] = useState(false);
       return (
         <div className="p-2xl">
           <DropdownMenu>
@@ -39,8 +39,8 @@ export const Settings_: Story = {
             <DropdownMenuContent>
               <DropdownMenuLabel>Configurações</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem checked={light} onCheckedChange={setLight}>
-                Tema claro
+              <DropdownMenuCheckboxItem checked={notify} onCheckedChange={setNotify}>
+                Notificações
               </DropdownMenuCheckboxItem>
               <DropdownMenuItem>Atalhos de teclado</DropdownMenuItem>
               <DropdownMenuSeparator />

@@ -5,8 +5,8 @@
  * - Open state lives in the `command-palette` store (the header ⌘K button also
  *   toggles it).
  * - Global keybind: ⌘K (mac) / Ctrl+K toggles; Esc closes (Dialog default).
- * - Actions: navigate to the five areas; toggle theme. (Opening the as_of time
- *   picker from here will be added with the time-travel wiring.)
+ * - Actions: navigate to the five areas. (Opening the as_of time picker from
+ *   here will be added with the time-travel wiring.)
  */
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -16,7 +16,6 @@ import {
   Upload,
   Scale,
   History,
-  SunMoon,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -27,7 +26,6 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { useCommandPaletteStore } from "@/state/command-palette";
-import { useThemeStore } from "@/state/theme";
 
 const AREAS = [
   { to: "/graph", label: "Grafo", icon: Network },
@@ -42,7 +40,6 @@ export function CommandPalette() {
   const setOpen = useCommandPaletteStore((s) => s.setOpen);
   const toggle = useCommandPaletteStore((s) => s.toggle);
   const navigate = useNavigate();
-  const toggleTheme = useThemeStore((s) => s.toggle);
 
   // Global ⌘K / Ctrl+K toggle.
   useEffect(() => {
@@ -78,12 +75,6 @@ export function CommandPalette() {
               {a.label}
             </CommandItem>
           ))}
-        </CommandGroup>
-        <CommandGroup heading="Ações">
-          <CommandItem value="Alternar tema" onSelect={() => run(toggleTheme)}>
-            <SunMoon className="size-4 text-muted" aria-hidden="true" />
-            Alternar tema
-          </CommandItem>
         </CommandGroup>
       </CommandList>
     </CommandDialog>

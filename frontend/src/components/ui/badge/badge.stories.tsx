@@ -42,25 +42,6 @@ export const Variants: Story = {
   ),
 };
 
-export const LightTheme: Story = {
-  decorators: [
-    (Story) => (
-      <div data-theme="light" className="bg-primary p-xl">
-        <Story />
-      </div>
-    ),
-  ],
-  render: () => (
-    <div className="flex flex-wrap items-center gap-md">
-      {VARIANTS.map((v) => (
-        <Badge key={v} variant={v}>
-          {v}
-        </Badge>
-      ))}
-    </div>
-  ),
-};
-
 /**
  * Motion (front.md §9, #2) — `pop-in` on appear + `count-pulse` on change,
  * consuming the canonical factories from `lib/motion.ts`. Click to increment;

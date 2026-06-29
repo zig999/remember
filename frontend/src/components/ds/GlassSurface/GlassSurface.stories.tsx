@@ -6,14 +6,14 @@
  * frosted-glass composition (translucency + blur + top-edge highlight) is
  * visible — glass over an empty white background is meaningless (§9 note).
  *
- * Story families (matching the spec table):
- *  - Ambient    — Ambient/Dark, Ambient/Light
- *  - Panel      — Panel/Dark, Panel/Light, Panel/AccentUncertain,
+ * Story families (dark-only app):
+ *  - Ambient    — Ambient/Dark
+ *  - Panel      — Panel/Dark, Panel/AccentUncertain,
  *                 Panel/AccentFocus, Panel/AccentDisputed
- *  - Modal      — Modal/Dark, Modal/Light, Modal/AccentError
+ *  - Modal      — Modal/Dark, Modal/AccentError
  *  - Motion     — Motion/PanelEnter, Motion/ModalEnter (interactive),
  *                 Motion/ReducedMotion (static via parameter)
- *  - A11y       — A11y/ContrastSmoke (3 levels × 2 themes)
+ *  - A11y       — A11y/ContrastSmoke (3 levels)
  *
  * Non-interactive stories run as Vitest component tests via addon-vitest.
  * addon-a11y runs against every story for WCAG 2.2 AA verification.
@@ -74,18 +74,7 @@ const SampleContent = (): ReactElement => (
 export const AmbientDark: Story = {
   name: "Ambient/Dark",
   args: { level: "ambient" },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
-  render: (args) => (
-    <GlassSurface {...args} className="p-lg">
-      <SampleContent />
-    </GlassSurface>
-  ),
-};
-
-export const AmbientLight: Story = {
-  name: "Ambient/Light",
-  args: { level: "ambient" },
-  decorators: [withAmbientBackdrop({ theme: "light" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <GlassSurface {...args} className="p-lg">
       <SampleContent />
@@ -97,18 +86,7 @@ export const AmbientLight: Story = {
 export const PanelDark: Story = {
   name: "Panel/Dark",
   args: { level: "panel" },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
-  render: (args) => (
-    <GlassSurface {...args} className="p-lg">
-      <SampleContent />
-    </GlassSurface>
-  ),
-};
-
-export const PanelLight: Story = {
-  name: "Panel/Light",
-  args: { level: "panel" },
-  decorators: [withAmbientBackdrop({ theme: "light" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <GlassSurface {...args} className="p-lg">
       <SampleContent />
@@ -119,7 +97,7 @@ export const PanelLight: Story = {
 export const PanelAccentUncertain: Story = {
   name: "Panel/AccentUncertain",
   args: { level: "panel", accent: "uncertain" },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <GlassSurface {...args} className="p-lg">
       <SampleContent />
@@ -130,7 +108,7 @@ export const PanelAccentUncertain: Story = {
 export const PanelAccentFocus: Story = {
   name: "Panel/AccentFocus",
   args: { level: "panel", accent: "focus" },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <GlassSurface {...args} className="p-lg">
       <SampleContent />
@@ -141,7 +119,7 @@ export const PanelAccentFocus: Story = {
 export const PanelAccentDisputed: Story = {
   name: "Panel/AccentDisputed",
   args: { level: "panel", accent: "disputed" },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <GlassSurface {...args} className="p-lg">
       <SampleContent />
@@ -153,18 +131,7 @@ export const PanelAccentDisputed: Story = {
 export const ModalDark: Story = {
   name: "Modal/Dark",
   args: { level: "modal" },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
-  render: (args) => (
-    <GlassSurface {...args} className="p-xl">
-      <SampleContent />
-    </GlassSurface>
-  ),
-};
-
-export const ModalLight: Story = {
-  name: "Modal/Light",
-  args: { level: "modal" },
-  decorators: [withAmbientBackdrop({ theme: "light", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: (args) => (
     <GlassSurface {...args} className="p-xl">
       <SampleContent />
@@ -178,7 +145,7 @@ export const ModalLight: Story = {
 export const FillAmbient: Story = {
   name: "Fill/Ambient (modal material)",
   args: { level: "modal", fill: "ambient" },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: (args) => (
     <GlassSurface {...args} className="p-xl">
       <SampleContent />
@@ -189,18 +156,7 @@ export const FillAmbient: Story = {
 export const FillAmbientAccent: Story = {
   name: "Fill/AmbientAccent (assistant bubble)",
   args: { level: "modal", fill: "ambient-accent" },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
-  render: (args) => (
-    <GlassSurface {...args} className="p-xl">
-      <SampleContent />
-    </GlassSurface>
-  ),
-};
-
-export const FillAmbientAccentLight: Story = {
-  name: "Fill/AmbientAccent/Light",
-  args: { level: "modal", fill: "ambient-accent" },
-  decorators: [withAmbientBackdrop({ theme: "light", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: (args) => (
     <GlassSurface {...args} className="p-xl">
       <SampleContent />
@@ -211,7 +167,7 @@ export const FillAmbientAccentLight: Story = {
 export const ModalAccentError: Story = {
   name: "Modal/AccentError",
   args: { level: "modal", accent: "error" },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: (args) => (
     <GlassSurface {...args} className="p-xl">
       <SampleContent />
@@ -228,7 +184,7 @@ export const ModalAccentError: Story = {
  */
 export const MotionPanelEnter: Story = {
   name: "Motion/PanelEnter",
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: () => {
     function Demo() {
       const [mounted, setMounted] = useState(false);
@@ -267,7 +223,7 @@ export const MotionPanelEnter: Story = {
  */
 export const MotionModalEnter: Story = {
   name: "Motion/ModalEnter",
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: () => {
     function Demo() {
       const [mounted, setMounted] = useState(false);
@@ -309,7 +265,7 @@ export const MotionModalEnter: Story = {
 export const MotionReducedMotion: Story = {
   name: "Motion/ReducedMotion",
   args: { level: "modal" },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   parameters: { reducedMotion: "reduce" },
   render: (args) => (
     <GlassSurface {...args} className="p-xl">
@@ -320,13 +276,11 @@ export const MotionReducedMotion: Story = {
 /**
  * A11y/ContrastSmoke — 3 levels × content text. Renders the 3 glass levels
  * side by side, each with `text-content` placeholder text. addon-a11y
- * verifies WCAG 2.2 AA contrast on every combination. The dark-themed slice
- * is the default; the light slice is verified by AmbientLight/PanelLight/
- * ModalLight stories above.
+ * verifies WCAG 2.2 AA contrast on every combination over the dark backdrop.
  */
 export const A11yContrastSmoke: Story = {
   name: "A11y/ContrastSmoke",
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   render: () => (
     <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
       {(["ambient", "panel", "modal"] as const).map((lvl) => (

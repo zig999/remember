@@ -43,7 +43,7 @@ const meta: Meta<typeof GraphNode> = {
     label: { control: "text" },
     subtitle: { control: "text" },
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
 };
 export default meta;
 type Story = StoryObj<typeof GraphNode>;

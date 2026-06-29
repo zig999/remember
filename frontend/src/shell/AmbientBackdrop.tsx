@@ -17,38 +17,24 @@
  *  - on `error`, src is cleared so the underlying `bg-primary` shows through
  *    (graceful flat-color fallback per BR-15).
  *
- * Theme: the asset chosen depends on the active `data-theme` attribute on
- * `<html>`. The component observes the attribute via a MutationObserver so
- * a theme toggle swaps the asset without a route remount.
+ * Single (dark) theme: the asset is the committed landscape photo
+ * `public/backdrop/cityscape-dusk.png` (from `images/background.png`).
  */
 
 import { useEffect, useState } from "react";
 
-/** Per-theme asset map. Dark uses the committed landscape photo
- * (`public/backdrop/cityscape-dusk.png`, from `images/background.png`); the
- * light asset is still a placeholder pending a real image (front.md §8.2). */
-const BACKDROP_BY_THEME: Record<string, string> = {
-  dark: "/backdrop/cityscape-dusk.png",
-  light: "/backdrop/dawn.jpg",
-};
-
-function currentTheme(): "dark" | "light" {
-  if (typeof document === "undefined") return "dark";
-  const attr = document.documentElement.getAttribute("data-theme");
-  return attr === "light" ? "light" : "dark";
-}
+/** The committed dark landscape photo (the app is dark-only). */
+const BACKDROP_SRC = "/backdrop/cityscape-dusk.png";
 
 export function AmbientBackdrop() {
   const [src, setSrc] = useState<string>("");
-  const [theme, setTheme] = useState<"dark" | "light">(() => currentTheme());
 
   // BR-15: defer src assignment until after the initial render.
   useEffect(() => {
     let cancelled = false;
     const assign = () => {
       if (cancelled) return;
-      const href = BACKDROP_BY_THEME[theme];
-      if (href !== undefined) setSrc(href);
+      setSrc(BACKDROP_SRC);
     };
     const ric = (window as unknown as {
       requestIdleCallback?: (cb: () => void) => number;
@@ -65,18 +51,6 @@ export function AmbientBackdrop() {
     return () => {
       cancelled = true;
     };
-  }, [theme]);
-
-  // Observe <html data-theme> so the asset follows the active theme.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const html = document.documentElement;
-    const observer = new MutationObserver(() => {
-      const next = currentTheme();
-      setTheme((prev) => (prev === next ? prev : next));
-    });
-    observer.observe(html, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
   }, []);
 
   return (

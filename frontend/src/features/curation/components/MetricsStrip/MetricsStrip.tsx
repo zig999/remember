@@ -30,7 +30,6 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
-import { GlassSurface } from "@/components/ds/GlassSurface";
 import type { CurationMetrics } from "../../types";
 
 export interface MetricsStripFallback {
@@ -104,12 +103,14 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
   const [lead, ...counts] = cells;
 
   return (
-    <GlassSurface
-      level="ambient"
+    // Presentational block — the surrounding ambient GlassSurface (owned by
+    // CurationPage) provides the glass material; the strip no longer nests its
+    // own surface so the title, metrics, tabs and queue share ONE ambient.
+    <div
       role="region"
       aria-label="Métricas de curadoria"
       aria-busy={skeleton || undefined}
-      className={cn("flex flex-col gap-sm p-md", className)}
+      className={cn("flex flex-col gap-sm", className)}
     >
       {skeleton || lead === undefined ? (
         // Loading: a quiet 2-col grid of pulse cells. Never a 5-across row —
@@ -152,6 +153,6 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
           </div>
         </>
       )}
-    </GlassSurface>
+    </div>
   );
 };

@@ -155,7 +155,7 @@ const meta: Meta<typeof GraphSpace> = {
     a11y: { element: "#storybook-root" },
     layout: "fullscreen",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "md" })],
+  decorators: [withAmbientBackdrop({ padding: "md" })],
   argTypes: {
     status: {
       control: "select",

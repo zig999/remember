@@ -77,22 +77,3 @@ export const Loading: Story = { args: { loading: true, children: "Salvando" } };
 export const Disabled: Story = {
   args: { disabled: true, children: "Indisponível" },
 };
-
-export const LightTheme: Story = {
-  decorators: [
-    (Story) => (
-      <div data-theme="light" className="bg-primary p-xl">
-        <Story />
-      </div>
-    ),
-  ],
-  render: () => (
-    <div className="flex flex-wrap items-center gap-md">
-      {VARIANTS.map((v) => (
-        <Button key={v} variant={v}>
-          {v}
-        </Button>
-      ))}
-    </div>
-  ),
-};

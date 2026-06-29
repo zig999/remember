@@ -13,7 +13,7 @@
  *  - Motion             — ReducedMotionStatic (static), PromoteTransition,
  *                         SupersedeTransition, MergeTransition (all 3
  *                         interactive with play functions)
- *  - Context            — OnGlassPanel, LightTheme
+ *  - Context            — OnGlassPanel
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -250,19 +250,6 @@ export const OnGlassPanel: Story = {
   render: () => (
     <div className="p-xl">
       <div className="flex flex-wrap items-center gap-md rounded-lg bg-surface-glass-panel p-lg shadow-glass backdrop-blur-glass-md">
-        {ALL_STATES.map((s) => (
-          <StateBadge key={s} state={s} />
-        ))}
-      </div>
-    </div>
-  ),
-};
-
-/* ---------- LightTheme — data-theme="light" wrapper -------------------- */
-export const LightTheme: Story = {
-  render: () => (
-    <div data-theme="light" className="bg-primary p-md">
-      <div className="flex flex-wrap items-center gap-md">
         {ALL_STATES.map((s) => (
           <StateBadge key={s} state={s} />
         ))}

@@ -1,10 +1,8 @@
 /**
  * Storybook 9 — preview config (TC-07).
  *
- * - Imports `theme.css` so every story renders with the dark-default token
- *   set already in scope (tokens.md §2). The `[data-theme="light"]`
- *   overrides activate when a story (or its decorator) sets `data-theme`
- *   on its own root.
+ * - Imports `theme.css` so every story renders with the (dark-only) token
+ *   set already in scope (tokens.md §2).
  * - Enables addon-a11y on every story by default (WCAG 2.2 AA — front.md
  *   §1, accessibility: wcag-2.2-aa in CLAUDE.md).
  * - Wires a `reducedMotion` parameter that, when set to `"reduce"`, adds a

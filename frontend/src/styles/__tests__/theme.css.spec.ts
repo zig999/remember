@@ -171,38 +171,12 @@ describe("theme.css — @theme block presence and shape (tokens.md §2)", () => 
   });
 });
 
-describe("theme.css — [data-theme='light'] override block (BR-14)", () => {
-  it("declares a `[data-theme=\"light\"] { ... }` block", () => {
-    expect(css).toMatch(/\[data-theme="light"\]\s*\{/);
-  });
-
-  it("overrides ALL 5 confidence-state border colors (W-DS-1)", () => {
-    // Extract the light block contents.
-    const lightBlockMatch = css.match(/\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/);
-    expect(lightBlockMatch).not.toBeNull();
-    const light = lightBlockMatch?.[1] ?? "";
-    for (const t of [
-      "--color-border-error",
-      "--color-border-accepted",
-      "--color-border-uncertain",
-      "--color-border-disputed",
-      "--color-border-superseded",
-    ]) {
-      expect(light).toMatch(new RegExp(`${t.replace(/-/g, "\\-")}\\s*:`));
-    }
-  });
-
-  it("overrides the glass-surface tokens for the light backdrop", () => {
-    const lightBlockMatch = css.match(/\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/);
-    const light = lightBlockMatch?.[1] ?? "";
-    for (const t of [
-      "--color-surface-glass-ambient",
-      "--color-surface-glass-panel",
-      "--color-surface-glass-modal",
-      "--color-surface-glass-ambient-accent",
-    ]) {
-      expect(light).toMatch(new RegExp(`${t.replace(/-/g, "\\-")}\\s*:`));
-    }
+describe("theme.css — dark-only (no light theme)", () => {
+  it("declares NO `[data-theme=\"light\"]` override block", () => {
+    // The app is dark-only: dark tokens live in the `@theme` (:root) default and
+    // `data-theme="dark"` is fixed on <html>. A light override block must not
+    // re-appear (it would resurrect the removed theme).
+    expect(css).not.toMatch(/\[data-theme="light"\]/);
   });
 });
 

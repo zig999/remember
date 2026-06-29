@@ -2,11 +2,10 @@
  * Header — fixed top region (z-frame): brand + primary navigation + actions.
  *
  * Spec: front.md §2 (fixed/thin), §2.2 (z-frame), frontend-analise-funcional.md §2
- * (brand · nav between the 5 areas, active highlighted · ⌘K · ⚙ settings).
+ * (brand · nav between the 5 areas, active highlighted · ⌘K).
  *
  * Navigation uses TanStack Router <Link>; active state is derived from the
  * current pathname (so the highlight is controlled via cn(), not concatenated).
- * Theme toggle writes the `theme` store (the only data-theme surface, BR-14);
  * ⌘K toggles the command-palette store (the palette UI is wired in a later step).
  */
 import { Link, useLocation } from "@tanstack/react-router";
@@ -18,20 +17,10 @@ import {
   Scale,
   History,
   Command as CommandIcon,
-  Settings,
 } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
-} from "@/components/ui/dropdown-menu";
-import { useThemeStore } from "@/state/theme";
 import { useCommandPaletteStore } from "@/state/command-palette";
 import { HeaderConversationMenu } from "./HeaderConversationMenu";
 
@@ -64,8 +53,6 @@ export function Header({ className }: HeaderProps) {
     }),
   });
   const onChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
-  const theme = useThemeStore((s) => s.theme);
-  const setTheme = useThemeStore((s) => s.set);
   const togglePalette = useCommandPaletteStore((s) => s.toggle);
 
   return (
@@ -131,23 +118,6 @@ export function Header({ className }: HeaderProps) {
           <CommandIcon className="size-4" aria-hidden="true" />
           <kbd className="text-caption">⌘K</kbd>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Configurações">
-              <Settings className="size-4" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuLabel>Configurações</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={theme === "light"}
-              onCheckedChange={(c) => setTheme(c ? "light" : "dark")}
-            >
-              Tema claro
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
     </GlassSurface>
   );

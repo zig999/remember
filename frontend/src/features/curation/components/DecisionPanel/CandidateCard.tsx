@@ -44,7 +44,10 @@ export const CandidateCard: FC<CandidateCardProps> = ({
       className={cn(
         // More opaque than the ambient panel behind it so the card reads
         // as a discrete selectable surface (Group E option a).
-        "flex w-full flex-col gap-sm rounded-md border p-md text-left bg-surface-glass-panel transition",
+        "relative isolate flex w-full flex-col gap-sm rounded-md border p-md text-left bg-surface-glass-panel transition",
+        // Dark scrim under the content so light metadata text stays AA-legible
+        // regardless of the bright backdrop bleeding through the frost.
+        "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-scrim-glass",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         selected
           ? "border-action"

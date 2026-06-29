@@ -1,7 +1,7 @@
 /* ============================================================
    Remember design tokens — Tailwind v4 @theme (CSS-first).
    Canonical source: docs/specs/front/design-system/tokens.md §2 (v1.0.2).
-   Default theme = dark. Light overrides live in [data-theme="light"].
+   Single theme = dark (fixed `data-theme="dark"` on <html>); no light theme.
    OKLCH is the source of truth. Hex shown for tooling reference only.
 
    Two distinct border namespaces (tokens.md §7.2 / front.md §8.3):
@@ -38,7 +38,7 @@
   --color-content:           oklch(97% 0.008 250);   /* ≈ #f3f4f7 — titles, labels, primary text */
   --color-content-inverse:   oklch(98% 0.005 250);   /* ≈ #f8f9fb — text on saturated fills (action/accent/danger) */
   --color-body:              oklch(85% 0.010 250);   /* ≈ #d2d6dd — paragraphs, descriptions    */
-  --color-muted:             oklch(65% 0.012 250);   /* ≈ #969aa6 — placeholders, metadata      */
+  --color-muted:             oklch(72% 0.012 250);   /* ≈ #a9adb7 — placeholders, metadata      */
 
   /* Primary action / focus                                                                     */
   --color-action:            oklch(68% 0.160 265);   /* ≈ #6793fa — PRIMARY (CTA, focused)       */
@@ -200,14 +200,26 @@
   /* Must live in the --color-* namespace so Tailwind v4 emits the bg-* utilities
      (bg-surface-glass-{ambient,panel,modal}); a bare --surface-* name generates
      the CSS var but NO utility, so the translucent tint never applies. */
-  --color-surface-glass-ambient:   oklch(22% 0.012 250 / 0.55);
-  --color-surface-glass-panel:     oklch(22% 0.012 250 / 0.65);
-  --color-surface-glass-modal:     oklch(22% 0.012 250 / 0.78);
-  /* Ambient glass + a touch of accent (hue pulled toward --color-accent 313,
-     low chroma): the assistant-side chat bubble fill (ChatBubble variant
-     "assistant"). "A bit of the principal color added" — still reads as glass,
-     just tinted. Consumed via the GlassSurface `fill="ambient-accent"` variant. */
-  --color-surface-glass-ambient-accent:  oklch(27% 0.060 310 / 0.60);
+  /* White frost: a near-white tint at LOW alpha. Over the dark root
+     (--color-primary L=15%) the composite stays dark — just neutral-white
+     "frosted" instead of blue-tinted — so the light foreground stays legible.
+     Alpha climbs per tier (ambient → modal) so heavier surfaces frost more. */
+  --color-surface-glass-ambient:   oklch(98% 0.004 250 / 0.14);
+  --color-surface-glass-panel:     oklch(98% 0.004 250 / 0.20);
+  --color-surface-glass-modal:     oklch(98% 0.004 250 / 0.28);
+  /* White frost + a touch of accent (hue pulled toward --color-accent 313):
+     the assistant-side chat bubble fill (ChatBubble variant "assistant").
+     "A bit of the principal color added" — still reads as glass, just tinted.
+     Consumed via the GlassSurface `fill="ambient-accent"` variant. */
+  --color-surface-glass-ambient-accent:  oklch(96% 0.050 310 / 0.22);
+  /* Dark scrim laid UNDER the text of translucent SELECTABLE cards (the
+     entity-match / dispute radio cards). White frost alone can't guarantee
+     contrast: ~31% stacked frost over the bright regions of the dusk backdrop
+     lifts the surface enough to wash out light metadata text (muted fell to
+     ~2:1, below WCAG 2.2 AA). The scrim keeps the composite dark so light text
+     stays legible regardless of what shows through the frost. Selectable-card
+     only — not the general frosted-glass material. */
+  --color-scrim-glass:  oklch(13% 0.010 250 / 0.5);
 
   --blur-glass-sm:  8px;
   --blur-glass-md:  16px;
@@ -284,103 +296,6 @@
 @utility z-frame    { z-index: var(--z-frame); }
 @utility z-modal    { z-index: var(--z-modal); }
 @utility z-toast    { z-index: var(--z-toast); }
-
-/* ============================================================
-   LIGHT theme override — same names, recalibrated values.
-   Every color must clear WCAG 2.2 AA over the treated light backdrop.
-   Theme switch is realized solely by data-theme attribute on <html> (BR-14, front.md §8.1).
-   ============================================================ */
-[data-theme="light"] {
-  --color-primary:           oklch(98% 0.005 250);
-  --color-surface:           oklch(94% 0.006 250);
-  --color-elevated:          oklch(99% 0.003 250);
-  --color-input:             oklch(88% 0.006 250 / 0.55); /* translucent field — a touch darker than the light glass panel */
-
-  --color-content:           oklch(20% 0.014 250);
-  --color-content-inverse:   oklch(98% 0.005 250);   /* white text still reads on the darker light-theme action/danger fills */
-  --color-body:              oklch(35% 0.012 250);
-  --color-muted:             oklch(55% 0.010 250);
-
-  --color-action:            oklch(50% 0.18 265);   /* primary, light-tuned (same hue 265)      */
-  --color-action-hover:      oklch(45% 0.19 265);
-  --color-action-active:     oklch(40% 0.18 265);
-  --color-accent:            oklch(55% 0.250 313); /* ≈ #a224d5 — accent, darker for light glass */
-
-  --color-data:              oklch(55% 0.15 200);
-  --color-warning:           oklch(58% 0.15 75);
-  --color-danger:            oklch(50% 0.20 25);
-
-  --color-state-accepted:        oklch(50% 0.17 150);
-  --color-state-uncertain:       oklch(58% 0.15 75);
-  --color-state-low-confidence:  oklch(60% 0.02 250);
-  --color-state-disputed:        oklch(52% 0.18 45);
-  --color-state-superseded:      oklch(60% 0.01 250);
-
-  --color-state-accepted-fg:        oklch(20% 0.05 150);
-  --color-state-uncertain-fg:       oklch(20% 0.05 75);
-  --color-state-low-confidence-fg:  oklch(20% 0.005 250);
-  --color-state-disputed-fg:        oklch(20% 0.05 45);
-  --color-state-superseded-fg:      oklch(25% 0.005 250);
-
-  /* NodeType / LinkType — re-tuned for light glass (lower lightness, keep hue). */
-  --color-node-person:        oklch(55% 0.16 280);
-  --color-node-organization:  oklch(48% 0.15 220);
-  --color-node-project:       oklch(50% 0.16 175);
-  --color-node-event:         oklch(55% 0.17 50);
-  --color-node-role:          oklch(52% 0.16 320);
-  --color-node-category:      oklch(50% 0.12 110);
-  --color-node-concept:       oklch(55% 0.12 95);
-  --color-node-location:      oklch(50% 0.13 145);
-  --color-node-document:      oklch(50% 0.06 245);
-  --color-node-task:          oklch(55% 0.17 25);
-
-  --color-link-participates-in:     oklch(50% 0.15 200);
-  --color-link-member-of:           oklch(48% 0.15 220);
-  --color-link-holds-role:          oklch(52% 0.16 280);
-  --color-link-responsible-for:     oklch(55% 0.17 25);
-  --color-link-reports-to:          oklch(50% 0.15 240);
-  --color-link-part-of:             oklch(50% 0.05 250);
-  --color-link-located-in:          oklch(50% 0.13 145);
-  --color-link-organizes:           oklch(52% 0.14 175);
-  --color-link-belongs-to-category: oklch(50% 0.12 110);
-  --color-link-related-to:          oklch(55% 0.02 250);
-  --color-link-concerns:            oklch(55% 0.12 95);
-  --color-link-delivered-to:        oklch(55% 0.16 50);
-  --color-link-sponsors:            oklch(52% 0.14 220);
-
-  --color-border:            oklch(80% 0.010 250);
-  --color-border-glass:      oklch(20% 0.005 250 / 0.14);
-  --color-border-focus:      oklch(50% 0.18 265);
-  /* Confidence-state borders mirror the light state colors above (W-DS-1):
-     without these, the borders would inherit dark-calibrated values on light glass. */
-  --color-border-error:      oklch(50% 0.20 25);
-  --color-border-accepted:   oklch(50% 0.17 150);
-  --color-border-uncertain:  oklch(58% 0.15 75);
-  --color-border-disputed:   oklch(52% 0.18 45);
-  --color-border-superseded: oklch(60% 0.01 250);
-
-  --color-surface-glass-ambient:   oklch(98% 0.005 250 / 0.60);
-  --color-surface-glass-panel:     oklch(98% 0.005 250 / 0.72);
-  --color-surface-glass-modal:     oklch(98% 0.005 250 / 0.85);
-  /* Light-theme companion: ambient glass + a touch of accent (assistant
-     bubble fill). Darker/more-chromatic than plain ambient so the violet
-     tint reads on the light backdrop while staying subtle. */
-  --color-surface-glass-ambient-accent:  oklch(93% 0.040 310 / 0.62);
-
-  --backdrop-darken:      0.18;
-  --backdrop-desaturate:  0.25;
-  --backdrop-blur:        14px;
-
-  --graph-depth-overlay:  oklch(98% 0.005 250 / 0.88);
-
-  /* Modal veil stays a dark scrim on light theme so modal content lifts off the page. */
-  --color-overlay:        oklch(20% 0.014 250 / 0.40);
-
-  --shadow-sm: 0 1px 2px 0 rgba(20, 24, 32, 0.10);
-  --shadow-md: 0 4px 12px -2px rgba(20, 24, 32, 0.14), 0 2px 4px -2px rgba(20, 24, 32, 0.08);
-  --shadow-lg: 0 12px 32px -6px rgba(20, 24, 32, 0.18), 0 4px 8px -4px rgba(20, 24, 32, 0.12);
-  --shadow-glass: 0 8px 24px -6px rgba(20, 24, 32, 0.20), inset 0 1px 0 0 rgba(255, 255, 255, 0.40);
-}
 
 /* ============================================================
    GlassSurface — accent="uncertain" border pulse.

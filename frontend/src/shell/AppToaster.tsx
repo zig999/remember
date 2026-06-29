@@ -39,14 +39,12 @@
  * container (the `theme` prop, default "light"). Our design system ALSO uses
  * `data-theme` on `<html>` as the single token-switch surface (front.md §8 /
  * BR-14). Since the toaster portals to <body>, its own `data-theme` becomes the
- * nearest one for the toasts — so sonner's default "light" would force the LIGHT
- * glass tokens regardless of the app's real theme (a near-white panel over a
- * dark backdrop). We fix it by feeding sonner the app theme from `useThemeStore`,
- * so its `data-theme` matches and our tokens resolve to the correct theme.
+ * nearest one for the toasts — so sonner's default "light" would force LIGHT
+ * glass tokens (a near-white panel over the dark backdrop). The app is
+ * dark-only, so we pin sonner's theme to `"dark"` to match our single theme.
  */
 import { Toaster } from "sonner";
 import type { CSSProperties } from "react";
-import { useThemeStore } from "@/state/theme";
 
 /** sonner's unlayered theming vars → GlassSurface panel tokens. */
 const glassVars = {
@@ -57,11 +55,10 @@ const glassVars = {
 } as CSSProperties;
 
 export function AppToaster() {
-  // Keep sonner's data-theme in sync with the app theme (see header note).
-  const theme = useThemeStore((s) => s.theme);
   return (
     <Toaster
-      theme={theme}
+      // Dark-only app: pin sonner's data-theme to match (see header note).
+      theme="dark"
       position="top-right"
       // Always-expanded stack: every toast stays fully visible (never collapsed
       // behind the front one). A new toast pushes the existing ones DOWN to make

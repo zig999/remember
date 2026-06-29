@@ -2,8 +2,8 @@
  * Remember design tokens — TypeScript index.
  *
  * Canonical source: docs/specs/front/design-system/tokens.md §2 (v1.0.2),
- * mirroring the YAML manifest in §13. Values are DARK defaults (the
- * [data-theme="light"] override resolves at runtime via the CSS cascade).
+ * mirroring the YAML manifest in §13. The app is dark-only — these are the
+ * single set of token values (fixed `data-theme="dark"` on <html>).
  *
  * This module is a pure, frozen-object index — no runtime logic. Components
  * consume tokens via Tailwind v4 utility classes (e.g. `bg-surface`,
@@ -170,9 +170,9 @@ export type ShadowToken = keyof typeof shadow;
 
 /* ---------- glass: surface (3 levels) ---------- */
 export const surfaceGlass = Object.freeze({
-  ambient: "oklch(22% 0.012 250 / 0.55)",
-  panel: "oklch(22% 0.012 250 / 0.65)",
-  modal: "oklch(22% 0.012 250 / 0.78)",
+  ambient: "oklch(98% 0.004 250 / 0.14)",
+  panel: "oklch(98% 0.004 250 / 0.20)",
+  modal: "oklch(98% 0.004 250 / 0.28)",
 } as const);
 export type GlassLevel = keyof typeof surfaceGlass;
 

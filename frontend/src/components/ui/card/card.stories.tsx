@@ -48,27 +48,6 @@ export const Default: Story = {
   ),
 };
 
-export const LightTheme: Story = {
-  decorators: [
-    (Story) => (
-      <div data-theme="light" className="bg-primary p-xl">
-        <Story />
-      </div>
-    ),
-  ],
-  render: () => (
-    <Card className="max-w-sm">
-      <CardHeader>
-        <CardTitle>Tema claro</CardTitle>
-        <CardDescription>Mesma estrutura, tokens recalibrados.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-body-sm text-body">Conteúdo do cartão.</p>
-      </CardContent>
-    </Card>
-  ),
-};
-
 /**
  * Staggered reveal (front.md §9, motion #4) — consumes the canonical
  * `staggerContainer` + `listItem` factories from `lib/motion.ts`. The list

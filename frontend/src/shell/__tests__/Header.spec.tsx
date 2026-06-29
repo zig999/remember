@@ -58,48 +58,10 @@ vi.mock("../HeaderConversationMenu", () => ({
 }));
 
 // Stub Zustand stores — selector-style API matching the real ones.
-vi.mock("../../state/theme", () => ({
-  useThemeStore: (selector: (s: { theme: string; set: (t: string) => void }) => unknown) =>
-    selector({ theme: "dark", set: () => undefined }),
-}));
 vi.mock("../../state/command-palette", () => ({
   useCommandPaletteStore: (
     selector: (s: { toggle: () => void }) => unknown,
   ) => selector({ toggle: () => undefined }),
-}));
-
-// Radix DropdownMenu uses portals + pointer-capture APIs jsdom does not ship.
-// The Header renders the settings dropdown unconditionally — stub the primitives
-// so the test focuses on the conditional mount, not on Radix integration.
-vi.mock("../../components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({
-    children,
-    asChild,
-  }: { children: ReactNode; asChild?: boolean }) =>
-    asChild ? <>{children}</> : <button type="button">{children}</button>,
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuSeparator: () => <hr />,
-  DropdownMenuCheckboxItem: ({
-    children,
-    checked,
-    onCheckedChange,
-  }: {
-    children: ReactNode;
-    checked?: boolean;
-    onCheckedChange?: (v: boolean) => void;
-  }) => (
-    <div
-      role="menuitemcheckbox"
-      aria-checked={checked ? "true" : "false"}
-      onClick={() => onCheckedChange?.(!checked)}
-    >
-      {children}
-    </div>
-  ),
 }));
 
 // ---- SUT (imported after mocks) -----------------------------------------

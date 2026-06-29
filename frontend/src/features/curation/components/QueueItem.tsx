@@ -128,10 +128,19 @@ export const QueueItem: FC<QueueItemProps> = ({
       className={cn(
         // Min target size 32px — feature.spec §8.
         "flex w-full flex-col items-start gap-xs rounded-md p-md text-left",
-        "border border-border bg-surface-glass-panel",
-        "transition-colors hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
-        // Selection highlight (UI-02).
-        selected && "bg-elevated ring-2 ring-border-focus",
+        // Stay in the translucent glass family so the row harmonises with the
+        // white-frost ambient panel it sits inside: a faint glass border + the
+        // panel frost fill at rest.
+        "border border-border-glass bg-surface-glass-panel",
+        // Hover = a slightly stronger frost (modal tier), NOT an opaque dark
+        // fill — lifts within the same light-frost family. Keyboard focus uses
+        // the app-standard blue focus ring.
+        "transition-colors hover:bg-surface-glass-modal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+        // Selection highlight (UI-02): stronger frost + the BLUE focus-tone ring,
+        // standardised with the app's focus colour. Selection and keyboard focus
+        // share the same blue, so the highlight no longer changes colour between
+        // mouse-select and keyboard nav.
+        selected && "bg-surface-glass-modal ring-2 ring-border-focus",
       )}
     >
       <div className="flex w-full items-center justify-between gap-sm">

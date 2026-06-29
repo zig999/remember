@@ -27,7 +27,7 @@ const meta: Meta<typeof SignInPanel> = {
     a11y: { element: "#storybook-root" },
     layout: "fullscreen",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark", padding: "lg" })],
+  decorators: [withAmbientBackdrop({ padding: "lg" })],
   args: {
     onSubmit: noopSubmit,
     isSubmitting: false,

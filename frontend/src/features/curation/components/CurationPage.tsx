@@ -175,15 +175,20 @@ export const CurationPage: FC = () => {
           that — phones, narrow splits — the columns stack so neither gets
           squeezed to an unreadable ~110px. */}
       <div className="flex h-full w-full flex-col gap-md p-lg @3xl:flex-row">
-        {/* Queue column — full width below @md, 1/3 at @md, 1/4 at @xl. */}
-        <section
+        {/* Queue column — full width below @md, 1/3 at @md, 1/4 at @xl.
+            One shared ambient GlassSurface holds the title, the calibration
+            metrics AND the queue tabpanel, so they read as a single frosted
+            panel (no nested glass — MetricsStrip is now plain inside it). */}
+        <GlassSurface
+          level="ambient"
+          role="region"
           aria-label="Fila de curadoria"
           aria-busy={isPending}
           data-testid="curation-queue-region"
           className={cn(
             // gap-lg separates the two clusters (context vs. queue); each
             // cluster keeps its own tighter gap-sm. Rhythm, not a uniform stack.
-            "flex min-h-0 flex-1 flex-col gap-lg",
+            "flex min-h-0 flex-1 flex-col gap-lg p-md",
             "@3xl:w-1/3 @3xl:flex-none",
             "@5xl:w-1/4",
           )}
@@ -222,7 +227,7 @@ export const CurationPage: FC = () => {
               />
             )}
           </div>
-        </section>
+        </GlassSurface>
 
         {/* Decision column (with inline evidence) — fills the rest and
             scrolls INTERNALLY (min-h-0 + overflow-y-auto) so a tall dispute

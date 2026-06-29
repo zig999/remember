@@ -23,8 +23,6 @@ import "@/styles/theme.css";
 import { getEnv, EnvInvalidError } from "@/lib/env";
 import { queryClient } from "@/lib/query-client";
 import { router } from "@/router/router";
-// Initialize the theme store so its subscriber side effects engage early.
-import "@/state/theme";
 
 const container = document.getElementById("root");
 if (!container) {

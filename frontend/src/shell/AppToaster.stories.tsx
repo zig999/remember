@@ -18,19 +18,16 @@ import { toast } from "sonner";
 import { expect, userEvent, within } from "storybook/test";
 import { AppToaster } from "./AppToaster";
 import { AmbientBackdrop } from "./AmbientBackdrop";
-import { useThemeStore } from "@/state/theme";
 
 /**
- * Force the dark theme deterministically so the toast renders as DARK frosted
- * glass over the dark cityscape backdrop — matching the GlassSurface Panel/Dark
- * & Modal/Dark stories. `set("dark")` writes `data-theme` on <html> (drives the
- * backdrop) and updates the store that AppToaster reads (drives sonner's
- * data-theme → the glass tokens). Without this the toast would inherit
- * localStorage/host theme and could mismatch the backdrop.
+ * Set `data-theme="dark"` on <html> defensively so the backdrop tokens resolve
+ * over the dark cityscape — matching the GlassSurface Panel/Dark & Modal/Dark
+ * stories. The app is dark-only; AppToaster pins sonner's own data-theme to
+ * "dark" so the toast renders as DARK frosted glass.
  */
 const withDarkTheme: Decorator = (Story) => {
   useEffect(() => {
-    useThemeStore.getState().set("dark");
+    document.documentElement.setAttribute("data-theme", "dark");
   }, []);
   return <Story />;
 };

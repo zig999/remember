@@ -62,7 +62,7 @@ export const UserBubble: Story = {
     variant: "user",
     content: "Quem é o Rodrigo?",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -77,7 +77,7 @@ export const AssistantBubble: Story = {
     content:
       "Rodrigo é um colaborador do projeto Apollo. Encontrei 3 documentos relacionados.",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -93,7 +93,7 @@ export const StateIdle: Story = {
     variant: "assistant",
     content: "Resposta consolidada — sem fluxo ativo.",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -108,7 +108,7 @@ export const StateStreaming: Story = {
     content: "Estou pensando sobre isso e ",
     streaming: true,
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -123,7 +123,7 @@ export const StateError: Story = {
     content: "Não foi possível concluir esta resposta.",
     error: true,
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -138,7 +138,7 @@ export const StateStopped: Story = {
     content: "Estava chegando à conclusão quando ",
     stopReason: "cancelled",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -155,7 +155,7 @@ export const StateStopped: Story = {
  */
 export const MotionEntering: Story = {
   name: "Motion/Entering",
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: () => {
     function Demo(): ReactElement {
       const [mounted, setMounted] = useState(false);
@@ -206,7 +206,7 @@ export const MotionReducedMotion: Story = {
     variant: "assistant",
     content: "Sem animação de entrada (prefers-reduced-motion: reduce).",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   parameters: { reducedMotion: "reduce" },
   render: (args) => (
     <PaneFrame>
@@ -230,7 +230,7 @@ export const WithToolChips: Story = {
     content: "Consultei o grafo e encontrei estas referências:",
     toolChips: SAMPLE_CHIPS,
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
@@ -245,7 +245,7 @@ export const LongContent: Story = {
     content:
       "Esta é uma resposta longa que serve para demonstrar o cap de largura máxima (75ch) aplicado pela CVA do wrapper — sem o cap a bolha se espalharia por toda a largura da janela, prejudicando a legibilidade prosaica (CLAUDE.md u-fe-standards: text containers max-width 65–75ch). Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
   },
-  decorators: [withAmbientBackdrop({ theme: "dark" })],
+  decorators: [withAmbientBackdrop({})],
   render: (args) => (
     <PaneFrame>
       <ChatBubble {...args} />
