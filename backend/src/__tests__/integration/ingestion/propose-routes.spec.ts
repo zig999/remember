@@ -4,8 +4,9 @@
 //   - "POST /llm-runs/:id/propose-fragment returns 200 with ok:true envelope
 //      when run is running and input is valid"
 //   - "POST /llm-runs/:id/propose-fragment returns 200 with ok:false
-//      STRUCTURAL_INVALID envelope when chunk_ids do not belong to the run's
-//      source (service-level layered-validation rejection — BR-13)"
+//      VALIDATION_INVALID_FORMAT envelope when chunk_ids do not belong to the
+//      run's source (service-level layered-validation rejection — BR-13). P2.1
+//      namespaced; deprecated shorthand: STRUCTURAL_INVALID."
 //   - "POST /llm-runs/:id/propose-node returns 409 BUSINESS_RUN_NOT_RUNNING
 //      when run exists but is completed"
 //   - "POST /llm-runs/:id/propose-link returns 404 RESOURCE_NOT_FOUND when
@@ -520,9 +521,10 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-fragment (TC-13 / UC-08)", ()
     }
   });
 
-  it("returns HTTP 200 with ok:false STRUCTURAL_INVALID envelope when chunk_ids do not belong to the run's source", async () => {
+  it("returns HTTP 200 with ok:false VALIDATION_INVALID_FORMAT envelope when chunk_ids do not belong to the run's source", async () => {
     // criterion: "POST /llm-runs/:id/propose-fragment returns 200 with ok:false
-    //  STRUCTURAL_INVALID envelope when ... (validation rejection, not HTTP error)"
+    //  VALIDATION_INVALID_FORMAT envelope when ... (validation rejection, not
+    //  HTTP error)". P2.1 namespaced; deprecated shorthand: STRUCTURAL_INVALID.
     //
     // Interpretation note (SD-2 in delivery): the original criterion referenced
     // "text > 1000 chars" as the trigger; Zod's max(1000) intercepts that
@@ -788,7 +790,8 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-attribute (TC-13 / UC-11)", (
   // at the REST boundary.
   //
   //   - in-domain literal  → 200 ok:true, outcome=accepted, attribute inserted
-  //   - out-of-domain     → 200 ok:false STRUCTURAL_INVALID envelope with
+  //   - out-of-domain     → 200 ok:false VALIDATION_INVALID_FORMAT envelope with
+  //                          (P2.1 namespaced; deprecated: STRUCTURAL_INVALID)
   //                          details = { value, allowed_values }; NO inserts
   //
   // Strategy: same fake store as the happy-path test, but the app is built
@@ -829,7 +832,7 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-attribute (TC-13 / UC-11)", (
     }
   });
 
-  it("BR-30 closed-domain out-of-domain literal → 200 ok:false STRUCTURAL_INVALID with allowed_values", async () => {
+  it("BR-30 closed-domain out-of-domain literal → 200 ok:false VALIDATION_INVALID_FORMAT with allowed_values", async () => {
     const store = emptyStore();
     seedRunningRun(store, RUN_RUNNING_ID);
     const app = await buildAppWith(

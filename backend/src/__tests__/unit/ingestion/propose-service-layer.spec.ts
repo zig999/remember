@@ -14,7 +14,8 @@
 //   - Behaviour identical to the previous handler-internal logic:
 //       * propose_link with confidence < 0.40 -> ok:true, outcome=rejected.
 //       * propose_link accepted -> envelope.ok=true, knowledge_link inserted.
-//       * propose_link UNKNOWN_TYPE -> ValidationFailure thrown.
+//       * propose_link BUSINESS_UNKNOWN_LINK_TYPE -> ValidationFailure thrown
+//         (P2.1 namespaced; deprecated: UNKNOWN_TYPE).
 //   - BR-21: the service no longer reads the llm_run row itself — that is the
 //     caller's job (`assertRunIsRunning` in the handler shell). The service
 //     consumes the resolved `rawInformationId` from the run context.
@@ -348,7 +349,7 @@ describe("TC-09 — service contract: transport-agnostic", () => {
     expect(state.txControl).toEqual([]);
   });
 
-  it("proposeLinkService throws ValidationFailure(UNKNOWN_TYPE) when link_type is not in catalog (caller rolls back)", async () => {
+  it("proposeLinkService throws ValidationFailure(BUSINESS_UNKNOWN_LINK_TYPE) when link_type is not in catalog (caller rolls back)", async () => {
     const state = freshState();
     const client = buildClient(state);
     const catalog = buildCatalog([]);

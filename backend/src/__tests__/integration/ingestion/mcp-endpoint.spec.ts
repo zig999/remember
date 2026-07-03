@@ -6,9 +6,10 @@
 //   - "MCP endpoint is mounted under the auth-protected scope" (smoke test
 //      with a valid JWT)
 //   - "tools/list always returns all 4 propose_* tools (no per-session gating)"
-//   - "Missing/invalid `llm_run_id` arg returns isError: true + STRUCTURAL_INVALID"
+//   - "Missing/invalid `llm_run_id` arg returns isError: true +
+//      VALIDATION_INVALID_FORMAT (P2.1; deprecated: STRUCTURAL_INVALID)"
 //   - "Valid `llm_run_id` pointing to a non-running run returns isError: true
-//      + STRUCTURAL_INVALID"
+//      + BUSINESS_RUN_NOT_RUNNING (P2.1; deprecated: STRUCTURAL_INVALID)"
 //
 // Strategy: build the full Fastify app via `buildApp` with the same fake
 // pool + in-memory JWKS pattern used by the existing app.spec.ts. The
@@ -98,7 +99,8 @@ function buildIngestionCatalog() {
 /**
  * Default fake pool that:
  *   - Returns an empty rowset for any `SELECT` (so `findLlmRunById` reports
- *     "no such run" -> assertRunIsRunning throws STRUCTURAL_INVALID).
+ *     "no such run" -> assertRunIsRunning throws RESOURCE_NOT_FOUND —
+ *     P2.1 namespaced; deprecated: STRUCTURAL_INVALID).
  *   - Accepts BEGIN / COMMIT / ROLLBACK / INSERT (the audit-row standalone TX
  *     swallows FK failures, but a no-op is fine for these wiring tests).
  *   - Treats `INSERT INTO tool_call` as a normal write so the standalone audit
@@ -128,8 +130,8 @@ function buildFakePool(): import("pg").Pool {
 
 /**
  * Fake pool variant where `findLlmRunById` returns a `completed` (not
- * `running`) llm_run row — `assertRunIsRunning` throws STRUCTURAL_INVALID
- * with status='completed' details.
+ * `running`) llm_run row — `assertRunIsRunning` throws BUSINESS_RUN_NOT_RUNNING
+ * with status='completed' details (P2.1 namespaced; deprecated: STRUCTURAL_INVALID).
  */
 function buildFakePoolWithCompletedRun(): import("pg").Pool {
   return {

@@ -7,7 +7,8 @@
 //
 // Strategy: drive `proposeLinkHandler` with a fake pool that records every SQL
 // query in order. Build an input that would fail BOTH layer 2 (graph rules)
-// AND layer 3 (temporal). The first failure must be RULE_VIOLATION; the
+// AND layer 3 (temporal). The first failure must be BUSINESS_LINK_RULE_VIOLATION
+// (P2.1 namespaced; deprecated: RULE_VIOLATION); the
 // temporal layer must not be reached.
 
 import { describe, expect, it } from "vitest";
@@ -124,7 +125,7 @@ function buildPool(): { pool: import("pg").Pool; queries: CapturedQuery[] } {
 }
 
 describe("BR-13 layered validation order", () => {
-  it("temporal check does NOT run before graph rules pass (RULE_VIOLATION)", async () => {
+  it("temporal check does NOT run before graph rules pass (BUSINESS_LINK_RULE_VIOLATION)", async () => {
     const { pool } = buildPool();
     const result = await proposeLinkHandler(
       {
@@ -132,7 +133,7 @@ describe("BR-13 layered validation order", () => {
         target_node_id: "22222222-2222-4222-8222-222222222222",
         link_type: "participates_in",
         // Temporally INVALID: valid_from > valid_to. If the order were broken
-        // and temporal ran first, we would get TEMPORAL_INCOHERENT.
+        // and temporal ran first, we would get BUSINESS_TEMPORAL_INCOHERENT.
         valid_from: "2027-01-01",
         valid_to: "2026-01-01",
         valid_from_basis: "stated",
@@ -151,7 +152,7 @@ describe("BR-13 layered validation order", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return; // narrow
-    // Layer 2 fires first because the catalog is empty -> RULE_VIOLATION.
+    // Layer 2 fires first because the catalog is empty -> BUSINESS_LINK_RULE_VIOLATION.
     expect(result.error.code).toBe("BUSINESS_LINK_RULE_VIOLATION");
   });
 });

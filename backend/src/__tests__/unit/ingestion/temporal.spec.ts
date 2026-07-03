@@ -1,10 +1,12 @@
 // BR-16 temporal validation tests.
 //
-// Validates the layer in isolation (no DB / no other layer). Verifies:
-//   - `valid_from >= valid_to` -> TEMPORAL_INCOHERENT.
-//   - `change_hint = 'correction'` without errata signal -> TEMPORAL_INCOHERENT.
-//   - `requires_valid_from = true` with no date sources -> DATE_UNJUSTIFIED.
-//   - `valid_from` supplied without `valid_from_basis` -> DATE_UNJUSTIFIED.
+// Validates the layer in isolation (no DB / no other layer). Verifies
+// (P2.1 namespaced codes; deprecated shorthand — TEMPORAL_INCOHERENT,
+// DATE_UNJUSTIFIED — retired by TC-04):
+//   - `valid_from >= valid_to` -> BUSINESS_TEMPORAL_INCOHERENT.
+//   - `change_hint = 'correction'` without errata signal -> BUSINESS_TEMPORAL_INCOHERENT.
+//   - `requires_valid_from = true` with no date sources -> BUSINESS_DATE_UNJUSTIFIED.
+//   - `valid_from` supplied without `valid_from_basis` -> BUSINESS_DATE_UNJUSTIFIED.
 //   - `received_at` fallback (v7 §6.5 / §13c / A14, TC-FR-001): when
 //     `requires_valid_from=true` AND `valid_from` is absent AND
 //     `document_date` is absent BUT `received_at` IS available, the layer
@@ -33,7 +35,7 @@ describe("validateTemporal (BR-16)", () => {
     ).not.toThrow();
   });
 
-  it("rejects valid_from >= valid_to with TEMPORAL_INCOHERENT", () => {
+  it("rejects valid_from >= valid_to with BUSINESS_TEMPORAL_INCOHERENT", () => {
     let caught: unknown = null;
     try {
       validateTemporal({
@@ -90,7 +92,7 @@ describe("validateTemporal (BR-16)", () => {
     ).not.toThrow();
   });
 
-  it("rejects DATE_UNJUSTIFIED when valid_from supplied without basis", () => {
+  it("rejects BUSINESS_DATE_UNJUSTIFIED when valid_from supplied without basis", () => {
     let caught: unknown = null;
     try {
       validateTemporal({
@@ -110,7 +112,7 @@ describe("validateTemporal (BR-16)", () => {
     expect((caught as ValidationFailure).code).toBe("BUSINESS_DATE_UNJUSTIFIED");
   });
 
-  it("rejects DATE_UNJUSTIFIED when requires_valid_from but ALL three chain links are absent", () => {
+  it("rejects BUSINESS_DATE_UNJUSTIFIED when requires_valid_from but ALL three chain links are absent", () => {
     // Only fires when stated (valid_from), document_date AND received_at are
     // ALL null — the full chain is empty (v7 §6.5 / A14).
     let caught: unknown = null;
@@ -186,7 +188,7 @@ describe("validateTemporal (BR-16)", () => {
     expect(resolved.valid_from_basis).toBe("received");
   });
 
-  it("AC-2: still rejects DATE_UNJUSTIFIED when received_at is ALSO null", () => {
+  it("AC-2: still rejects BUSINESS_DATE_UNJUSTIFIED when received_at is ALSO null", () => {
     // Original behaviour preserved when the entire chain is empty.
     let caught: unknown = null;
     try {
@@ -261,7 +263,7 @@ describe("validateTemporal (BR-16)", () => {
 
   it("received_at fallback rejected when timestamp is malformed", () => {
     // The fallback only fires for parseable ISO-8601 prefixes. A short or
-    // non-date string falls through to DATE_UNJUSTIFIED — defense-in-depth
+    // non-date string falls through to BUSINESS_DATE_UNJUSTIFIED — defense-in-depth
     // against unexpected upstream shapes.
     let caught: unknown = null;
     try {

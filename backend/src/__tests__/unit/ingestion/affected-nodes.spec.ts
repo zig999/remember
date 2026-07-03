@@ -112,17 +112,19 @@ describe("AffectedNodeCollector — BR-33 collection", () => {
 
   it("ok:false envelopes do NOT contribute (layered-validation rejections)", () => {
     const c = createAffectedNodeCollector();
+    // P2.1 namespaced codes on ok:false envelopes (deprecated shorthand:
+    // STRUCTURAL_INVALID / RULE_VIOLATION / INTERNAL — retired by TC-04).
     c.record("propose_node", {
       ok: false,
-      error: { code: "STRUCTURAL_INVALID", message: "bad type" },
+      error: { code: "VALIDATION_INVALID_FORMAT", message: "bad type" },
     });
     c.record("propose_link", {
       ok: false,
-      error: { code: "RULE_VIOLATION", message: "no rule" },
+      error: { code: "BUSINESS_LINK_RULE_VIOLATION", message: "no rule" },
     });
     c.record("propose_attribute", {
       ok: false,
-      error: { code: "INTERNAL", message: "boom" },
+      error: { code: "SYSTEM_INTERNAL_ERROR", message: "boom" },
     });
     expect(c.ids()).toEqual([]);
   });

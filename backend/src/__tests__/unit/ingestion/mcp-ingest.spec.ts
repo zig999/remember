@@ -1,8 +1,12 @@
 // MCP `ingest` toolset behavior — exercises the four handlers end-to-end with
-// a fake pool. Acceptance criteria from TC-03:
-//   - "propose_fragment with text >1000 chars returns STRUCTURAL_INVALID"
-//   - "propose_link with unknown link_type returns UNKNOWN_TYPE"
-//   - "propose_link violating graph rules returns RULE_VIOLATION"
+// a fake pool. Acceptance criteria from TC-03 (P2.1 namespaced codes; the
+// original TC-03 wording referenced the deprecated shorthand — retired by TC-04):
+//   - "propose_fragment with text >1000 chars returns VALIDATION_INVALID_FORMAT
+//      (deprecated: STRUCTURAL_INVALID)"
+//   - "propose_link with unknown link_type returns BUSINESS_UNKNOWN_LINK_TYPE
+//      (deprecated: UNKNOWN_TYPE)"
+//   - "propose_link violating graph rules returns BUSINESS_LINK_RULE_VIOLATION
+//      (deprecated: RULE_VIOLATION)"
 //   - "propose_link with confidence <0.40 returns ok:true with outcome=rejected reason=BELOW_CONFIDENCE_FLOOR"
 //   - "propose_link accepted: provenance row inserted in same transaction"
 

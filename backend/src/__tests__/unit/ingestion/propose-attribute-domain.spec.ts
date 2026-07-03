@@ -20,7 +20,8 @@
 // Three behaviours under test:
 //
 //   1. Closed domain, in-domain value → accepted (no rejection at structural).
-//   2. Closed domain, out-of-domain value → STRUCTURAL_INVALID with
+//   2. Closed domain, out-of-domain value → VALIDATION_INVALID_FORMAT with
+//      (P2.1 namespaced; deprecated: STRUCTURAL_INVALID)
 //      `{ value, allowed_values }`; downstream queries (fragment fetch,
 //      anti-hallucination count, INSERTs) are NOT issued (call-order proof).
 //   3. Open domain (`domainOf` returns null) → no-op; the service proceeds
@@ -201,7 +202,7 @@ describe("TC-03 / BR-30 — proposeAttributeService closed-domain wiring", () =>
     expect(inserts.provenance).toBe(1);
   });
 
-  it("rejects an out-of-domain value with STRUCTURAL_INVALID + {value, allowed_values}", async () => {
+  it("rejects an out-of-domain value with VALIDATION_INVALID_FORMAT + {value, allowed_values}", async () => {
     const catalog = buildCatalogWithClosedDocType();
     const { client, sql, inserts } = buildClient();
     let caught: unknown = null;
