@@ -30,9 +30,9 @@
 //   2. Perform a run-state pre-check inside the open transaction that
 //      distinguishes 404 (`RESOURCE_NOT_FOUND`, llm_run row absent) from 409
 //      (`BUSINESS_RUN_NOT_RUNNING`, row present but `status != 'running'`).
-//      The MCP transport collapses the second case into a `STRUCTURAL_INVALID`
-//      envelope per BR-21; the REST surface exposes it as a discrete HTTP
-//      status because human callers benefit from the explicit code.
+//      REST and MCP now emit the SAME namespaced code on the second case
+//      (`BUSINESS_RUN_NOT_RUNNING`) — REST surfaces it as HTTP 409, MCP as
+//      `isError: true` inside the tool-call result (P2.1 parity).
 //   3. Delegate the business work to the transport-agnostic service function
 //      (`proposeFragmentService`, etc. — `service/propose-*.service.ts`),
 //      which is the same function the MCP handler shell invokes. No business

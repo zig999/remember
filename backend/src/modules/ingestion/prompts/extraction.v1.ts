@@ -68,7 +68,8 @@ export interface DocumentMetadata {
 /**
  * Build the SYSTEM prompt. Inlines the §15 catalog so the LLM knows which
  * NodeType / LinkType / AttributeKey names are addressable. The validation
- * layer rejects anything outside this list (`UNKNOWN_TYPE`, BR-14).
+ * layer rejects anything outside this list with the corresponding
+ * `BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}` code (BR-14).
  */
 export function system(catalog: CatalogSnapshot): string {
   const nodeTypes = [...catalog.nodeTypeByName.values()]

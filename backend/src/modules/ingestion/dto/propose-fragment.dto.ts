@@ -2,7 +2,8 @@
 //
 // Layer 1 (structural) of the 5-layer validation. The DB CHECK on
 // `information_fragment.text` (≤ 1000 chars) is mirrored here so the failure
-// surfaces as a typed `STRUCTURAL_INVALID` instead of a SQLSTATE error from pg.
+// surfaces as a typed `VALIDATION_INVALID_FORMAT` instead of a SQLSTATE
+// error from pg.
 
 import { z } from "zod";
 
