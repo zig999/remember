@@ -428,7 +428,7 @@ async function lockVigentAttributeByTriple(
  * transaction usable). On a 23505 we re-run the lookup ONCE; the racer's
  * row is now visible to our SELECT FOR UPDATE so the decision settles
  * deterministically. A second 23505 surfaces as
- * `ValidationFailure('STRUCTURAL_INVALID')` per BR-25 / BR-27.
+ * `ValidationFailure('SYSTEM_INTERNAL_ERROR')` per BR-25 / BR-27.
  *
  * Non-23505 errors thrown inside the savepoint are rolled back (so the
  * parent transaction stays usable) and re-thrown unchanged.
@@ -467,7 +467,7 @@ export async function consolidateLink(
       await client.query(`RELEASE SAVEPOINT ${savepoint}`);
       if (attempt === 2) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "SYSTEM_INTERNAL_ERROR",
           "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
           { scope: "knowledge_link" }
         );
@@ -478,7 +478,7 @@ export async function consolidateLink(
   }
   // Unreachable — the loop returns or throws on every path.
   throw new ValidationFailure(
-    "INTERNAL",
+    "SYSTEM_INTERNAL_ERROR",
     "consolidateLinkWithRetry: unreachable loop exit.",
     {}
   );
@@ -623,7 +623,7 @@ async function consolidateLinkOnce(
     //     'correction' on a multi-current type — semantically odd, since
     //     succession does not apply to multi-current types (§6.5). We
     //     fall through to (e) which will hit the dup-guard and surface
-    //     STRUCTURAL_INVALID — the correct outcome for a malformed
+    //     SYSTEM_INTERNAL_ERROR — the correct outcome for a malformed
     //     proposal on a multi-current type.
     if (!functional) {
       // Multi-valued — fall through to (e) below.
@@ -730,7 +730,7 @@ export async function consolidateAttribute(
       await client.query(`RELEASE SAVEPOINT ${savepoint}`);
       if (attempt === 2) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "SYSTEM_INTERNAL_ERROR",
           "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
           { scope: "node_attribute" }
         );
@@ -738,7 +738,7 @@ export async function consolidateAttribute(
     }
   }
   throw new ValidationFailure(
-    "INTERNAL",
+    "SYSTEM_INTERNAL_ERROR",
     "consolidateAttributeWithRetry: unreachable loop exit.",
     {}
   );
