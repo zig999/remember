@@ -345,7 +345,7 @@ const IngestDirectedNodeItemSchema = z.object({
     .uuid()
     .optional()
     .describe(
-      "Optional UUID PIN: when supplied, the server SKIPS entity resolution and binds this ref to the supplied id directly. Use when you already know the target id (e.g. from a prior `query`-toolset read) and want to re-affirm against it without risking trigram drift. Rejected (STRUCTURAL_INVALID) if the id does not point to an active node."
+      "Optional UUID PIN: when supplied, the server SKIPS entity resolution and binds this ref to the supplied id directly. Use when you already know the target id (e.g. from a prior `query`-toolset read) and want to re-affirm against it without risking trigram drift. Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node."
     ),
   aliases: z
     .array(z.string().min(1).max(500))

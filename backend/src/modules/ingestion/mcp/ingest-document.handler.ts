@@ -256,7 +256,7 @@ export async function ingestDocumentHandler(
     return {
       ok: false,
       error: {
-        code: "INTERNAL",
+        code: "SYSTEM_INTERNAL_ERROR",
         message: "Unexpected error during document ingestion.",
         details: { llm_run_id, raw_information_id },
       },
