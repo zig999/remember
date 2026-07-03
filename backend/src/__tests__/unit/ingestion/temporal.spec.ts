@@ -50,7 +50,7 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("TEMPORAL_INCOHERENT");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_TEMPORAL_INCOHERENT");
   });
 
   it("requires errata signal when change_hint = 'correction'", () => {
@@ -70,7 +70,7 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("TEMPORAL_INCOHERENT");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_TEMPORAL_INCOHERENT");
   });
 
   it("accepts change_hint='correction' when fragment text contains 'errata'", () => {
@@ -107,7 +107,7 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("DATE_UNJUSTIFIED");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_DATE_UNJUSTIFIED");
   });
 
   it("rejects DATE_UNJUSTIFIED when requires_valid_from but ALL three chain links are absent", () => {
@@ -129,7 +129,7 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("DATE_UNJUSTIFIED");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_DATE_UNJUSTIFIED");
   });
 
   it("accepts requires_valid_from = true when document_date is available", () => {
@@ -204,7 +204,7 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("DATE_UNJUSTIFIED");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_DATE_UNJUSTIFIED");
   });
 
   it("AC-3: no behaviour change when valid_from IS present (stated)", () => {
@@ -279,6 +279,6 @@ describe("validateTemporal (BR-16)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("DATE_UNJUSTIFIED");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_DATE_UNJUSTIFIED");
   });
 });

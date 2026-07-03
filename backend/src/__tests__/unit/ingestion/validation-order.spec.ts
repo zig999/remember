@@ -152,6 +152,6 @@ describe("BR-13 layered validation order", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return; // narrow
     // Layer 2 fires first because the catalog is empty -> RULE_VIOLATION.
-    expect(result.error.code).toBe("RULE_VIOLATION");
+    expect(result.error.code).toBe("BUSINESS_LINK_RULE_VIOLATION");
   });
 });

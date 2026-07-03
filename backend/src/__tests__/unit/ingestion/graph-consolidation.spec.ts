@@ -1025,7 +1025,7 @@ describe("TC-011 — dup-guard 23505 race recovery", () => {
     expect(thrown).not.toBeNull();
     expect(isValidationFailure(thrown)).toBe(true);
     if (!isValidationFailure(thrown)) return;
-    expect(thrown.code).toBe("STRUCTURAL_INVALID");
+    expect(thrown.code).toBe("SYSTEM_INTERNAL_ERROR");
     // Two INSERT attempts -> two 23505s -> ValidationFailure.
     expect(insertAttempts).toBe(2);
   });

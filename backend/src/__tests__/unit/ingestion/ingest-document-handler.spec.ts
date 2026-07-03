@@ -289,7 +289,7 @@ describe("ingestDocumentHandler", () => {
     );
 
     expect(env.ok).toBe(false);
-    expect(env.error?.code).toBe("INTERNAL");
+    expect(env.error?.code).toBe("SYSTEM_INTERNAL_ERROR");
     // Must NOT leak the internal message verbatim.
     expect(env.error?.message ?? "").not.toContain("idempotency_key");
     expect(runExtraction).not.toHaveBeenCalled();
