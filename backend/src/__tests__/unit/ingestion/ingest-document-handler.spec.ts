@@ -231,6 +231,43 @@ describe("ingestDocumentHandler", () => {
     expect(env.error?.details).toMatchObject({ llm_run_id: "run-4" });
   });
 
+  it("unexpected extraction error (untyped Error) → ok:false SYSTEM_INTERNAL_ERROR envelope", async () => {
+    // Regression guard for TC-04 BUG-01: the catch-all branch of the inner
+    // try/catch around runExtraction (past the LlmProviderFatalError /
+    // ExtractionFatalError typed guards) must emit the P2.1 namespaced code
+    // SYSTEM_INTERNAL_ERROR — not the deprecated §14 short code "INTERNAL".
+    // Without this test the catch-all is a live branch nobody exercises, so
+    // a code-taxonomy drift there stays invisible to CI.
+    const ingestRaw = vi.fn().mockResolvedValue({
+      status: 201,
+      body: {
+        outcome: "created",
+        raw_information_id: "raw-6",
+        llm_run_id: "run-6",
+        chunk_count: 1,
+        content_hash: "5".repeat(64),
+        chunks: [],
+        idempotency_key: "6".repeat(64),
+      },
+    });
+    const runExtraction = vi
+      .fn()
+      .mockRejectedValue(new Error("unexpected"));
+
+    const env = await ingestDocumentHandler(
+      baseInput,
+      makeDeps({
+        ingestRaw: ingestRaw as unknown as IngestDocumentDeps["ingestRaw"],
+        runExtraction:
+          runExtraction as unknown as IngestDocumentDeps["runExtraction"],
+      })
+    );
+
+    expect(env.ok).toBe(false);
+    expect(env.error?.code).toBe("SYSTEM_INTERNAL_ERROR");
+    expect(env.error?.details).toMatchObject({ llm_run_id: "run-6" });
+  });
+
   it("defaults model + prompt_version when the caller omits them", async () => {
     const ingestRaw = vi.fn().mockResolvedValue({
       status: 201,
