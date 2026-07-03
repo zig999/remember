@@ -2,7 +2,7 @@
 //
 // Look up an active `link_type_rule` matching the `(source_node_type,
 // link_type, target_node_type)` triple. The 22 seed rules of §15.2 are the v1
-// authoritative set. Any other triple yields `RULE_VIOLATION`.
+// authoritative set. Any other triple yields `BUSINESS_LINK_RULE_VIOLATION`.
 //
 // This layer consults the in-process catalog snapshot (loaded at startup) —
 // no DB round trip per call.
@@ -34,7 +34,7 @@ export function validateGraphRule(
     })
   ) {
     throw new ValidationFailure(
-      "RULE_VIOLATION",
+      "BUSINESS_LINK_RULE_VIOLATION",
       "No active link_type_rule authorises this (source_node_type, link_type, target_node_type) triple.",
       {
         source_node_type_id: input.source_node_type_id,

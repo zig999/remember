@@ -10,16 +10,16 @@
 //     is detected by the structural cross-check, not here.
 //   - correction signal: `change_hint = 'correction'` requires textual errata
 //     evidence in at least one cited fragment. Without the signal it is a
-//     TEMPORAL_INCOHERENT failure.
+//     BUSINESS_TEMPORAL_INCOHERENT failure.
 //
 // Fallback chain for `requires_valid_from = true` (v7 §6.5 / §13c / A14):
 //   stated -> document -> received. When `valid_from` is not supplied and
 //   `document_date` is absent BUT `received_at` is available, the layer
 //   resolves `valid_from := received_at` (date portion) with
-//   `valid_from_source := 'received'`. The DATE_UNJUSTIFIED rejection only
-//   fires when ALL THREE links of the chain are absent. The resolved values
-//   are returned so the caller can pass them to the consolidator instead of
-//   the raw input.
+//   `valid_from_source := 'received'`. The BUSINESS_DATE_UNJUSTIFIED
+//   rejection only fires when ALL THREE links of the chain are absent. The
+//   resolved values are returned so the caller can pass them to the
+//   consolidator instead of the raw input.
 //
 // The layer is pure (no DB calls). The caller passes the fragment texts that
 // were already fetched (the anti-hallucination layer reads them anyway, so we
@@ -107,7 +107,7 @@ export function validateTemporal(input: TemporalLayerInput): TemporalResolved {
   if (input.valid_from !== null && input.valid_to !== null) {
     if (input.valid_from >= input.valid_to) {
       throw new ValidationFailure(
-        "TEMPORAL_INCOHERENT",
+        "BUSINESS_TEMPORAL_INCOHERENT",
         "valid_from must be strictly before valid_to.",
         { valid_from: input.valid_from, valid_to: input.valid_to }
       );
@@ -118,7 +118,7 @@ export function validateTemporal(input: TemporalLayerInput): TemporalResolved {
   if (input.change_hint === "correction") {
     if (!hasErrataSignal(input.fragment_texts)) {
       throw new ValidationFailure(
-        "TEMPORAL_INCOHERENT",
+        "BUSINESS_TEMPORAL_INCOHERENT",
         "change_hint = 'correction' requires errata textual evidence in at least one cited fragment.",
         { change_hint: input.change_hint }
       );
@@ -131,11 +131,11 @@ export function validateTemporal(input: TemporalLayerInput): TemporalResolved {
   // stated -> document -> received. The first two links (stated, document)
   // are signalled by the caller (`valid_from`+`valid_from_basis` for stated;
   // `document_date` for document). `received_at` is always available from
-  // the run's source — it is the LAST link and the reason DATE_UNJUSTIFIED
-  // should fire ONLY when received_at is also absent.
+  // the run's source — it is the LAST link and the reason
+  // BUSINESS_DATE_UNJUSTIFIED should fire ONLY when received_at is also absent.
   if (input.valid_from !== null && input.valid_from_basis === null) {
     throw new ValidationFailure(
-      "DATE_UNJUSTIFIED",
+      "BUSINESS_DATE_UNJUSTIFIED",
       "valid_from supplied without a valid_from_basis (stated | document | received).",
       { valid_from: input.valid_from }
     );
@@ -164,9 +164,9 @@ export function validateTemporal(input: TemporalLayerInput): TemporalResolved {
         valid_from_basis: "received",
       };
     }
-    // ALL three links absent — only now is the row DATE_UNJUSTIFIED.
+    // ALL three links absent — only now is the row BUSINESS_DATE_UNJUSTIFIED.
     throw new ValidationFailure(
-      "DATE_UNJUSTIFIED",
+      "BUSINESS_DATE_UNJUSTIFIED",
       "link_type / attribute_key requires_valid_from = true but no date is available (stated, document_date, and received_at are all absent).",
       { requires_valid_from: input.requires_valid_from }
     );

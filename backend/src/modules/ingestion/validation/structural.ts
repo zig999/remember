@@ -4,13 +4,13 @@
 // edge. Zod already covers: field presence, primitive types, length/range,
 // enum membership. THIS layer covers:
 //
-//   - Type-catalog membership (UNKNOWN_TYPE):
+//   - Type-catalog membership (BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}):
 //       node_type, link_type, attribute_key all live in the seeded catalog.
-//   - Cross-table compatibility (STRUCTURAL_INVALID):
+//   - Cross-table compatibility (VALIDATION_INVALID_FORMAT):
 //       * `propose_attribute`: key.node_type_id == node.node_type_id;
 //       * `propose_attribute`: value parseable as key.value_type;
 //       * `propose_fragment`: every chunk_id belongs to the run's source.
-//   - Existence of referenced rows (NOT_FOUND):
+//   - Existence of referenced rows (RESOURCE_NOT_FOUND):
 //       chunk_id / fragment_id / node_id resolve to real rows.
 //
 // Anti-hallucination (Layer 5) — that every fragment_id is anchored in a chunk
@@ -37,7 +37,7 @@ export function parseAttributeValue(args: {
       // Strict ISO YYYY-MM-DD; not free-form.
       if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "VALIDATION_INVALID_FORMAT",
           "value does not parse as a date (YYYY-MM-DD expected).",
           { value: v, value_type: args.value_type }
         );
@@ -46,7 +46,7 @@ export function parseAttributeValue(args: {
       const ts = Date.parse(`${v}T00:00:00Z`);
       if (Number.isNaN(ts)) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "VALIDATION_INVALID_FORMAT",
           "value is not a calendar-valid date.",
           { value: v }
         );
@@ -57,7 +57,7 @@ export function parseAttributeValue(args: {
       // Strict: must be a finite numeric literal (no NaN, no Infinity).
       if (!/^-?\d+(?:\.\d+)?$/.test(v)) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "VALIDATION_INVALID_FORMAT",
           "value does not parse as a number.",
           { value: v, value_type: args.value_type }
         );
@@ -65,7 +65,7 @@ export function parseAttributeValue(args: {
       const n = Number.parseFloat(v);
       if (!Number.isFinite(n)) {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "VALIDATION_INVALID_FORMAT",
           "value is not a finite number.",
           { value: v }
         );
@@ -75,7 +75,7 @@ export function parseAttributeValue(args: {
     case "bool": {
       if (v !== "true" && v !== "false") {
         throw new ValidationFailure(
-          "STRUCTURAL_INVALID",
+          "VALIDATION_INVALID_FORMAT",
           "value does not parse as a bool (expected 'true' or 'false').",
           { value: v }
         );
@@ -101,7 +101,7 @@ export function parseAttributeValue(args: {
  * the only one that knows the resolved key id and the open-domain guard.
  * The omission is recorded in the delivery's `spec_divergences`.
  *
- * On miss, raises `STRUCTURAL_INVALID` with deterministic-ordered
+ * On miss, raises `VALIDATION_INVALID_FORMAT` with deterministic-ordered
  * `allowed_values` so the LLM can re-issue the call with an in-domain value
  * on the next turn (BR-26 step 5b) and the owner can review rejection
  * clusters from the §16 metrics.
@@ -118,15 +118,16 @@ export function assertValueInDomain(
   // diagnostic and the prompt list will line up.
   const allowed_values = [...domain].sort();
   throw new ValidationFailure(
-    "STRUCTURAL_INVALID",
+    "VALIDATION_INVALID_FORMAT",
     "attribute value not in closed domain",
     { value, allowed_values }
   );
 }
 
 /**
- * Assert a referenced entity exists, raising `NOT_FOUND` on miss. Used to map
- * missing chunk_id / fragment_id / node_id to a typed envelope code.
+ * Assert a referenced entity exists, raising `RESOURCE_NOT_FOUND` on miss.
+ * Used to map missing chunk_id / fragment_id / node_id to a typed envelope
+ * code.
  */
 export function assertFound(args: {
   entity: string;
@@ -135,22 +136,31 @@ export function assertFound(args: {
 }): void {
   if (!args.found) {
     throw new ValidationFailure(
-      "NOT_FOUND",
+      "RESOURCE_NOT_FOUND",
       `${args.entity} ${args.id} not found.`,
       { entity: args.entity, id: args.id }
     );
   }
 }
 
-/** Assert a catalog membership; raise `UNKNOWN_TYPE` on miss. */
+/**
+ * Assert a catalog membership; raise the kind-specific `BUSINESS_UNKNOWN_*`
+ * code on miss (BR-14 P2.1 namespaced taxonomy).
+ */
 export function assertKnownType(args: {
   kind: "node_type" | "link_type" | "attribute_key";
   name: string;
   found: boolean;
 }): void {
   if (!args.found) {
+    const code =
+      args.kind === "node_type"
+        ? "BUSINESS_UNKNOWN_NODE_TYPE"
+        : args.kind === "link_type"
+          ? "BUSINESS_UNKNOWN_LINK_TYPE"
+          : "BUSINESS_UNKNOWN_ATTRIBUTE_KEY";
     throw new ValidationFailure(
-      "UNKNOWN_TYPE",
+      code,
       `${args.kind} '${args.name}' is not in the seeded catalog.`,
       { kind: args.kind, name: args.name }
     );
