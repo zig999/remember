@@ -25,12 +25,12 @@
 //   5. compliance_delete     — REST POST /api/v1/compliance/deletions and MCP
 //                              tools/call compliance_delete produce the same
 //                              `{ outcome, deletion }` discriminated union; on
-//                              forced-error (`raw_information_id` missing) the
-//                              REST envelope carries the rich code
-//                              `RESOURCE_NOT_FOUND` while MCP carries the
-//                              §14 canonical code `NOT_FOUND` (the only
-//                              intentional asymmetry on the curation transport
-//                              — compliance-audit.back.md BR-15).
+//                              forced-error (`raw_information_id` missing) BOTH
+//                              transports carry the SAME canonical
+//                              `RESOURCE_NOT_FOUND` code (P2.1 taxonomy —
+//                              compliance-audit.back.md BR-15 v1.4.0). The
+//                              pre-P2.1 `NOT_FOUND` short code on MCP has been
+//                              retired.
 //
 // Strategy (Rule 11 — match the codebase's conventions): copy the fake-pg
 // Store + buildFakeClient pattern from `curation/routes.spec.ts` (already
@@ -1779,11 +1779,12 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
     }
   });
 
-  // BR-32 #5 forced-error: missing raw_information_id MUST surface as
-  //   REST  -> 404 RESOURCE_NOT_FOUND (rich taxonomy)
-  //   MCP   -> NOT_FOUND               (§14 canonical — compliance-audit BR-15)
-  // This is the ONE documented asymmetry on the curation transport.
-  it("compliance_delete NOT_FOUND: REST returns RESOURCE_NOT_FOUND, MCP returns NOT_FOUND (canonical)", async () => {
+  // BR-32 #5 forced-error, POST-P2.1: REST and MCP now emit the SAME canonical
+  // `RESOURCE_NOT_FOUND` code. Before P2.1 the MCP path returned the §14 short
+  // `NOT_FOUND`; the taxonomy unification (compliance-audit.back.md BR-15
+  // v1.4.0) retires the `mcpCode` pair so both transports surface byte-identical
+  // envelopes for the same thrown sentinel.
+  it("compliance_delete NOT_FOUND: REST and MCP both return RESOURCE_NOT_FOUND (P2.1 canonical parity)", async () => {
     const missing = "ee000000-0000-4000-8000-0000000000ff";
     const storeRest = buildEmptyStore();
     const appRest = await buildAppWith(storeRest, fixture);
@@ -1818,8 +1819,8 @@ describe("MCP curation parity — compliance_delete (BR-32 #5 / compliance-audit
       expect(res.statusCode).toBe(200);
       const env = res.json() as JsonRpcEnvelope;
       expect(env.result?.isError).toBe(true);
-      // §14 canonical — NOT the rich REST `RESOURCE_NOT_FOUND`.
-      expect(mcpErrPayload(env).code).toBe("NOT_FOUND");
+      // P2.1 canonical — same code REST emits (compliance-audit BR-15 v1.4.0).
+      expect(mcpErrPayload(env).code).toBe("RESOURCE_NOT_FOUND");
       // No audit row on the MCP path either.
       expect(storeMcp.curationActionInsertCount).toBe(0);
     } finally {
