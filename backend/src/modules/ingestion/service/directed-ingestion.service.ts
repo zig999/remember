@@ -304,13 +304,13 @@ export async function directedIngestionService(
   input: unknown,
   deps: DirectedIngestionDeps
 ): Promise<McpEnvelope<DirectedIngestionResult>> {
-  // ---- Step 1 — Zod parse (STRUCTURAL_INVALID on failure) ----
+  // ---- Step 1 — Zod parse (VALIDATION_INVALID_FORMAT on failure — P2.1) ----
   const parsed = DirectedIngestionInputSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
       error: {
-        code: "STRUCTURAL_INVALID",
+        code: "VALIDATION_INVALID_FORMAT",
         message: "Input failed Zod parse.",
         details: {
           issues: parsed.error.issues.map((i) => ({
@@ -384,7 +384,7 @@ export async function directedIngestionService(
             message: "A backing service is temporarily unavailable.",
           }
         : {
-            code: "INTERNAL",
+            code: "SYSTEM_INTERNAL_ERROR",
             message: "Failed to persist the directed payload before dispatch.",
           },
     };
@@ -415,7 +415,7 @@ export async function directedIngestionService(
     return {
       ok: false,
       error: {
-        code: "INTERNAL",
+        code: "SYSTEM_INTERNAL_ERROR",
         message:
           "Directed ingestion intake returned 'noop_existing'; the per-call nonce should make this unreachable.",
         details: { raw_information_id, llm_run_id },
@@ -439,7 +439,7 @@ export async function directedIngestionService(
     return {
       ok: false,
       error: {
-        code: "INTERNAL",
+        code: "SYSTEM_INTERNAL_ERROR",
         message: "Directed ingestion intake produced no chunks.",
         details: { raw_information_id, llm_run_id },
       },
@@ -531,12 +531,21 @@ export async function directedIngestionService(
           resolution: "matched_existing",
         });
       } else {
+        // P2.1 pin-failure discriminator (ingestion.back.md v1.6.0 BR-34 note):
+        //   - `reason: 'not_found'`  -> RESOURCE_NOT_FOUND (row absent)
+        //   - `reason: 'inactive'`   -> VALIDATION_INVALID_FORMAT (row present
+        //                                but status != 'active'; structural
+        //                                layer surface — see spec table).
+        const pinCode =
+          (pinResult.details as { reason?: unknown }).reason === "not_found"
+            ? "RESOURCE_NOT_FOUND"
+            : "VALIDATION_INVALID_FORMAT";
         report.push({
           ref: item.ref,
           kind: "node",
           status: "rejected",
           error: {
-            code: "STRUCTURAL_INVALID",
+            code: pinCode,
             message: pinResult.message,
             details: { node_id: item.node_id, ...pinResult.details },
           },
@@ -950,14 +959,19 @@ function mapAttributeOutcomeToStatus(
 
 /**
  * Classify an `ok:false` envelope from a `propose_*` handler into the report
- * status enum. Layered-validation rejections (`STRUCTURAL_INVALID`,
- * `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`,
- * `NOT_FOUND`) all collapse to `'rejected'`. `INTERNAL` becomes `'error'`.
+ * status enum. P2.1 namespaced discriminator (replaces the pre-P2.1 §14 short
+ * codes retired by the TC-04 / TC-05 migration):
+ *   - System-level failures (`SYSTEM_*` — e.g. `SYSTEM_INTERNAL_ERROR`,
+ *     `SYSTEM_SERVICE_UNAVAILABLE`) collapse to `'error'` (SDK / catch-all
+ *     bucket).
+ *   - Every other namespaced code (`VALIDATION_*` / `BUSINESS_*` /
+ *     `RESOURCE_NOT_FOUND`) is a layered-validation rejection and collapses to
+ *     `'rejected'`.
  */
 function classifyEnvelopeFailureStatus(
   envelope: { ok: false; error: { code: string } }
 ): DirectedItemStatus {
-  return envelope.error.code === "INTERNAL" ? "error" : "rejected";
+  return envelope.error.code.startsWith("SYSTEM_") ? "error" : "rejected";
 }
 
 /** Aggregate the per-item report into the counters block of the response. */

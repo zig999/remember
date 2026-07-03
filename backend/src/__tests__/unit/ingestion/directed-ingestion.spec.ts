@@ -276,26 +276,39 @@ describe("directed-ingestion / pure helpers", () => {
     expect(__testing__.canonicaliseAttributeValue(false)).toBe("false");
   });
 
-  it("classifies envelope failures: INTERNAL → error, everything else → rejected", () => {
-    // BR-13 — layered validation rejections (STRUCTURAL_INVALID, NOT_FOUND,
-    // RULE_VIOLATION, etc.) are `rejected`; INTERNAL is the SDK / catch-all
-    // bucket and stays `error`.
+  it("classifies envelope failures: SYSTEM_* → error, everything else → rejected", () => {
+    // BR-13 (P2.1) — layered validation rejections (`VALIDATION_*`,
+    // `BUSINESS_*`, `RESOURCE_NOT_FOUND`) are `rejected`; system-level
+    // failures (`SYSTEM_*` — e.g. SYSTEM_INTERNAL_ERROR, SYSTEM_SERVICE_UNAVAILABLE)
+    // are the SDK / catch-all bucket and stay `error`.
     expect(
       __testing__.classifyEnvelopeFailureStatus({
         ok: false,
-        error: { code: "STRUCTURAL_INVALID" },
+        error: { code: "VALIDATION_INVALID_FORMAT" },
       })
     ).toBe("rejected");
     expect(
       __testing__.classifyEnvelopeFailureStatus({
         ok: false,
-        error: { code: "RULE_VIOLATION" },
+        error: { code: "BUSINESS_LINK_RULE_VIOLATION" },
       })
     ).toBe("rejected");
     expect(
       __testing__.classifyEnvelopeFailureStatus({
         ok: false,
-        error: { code: "INTERNAL" },
+        error: { code: "RESOURCE_NOT_FOUND" },
+      })
+    ).toBe("rejected");
+    expect(
+      __testing__.classifyEnvelopeFailureStatus({
+        ok: false,
+        error: { code: "SYSTEM_INTERNAL_ERROR" },
+      })
+    ).toBe("error");
+    expect(
+      __testing__.classifyEnvelopeFailureStatus({
+        ok: false,
+        error: { code: "SYSTEM_SERVICE_UNAVAILABLE" },
       })
     ).toBe("error");
   });
@@ -606,9 +619,11 @@ describe("directed-ingestion / orchestrator", () => {
     expect(nodeEntry?.resolution).toBe("matched_existing");
   });
 
-  it("node_id pin (invalid): unknown UUID → STRUCTURAL_INVALID; dependent items cascade", async () => {
-    // BR-34 step 3 nodes(a): a pin that does not resolve to an active row is a
-    // STRUCTURAL_INVALID rejection. Cascade rule (step 4): any attribute/link
+  it("node_id pin (invalid): unknown UUID → RESOURCE_NOT_FOUND; dependent items cascade", async () => {
+    // BR-34 step 3 nodes(a) — P2.1 pin-failure discriminator (ingestion.back.md
+    // v1.6.0): pin `reason: 'not_found'` maps to RESOURCE_NOT_FOUND (missing
+    // row); `reason: 'inactive'` would map to VALIDATION_INVALID_FORMAT
+    // (structural-layer surface). Cascade rule (step 4): any attribute/link
     // that referenced this node's ref lands `dependency_failed` with no
     // tool_call row.
     const proposeNode = vi.fn();
@@ -671,7 +686,7 @@ describe("directed-ingestion / orchestrator", () => {
       (r) => r.kind === "node" && r.ref === "nA"
     );
     expect(pinEntry?.status).toBe("rejected");
-    expect(pinEntry?.error?.code).toBe("STRUCTURAL_INVALID");
+    expect(pinEntry?.error?.code).toBe("RESOURCE_NOT_FOUND");
 
     // Bob node still went through propose_node.
     const bobEntry = envelope.result.report.find(
@@ -801,7 +816,7 @@ describe("directed-ingestion / orchestrator", () => {
     expect(contents[0]).not.toBe(contents[1]);
   });
 
-  it("structural failure: Zod parse error → STRUCTURAL_INVALID envelope; no intake, no dispatch", async () => {
+  it("structural failure: Zod parse error → VALIDATION_INVALID_FORMAT envelope; no intake, no dispatch", async () => {
     // A malformed payload never reaches intake — the orchestrator returns the
     // envelope synchronously, no `tool_call` rows due (no run exists yet).
     const ingestRaw = vi.fn();
@@ -826,7 +841,7 @@ describe("directed-ingestion / orchestrator", () => {
 
     expect(envelope.ok).toBe(false);
     if (envelope.ok) return;
-    expect(envelope.error.code).toBe("STRUCTURAL_INVALID");
+    expect(envelope.error.code).toBe("VALIDATION_INVALID_FORMAT");
     expect(ingestRaw).not.toHaveBeenCalled();
     expect(proposeFragment).not.toHaveBeenCalled();
   });
@@ -898,7 +913,7 @@ describe("directed-ingestion / orchestrator", () => {
     expect(cached?.length).toBe(2);
   });
 
-  it("intake failure: orchestrator maps to INTERNAL envelope; no propose-* dispatched", async () => {
+  it("intake failure: orchestrator maps to SYSTEM_INTERNAL_ERROR envelope; no propose-* dispatched", async () => {
     // Step 2 — intake transaction failure must be caught and surfaced as a
     // clean envelope (BR-34 step 2). An uncaught throw would leak err.message
     // through the SDK kernel.
@@ -928,7 +943,7 @@ describe("directed-ingestion / orchestrator", () => {
 
     expect(envelope.ok).toBe(false);
     if (envelope.ok) return;
-    expect(envelope.error.code).toBe("INTERNAL");
+    expect(envelope.error.code).toBe("SYSTEM_INTERNAL_ERROR");
     expect(proposeFragment).not.toHaveBeenCalled();
   });
 

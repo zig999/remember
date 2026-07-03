@@ -5,19 +5,21 @@
 // already tested end-to-end (`directed-ingestion.spec.ts`). What this handler
 // owns — and what would silently regress if untested — is the transport-shape
 // glue:
-//   1. Zod parse → on FAILURE the handler returns STRUCTURAL_INVALID and
-//      MUST NOT call the orchestrator (no run is opened, no rows are
-//      written). A regression that called the service on bad input would
+//   1. Zod parse → on FAILURE the handler returns VALIDATION_INVALID_FORMAT
+//      (P2.1) and MUST NOT call the orchestrator (no run is opened, no rows
+//      are written). A regression that called the service on bad input would
 //      leak a run row keyed to invalid arguments.
 //   2. Service envelope forwarded VERBATIM on success — the handler never
 //      re-shapes `result` (the orchestrator's report is the contract the
 //      caller sees).
 //   3. Service envelope forwarded VERBATIM on a modelled `ok:false` (intake
-//      failure → SYSTEM_SERVICE_UNAVAILABLE or INTERNAL). A regression that
-//      remapped these codes would break BR-34's error-code contract.
-//   4. UNEXPECTED throw → handler catches and surfaces a clean INTERNAL
-//      envelope. Without this catch the SDK kernel would render the raw
-//      `err.message` (potentially leaking invariants / ids — BR-30 lesson).
+//      failure → SYSTEM_SERVICE_UNAVAILABLE or SYSTEM_INTERNAL_ERROR). A
+//      regression that remapped these codes would break BR-34's error-code
+//      contract.
+//   4. UNEXPECTED throw → handler catches and surfaces a clean
+//      SYSTEM_INTERNAL_ERROR envelope (P2.1 namespaced). Without this catch
+//      the SDK kernel would render the raw `err.message` (potentially leaking
+//      invariants / ids — BR-30 lesson).
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,7 +56,7 @@ function makeDeps(over: Partial<IngestDirectedDeps>): IngestDirectedDeps {
 }
 
 describe("ingestDirectedHandler", () => {
-  it("returns STRUCTURAL_INVALID and DOES NOT call the orchestrator when the payload fails Zod", async () => {
+  it("returns VALIDATION_INVALID_FORMAT and DOES NOT call the orchestrator when the payload fails Zod", async () => {
     // WHY: a bad payload must short-circuit before the orchestrator opens a
     // run. A regression that passed garbage through would leak a run row.
     const directedIngestion = vi.fn();
@@ -69,14 +71,14 @@ describe("ingestDirectedHandler", () => {
     );
 
     expect(envelope.ok).toBe(false);
-    expect(envelope.error?.code).toBe("STRUCTURAL_INVALID");
+    expect(envelope.error?.code).toBe("VALIDATION_INVALID_FORMAT");
     expect(envelope.error?.message).toMatch(/validation/i);
     // The orchestrator MUST NOT have been touched — no run is opened on a
     // schema-level failure (the spec's contract: parse first, dispatch later).
     expect(directedIngestion).not.toHaveBeenCalled();
   });
 
-  it("STRUCTURAL_INVALID envelope carries per-issue details (path + message)", async () => {
+  it("VALIDATION_INVALID_FORMAT envelope carries per-issue details (path + message)", async () => {
     // WHY: the LLM uses these issues to fix its tool call. A regression that
     // dropped `issues` would make the failure opaque and the agentic loop
     // would retry blindly.
@@ -88,7 +90,7 @@ describe("ingestDirectedHandler", () => {
     );
 
     expect(envelope.ok).toBe(false);
-    expect(envelope.error?.code).toBe("STRUCTURAL_INVALID");
+    expect(envelope.error?.code).toBe("VALIDATION_INVALID_FORMAT");
     const details = envelope.error?.details as
       | { issues?: Array<{ path: string; message: string }> }
       | undefined;
@@ -180,14 +182,15 @@ describe("ingestDirectedHandler", () => {
     expect(envelope).toEqual(errEnvelope);
   });
 
-  it("forwards an INTERNAL envelope from the orchestrator VERBATIM (intake fallback)", async () => {
+  it("forwards a SYSTEM_INTERNAL_ERROR envelope from the orchestrator VERBATIM (intake fallback)", async () => {
     // WHY: when intake fails for a non-pg reason, the service returns
-    // INTERNAL with a stable message. A regression that swallowed details
-    // or remapped to STRUCTURAL_INVALID would break the contract.
+    // SYSTEM_INTERNAL_ERROR (P2.1 namespaced — retires the pre-P2.1 short
+    // `INTERNAL`) with a stable message. A regression that swallowed details
+    // or remapped to VALIDATION_INVALID_FORMAT would break the contract.
     const errEnvelope = {
       ok: false as const,
       error: {
-        code: "INTERNAL",
+        code: "SYSTEM_INTERNAL_ERROR",
         message: "Failed to persist the directed payload before dispatch.",
       },
     };
@@ -204,7 +207,7 @@ describe("ingestDirectedHandler", () => {
     expect(envelope).toEqual(errEnvelope);
   });
 
-  it("an UNEXPECTED throw from the orchestrator surfaces as a clean INTERNAL envelope (never leaks err.message)", async () => {
+  it("an UNEXPECTED throw from the orchestrator surfaces as a clean SYSTEM_INTERNAL_ERROR envelope (never leaks err.message)", async () => {
     // WHY (BR-30 / BR-32 lesson): a raw throw would let the SDK kernel
     // render `err.message` into the JSON-RPC error — that message can carry
     // ids or invariant text the BFF should never wire-leak. The handler is
@@ -224,7 +227,7 @@ describe("ingestDirectedHandler", () => {
     );
 
     expect(envelope.ok).toBe(false);
-    expect(envelope.error?.code).toBe("INTERNAL");
+    expect(envelope.error?.code).toBe("SYSTEM_INTERNAL_ERROR");
     expect(envelope.error?.message).not.toContain("BR-09");
     expect(envelope.error?.message).not.toContain("raw_information");
     // The cause IS logged server-side (forensic) — but NEVER returned to the
