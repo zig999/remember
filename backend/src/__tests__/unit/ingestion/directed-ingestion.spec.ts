@@ -8,7 +8,8 @@
 //      report; preceding items persist; the run still completes.
 //   3. node_id pin: an active node id bypasses `proposeNodeHandler` (no
 //      handler call is made) and the report shows resolution=`matched_existing`.
-//   4. node_id pin invalid: unknown UUID / non-active status → STRUCTURAL_INVALID
+//   4. node_id pin invalid: unknown UUID / non-active status → VALIDATION_INVALID_FORMAT
+//      (P2.1 namespaced; deprecated: STRUCTURAL_INVALID)
 //      item-level entry; dependent attributes/links cascade to `dependency_failed`.
 //   5. Re-affirmation: two successive identical calls produce two distinct
 //      RawInformation rows (per-call nonce makes content_hash unique).
@@ -515,7 +516,8 @@ describe("directed-ingestion / orchestrator", () => {
     const proposeLink = vi.fn(async () => ({
       ok: false as const,
       error: {
-        code: "RULE_VIOLATION",
+        // P2.1 namespaced code (deprecated: RULE_VIOLATION — retired by TC-04).
+        code: "BUSINESS_LINK_RULE_VIOLATION",
         message: "Link type not allowed for source/target node types.",
       },
     }));
@@ -555,7 +557,7 @@ describe("directed-ingestion / orchestrator", () => {
     );
     expect(linkEntry).toBeDefined();
     expect(linkEntry!.status).toBe("rejected");
-    expect(linkEntry!.error?.code).toBe("RULE_VIOLATION");
+    expect(linkEntry!.error?.code).toBe("BUSINESS_LINK_RULE_VIOLATION");
     // Run still landed completed; the orchestrator never returns `failed` on
     // a per-item rejection.
     expect(envelope.result.run.status).toBe("completed");
@@ -716,7 +718,8 @@ describe("directed-ingestion / orchestrator", () => {
     const proposeFragment = vi.fn(async () => ({
       ok: false as const,
       error: {
-        code: "STRUCTURAL_INVALID",
+        // P2.1 namespaced code (deprecated: STRUCTURAL_INVALID — retired by TC-04).
+        code: "VALIDATION_INVALID_FORMAT",
         message: "Fragment too long.",
       },
     }));

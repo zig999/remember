@@ -76,7 +76,7 @@ describe("validateGraphRule (BR-15)", () => {
     ).not.toThrow();
   });
 
-  it("rejects a triple not in the rule set with RULE_VIOLATION", () => {
+  it("rejects a triple not in the rule set with BUSINESS_LINK_RULE_VIOLATION", () => {
     const snapshot = buildTestSnapshot([
       {
         link_type_id: linkTypes[0]!.id,
@@ -252,7 +252,7 @@ describe("validateGraphRule — Tier 1 catalog (concerns / delivered_to)", () =>
     ).not.toThrow();
   });
 
-  it("rejects Document concerns Person with RULE_VIOLATION", () => {
+  it("rejects Document concerns Person with BUSINESS_LINK_RULE_VIOLATION", () => {
     let caught: unknown = null;
     try {
       validateGraphRule(

@@ -598,7 +598,8 @@ describe("TC-011 — consolidateLink — consolidated (re-affirmation)", () => {
 // fallback in temporal.ts FR-001 yields a different `valid_from` on each
 // document — so re-affirming the same fact from a second document landed
 // in the INSERT path and hit the dup-guard unique index, surfacing as
-// `STRUCTURAL_INVALID "graph consolidation hit dup-guard twice"`.
+// `SYSTEM_INTERNAL_ERROR "graph consolidation hit dup-guard twice"` (P2.1;
+// deprecated: STRUCTURAL_INVALID).
 //
 // Fix: for multi-current types, recognize re-affirmation by
 // `sameTarget && change_hint === 'none'` WITHOUT requiring `sameValidFrom`.
@@ -991,7 +992,7 @@ describe("TC-011 — dup-guard 23505 race recovery", () => {
     expect(state.inserts.knowledge_link.length).toBe(1);
   });
 
-  it("a SECOND 23505 (still racing) surfaces as ValidationFailure(STRUCTURAL_INVALID)", async () => {
+  it("a SECOND 23505 (still racing) surfaces as ValidationFailure(SYSTEM_INTERNAL_ERROR)", async () => {
     const catalog = buildCatalog();
     // We need the racer to fire on BOTH inserts. Easiest: configure a
     // mock that throws unconditionally for every INSERT into knowledge_link.
