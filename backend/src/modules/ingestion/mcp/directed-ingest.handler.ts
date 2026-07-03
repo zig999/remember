@@ -4,15 +4,16 @@
 // (BR-34 / TC-01) — the deterministic, NO-LLM sibling of `ingest_document`.
 // The handler:
 //   1. Zod-parses the raw MCP arguments against `IngestDirectedMcpInputSchema`.
-//      A parse failure short-circuits with a `STRUCTURAL_INVALID` envelope
-//      (no run is created and no service call is made).
+//      A parse failure short-circuits with a `VALIDATION_INVALID_FORMAT`
+//      envelope (P2.1 — no run is created and no service call is made).
 //   2. Delegates to `directedIngestionService` with the parsed payload. The
 //      service owns intake (RawInformation + LLMRun), dispatch through the
 //      validated `propose_*` handlers, and the per-item report.
 //   3. Forwards the service envelope verbatim (success or layered failure
-//      such as `SYSTEM_SERVICE_UNAVAILABLE` / `INTERNAL`).
+//      such as `SYSTEM_SERVICE_UNAVAILABLE` / `SYSTEM_INTERNAL_ERROR`).
 //   4. NEVER re-throws — an unexpected exception is logged and mapped to a
-//      clean `INTERNAL` envelope. The MCP SDK kernel would otherwise turn a
+//      clean `SYSTEM_INTERNAL_ERROR` envelope (P2.1 namespaced; retires the
+//      pre-P2.1 short `INTERNAL`). The MCP SDK kernel would otherwise turn a
 //      raw throw into a JSON-RPC error and potentially leak `err.message`.
 //
 // Distinct from the four `propose_*` writers: this handler CREATES the run
@@ -123,13 +124,14 @@ export async function ingestDirectedHandler(
   deps: IngestDirectedDeps,
   invocationContext?: IngestDirectedInvocationContext
 ): Promise<McpEnvelopeJson> {
-  // ---- Step 1 — Zod parse (STRUCTURAL_INVALID on failure, no service call) ----
+  // ---- Step 1 — Zod parse (VALIDATION_INVALID_FORMAT on failure — P2.1;
+  //                          no service call) ----
   const parsed = IngestDirectedMcpInputSchema.safeParse(rawInput);
   if (!parsed.success) {
     return {
       ok: false,
       error: {
-        code: "STRUCTURAL_INVALID",
+        code: "VALIDATION_INVALID_FORMAT",
         message: "ingest_directed arguments failed validation.",
         details: {
           issues: parsed.error.issues.map((i) => ({
@@ -192,11 +194,12 @@ export async function ingestDirectedHandler(
   };
 
   // The orchestrator returns clean envelopes for every modelled failure
-  // (intake-failure → SYSTEM_SERVICE_UNAVAILABLE / INTERNAL, defensive Zod
-  // → STRUCTURAL_INVALID); we forward those verbatim. An UNEXPECTED throw
-  // here (bug in the orchestrator, raw pg error escaping classification)
-  // would otherwise bubble into the SDK kernel and leak `err.message` —
-  // catch it and surface as a generic INTERNAL.
+  // (intake-failure → SYSTEM_SERVICE_UNAVAILABLE / SYSTEM_INTERNAL_ERROR,
+  // defensive Zod → VALIDATION_INVALID_FORMAT — all P2.1 namespaced); we
+  // forward those verbatim. An UNEXPECTED throw here (bug in the
+  // orchestrator, raw pg error escaping classification) would otherwise
+  // bubble into the SDK kernel and leak `err.message` — catch it and
+  // surface as a generic SYSTEM_INTERNAL_ERROR.
   try {
     // The service Zod-parses internally as a second line of defence; we pass
     // the typed payload (the service accepts `unknown` so this is widening,
@@ -217,7 +220,7 @@ export async function ingestDirectedHandler(
     return {
       ok: false,
       error: {
-        code: "INTERNAL",
+        code: "SYSTEM_INTERNAL_ERROR",
         message: "Unexpected error during directed ingestion.",
       },
     };

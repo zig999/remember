@@ -280,10 +280,13 @@ async function dispatchToolUse(
       })) as McpEnvelope<Record<string, unknown>>;
     }
     default:
+      // P2.1 — unknown tool name is a structural-layer rejection (the tool_name
+      // value does not match any registered ingest tool). Maps to the
+      // `structural` bucket of §16 rejections-by-layer (P5.2).
       return {
         ok: false,
         error: {
-          code: "STRUCTURAL_INVALID",
+          code: "VALIDATION_INVALID_FORMAT",
           message: `Unknown tool '${toolName}'.`,
           details: { tool_name: toolName },
         },
@@ -294,10 +297,13 @@ async function dispatchToolUse(
 function zodErrorEnvelope(
   issues: readonly { path: readonly PropertyKey[]; message: string }[]
 ): McpEnvelope<Record<string, unknown>> {
+  // P2.1 — Zod shape failures map to VALIDATION_INVALID_FORMAT (the default
+  // Zod-discriminated bucket per `validation/errors.ts` header table); the
+  // envelope aggregates every issue in `details.issues[]`.
   return {
     ok: false,
     error: {
-      code: "STRUCTURAL_INVALID",
+      code: "VALIDATION_INVALID_FORMAT",
       message: "Input failed Zod parse.",
       details: {
         issues: issues.map((i) => ({
@@ -707,10 +713,14 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
           burstReset = true;
         }
       } else {
-        // ok:false envelopes from layered validation (STRUCTURAL_INVALID,
-        // NOT_FOUND, RULE_VIOLATION, etc.) are 'rejected' on the audit row
-        // — NOT 'error'. Only INTERNAL counts toward the fatal burst.
-        if (envelope.error.code === "INTERNAL") {
+        // ok:false envelopes from layered validation (`VALIDATION_*`,
+        // `BUSINESS_*`, `RESOURCE_NOT_FOUND`) are 'rejected' on the audit row
+        // — NOT 'error'. Only system-level failures (`SYSTEM_*` — e.g.
+        // SYSTEM_INTERNAL_ERROR for uncaught exceptions, SYSTEM_SERVICE_UNAVAILABLE
+        // for pg-down) count toward the fatal burst. P2.1 note: the pre-P2.1
+        // short `INTERNAL` code has been retired in favour of the namespaced
+        // `SYSTEM_INTERNAL_ERROR` (see `docs/specs/_global/error-codes.md`).
+        if (envelope.error.code.startsWith("SYSTEM_")) {
           consecutiveErrors += 1;
         } else {
           consecutiveErrors = 0;
@@ -747,8 +757,9 @@ async function runChunkLoop(input: ChunkLoopInput): Promise<ChunkLoopOutcome> {
 
 /**
  * Detect an `ok:true` envelope whose business `outcome` is the SDK
- * 'error' bucket. Only INTERNAL on the error branch counts; everything
- * else (accepted, consolidated, disputed, uncertain, rejected, needs_review,
+ * 'error' bucket. Only system-level failures on the ok:false branch (namespaced
+ * `SYSTEM_*` — e.g. `SYSTEM_INTERNAL_ERROR`) trip the fatal burst; every other
+ * outcome (accepted, consolidated, disputed, uncertain, rejected, needs_review,
  * superseded_previous) is a business outcome.
  *
  * In the current TC-09 / TC-10 / TC-11 contract the service-layer never
