@@ -8,11 +8,18 @@
 //   success -> { ok: true,  result: { outcome, deletion } }
 //   failure -> { ok: false, error: { code, message, details? } }
 //
-// Per BR-15:
-//   - Zod parse failure on input -> STRUCTURAL_INVALID
-//   - raw_information_id resolves to no row -> NOT_FOUND
-//   - UC-01 alt 4c legacy orphan -> INTERNAL
-//   - Any unhandled exception -> INTERNAL
+// Per BR-15 (P2.1 canonical taxonomy — same codes on REST and MCP):
+//   - Zod parse failure -> VALIDATION_REQUIRED_FIELD | VALIDATION_INVALID_FORMAT
+//                         | VALIDATION_OUT_OF_RANGE (Zod-discriminated)
+//   - raw_information_id resolves to no row -> RESOURCE_NOT_FOUND
+//   - UC-01 alt 4c legacy orphan -> SYSTEM_INTERNAL_ERROR
+//   - Any unhandled exception -> SYSTEM_INTERNAL_ERROR
+//
+// Failure envelopes are produced through the shared `renderErrorEnvelope`
+// helper (`src/shared/error-mapping.ts`), the single source of truth for
+// code → HTTP-status resolution. The MCP path ignores `statusCode` (all MCP
+// tool errors travel on HTTP 200 with `isError: true` wrapped by the SDK
+// kernel) — only `.envelope` is consumed here.
 
 import type { Pool } from "pg";
 import type { Logger } from "pino";
@@ -27,6 +34,10 @@ import {
   ResourceNotFoundError,
   ValidationFailure,
 } from "../service/errors.js";
+import {
+  renderErrorEnvelope,
+  type ErrorEnvelope,
+} from "../../../shared/error-mapping.js";
 
 export interface ComplianceToolsetDeps {
   readonly mcp: McpServer;
@@ -41,7 +52,87 @@ export interface ComplianceToolsetDeps {
  */
 type McpEnvelope =
   | { ok: true; result: unknown }
-  | { ok: false; error: { code: string; message: string; details?: unknown } };
+  | ErrorEnvelope;
+
+/**
+ * Zod parse failure -> canonical VALIDATION_* code (P2.1). Mirrors the priority
+ * discrimination the REST route uses (`compliance-audit.routes.ts`
+ * `handleZodError`) so REST and MCP surface byte-identical codes for the same
+ * input:
+ *   1. Explicit `superRefine` `VALIDATION_OUT_OF_RANGE` marker (semi-open range
+ *      guard on the list endpoint — POST /compliance/deletions does not use it,
+ *      but keeping the branch keeps this helper reusable across all compliance
+ *      DTOs).
+ *   2. Missing / undefined field -> `VALIDATION_REQUIRED_FIELD`. Zod v4 surfaces
+ *      this as `invalid_type` with `received === "undefined"` on the issue
+ *      (message also contains "received undefined").
+ *   3. `reason` length / trim violation (`too_small` / `too_big` on the `reason`
+ *      path) -> `VALIDATION_OUT_OF_RANGE`.
+ *   4. Everything else -> `VALIDATION_INVALID_FORMAT`.
+ */
+function mapZodErrorToEnvelope(err: ZodError): ErrorEnvelope {
+  const issues = err.issues.map((i) => ({
+    path: i.path.join("."),
+    message: i.message,
+  }));
+
+  // Priority 1 — explicit semi-open range refinement.
+  if (
+    err.issues.some(
+      (i) => i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE"
+    )
+  ) {
+    return renderErrorEnvelope(
+      "VALIDATION_OUT_OF_RANGE",
+      "Time range bounds must satisfy `from < to`.",
+      { issues }
+    ).envelope;
+  }
+
+  // Priority 2 — missing / undefined field.
+  const reqField = err.issues.find((i) => {
+    if (i.code === "invalid_type") {
+      const received = (i as { received?: string }).received;
+      if (received === "undefined") return true;
+      if (
+        typeof i.message === "string" &&
+        i.message.toLowerCase().includes("received undefined")
+      ) {
+        return true;
+      }
+    }
+    if ((i.code as string) === "required") return true;
+    return false;
+  });
+  if (reqField) {
+    return renderErrorEnvelope(
+      "VALIDATION_REQUIRED_FIELD",
+      `Field '${reqField.path.join(".")}' is required.`,
+      { issues }
+    ).envelope;
+  }
+
+  // Priority 3 — `reason` length / trim violation.
+  if (
+    err.issues.some(
+      (i) =>
+        (i.code === "too_small" || i.code === "too_big") &&
+        i.path[0] === "reason"
+    )
+  ) {
+    return renderErrorEnvelope(
+      "VALIDATION_OUT_OF_RANGE",
+      "Field 'reason' must be non-empty after trim and ≤ 1000 characters.",
+      { issues }
+    ).envelope;
+  }
+
+  return renderErrorEnvelope(
+    "VALIDATION_INVALID_FORMAT",
+    "Request payload failed validation.",
+    { issues }
+  ).envelope;
+}
 
 export function registerComplianceToolset(deps: ComplianceToolsetDeps): void {
   // BR-14 — registered under the `curation` toolset namespace.
@@ -56,19 +147,7 @@ export function registerComplianceToolset(deps: ComplianceToolsetDeps): void {
         body = ComplianceDeleteRequestSchema.parse(input);
       } catch (err) {
         if (err instanceof ZodError) {
-          return {
-            ok: false,
-            error: {
-              code: "STRUCTURAL_INVALID",
-              message: "Tool input failed validation.",
-              details: {
-                issues: err.issues.map((i) => ({
-                  path: i.path.join("."),
-                  message: i.message,
-                })),
-              },
-            },
-          };
+          return mapZodErrorToEnvelope(err);
         }
         throw err;
       }
@@ -79,37 +158,16 @@ export function registerComplianceToolset(deps: ComplianceToolsetDeps): void {
         );
         return { ok: true, result };
       } catch (err) {
-        if (err instanceof ResourceNotFoundError) {
-          return {
-            ok: false,
-            error: {
-              code: "NOT_FOUND",
-              message: err.message,
-              details: err.details,
-            },
-          };
+        if (
+          err instanceof ResourceNotFoundError ||
+          err instanceof ValidationFailure ||
+          err instanceof InternalFailure
+        ) {
+          return renderErrorEnvelope(err.code, err.message, err.details)
+            .envelope;
         }
-        if (err instanceof ValidationFailure) {
-          return {
-            ok: false,
-            error: {
-              code: "STRUCTURAL_INVALID",
-              message: err.message,
-              details: err.details,
-            },
-          };
-        }
-        if (err instanceof InternalFailure) {
-          return {
-            ok: false,
-            error: {
-              code: "INTERNAL",
-              message: err.message,
-              details: err.details,
-            },
-          };
-        }
-        // Anything else -> INTERNAL (BR-15).
+        // Anything else -> generic 500 (SYSTEM_INTERNAL_ERROR). Never leak
+        // `err.message` to the client (BR-15).
         deps.logger.error(
           {
             component: "mcp.curation.compliance_delete",
@@ -117,13 +175,10 @@ export function registerComplianceToolset(deps: ComplianceToolsetDeps): void {
           },
           "compliance_delete_internal_error"
         );
-        return {
-          ok: false,
-          error: {
-            code: "INTERNAL",
-            message: "Unexpected internal error.",
-          },
-        };
+        return renderErrorEnvelope(
+          "SYSTEM_INTERNAL_ERROR",
+          "Unexpected internal error."
+        ).envelope;
       }
     },
   });
