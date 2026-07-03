@@ -6,8 +6,9 @@
 //   loading once at boot is correct because the only mutation path is a
 //   versioned migration that requires a BFF restart anyway.
 //
-// The catalog covers BR-14 (UNKNOWN_TYPE on node_type / link_type / key) and
-// BR-15 (RULE_VIOLATION via `LinkTypeRule`).
+// The catalog covers BR-14 (`BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}`
+// on the respective miss) and BR-15 (`BUSINESS_LINK_RULE_VIOLATION` via
+// `LinkTypeRule`).
 //
 // As of TC-02 (valid-values-attribute-domains, BR-30), the snapshot also
 // materializes the closed value domains per `AttributeKey` from the new
@@ -235,8 +236,8 @@ export function buildSnapshot(args: {
  *
  * Returns the (read-only) `Set<string>` of allowed values when the key has
  * at least one entry — i.e. a **closed domain**: only values present in
- * the set are accepted; everything else fails with `STRUCTURAL_INVALID`
- * carrying `{ value, allowed_values }`.
+ * the set are accepted; everything else fails with
+ * `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
  *
  * Pure function: no DB access, no mutation of the snapshot. The returned
  * `Set` is the snapshot's own instance — callers MUST NOT mutate it. The

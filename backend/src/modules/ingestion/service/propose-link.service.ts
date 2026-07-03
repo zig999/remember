@@ -108,7 +108,7 @@ export async function proposeLinkService(
   );
   if (fragRes.rows.length !== args.fragment_ids.length) {
     throw new ValidationFailure(
-      "NOT_FOUND",
+      "RESOURCE_NOT_FOUND",
       "One or more fragment_ids do not resolve to a fragment row.",
       { fragment_ids: args.fragment_ids }
     );
@@ -116,7 +116,7 @@ export async function proposeLinkService(
   for (const f of fragRes.rows) {
     if (f.llm_run_id !== runCtx.llmRunId) {
       throw new ValidationFailure(
-        "STRUCTURAL_INVALID",
+        "VALIDATION_INVALID_FORMAT",
         "fragment_id does not belong to this run.",
         { fragment_id: f.id, llm_run_id: runCtx.llmRunId }
       );
@@ -184,7 +184,7 @@ export async function proposeLinkService(
   });
   if (anchored !== args.fragment_ids.length) {
     throw new ValidationFailure(
-      "STRUCTURAL_INVALID",
+      "VALIDATION_INVALID_FORMAT",
       "One or more fragments are not anchored to the run's source chunks.",
       {
         fragment_ids: args.fragment_ids,

@@ -197,7 +197,7 @@ function freshState(): FakeState {
 const silentLogger = pino({ level: "silent" });
 
 describe("propose_fragment", () => {
-  it("text > 1000 chars returns STRUCTURAL_INVALID (Zod boundary)", async () => {
+  it("text > 1000 chars returns VALIDATION_INVALID_FORMAT (Zod boundary)", async () => {
     const state = freshState();
     const pool = buildPool(state);
     const handler = buildProposeFragmentHandler({
@@ -212,7 +212,7 @@ describe("propose_fragment", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.code).toBe("STRUCTURAL_INVALID");
+    expect(result.error.code).toBe("VALIDATION_INVALID_FORMAT");
     // Audit row written even on rejection (BR-23).
     expect(state.toolCalls[0]!.validation_outcome).toBe("rejected");
   });
@@ -238,7 +238,7 @@ describe("propose_fragment", () => {
 });
 
 describe("propose_link layered failures", () => {
-  it("unknown link_type returns UNKNOWN_TYPE", async () => {
+  it("unknown link_type returns BUSINESS_UNKNOWN_LINK_TYPE", async () => {
     const state = freshState();
     const pool = buildPool(state);
     const catalog = buildCatalog([]);
@@ -261,11 +261,11 @@ describe("propose_link layered failures", () => {
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.code).toBe("UNKNOWN_TYPE");
+    expect(result.error.code).toBe("BUSINESS_UNKNOWN_LINK_TYPE");
     expect(state.toolCalls[0]!.validation_outcome).toBe("rejected");
   });
 
-  it("graph rule violation returns RULE_VIOLATION", async () => {
+  it("graph rule violation returns BUSINESS_LINK_RULE_VIOLATION", async () => {
     const state = freshState();
     const pool = buildPool(state);
     // Catalog has the link_type but no rule authorising the triple.
@@ -291,7 +291,7 @@ describe("propose_link layered failures", () => {
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.code).toBe("RULE_VIOLATION");
+    expect(result.error.code).toBe("BUSINESS_LINK_RULE_VIOLATION");
   });
 
   it("confidence < 0.40 returns ok:true outcome=rejected BELOW_CONFIDENCE_FLOOR", async () => {

@@ -25,7 +25,7 @@ describe("parseAttributeValue (BR-14)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("STRUCTURAL_INVALID");
+    expect((caught as ValidationFailure).code).toBe("VALIDATION_INVALID_FORMAT");
   });
 
   it("rejects a 'date' value with extra trailing chars", () => {
@@ -77,7 +77,7 @@ describe("parseAttributeValue (BR-14)", () => {
 });
 
 describe("assertFound", () => {
-  it("throws NOT_FOUND when entity is missing", () => {
+  it("throws RESOURCE_NOT_FOUND when entity is missing", () => {
     let caught: unknown = null;
     try {
       assertFound({ entity: "raw_chunk", id: "abc", found: false });
@@ -85,7 +85,7 @@ describe("assertFound", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("NOT_FOUND");
+    expect((caught as ValidationFailure).code).toBe("RESOURCE_NOT_FOUND");
   });
 
   it("is a no-op when entity is found", () => {
@@ -96,7 +96,7 @@ describe("assertFound", () => {
 });
 
 describe("assertKnownType", () => {
-  it("throws UNKNOWN_TYPE on miss", () => {
+  it("throws BUSINESS_UNKNOWN_LINK_TYPE on miss for kind='link_type'", () => {
     let caught: unknown = null;
     try {
       assertKnownType({ kind: "link_type", name: "bogus", found: false });
@@ -104,7 +104,31 @@ describe("assertKnownType", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("UNKNOWN_TYPE");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_UNKNOWN_LINK_TYPE");
+  });
+
+  it("throws BUSINESS_UNKNOWN_NODE_TYPE on miss for kind='node_type'", () => {
+    let caught: unknown = null;
+    try {
+      assertKnownType({ kind: "node_type", name: "Bogus", found: false });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_UNKNOWN_NODE_TYPE");
+  });
+
+  it("throws BUSINESS_UNKNOWN_ATTRIBUTE_KEY on miss for kind='attribute_key'", () => {
+    let caught: unknown = null;
+    try {
+      assertKnownType({ kind: "attribute_key", name: "bogus", found: false });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationFailure);
+    expect((caught as ValidationFailure).code).toBe(
+      "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"
+    );
   });
 });
 
@@ -115,7 +139,7 @@ describe("assertValueInDomain (BR-30)", () => {
     expect(() => assertValueInDomain("relatório", domain)).not.toThrow();
   });
 
-  it("throws STRUCTURAL_INVALID with {value, allowed_values} on miss", () => {
+  it("throws VALIDATION_INVALID_FORMAT with {value, allowed_values} on miss", () => {
     const domain = new Set(["proposta", "ata", "contrato"]);
     let caught: unknown = null;
     try {
@@ -125,7 +149,7 @@ describe("assertValueInDomain (BR-30)", () => {
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
     const vf = caught as ValidationFailure;
-    expect(vf.code).toBe("STRUCTURAL_INVALID");
+    expect(vf.code).toBe("VALIDATION_INVALID_FORMAT");
     expect(vf.message).toBe("attribute value not in closed domain");
     expect(vf.details.value).toBe("PROPOSAL");
     // allowed_values is deterministic-ordered (lexicographic).
@@ -141,7 +165,7 @@ describe("assertValueInDomain (BR-30)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("STRUCTURAL_INVALID");
+    expect((caught as ValidationFailure).code).toBe("VALIDATION_INVALID_FORMAT");
   });
 
   it("treats accent differences as a miss (exact-match, no normalisation)", () => {
@@ -153,7 +177,7 @@ describe("assertValueInDomain (BR-30)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("STRUCTURAL_INVALID");
+    expect((caught as ValidationFailure).code).toBe("VALIDATION_INVALID_FORMAT");
   });
 
   it("sorts allowed_values lexicographically for diagnostic stability", () => {

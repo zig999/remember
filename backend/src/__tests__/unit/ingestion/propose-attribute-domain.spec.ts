@@ -217,7 +217,7 @@ describe("TC-03 / BR-30 — proposeAttributeService closed-domain wiring", () =>
     }
     expect(isValidationFailure(caught)).toBe(true);
     const vf = caught as ValidationFailure;
-    expect(vf.code).toBe("STRUCTURAL_INVALID");
+    expect(vf.code).toBe("VALIDATION_INVALID_FORMAT");
     expect(vf.message).toBe("attribute value not in closed domain");
     expect(vf.details.value).toBe("PROPOSAL");
     expect(vf.details.allowed_values).toEqual([

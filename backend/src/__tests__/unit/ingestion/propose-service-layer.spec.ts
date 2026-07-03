@@ -373,7 +373,7 @@ describe("TC-09 — service contract: transport-agnostic", () => {
     expect(thrown).not.toBeNull();
     expect(isValidationFailure(thrown)).toBe(true);
     if (!isValidationFailure(thrown)) return;
-    expect(thrown.code).toBe("UNKNOWN_TYPE");
+    expect(thrown.code).toBe("BUSINESS_UNKNOWN_LINK_TYPE");
     // Service does not write tool_call rows — caller does.
     expect(state.toolCalls).toBe(0);
   });

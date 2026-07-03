@@ -73,7 +73,7 @@ export async function proposeAttributeService(
   // catalog cache scope, this guard catches the mismatch.
   if (resolvedKey.node_type_id !== nodeTypeId) {
     throw new ValidationFailure(
-      "STRUCTURAL_INVALID",
+      "VALIDATION_INVALID_FORMAT",
       "attribute_key.node_type_id does not match the node's node_type_id.",
       { node_id: args.node_id, key: args.key }
     );
@@ -88,8 +88,8 @@ export async function proposeAttributeService(
   // domain (zero rows in `attribute_valid_value`) — backward-compatible
   // no-op for every legacy key. When it returns a `ReadonlySet<string>` the
   // key is closed and `assertValueInDomain` rejects out-of-domain literals
-  // with `STRUCTURAL_INVALID` carrying `{ value, allowed_values }`. Exact
-  // match (no normalisation) per spec §1 / BR-30 v1 semantics.
+  // with `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
+  // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
   const domain = domainOf(deps.catalog, resolvedKey.id);
   if (domain !== null) {
     assertValueInDomain(args.value, domain);
@@ -107,7 +107,7 @@ export async function proposeAttributeService(
   );
   if (fragRes.rows.length !== args.fragment_ids.length) {
     throw new ValidationFailure(
-      "NOT_FOUND",
+      "RESOURCE_NOT_FOUND",
       "One or more fragment_ids do not resolve to a fragment row.",
       { fragment_ids: args.fragment_ids }
     );
@@ -115,7 +115,7 @@ export async function proposeAttributeService(
   for (const f of fragRes.rows) {
     if (f.llm_run_id !== runCtx.llmRunId) {
       throw new ValidationFailure(
-        "STRUCTURAL_INVALID",
+        "VALIDATION_INVALID_FORMAT",
         "fragment_id does not belong to this run.",
         { fragment_id: f.id, llm_run_id: runCtx.llmRunId }
       );
@@ -173,7 +173,7 @@ export async function proposeAttributeService(
   });
   if (anchored !== args.fragment_ids.length) {
     throw new ValidationFailure(
-      "STRUCTURAL_INVALID",
+      "VALIDATION_INVALID_FORMAT",
       "One or more fragments are not anchored to the run's source chunks.",
       {
         fragment_ids: args.fragment_ids,

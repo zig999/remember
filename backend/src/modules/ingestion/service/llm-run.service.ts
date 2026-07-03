@@ -62,9 +62,10 @@ export class RunNotRetryableError extends Error {
  * the case from 404 (unknown id) so the human caller gets the explicit
  * `BUSINESS_RUN_NOT_RUNNING` code instead of a generic envelope.
  *
- * On the MCP transport the same situation collapses into a
- * `STRUCTURAL_INVALID` envelope per BR-21 (the MCP session has an ambient
- * `llm_run_id`; the route-layer 409 is a REST-only signal).
+ * On the MCP transport the same situation surfaces as a
+ * `BUSINESS_RUN_NOT_RUNNING` envelope via `assertRunIsRunning` in
+ * `handler-base.ts` — REST + MCP are now byte-identical on this condition
+ * per the P2.1 namespaced taxonomy.
  */
 export class RunNotRunningError extends Error {
   public readonly statusCode = 409;

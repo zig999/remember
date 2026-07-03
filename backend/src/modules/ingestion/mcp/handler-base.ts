@@ -9,7 +9,7 @@
 //   4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
 //      short TX to write the audit `tool_call` row (BR-23).
 //   5. On uncaught error: ROLLBACK, write `tool_call` with `error`, surface
-//      `INTERNAL` envelope.
+//      `SYSTEM_INTERNAL_ERROR` envelope.
 //
 // The MCP envelope is `{ ok: true, result } | { ok: false, error }`.
 
@@ -90,8 +90,11 @@ export function deriveValidationOutcome<R>(
 
 /**
  * Validate the ambient `llm_run_id` actually points at a `running` row. Throws
- * `ValidationFailure(STRUCTURAL_INVALID)` when missing or not-running so the
- * handler shell short-circuits.
+ * `ValidationFailure` with a namespaced code when missing or not-running so
+ * the handler shell short-circuits:
+ *
+ *   - id does not match any LLMRun row -> `RESOURCE_NOT_FOUND`
+ *   - id matches a row whose `status !== 'running'` -> `BUSINESS_RUN_NOT_RUNNING`
  *
  * Per BR-21, the call WITHOUT an ambient id is filtered at the MCP transport
  * (no `tool_call` row in that case). This function handles the second-tier
@@ -104,14 +107,14 @@ export async function assertRunIsRunning(
   const row = await findLlmRunById(client, llmRunId);
   if (row === null) {
     throw new ValidationFailure(
-      "STRUCTURAL_INVALID",
+      "RESOURCE_NOT_FOUND",
       "Ambient llm_run_id does not match any LLMRun row.",
       { llm_run_id: llmRunId }
     );
   }
   if (row.status !== "running") {
     throw new ValidationFailure(
-      "STRUCTURAL_INVALID",
+      "BUSINESS_RUN_NOT_RUNNING",
       `LLMRun ${llmRunId} is not running (status='${row.status}').`,
       { llm_run_id: llmRunId, status: row.status }
     );
@@ -191,7 +194,7 @@ export async function runIngestHandler<I, R>(args: {
     );
     const errEnv: McpErr = {
       ok: false,
-      error: { code: "INTERNAL", message: "Internal error in MCP handler." },
+      error: { code: "SYSTEM_INTERNAL_ERROR", message: "Internal error in MCP handler." },
     };
     await safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "error");
     return errEnv;

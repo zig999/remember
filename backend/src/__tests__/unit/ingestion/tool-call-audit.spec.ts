@@ -77,9 +77,9 @@ function buildPool(): {
             rowCount: 1,
           };
         }
-        // count chunks -> 0 (forces NOT_FOUND or STRUCTURAL_INVALID branch)
+        // count chunks -> 0 (forces RESOURCE_NOT_FOUND or VALIDATION_INVALID_FORMAT branch)
         if (sql.startsWith("SELECT count(*)") && sql.includes("FROM raw_chunk")) {
-          // Return mismatched count to trigger NOT_FOUND branch.
+          // Return mismatched count to trigger RESOURCE_NOT_FOUND branch.
           return { rows: [{ n: "0" }], rowCount: 1 };
         }
         // tool_call insert — capture

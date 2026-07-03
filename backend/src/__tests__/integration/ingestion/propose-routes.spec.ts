@@ -547,7 +547,7 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-fragment (TC-13 / UC-08)", ()
       expect(res.statusCode).toBe(200);
       const body = res.json() as { ok: boolean; error?: { code: string } };
       expect(body.ok).toBe(false);
-      expect(body.error?.code).toBe("STRUCTURAL_INVALID");
+      expect(body.error?.code).toBe("VALIDATION_INVALID_FORMAT");
       // No fragment row was committed.
       expect(store.fragments_inserted).toBe(0);
     } finally {
@@ -864,7 +864,7 @@ describe("POST /api/v1/ingest/llm-runs/:id/propose-attribute (TC-13 / UC-11)", (
         };
       };
       expect(body.ok).toBe(false);
-      expect(body.error?.code).toBe("STRUCTURAL_INVALID");
+      expect(body.error?.code).toBe("VALIDATION_INVALID_FORMAT");
       expect(body.error?.details.value).toBe("Voyager");
       // allowed_values is lexicographically sorted per TC-02/TC-03 contract.
       expect(body.error?.details.allowed_values).toEqual([

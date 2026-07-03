@@ -101,7 +101,7 @@ describe("validateGraphRule (BR-15)", () => {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("RULE_VIOLATION");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_LINK_RULE_VIOLATION");
   });
 
   it("respects valid_to of a rule (expired = not active)", () => {
@@ -268,6 +268,6 @@ describe("validateGraphRule — Tier 1 catalog (concerns / delivered_to)", () =>
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationFailure);
-    expect((caught as ValidationFailure).code).toBe("RULE_VIOLATION");
+    expect((caught as ValidationFailure).code).toBe("BUSINESS_LINK_RULE_VIOLATION");
   });
 });

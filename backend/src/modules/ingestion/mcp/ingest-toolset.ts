@@ -20,7 +20,7 @@
 //     row is written (BR-23 updated). When no `llm_run_id` is parseable from
 //     the raw input, the audit-row insert cannot resolve its FK; the shell's
 //     `safeWriteAuditOnRollback` logs and swallows that, and the LLM still
-//     sees the STRUCTURAL_INVALID envelope (best-effort audit).
+//     sees the VALIDATION_INVALID_FORMAT envelope (best-effort audit).
 //
 // Idempotency: `McpServer.registerTool` rejects duplicates by design; calling
 // this registrar twice in the same process throws. The boot wires it once.
@@ -243,8 +243,8 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
   // Distinct from the four `propose_*` writers: this tool CREATES the run and
   // drives server-side extraction, so it takes no `llm_run_id`. A Zod failure
   // happens before any run exists, so there is no `tool_call` row to audit
-  // against — we return STRUCTURAL_INVALID directly (the orchestrator it
-  // triggers writes its own per-proposal audit rows).
+  // against — we return VALIDATION_INVALID_FORMAT directly (the orchestrator
+  // it triggers writes its own per-proposal audit rows).
   mcp.registerTool("ingest", {
     name: "ingest_document",
     description: IngestToolDescriptions.ingest_document,
@@ -255,7 +255,7 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
         return {
           ok: false,
           error: {
-            code: "STRUCTURAL_INVALID",
+            code: "VALIDATION_INVALID_FORMAT",
             message: "ingest_document arguments failed validation.",
             details: {
               issues: parsed.error.issues.map((i) => ({
@@ -294,7 +294,8 @@ export function registerIngestToolset(deps: IngestToolsetDeps): void {
       invocation_context?: Record<string, unknown>
     ): Promise<McpEnvelopeJson> => {
       // The handler owns its own Zod parse (BR-34, TC-03) — no second parse
-      // here. A parse failure surfaces as STRUCTURAL_INVALID; the run is
+      // here. A parse failure surfaces as the directed handler's own inline
+      // envelope (still STRUCTURAL_INVALID pending TC-05 migration); the run is
       // never opened so there is no `tool_call` row to audit against.
       //
       // TC-02 / BR-34 (Path 1): `invocation_context` is the transport-neutral
@@ -436,7 +437,7 @@ function mapReadError(err: unknown): McpEnvelopeJson {
 // caller sent a non-empty string, the FK resolves and the audit row is
 // persisted; if it is missing or syntactically wrong, the shell's
 // `safeWriteAuditOnRollback` logs and swallows the FK violation — the LLM
-// still sees the STRUCTURAL_INVALID envelope.
+// still sees the VALIDATION_INVALID_FORMAT envelope.
 // --------------------------------------------------------------------------
 
 function extractLlmRunIdFromRaw(rawInput: unknown): string {
@@ -462,7 +463,7 @@ async function runZodFailureAudit(
     input: rawInput as never,
     run: async () => {
       throw new ValidationFailure(
-        "STRUCTURAL_INVALID",
+        "VALIDATION_INVALID_FORMAT",
         "MCP tool args failed Zod parse.",
         {
           issues: zodError.issues.map((i) => ({

@@ -340,7 +340,7 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
     }
   });
 
-  it("ingest_document with invalid args → isError + STRUCTURAL_INVALID (dispatch + envelope round-trip)", async () => {
+  it("ingest_document with invalid args → isError + VALIDATION_INVALID_FORMAT (dispatch + envelope round-trip)", async () => {
     // Wire-level coverage for the new tool: a `tools/call` with `content`
     // missing fails Zod validation in the registrar BEFORE any DB write or LLM
     // call, so it is safe against the fake pool. Exercises dispatch + the
@@ -366,7 +366,7 @@ describe("POST /api/v1/mcp/ingest — auth + transport mount (TC-MCI-001)", () =
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       expect(body.result?.isError).toBe(true);
-      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+      expect(mcpErrPayload(body).code).toBe("VALIDATION_INVALID_FORMAT");
     } finally {
       await app.close();
     }
@@ -409,11 +409,11 @@ describe("POST /api/v1/mcp/ingest — Option B run-id binding (TC-MCI-001)", () 
     fixture = await buildAuthFixture();
   });
 
-  it("tools/call without `llm_run_id` in args returns isError + STRUCTURAL_INVALID", async () => {
+  it("tools/call without `llm_run_id` in args returns isError + VALIDATION_INVALID_FORMAT", async () => {
     // BR-21 (revised) Option B: `llm_run_id` is required on every MCP call as
     // a tool argument. Omitting it triggers the MCP-facing Zod schema's
-    // `z.string().min(1)` rejection -> STRUCTURAL_INVALID envelope wrapped
-    // as MCP `isError: true`.
+    // `z.string().min(1)` rejection -> VALIDATION_INVALID_FORMAT envelope
+    // wrapped as MCP `isError: true`.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
@@ -440,16 +440,17 @@ describe("POST /api/v1/mcp/ingest — Option B run-id binding (TC-MCI-001)", () 
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       expect(body.result?.isError).toBe(true);
-      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+      expect(mcpErrPayload(body).code).toBe("VALIDATION_INVALID_FORMAT");
     } finally {
       await app.close();
     }
   });
 
-  it("tools/call with `llm_run_id` pointing to an unknown run returns isError + STRUCTURAL_INVALID", async () => {
-    // BR-21 (revised): `assertRunIsRunning` throws STRUCTURAL_INVALID when
-    // the id does not resolve to any `llm_run` row. The default fake pool
-    // returns no rows, so this exercises the "unknown run" branch.
+  it("tools/call with `llm_run_id` pointing to an unknown run returns isError + RESOURCE_NOT_FOUND", async () => {
+    // BR-21 (revised) — P2.1 namespaced taxonomy: `assertRunIsRunning` throws
+    // `RESOURCE_NOT_FOUND` when the id does not resolve to any `llm_run` row.
+    // The default fake pool returns no rows, so this exercises the "unknown
+    // run" branch.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
@@ -476,17 +477,17 @@ describe("POST /api/v1/mcp/ingest — Option B run-id binding (TC-MCI-001)", () 
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       expect(body.result?.isError).toBe(true);
-      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+      expect(mcpErrPayload(body).code).toBe("RESOURCE_NOT_FOUND");
     } finally {
       await app.close();
     }
   });
 
-  it("tools/call with `llm_run_id` for a non-running run returns isError + STRUCTURAL_INVALID", async () => {
-    // BR-21 (revised): `assertRunIsRunning` also throws STRUCTURAL_INVALID
-    // when the row exists but `status !== 'running'`. The dedicated fake pool
-    // returns a `completed` row so we exercise the "row present, wrong
-    // status" branch.
+  it("tools/call with `llm_run_id` for a non-running run returns isError + BUSINESS_RUN_NOT_RUNNING", async () => {
+    // BR-21 (revised) — P2.1 namespaced taxonomy: `assertRunIsRunning` throws
+    // `BUSINESS_RUN_NOT_RUNNING` when the row exists but `status !== 'running'`.
+    // The dedicated fake pool returns a `completed` row so we exercise the
+    // "row present, wrong status" branch.
     const app = await buildApp({
       env: envFixture,
       logger: silentLogger,
@@ -513,7 +514,7 @@ describe("POST /api/v1/mcp/ingest — Option B run-id binding (TC-MCI-001)", () 
       expect(res.statusCode).toBe(200);
       const body = res.json() as JsonRpcEnvelope;
       expect(body.result?.isError).toBe(true);
-      expect(mcpErrPayload(body).code).toBe("STRUCTURAL_INVALID");
+      expect(mcpErrPayload(body).code).toBe("BUSINESS_RUN_NOT_RUNNING");
     } finally {
       await app.close();
     }

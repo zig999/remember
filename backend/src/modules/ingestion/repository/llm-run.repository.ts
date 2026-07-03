@@ -322,7 +322,7 @@ export async function insertToolCallStandalone(
  * fragment must exist AND have at least one `fragment_source` row pointing to
  * a `raw_chunk` of `expected_raw_information_id`. Returns the COUNT of fragments
  * that satisfy the rule — caller compares against `fragment_ids.length` and
- * throws `STRUCTURAL_INVALID` on mismatch.
+ * throws `VALIDATION_INVALID_FORMAT` on mismatch.
  */
 export async function countFragmentsAnchoredToSource(
   client: PoolClient,
