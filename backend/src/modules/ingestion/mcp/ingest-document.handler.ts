@@ -147,7 +147,7 @@ export async function ingestDocumentHandler(
             message: "A backing service is temporarily unavailable.",
           }
         : {
-            code: "INTERNAL",
+            code: "SYSTEM_INTERNAL_ERROR",
             message: "Failed to persist the document before extraction.",
           },
     };
@@ -243,7 +243,7 @@ export async function ingestDocumentHandler(
         },
       };
     }
-    // Unknown — surface loud as INTERNAL with ids for forensics (never swallow).
+    // Unknown — surface loud as SYSTEM_INTERNAL_ERROR with ids for forensics (never swallow).
     deps.logger.error(
       {
         component: "mcp.ingest",

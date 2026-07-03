@@ -30,7 +30,7 @@ const LlmRunIdField = {
     .string()
     .min(1)
     .describe(
-      "Active LLMRun id this proposal belongs to. Required on every MCP call (Option B — arg-based run binding). The handler aborts with STRUCTURAL_INVALID if it does not point to a `running` LLMRun row."
+      "Active LLMRun id this proposal belongs to. Required on every MCP call (Option B — arg-based run binding). The handler aborts with RESOURCE_NOT_FOUND when the id is unknown or BUSINESS_RUN_NOT_RUNNING when the row exists but its status is not `running`."
     ),
 };
 

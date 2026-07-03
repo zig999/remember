@@ -44,7 +44,7 @@ export function buildProposeLinkHandler(args: {
         input: raw as ProposeLinkInput,
         run: async () => {
           throw new ValidationFailure(
-            "STRUCTURAL_INVALID",
+            "VALIDATION_INVALID_FORMAT",
             "Input failed Zod parse.",
             { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }
           );
