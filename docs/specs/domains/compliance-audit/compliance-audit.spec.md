@@ -1,6 +1,6 @@
 # Compliance & Audit -- Business Specification
 
-> Version: 1.1.0 | Status: draft | Layer: permanent
+> Version: 1.2.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml` (REST) + MCP toolset `curation` (`compliance_delete` only — §14.4 of `remember-modelagem-v7.md`)
 >
 > Normative source: `remember-modelagem-v7.md` (§2.3, §2.5, §3.5, §10.2, §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29).
@@ -210,8 +210,10 @@ After the initial `ingestRawInformation` write (`ingestion` UC-01), no code path
 ### BR-13 -- Audit rows are append-only and immutable (UC-01..UC-05)
 There are NO endpoints in this domain that UPDATE or DELETE a `compliance_deletion` or `curation_action` row. The DB has no triggers either. Once written, an audit row is read-only forever — this is the foundation of principle 1 of §18 ("the original information is never lost — except controlled, audited deletion") applied to the audit log itself.
 
-### BR-14 -- compliance_delete is mirrored as MCP tool (UC-01, transport)
-The REST endpoint `complianceDeleteRawInformation` and the MCP tool `compliance_delete` of toolset `curation` (§14.4) call the SAME service-layer function with identical Zod-validated inputs (ADR A28). They produce ONE `compliance_deletion` row and ONE `curation_action` row regardless of transport. The MCP envelope shape (`{ ok: true, result: { outcome, deletion } }` / `{ ok: false, error: { code, message, details } }`) wraps the same payload returned by the REST endpoint. MCP-specific error codes used (when applicable): `STRUCTURAL_INVALID`, `NOT_FOUND`, `INTERNAL` (§14). Authentication errors surface as the standard REST 401 — MCP envelope errors are reserved for layered-validation outcomes (cf. `ingestion.spec.md` §6.2).
+### BR-14 -- compliance_delete is mirrored as MCP tool with byte-identical error codes (UC-01, transport)
+The REST endpoint `complianceDeleteRawInformation` and the MCP tool `compliance_delete` of toolset `curation` (§14.4) call the SAME service-layer function with identical Zod-validated inputs (ADR A28). They produce ONE `compliance_deletion` row and ONE `curation_action` row regardless of transport. The MCP envelope shape (`{ ok: true, result: { outcome, deletion } }` / `{ ok: false, error: { code, message, details } }`) wraps the same payload returned by the REST endpoint.
+
+**Under P2.1 (canonical taxonomy — see `docs/specs/_global/error-codes.md` "Canonical Taxonomy").** The `error.code` value is byte-identical between REST and MCP for every business condition — the previous asymmetry that surfaced the §14 short codes (`STRUCTURAL_INVALID`, `NOT_FOUND`, `INTERNAL`) on MCP while REST surfaced the namespaced set is retired. Both transports now emit the namespaced codes of §6.1 (`VALIDATION_REQUIRED_FIELD` / `VALIDATION_INVALID_FORMAT` / `VALIDATION_OUT_OF_RANGE` / `RESOURCE_NOT_FOUND` / `SYSTEM_INTERNAL_ERROR`). The transport difference is limited to the wire wrapping: REST returns the envelope with a real HTTP status (401/404/422/500); MCP returns `content` + `isError: true` at HTTP 200 (MCP 2025-06-18) carrying the same `{ ok:false, error: { code, message, details } }` payload. Authentication errors continue to surface as the standard REST 401 (issued by the `requireNeonAuth` middleware BEFORE MCP tool dispatch) on both transports — never as an MCP envelope error. See §6.2 for the exhaustive REST↔MCP code mapping.
 
 ---
 
@@ -252,13 +254,19 @@ This domain does NOT define state machines for `ComplianceDeletion` and `Curatio
 
 ### 6.2 MCP envelope errors for `compliance_delete` (response is `{ ok: false, error: { code, message, details } }`)
 
-| Situation | MCP error.code | Description |
-|-----------|----------------|-------------|
-| Required field missing, type mismatch, length/range violation | `STRUCTURAL_INVALID` | UC-01 alt `3a`, `3b`, `3c` mapped to MCP. |
-| `raw_information_id` resolves to no row | `NOT_FOUND` | UC-01 alt `4a` mapped to MCP. |
-| Unhandled internal exception in service layer | `INTERNAL` | UC-01 alt `4c`, `9a` mapped to MCP. |
+Under P2.1 (canonical taxonomy) the MCP envelope carries the **same namespaced code** as REST for every situation of §6.1 — there is no §14 short-code alternative any more. The mapping below is a rendering guide (transport wrapping only), NOT a distinct code vocabulary. The `error.code` value is byte-identical to the REST 6.1 row for the same business condition.
 
-Auth errors are handled by the BFF middleware (same Neon Auth JWT validation as REST, §2.5/A29); they surface to the MCP client as the standard REST 401 — the MCP envelope is only used for service-layer outcomes (cf. `ingestion.spec.md` §6.2, ADR A28).
+| Situation | REST HTTP | MCP wire | error.code (both transports) |
+|-----------|-----------|----------|-------------------------------|
+| Required field missing in request body | 422 | `content` + `isError:true` at HTTP 200 | `VALIDATION_REQUIRED_FIELD` |
+| Field with invalid format (malformed UUID) | 422 | `content` + `isError:true` at HTTP 200 | `VALIDATION_INVALID_FORMAT` |
+| `reason` empty after `btrim` or > 1000 chars | 422 | `content` + `isError:true` at HTTP 200 | `VALIDATION_OUT_OF_RANGE` |
+| `raw_information_id` resolves to no row | 404 | `content` + `isError:true` at HTTP 200 | `RESOURCE_NOT_FOUND` |
+| Unhandled internal exception in service layer (incl. UC-01 alt `4c` legacy inconsistency) | 500 | `content` + `isError:true` at HTTP 200 | `SYSTEM_INTERNAL_ERROR` |
+
+Auth errors are handled by the BFF middleware (same Neon Auth JWT validation as REST, §2.5/A29); they surface to the MCP client as the standard REST 401 (`AUTH_UNAUTHORIZED`) BEFORE tool dispatch on both transports — never as an MCP envelope error (cf. `ingestion.spec.md` §6.2, ADR A28).
+
+**Deprecated pre-P2.1 short codes.** Any prior reference to the §14 short codes `STRUCTURAL_INVALID` / `NOT_FOUND` / `INTERNAL` in downstream MCP clients maps as follows: `STRUCTURAL_INVALID` → one of the three `VALIDATION_*` codes (Zod-discriminated as in REST); `NOT_FOUND` → `RESOURCE_NOT_FOUND`; `INTERNAL` → `SYSTEM_INTERNAL_ERROR`. See `docs/specs/_global/error-codes.md` "§14 short-code → namespaced mapping (deprecation table)" for the exhaustive registry.
 
 > **Idempotent no-op is NOT an error.** The 200 `noop_already_deleted` result is a successful business outcome — the response envelope is `{ ok: true, result: { outcome: "noop_already_deleted", deletion: { ... } } }` on MCP and HTTP 200 on REST. Mirrors the design rule of §14: "business outcomes are not errors".
 
@@ -272,7 +280,7 @@ Auth errors are handled by the BFF middleware (same Neon Auth JWT validation as 
 |--------|------|-------------|
 | `ingestion` | synchronizes | This domain is the only writer permitted to mutate a `RawInformation` row after its initial insertion (`ingestion.spec.md` BR-02 carve-out, BR-12 here). It tombstones `content`, propagates `status = 'deleted'` to chunks and (via BR-06) to fragments. `ingestion`'s `getRawInformationById` (UC-02) is the read counterpart that surfaces the redacted content (§3.1: `metadata.compliance_deleted = true`). |
 | `knowledge-graph` | synchronizes | UC-01 cascades `status = 'deleted'` to `knowledge_link` and `node_attribute` rows whose only provenance referenced the deleted raw (BR-07). `knowledge-graph` reads (`getNodeById`, `getLinkById`, `getAttributeById`, `traverseNode`, `getAttributeKeyHistory`) honor this via the existing tombstone error code `BUSINESS_NODE_DELETED` (knowledge-graph error catalog) when applicable. |
-| `query-retrieval` | synchronizes | The provenance-walk endpoints of `query-retrieval` (`getProvenanceByLink` etc.) short-circuit with 410 `BUSINESS_RAW_INFORMATION_DELETED` when they encounter a tombstoned raw (`query-retrieval` BR-14). This domain is the writer of that tombstone. |
+| `query-retrieval` | synchronizes | The provenance-walk endpoints of `query-retrieval` (`getProvenanceByLink`, `getProvenanceByAttribute`, `getProvenanceByFragment`) short-circuit with 410 `BUSINESS_RAW_INFORMATION_DELETED` when they encounter a tombstoned raw (`query-retrieval` BR-14). This domain is the writer of that tombstone. |
 | `curation` (future) | produces | Every curation tool of §14.4 — `resolve_entity_match`, `merge_nodes`, `resolve_dispute`, `confirm_item`, `reject_item`, `correct_item` — writes a `CurationAction` row using the same audit table that this domain exposes via `listCurationActions` / `getCurationActionById`. This domain does NOT define those tools; it only reads the audit log they produce. |
 
 This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). UC-01 (`complianceDeleteRawInformation`) coordinates the cross-domain cascade in a single transaction; it does NOT call any other domain's endpoints — it operates directly on the relational tables shared by all domains (the BFF is the sole database client per §2.5/A29).
@@ -289,7 +297,7 @@ This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). 
 - **Hard-delete (physical DELETE) of any row.** Permanently out of scope. The schema preserves all rows; status transitions are the only path. This protects the audit chain (principle 1, §18).
 - **Mutation of audit rows (UPDATE / DELETE on `compliance_deletion` or `curation_action`).** Permanently out of scope (BR-13).
 - **Multi-tenant / `User` entity / role-based authorization** (§2.3, §20.3, A20). Permanent non-goal.
-- **Export of the audit log to external systems** (S3, SIEM, etc.). Not in this version. The two read endpoints (UC-02, UC-04) are the supported interface.
+- **Export of the audit log to external systems** (S3 buckets, SIEM platforms, or event-streaming services). Not in this version. The two read endpoints (UC-02, UC-04) are the supported interface.
 
 ---
 
@@ -307,7 +315,7 @@ This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). 
 | Curation tool name | One of the 7 strings of BR-10 — the `action` column of a `CurationAction` row. |
 | Idempotent no-op (compliance) | The 200 response of UC-01 when the raw is already tombstoned (BR-03). Returns the existing audit row, writes nothing. |
 | Implicit owner | The actor of every audit row, by construction. Equal to the JWT subject of the request that produced the row. Not stored as a column (BR-11). |
-| MCP envelope (this domain) | `{ ok: true, result: { outcome, deletion } }` / `{ ok: false, error: { code, message, details } }` — the same shape used by all MCP tools (§14, ADR A28). |
+| MCP envelope (this domain) | `{ ok: true, result: { outcome, deletion } }` / `{ ok: false, error: { code, message, details } }` — the same shape used by all MCP tools (§14, ADR A28). Under P2.1 the `error.code` value is byte-identical to the REST rendering (no separate §14 short code vocabulary). |
 | Neon Auth (Stack Auth) | The OIDC JWT issuer that replaces Supabase Auth at the BFF middleware boundary. JWKS published at `${NEON_AUTH_URL}/.well-known/jwks.json` (EdDSA by default); validated by the `requireNeonAuth` Fastify `preHandler` middleware. Single-owner contract of §2.5 / A29 is unchanged. |
 
 ---
@@ -318,3 +326,4 @@ This domain has no upstream dependencies for the read endpoints (UC-02..UC-05). 
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial compliance-and-audit-domain specification: controlled tombstone of `RawInformation` with cascade (§11), audit log read endpoints for `ComplianceDeletion` and `CurationAction` (§3.5). Aligned with v7 normative source (§2.5, §3.5, §10.2, §11, §13, §14.4, §17 C15, §18 principle 1, ADRs A20, A28, A29) and with `migrations/0001_schema.sql` lines 217-243 and 439-473. Five new BUSINESS_ error codes registered in the global catalog (none — this domain reuses only existing global codes: `AUTH_UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `VALIDATION_REQUIRED_FIELD`, `VALIDATION_INVALID_FORMAT`, `VALIDATION_OUT_OF_RANGE`, `SYSTEM_INTERNAL_ERROR`). | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | update | Auth-provider migration: replaced "Supabase Auth" with "Neon Auth (Stack Auth)" in the Actors table, in every UC `Pre:` clause (UC-01..UC-05) and in the UC `Main flow` middleware step. The middleware name is now `requireNeonAuth`, verifying tokens against the JWKS at `${NEON_AUTH_URL}/.well-known/jwks.json`. The §2 trailing note on JWT validation, the §6.1 401-row description, and the §6.2 MCP-errors note all now reference Neon Auth instead of Supabase. A new glossary entry "Neon Auth (Stack Auth)" was added. No change to BRs, UCs, state machine, error codes, schema, or business semantics — the single-owner contract of §2.5 / A29 is preserved end-to-end. | migrate-neon |
+| 1.2.0 | 2026-07-02 | Spec Writer | update | P2.1 canonical error-code taxonomy. §6.2 rewrite: the "MCP envelope errors" table now renders each situation as the SAME namespaced code as REST §6.1, with the transport wrapping (REST HTTP status vs MCP `content`/`isError:true` at HTTP 200) as the only difference. BR-14 rewritten to make the byte-identical parity contract explicit and to drop the §14 short-code vocabulary (`STRUCTURAL_INVALID` / `NOT_FOUND` / `INTERNAL`) for this domain's MCP tool. Glossary "MCP envelope (this domain)" reworded to state the byte-identical rule. Deprecated §14 short codes and their replacements are registered in `docs/specs/_global/error-codes.md` "Deprecated Codes" section (2026-07-02). No new BUSINESS_ codes for this domain — the mapping uses only the existing global namespaced codes already declared in §6.1 (`AUTH_UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `VALIDATION_REQUIRED_FIELD`, `VALIDATION_INVALID_FORMAT`, `VALIDATION_OUT_OF_RANGE`, `SYSTEM_INTERNAL_ERROR`). No change to UCs, business rules other than BR-14, state machine, schema, dependencies, out-of-scope. The `compliance-audit.back.md` v1.4.0 spec-writer run is the paired update; the code consequence (removal of the `code/mcpCode` pair in `compliance-audit/service/errors.ts` + centralisation of the REST/MCP mapping in `backend/src/shared/error-mapping.ts`) lands in a follow-up dev-phase task. No migration / DB change. | P2.1 |

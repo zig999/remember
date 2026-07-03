@@ -1,6 +1,6 @@
 # Knowledge Graph -- Business Specification
 
-> Version: 1.2.0 | Status: draft | Layer: permanent
+> Version: 1.3.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/remember-modelagem-v7.md` (sections 3, 4, 5, 6, 15 + ADRs A1, A6, A7, A8, A9, A10, A11, A12, A14, A16, A19, A20, A25, A26, A28, A29)
 > Schema reference: `/migrations/0001_schema.sql`, `/migrations/0002_seed.sql`
@@ -425,6 +425,21 @@ Every 2xx response served by this domain's REST surface MUST be a JSON object of
 
 **Tied to:** UC-01 through UC-11.
 
+### BR-22 -- Every emitted `error.code` complies with the P2.1 canonical namespaced taxonomy
+
+Since P2.1 (2026-07-02) the BFF publishes ONE canonical error-code vocabulary -- the namespaced taxonomy of `docs/specs/_global/error-codes.md` ("Canonical Taxonomy (P2.1)"). Every code emitted by this domain -- REST OR MCP -- MUST match a namespaced entry in that catalog. The allowed prefixes are the five declared there (`AUTH_`, `VALIDATION_`, `RESOURCE_`, `BUSINESS_`, `SYSTEM_`); any other prefix is a spec violation and is rejected by the Spec Reviewer.
+
+**Scope for this domain (READ-ONLY, both transports).**
+- The REST surface (all eleven endpoints of §3) emits ONLY the codes listed in §6 -- each one is registered under the "Knowledge Graph" section of the catalog (`BUSINESS_NODE_DELETED`, `BUSINESS_UNKNOWN_NODE_TYPE`, `BUSINESS_UNKNOWN_LINK_TYPE`, `BUSINESS_UNKNOWN_ATTRIBUTE_KEY`, `BUSINESS_INVALID_TRAVERSE_DEPTH`) or under the base catalog (`AUTH_*`, `VALIDATION_*`, `RESOURCE_NOT_FOUND`, `SYSTEM_INTERNAL_ERROR`, `SYSTEM_SERVICE_UNAVAILABLE`).
+- The MCP `query` transport (`POST /api/v1/mcp/query` + the local stdio transport, both read-only mirrors of the same service layer) publishes the EXACT SAME `error.code` on the EXACT SAME business condition -- byte-identical. The transport framings differ (REST returns the envelope with an HTTP status; MCP renders the same envelope as MCP 2025-06-18 `content` / `isError`, HTTP 200 at the SDK kernel) but the `error.code` value never differs between transports.
+- The seven deprecated v7 §14 short codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are FORBIDDEN on any surface of this domain. This domain never emitted them (its READ paths already used the namespaced set since v1.0.0); BR-22 ratifies that stance and makes it a normative invariant across both transports.
+
+**Semantics rule inherited from P2.1.** A business outcome is NEVER an HTTP error: `merged` nodes, `needs_review` nodes, `uncertain` / `disputed` attributes and links, empty result sets, and the derived-status transitions (`inactive` via `effective_status`) all surface as `ok: true` with HTTP 2xx on REST and `isError: false` on MCP. Real HTTP errors on this domain are reserved for authentication (`AUTH_*`, always 401 on both transports because the middleware short-circuits BEFORE tool dispatch) and infrastructure (`SYSTEM_SERVICE_UNAVAILABLE`, 503, bubbling up from the pg pool). `VALIDATION_*`, `RESOURCE_*` and `BUSINESS_*` produce a real HTTP status on REST but are wrapped as MCP envelope errors (HTTP 200 with `isError: true`) on MCP -- the `error.code` value stays byte-identical between the two.
+
+**Test guard (declared in `back/knowledge-graph.back.md` BR-26).** The REST -- MCP parity test suite compares the SERVICE-LAYER return value AFTER stripping per-transport framing and asserts byte-identical `error.code`, `error.message`, and `error.details` shape for every forced-error case. The test suite is the CI guard that keeps BR-22 honest.
+
+**Tied to:** UC-01 through UC-11.
+
 ---
 
 ## 5. State Machine
@@ -516,9 +531,9 @@ Every 2xx response served by this domain's REST surface MUST be a JSON object of
 
 ## 6. Error Behaviors
 
-> Every code below is registered in the global error-codes catalog (`docs/specs/_global/error-codes.md`).
+> Every code below is registered in the global error-codes catalog (`docs/specs/_global/error-codes.md`) under the P2.1 canonical namespaced taxonomy (2026-07-02) -- see BR-22. The five allowed prefixes are `AUTH_`, `VALIDATION_`, `RESOURCE_`, `BUSINESS_`, `SYSTEM_`; no other prefix appears on any surface of this domain, and the seven deprecated v7 §14 short codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are forbidden.
 >
-> **Wire envelope (BR-21).** Every error response carries the envelope `{ "ok": false, "error": { "code", "message", "details? } }` -- symmetric with the success envelope `{ "ok": true, "result": <Payload> }` (since v1.2.0). The `error.code` values listed below are the canonical discriminators -- `error.message` is for humans, `error.details` is optional and structured.
+> **Wire envelope (BR-21).** Every error response carries the envelope `{ "ok": false, "error": { "code", "message", "details? } }` -- symmetric with the success envelope `{ "ok": true, "result": <Payload> }` (since v1.2.0). The `error.code` values listed below are the canonical discriminators -- `error.message` is for humans, `error.details` is optional and structured. Both REST and MCP transports publish the SAME `error.code` byte-for-byte for the SAME business condition (BR-22); the transport-specific `mcpCode` field that historically produced a different value per transport is not used by this domain and is retired project-wide by P2.1.
 
 | Situation | HTTP | error.code | Description |
 |-----------|------|------------|-------------|
@@ -606,3 +621,4 @@ Every 2xx response served by this domain's REST surface MUST be a JSON object of
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the knowledge-graph domain. Forward-generated from remember-modelagem-v7.md (sections 3, 4, 5, 6, 15) and migrations/0001_schema.sql + 0002_seed.sql. Covers KnowledgeNode/NodeAlias/NodeAttribute/KnowledgeLink reads, entity-resolution invariants, semi-open temporal model, lifecycle/lineage, and seed catalog access. | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | change | Infrastructure migration: replaced Supabase Auth with Neon Auth (Stack Auth) in actor descriptions, every UC pre-condition, BR-20 (JWKS endpoint `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA, TTL `NEON_AUTH_JWKS_TTL_S`), §6 503 row (now references Neon as the managed Postgres provider) and §7 `auth` cross-domain dependency. Removed mention of Supabase service key and Supabase RLS toggle (replaced by "Postgres RLS not used on Neon"). No use cases, error codes, state transitions, or business invariants changed. Schema and remember-modelagem-v7.md are untouched. | migrate-neon |
 | 1.2.0 | 2026-06-22 | Back Spec Agent | change | **REST success-envelope alignment (new BR-21).** Documents the wire-shape change implemented in `back/knowledge-graph.back.md` v1.5.0 (BR-27) and `openapi.yaml` v1.5.0 -- every 2xx success response in this domain is now wrapped as `{ ok: true, result: <Payload> }`, symmetric with the existing error envelope `{ ok: false, error: { code, message, details? } }` (unchanged). Reworded every UC main-flow success step to spell out the envelope wrap (UC-01 through UC-11, all eleven endpoints), added a normative §3 lead-in note, added §6 envelope note over the error table, added a "Envelope (REST)" glossary entry, and added an explicit out-of-scope bullet clarifying the MCP transports keep their `content` / `isError` framing per MCP 2025-06-18 (the wrap is REST-only). No new use case, no new state transition, no schema change, no new error code, no DDL. Atomic with the frontend reconciliation that drops the `envelope:false` workaround introduced on 2026-06-22 (the temporary frontend patch documented in CLAUDE.md "Known Gotchas" / `kg-rest-bare-success-envelope` memory). Coordinated with `query-retrieval.spec.md` (mirror change, same envelope alignment). | kg-rest-success-envelope |
+| 1.3.0 | 2026-07-02 | Spec Writer | change | **P2.1 canonical-taxonomy alignment (new BR-22).** Formal spec-side binding of this domain to the single namespaced error-code vocabulary declared by P2.1 in `docs/specs/_global/error-codes.md` ('Canonical Taxonomy (P2.1)'). New BR-22 asserts that (i) every `error.code` emitted by this domain -- REST OR MCP -- is namespaced (`AUTH_*` / `VALIDATION_*` / `RESOURCE_*` / `BUSINESS_*` / `SYSTEM_*`), (ii) the seven deprecated v7 §14 short codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are FORBIDDEN on any surface of this domain, and (iii) REST and MCP publish byte-identical `error.code` on the same business condition (the per-transport `mcpCode` divergence that P2.1 retired project-wide never existed on this domain, since KG has always used the namespaced set). Reworded the §6 Error Behaviors lead-in to point at the canonical taxonomy and to spell out the five allowed prefixes. No new use case, no new state transition, no schema change, no new error code, no DDL. The existing §6 code table is byte-for-byte unchanged (every row already matched the namespaced set since v1.0.0). Cross-domain guard: the REST↔MCP parity test contract lives in `back/knowledge-graph.back.md` BR-26 (unchanged) and is called out by BR-22 as the CI enforcement point. | p2-1-error-taxonomy |

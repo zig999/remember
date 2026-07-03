@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Knowledge Graph API"
-  version: "1.5.0"
+  version: "1.6.0"
   description: |
     Read-side and direct-management HTTP contract for the knowledge-graph domain.
 
@@ -43,6 +43,21 @@ info:
     the local stdio transport) render the same logical outcome as MCP 2025-06-18
     `content` / `isError` and do NOT wrap responses in `{ ok, result }`
     (back-spec BR-23, BR-24, BR-27).
+
+    **Canonical error taxonomy (v1.6.0, P2.1 -- 2026-07-02).** Every `error.code`
+    published by this document -- and by the MCP mirror on `POST /api/v1/mcp/query`
+    and the local stdio transport -- belongs to the single canonical namespaced
+    vocabulary declared in `docs/specs/_global/error-codes.md` ("Canonical Taxonomy
+    (P2.1)"). The five allowed prefixes are `AUTH_`, `VALIDATION_`, `RESOURCE_`,
+    `BUSINESS_`, `SYSTEM_`. The seven deprecated v7 §14 short codes
+    (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`,
+    `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) are FORBIDDEN on any surface of
+    this domain. REST and MCP publish the SAME `error.code` byte-for-byte for the
+    SAME business condition; the transport-specific `mcpCode` field that P2.1
+    retired project-wide never existed on this domain (KG has always used the
+    namespaced set since v1.0.0). See `knowledge-graph.spec.md` BR-22 for the
+    business-side declaration and `back/knowledge-graph.back.md` BR-26 for the
+    REST↔MCP parity test contract that guards the invariant.
 
 servers:
   - url: "http://localhost:3000"
@@ -231,7 +246,7 @@ paths:
                 $ref: "#/components/schemas/NodeListEnvelope"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422":
-          description: "Unknown filter value"
+          description: "Invalid filter value: unknown node_type (BUSINESS_UNKNOWN_NODE_TYPE) or limit/offset out of range (VALIDATION_OUT_OF_RANGE)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -761,9 +776,15 @@ components:
               example: { node_id: "9b1c1e2f-0e57-4d3f-99b1-1d22ce5e0001" }
       description: |
         Standard error envelope (BR-27). The wire body is `{ ok: false, error: { code, message, details? } }`.
-        The `code` follows the namespaced `DOMINIO_MOTIVO` convention
-        (`AUTH_*`, `BUSINESS_*`, `RESOURCE_*`, `SYSTEM_*`, `VALIDATION_*`) -- see
-        `backend/src/shared/error-mapping.ts` and the per-module `errors.ts` for the canonical registry.
+        The `code` follows the P2.1 canonical namespaced taxonomy
+        (`AUTH_*`, `VALIDATION_*`, `RESOURCE_*`, `BUSINESS_*`, `SYSTEM_*`) declared in
+        `docs/specs/_global/error-codes.md` -- see the business-side declaration in
+        `knowledge-graph.spec.md` BR-22 and the REST↔MCP parity contract in
+        `back/knowledge-graph.back.md` BR-26. The runtime registry + REST/MCP mapping
+        lives in `backend/src/shared/error-mapping.ts` and the per-module `errors.ts`.
+        The seven deprecated v7 §14 short codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`,
+        `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`,
+        `INTERNAL`) are forbidden on both transports.
 
     # -------------------------------------------------------------------------
     # Enums (mirror the DB enums of migration 0001)
@@ -973,7 +994,7 @@ components:
     # -------------------------------------------------------------------------
     NodeAlias:
       type: object
-      required: [id, alias, kind]
+      required: [id, alias, kind, created_at]
       properties:
         id: { type: string, format: uuid }
         alias: { type: string, example: "Projeto Apollo" }

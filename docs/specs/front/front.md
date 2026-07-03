@@ -91,18 +91,24 @@ The Remember SPA is a **desktop workstation**, not a website. The shell is a **f
 
 The CSS implementation uses **named Tailwind utilities** (defined in `theme.css` `@theme` block). Numeric values are listed below for reference only; agents reference layers by Tailwind class.
 
-| Layer | Tailwind class | z-index | Role | Scrolls? | Modal? |
-|---|---|---|---|---|---|
-| Ambient backdrop | `z-backdrop` | `-1` | Treated landscape photo behind the frame | no | — |
-| Workspace base | `z-base` | `0` | The mounted area (Graph / Search / Ingest / Curation / History) | yes (per area) | — |
-| Graph panels | `z-panel` | `10` | Filters and selection context — anchored glass | no | no (non-modal) |
-| Provenance drawer | `z-drawer` | `20` | Invocable from any fact, in any area — glass surface | no | no (non-modal) |
-| Popovers / pickers | `z-popover` | `30` | Time picker (`as_of`), filter menus, dropdowns | no | no |
-| Frame (header/footer) | `z-frame` | `40` | Above base content, below modals | no | — |
-| Command palette / modals | `z-modal` | `50` | ⌘K palette, confirmation dialogs — capture focus | no | **yes** |
-| Toasts | `z-toast` | `60` | Sonner notifications — ephemeral, no focus capture | no | no |
+Dois eixos independentes: **opacidade/elevação** (material: translúcido → opaco) e **z-index** (empilhamento). Eles correlacionam inversamente — chrome mais alto na pilha = vidro mais sólido. Superfícies opacas vivem em `z-base` (0).
 
-> **Why header/footer sit below modals (z40 < z50):** a modal must be able to dim the entire screen, frame included. This matches `layout.md §5`.
+| Layer | Tailwind class | z-index | Material | Scrolls? | Modal? |
+|---|---|---|---|---|---|
+| Neon scene | `z-backdrop` | `-2` | — (AmbientBackdrop) | no | — |
+| Darkening veil | `z-veil` | `-1` | — (sem elemento React ainda) | no | — |
+| Workspace base | `z-base` | `0` | Opaque surfaces | yes (per area) | — |
+| Elevated in content | `z-panel` | `10` | Opaque — sticky toolbars, graph filter panels | no | no |
+| Ambient chrome | `z-chrome` | `20` | Glass ambient (14%) — header, sidebar | no | — |
+| Lateral drawers | `z-drawer` | `25` | Glass panel (20%) — non-modal, invocable from any fact | no | no |
+| Popovers / pickers | `z-popover` | `30` | Opaque elevated — time picker, filter menus, dropdowns | no | no |
+| Modal scrim | `z-overlay` | `40` | `--color-overlay` backdrop | no | — |
+| Modals | `z-modal` | `41` | Glass modal (28%) — ⌘K palette, confirmation dialogs | no | **yes** |
+| Toasts | `z-toast` | `50` | Glass — ephemeral, no focus capture | no | no |
+
+> **Alias de migração:** `z-frame` aponta para `z-chrome` (20) enquanto `Header.tsx` / `AppShell.tsx` não são atualizados. Remover após migração.
+
+> **Why ambient chrome sits below modals (z20 < z41):** a modal must be able to dim the entire screen, chrome included. This matches `layout.md §5`.
 
 ### 2.3 Ambient backdrop (`z-backdrop`) — strict rules
 

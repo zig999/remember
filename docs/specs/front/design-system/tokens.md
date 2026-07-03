@@ -222,15 +222,24 @@
   --ease-out-expo:   cubic-bezier(0.16, 1, 0.3, 1);
   --ease-back:       cubic-bezier(0.34, 1.56, 0.64, 1); /* overshoot (y>1; §9.1 v1.1.0) */
 
-  /* ---------- Z-index scale ----------------------------------------------------------------*/
-  --z-backdrop:  -1;
-  --z-base:       0;
-  --z-panel:     10;
-  --z-drawer:    20;
-  --z-popover:   30;
-  --z-frame:     40;
-  --z-modal:     50;
-  --z-toast:     60;
+  /* ---------- Z-index scale ----------------------------------------------------------------
+     Dois eixos independentes que correlacionam inversamente:
+       opacidade/elevação: translúcido → opaco (ambient 14% < panel 20% < modal 28%)
+       z-index:            mais baixo  → mais alto
+     Consequência: chrome mais alto na pilha = vidro mais sólido.
+  */
+  --z-backdrop:  -2;   /* cena neon (AmbientBackdrop)                           */
+  --z-veil:      -1;   /* véu escurecedor acima do backdrop                     */
+  --z-base:       0;   /* fluxo normal — cards, tabelas, workspace               */
+  --z-panel:     10;   /* elementos elevados dentro do conteúdo (toolbars sticky) */
+  --z-chrome:    20;   /* chrome ambiente — glass ambient, mais translúcido      */
+  --z-drawer:    25;   /* gavetas laterais não-modais — glass panel              */
+  --z-popover:   30;   /* popovers, dropdowns, tooltips                          */
+  --z-overlay:   40;   /* scrim de modal                                         */
+  --z-modal:     41;   /* modal / popover — acima do scrim, vidro modal          */
+  --z-toast:     50;   /* toasts / notificações — topo de tudo                  */
+  /* migration alias — remover após Header.tsx / AppShell migrarem para z-chrome */
+  --z-frame:     20;
 }
 
 /* ============================================================
@@ -689,16 +698,21 @@ All six variants are exported from `frontend/src/lib/motion.ts`. Components do *
 
 ## 12. Z-index / layer tokens
 
+Escala de dois eixos — **opacidade/elevação** (material) e **z-index** (empilhamento) correlacionam inversamente: quanto mais alto o z-index do chrome flutuante, mais opaco o vidro (o modal precisa dominar a atenção). Superfícies opacas (`primary`/`surface`/`elevated`) vivem em `z-base` (0) — elevam-se por clareza + sombra, não por z-index.
+
 | Token | Tailwind class | z-index | Layer (see `front.md §2.2`) |
 |---|---|---|---|
-| `--z-backdrop` | `z-backdrop` | `-1` | Ambient backdrop (landscape) |
-| `--z-base` | `z-base` | `0` | Workspace base (the mounted area) |
-| `--z-panel` | `z-panel` | `10` | Graph panels (filters, selection context) |
-| `--z-drawer` | `z-drawer` | `20` | Provenance drawer |
+| `--z-backdrop` | `z-backdrop` | `-2` | Cena neon (AmbientBackdrop) |
+| `--z-veil` | `z-veil` | `-1` | Véu escurecedor acima do backdrop |
+| `--z-base` | `z-base` | `0` | Fluxo normal — workspace, cards, tabelas |
+| `--z-panel` | `z-panel` | `10` | Painéis elevados no conteúdo (toolbars sticky, filtros do grafo) |
+| `--z-chrome` | `z-chrome` | `20` | Chrome ambiente — header, sidebar (glass ambient, mais translúcido) |
+| `--z-drawer` | `z-drawer` | `25` | Gavetas laterais não-modais (glass panel) |
 | `--z-popover` | `z-popover` | `30` | Popovers, pickers, dropdowns |
-| `--z-frame` | `z-frame` | `40` | Header + footer |
-| `--z-modal` | `z-modal` | `50` | Command palette, modals |
-| `--z-toast` | `z-toast` | `60` | Sonner toasts |
+| `--z-overlay` | `z-overlay` | `40` | Scrim de modal |
+| `--z-modal` | `z-modal` | `41` | Modal / command palette (glass modal, mais opaco) — acima do scrim |
+| `--z-toast` | `z-toast` | `50` | Sonner toasts — topo de tudo |
+| `--z-frame` _(alias)_ | `z-frame` | `20` | Alias de migração → `z-chrome`; remover após Header.tsx migrar |
 
 ---
 

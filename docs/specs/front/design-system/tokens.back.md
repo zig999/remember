@@ -87,7 +87,7 @@ Tailwind v4 derives utility prefixes from the **first segment** of the CSS varia
 | `--duration-fast: 200ms;` | `duration-fast` |
 | `--ease-out-quint: cubic-bezier(…)` | `ease-out-quint` |
 | `--blur-glass-md: 16px;` | `backdrop-blur-glass-md` |
-| `--z-modal: 50;` | `z-modal` |
+| `--z-modal: 41;` | `z-modal` |
 
 **Hard rule (load-bearing):** never prefix a token with its category twice — `--color-bg-surface` would generate `bg-bg-surface`, which is forbidden by `tokens.md` Naming rule.
 

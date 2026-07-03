@@ -91,11 +91,12 @@ Sign-in exception: `GlassSurface level="panel" animate={false}` — CRT wrapper 
 ## 4. Z-index Scale
 
 ```
-z-backdrop (-1)  z-base (0)  z-panel (10)  z-drawer (20)
-z-popover (30)   z-frame (40)  z-modal (50)  z-toast (60)
+z-backdrop (-2)  z-veil (-1)    z-base (0)     z-panel (10)
+z-chrome   (20)  z-drawer (25)  z-popover (30)
+z-overlay  (40)  z-modal  (41)  z-toast  (50)
 ```
 
-`ChatBubble` is always `z-base`. Radix manages `z-popover` (dropdown) and `z-modal` (Dialog). Header/footer are `z-frame`.
+`ChatBubble` is always `z-base`. Radix manages `z-popover` (dropdown) and `z-modal` (Dialog). Header/footer are `z-chrome` (migration alias: `z-frame`).
 
 ---
 

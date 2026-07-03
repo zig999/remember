@@ -1,19 +1,26 @@
 validation:
   domain: knowledge-graph
-  artifact_version: "1.5.0"
-  mode: incremental_back
+  artifact_version: "1.6.0"
+  mode: final_complete
   validated_by: u-spec-validator
-  timestamp: "2026-06-26T16:14:00Z"
+  timestamp: "2026-07-03T03:33:00Z"
   layer: permanent
   scope_note: >
-    knowledge-graph is OUT OF SCOPE for the current improvement (chat temporal-context
-    + ingestion received_at anchor). Validation confirms no spec changes needed.
-    Spec files validated: knowledge-graph.spec.md v1.2.0, knowledge-graph.back.md v1.5.0,
-    openapi.yaml v1.5.0.
+    Final complete validation (Mode 2) for the knowledge-graph domain under the P2.1
+    canonical error-code taxonomy requirement. Covers all validation layers: (1) coverage
+    map — all 11 UCs mapped to endpoints/BRs; (2) error code consistency — 14 codes
+    verified against global catalog, HTTP statuses consistent, no deprecated codes, all
+    namespaced; (3) orphan spec detection — no orphan BRs, no unmatched operationIds;
+    (4) cross-domain dependency validation — all 4 peer domains exist in domains/,
+    bidirectionality confirmed for query-retrieval, curation, compliance-audit;
+    (5) versioning — all three files consistently versioned for P2.1 (2026-07-02) with
+    matching changelogs and `p2-1-error-taxonomy` CR. Previous incremental_back validation
+    (2026-07-03T01:59:00Z) was VALID with 0 blocking and 1 warning; this final_complete
+    pass confirms that result and upgrades handoff_allowed to true.
 
 status: VALID
 blocking_count: 0
-warning_count: 1
+warning_count: 3
 handoff_allowed: true
 
 blocking_issues: []
@@ -23,10 +30,32 @@ warnings:
     type: coverage
     source: docs/specs/domains/knowledge-graph/back/knowledge-graph.back.md §5 Domain Events
     description: >
-      No domain events (EV) are declared. The spec explicitly states
-      "N/A -- no domain events in this version." This domain is READ-ONLY;
-      it observes writes by ingestion/curation/compliance purely through
-      the database. This is informational: per the skill rules, an EV without
-      a declared consumer is warning-level only. The absence of an event
-      section is consistent with the normative architecture (§2.2 "store único";
-      no event bus). No action required.
+      No domain events (EV) are declared. The spec explicitly states "N/A — no domain
+      events in this version." This domain is READ-ONLY; it observes writes performed by
+      ingestion/curation/compliance purely through the underlying tables and views.
+      Architecturally expected per the normative architecture (§2.2 "store único"; no event
+      bus). Per skill rules, EV without a declared consumer is warning-level only. Inherited
+      from prior validation runs. No action required.
+
+  - id: WARN-002
+    type: dependency
+    source: docs/specs/domains/knowledge-graph/knowledge-graph.spec.md §7
+    description: >
+      Cross-domain dependencies in §7 use shorthand domain names ("retrieval" and "compliance")
+      rather than the exact directory names used in docs/specs/domains/ ("query-retrieval" and
+      "compliance-audit"). The descriptions and context make the referents unambiguous. This is a
+      clarity issue only — no spec content is incorrect and no information is lost. The referenced
+      domains are confirmed to exist at their actual paths. No action required; consider aligning
+      the shorthand names in a future spec.md revision for precision.
+
+  - id: WARN-003
+    type: dependency
+    source: docs/specs/domains/knowledge-graph/knowledge-graph.spec.md §7
+    description: >
+      Three of the four peer domains listed in §7 have status: draft (ingestion v1.5.1,
+      curation v1.2.0, compliance-audit v1.2.0). Only query-retrieval v1.5.0 is approved.
+      The knowledge-graph domain itself is also draft (v1.3.0). Per Mode 2 step 4.2, approved
+      status on referenced domains is expected. Draft-on-draft is acceptable during active
+      development of a multi-domain system; no domain is formally blocked from referencing
+      another draft domain during the spec authoring phase. No action required until the project
+      transitions to a formal approval-gate workflow.

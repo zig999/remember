@@ -1,99 +1,184 @@
 # =============================================================================
 # sdd_compliance-compliance.yaml
 # Compliance scan output — u-spec-compliance
-# Domain: NodeDetailPanel (features/graph) — front component spec v2.0.0
+# Task: sdd_compliance | Attempt: 1
+# Domains scanned: ingestion, compliance-audit, query-retrieval, curation,
+#   knowledge-graph, chat (P2.1 error-code taxonomy wave)
 # Regulations: lgpd
-# Generated: 2026-06-26T23:28:00Z
-# Supersedes: previous sdd_compliance-compliance.yaml (chat/ingestion v2.9/v1.4.2)
-# Improvement cycle: NodeDetailPanel progressive-disclosure wave (v2.0.0)
+# Generated: 2026-07-03T03:26:00Z
 # =============================================================================
 
 scan:
-  id: CMP-20260626-232800
+  id: CMP-20260703-032600
   reviewed_by: u-spec-compliance
-  domain: NodeDetailPanel (features/graph)
-  spec_version: "2.0.0"
-  timestamp: "2026-06-26T23:28:00Z"
+  domain: P2.1 error-code taxonomy (all backend domains)
+  spec_version: "1.5.0"
+  timestamp: "2026-07-03T03:26:00Z"
   layer: permanent
   regulations_checked:
     - lgpd
 
-findings: []
+findings:
+  - id: CFND-001
+    regulation: lgpd
+    article_or_control: LGPD Art.46 (hardcoded PII in technical artifacts)
+    type: hardcoded_pii_in_spec_example
+    location:
+      file: docs/specs/domains/ingestion/openapi.yaml
+      section: "IngestRawInformationRequest example (content, metadata.author)"
+    gap_description: "The example: values in the IngestRawInformationRequest request body contain real-looking personal names ('João Silva e Maria Oliveira' in content, 'Maria Oliveira' in metadata.author) across multiple response examples."
+    action: add_warning
 
-verdict: compliant
+  - id: CFND-002
+    regulation: lgpd
+    article_or_control: LGPD Art.46 (hardcoded PII in technical artifacts)
+    type: hardcoded_pii_in_spec_example
+    location:
+      file: docs/specs/domains/compliance-audit/openapi.yaml
+      section: "ComplianceDeleteRequest reason field example (lines 501, 563, 626)"
+    gap_description: "The example: value for the reason field in compliance-delete request and response schemas contains a real-looking personal name ('João Silva') as the purported data subject."
+    action: add_warning
+
+  - id: CFND-003
+    regulation: lgpd
+    article_or_control: LGPD Art.46 (hardcoded PII in technical artifacts)
+    type: hardcoded_pii_in_spec_example
+    location:
+      file: docs/specs/domains/query-retrieval/openapi.yaml
+      section: "Fragment text and excerpt example values (lines 1040–1275)"
+    gap_description: "The example: values for fragment_text, excerpt, and text fields across multiple provenance walk response examples contain a real-looking personal name ('Maria Oliveira')."
+    action: add_warning
+
+  - id: CFND-004
+    regulation: lgpd
+    article_or_control: LGPD Art.6(III) (data classification — adequacy principle)
+    type: pii_field_undeclared
+    location:
+      file: docs/specs/domains/ingestion/openapi.yaml
+      section: "ProposeNodeInput schema — name field"
+    gap_description: "The name field in ProposeNodeInput matches the PII name pattern and stores human-entered entity names (including Person node names, which are personal data), but no data classification section exists anywhere in the ingestion spec artifacts."
+    required_spec_change: "Add a data classification section to ingestion.spec.md or ingestion.back.md that declares the name field as potentially containing personal data (node_type = Person) and references the compliance_delete erasure mechanism as the subject-rights path."
+    action: create_spec_cr
+
+verdict: compliant_with_crs
 
 # =============================================================================
-# Compliance scan notes — NodeDetailPanel v2.0.0 progressive-disclosure wave
+# Compliance scan notes — P2.1 error-code taxonomy wave (all backend domains)
 # =============================================================================
 #
-# LGPD rules evaluated against NodeDetailPanel.component.spec.md v2.0.0.
-# Scope: frontend component spec — read-only display of existing KG data.
+# SCOPE NOTE
+#
+# This scan covers the six backend domains updated in the P2.1 wave (error-code
+# taxonomy unification): ingestion (v1.5.0 / back v1.6.1), compliance-audit
+# (v1.2.0 / back v1.4.0), knowledge-graph (v1.6.0 / back v1.5.0), curation
+# (v1.2.0 / back v1.4.0), query-retrieval (v1.2.0 / back v1.2.0), chat (v2.6.0
+# / back v2.6.0). The global error-codes.md was updated to declare the canonical
+# namespaced taxonomy (P2.1 landing artifact). No new PII-collecting endpoints,
+# no new personal-data fields, and no new audit-trail gaps were introduced by P2.1
+# itself — the findings below are structural gaps that pre-date P2.1 and were
+# surfaced for the first time on this pass.
 #
 # ── SINGLE-OWNER MODEL NOTE ──
 #
-# The system is single-owner by specification (v7 §2.3, A20). The Owner is both
-# the operator and the sole data subject. LGPD obligations relating to third-party
-# personal data processing do not arise. This note applies to all rules below.
+# The system is single-owner by specification (v7 §2.3, A20 — "Projeto pessoal,
+# single-owner por especificação"). The operator is the data owner and also the
+# primary data subject for data that belongs to the operator. LGPD obligations
+# for third-party data-subject rights (consent, erasure requests FROM the data
+# subject, etc.) are structurally declared as out of scope by the normative source.
+# The compliance_delete operation (compliance-audit UC-01) IS the controlled
+# erasure mechanism mandated by §11 of the normative source for LGPD Art.18(VI).
+# Rules that presuppose a multi-subject model (missing_consent_mechanism,
+# missing_right_to_erasure as user-account-deletion UC) are evaluated but do not
+# produce findings because the spec structurally excludes those scenarios — there
+# is no User entity and no multi-subject ingestion path.
 #
 # ── RULE: missing_data_retention_policy ──
 #
-# PASS — The component is entirely read-only (GET endpoints only: getNodeById,
-# traverseNode depth=1, getProvenanceByLink, getProvenanceByAttribute). No new
-# personal-data columns are created or stored. Data retention is governed by the
-# ingestion and compliance-audit domain specs already cleared in prior scans.
+# PASS — The spec does not declare a time-based retention period for any field.
+# However, §11 of the normative source mandates the compliance_delete erasure
+# mechanism for every personal-data field (content, original_input, derived
+# fragments and graph links/attributes). The absence of a time-based auto-expiry
+# policy is a single-owner design decision (the operator self-manages retention
+# via compliance_delete on demand); no structural BR declaring a retention window
+# is required by the spec. No finding raised on this rule for this domain set.
 #
 # ── RULE: missing_consent_mechanism ──
 #
-# PASS — The component does not collect personal data. It reads and displays
-# existing KG data to the single-owner operator. No consent mechanism is required.
+# PASS — The single-owner model (§2.3, A20) means the operator is both data
+# controller and primary data subject; no consent-registration BR is required.
+# Third-party personal data (e.g., names of persons mentioned in ingested
+# documents) is processed under the legitimate-interest basis for a personal
+# knowledge repository. No UC collects personal data FROM an external data subject.
+# No finding raised.
 #
 # ── RULE: missing_audit_log ──
 #
-# PASS — All three phases (A/B/C) are read-only. The detection rule applies only
-# to endpoints that create, modify, or delete sensitive data. No write operation
-# is introduced by this spec.
+# PASS — Every endpoint that creates, modifies, or deletes sensitive data has a
+# corresponding audit-trail BR:
+#   - ingestion propose-* operations → ToolCall rows (BR-23, ingestion.back.md).
+#   - curation operations (resolve_entity_match, merge_nodes, resolve_dispute,
+#     confirm_item, reject_item, correct_item) → CurationAction rows (compliance-
+#     audit domain, BR-08).
+#   - compliance_delete → ComplianceDeletion + CurationAction rows (compliance-
+#     audit UC-01, BR-02, BR-08).
+# No endpoint creating, modifying, or deleting sensitive data lacks an audit BR.
 #
 # ── RULE: pii_field_undeclared ──
 #
-# PASS — Field names present in the spec's data layer:
-#   received_at, fragment_text, source_type, source_label, chunk_index,
-#   offset_start, offset_end, excerpt, canonical_name, confidence, valid_from,
-#   valid_to, effective_status, metadata.title, metadata.document_date.
-# None of these field names match the PII pattern list
-# (email, name, phone, cpf, address, birth_date, ip_address).
-# "canonical_name" contains "name" as a suffix; per the detection rule and
-# consistent with the prior scan (CFND-001 rationale), "canonical_name" is a
-# KG entity identifier, not a personal-data field. No gap.
+# FINDING CFND-004 — ingestion/openapi.yaml ProposeNodeInput.name
+# The field name is exactly "name" (matches PII name pattern per detection
+# taxonomy). The field stores human-entered entity names, which for node_type =
+# "Person" are personal data (person names). No data classification section
+# exists in the ingestion spec artifacts. Required action: create_spec_cr to add
+# a data classification note to ingestion.spec.md or ingestion.back.md.
+#
+# NOT FLAGGED — knowledge-graph/openapi.yaml NodeType.name / LinkType.name
+# These fields store system-catalog type names (e.g., "Project", "participates_in")
+# that are migration-defined constants, not human-entered personal data. The "name"
+# pattern match is a false positive in this context — the values are always enum
+# members of §15 catalog, never personal data. Consistent with the prior scan
+# note: "KG entity identifier, not a personal-data field."
 #
 # ── RULE: missing_right_to_erasure ──
 #
-# PASS — No new erasure surface is introduced. The spec explicitly handles the
-# compliance-delete tombstone state: §3 "Success — lazy provenance tombstoned"
-# and §7 Scenario 4 document the 410 BUSINESS_RAW_INFORMATION_DELETED response
-# mapping to "Documento original removido por conformidade." with no retry
-# button, indicating that the UI correctly surfaces the erasure outcome without
-# attempting to bypass it.
+# PASS — compliance_delete (compliance-audit UC-01) is the structured right-to-
+# erasure mechanism. It tombstones RawInformation.content (BR-04), cascades
+# status='deleted' to derived rows (BR-06, BR-07), and covers the new
+# original_input column added in v1.5.0 (ingestion.back.md BR-34). No user-
+# account-deletion UC exists (single-owner, no User entity). No finding raised.
 #
 # ── RULE: missing_data_minimization ──
 #
-# PASS — Phase C provenance data is fetched lazily (enabled gate on TanStack
-# Query — only fires when the user explicitly expands "Ver origem completa").
-# No pre-fetching of provenance occurs on mount, consistent with the Do/Don't
-# table in §6. No excess data is collected beyond what the user requests.
+# PASS — No UC or BR collects fields beyond the declared purpose (knowledge
+# extraction and graph construction). The new original_input column (ingestion
+# v1.5.0) captures verbatim chat-turn input solely for provenance traceability
+# (a declared system purpose per §13 / §18 / "rastreabilidade" principle). No
+# excess data is collected.
 #
 # ── RULE: hardcoded_pii_in_spec_example ──
 #
-# PASS — This is a component spec, not an OpenAPI schema file; the detection
-# rule applies to example: values in OpenAPI schemas. The BDD scenario text
-# in §7 uses "Rodrigo" and "Apollo" as illustrative node labels in scenario
-# prose, not in OpenAPI example: fields. No OpenAPI example: field is present
-# in this file. No finding raised.
-# (Advisory note: "Rodrigo" as a scenario label name is consistent with the
-# same name used in existing graph BDD tests and is informational only.)
+# FINDINGS CFND-001 / CFND-002 / CFND-003 — three domains
+# Real-looking personal names appear in example: values in ingestion, compliance-
+# audit, and query-retrieval OpenAPI schemas. These are add_warning findings —
+# advisory, not blocking. The prior scan (compliance-report.yaml) flagged ingestion
+# and compliance-audit (W-01, W-02); query-retrieval was missed. CFND-003 is a
+# newly surfaced finding for query-retrieval. All three remain unfixed in the
+# P2.1 wave.
+#
+# ── P2.1 SPECIFIC NOTE ──
+#
+# The P2.1 error-code taxonomy change itself introduces NO new LGPD structural
+# gaps. The change is a pure wire-code rename (deprecated §14 short codes →
+# namespaced codes) with no new personal-data fields, no new endpoints, no schema
+# changes (beyond original_input which pre-dates P2.1 proper), and no audit-trail
+# regressions. The byte-identical REST↔MCP parity contracts enforced by BR-14
+# (compliance-audit), BR-32 (curation), TC-04 (knowledge-graph), and the new
+# ingestion parity assertion are compliance-positive: they ensure audit records
+# contain the same error codes regardless of transport.
 #
 # ── VERDICT ──
 #
-# The NodeDetailPanel v2.0.0 spec introduces no new LGPD structural gaps.
-# The component is read-only, single-owner, handles compliance-deleted tombstones
-# correctly, and introduces no new personal-data collection, consent requirements,
-# or audit obligations. Verdict: compliant (no findings).
+# compliant_with_crs: three add_warning findings (unfixed PII in examples — pre-
+# existing, not introduced by P2.1) plus one create_spec_cr (CFND-004, pii_field_
+# undeclared for ProposeNodeInput.name — add a data classification note). Handoff
+# is not blocked. CRs must be opened before the next compliance scan.

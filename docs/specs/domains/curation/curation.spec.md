@@ -1,9 +1,9 @@
 # Curation -- Business Specification
 
-> Version: 1.1.0 | Status: draft | Layer: permanent
+> Version: 1.2.0 | Status: draft | Layer: permanent
 > Technical contract: `openapi.yaml`
 > Source of truth: `/remember-modelagem-v7.md` (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4 + ADRs A20, A26, A28, A29 + acceptance scenarios C5, C9, C13, C14)
-> Schema reference: `/migrations/0001_schema.sql` (tables `curation_action`, `entity_match_review`, `knowledge_node`, `knowledge_link`, `node_attribute`)
+> Schema reference: `/migrations/0001_init.sql` (tables `curation_action`, `entity_match_review`, `knowledge_node`, `knowledge_link`, `node_attribute`)
 
 ---
 
@@ -299,6 +299,32 @@
 
 ---
 
+### UC-11 -- Read calibration metrics for the feedback loop
+
+**Actor:** Owner | **Pre:** Owner is authenticated. | **Post:** Owner receives a coherent snapshot of the section 16 calibration aggregates stamped by a single `computed_at` timestamp; NO database writes occur; NO row is mutated.
+
+**Main flow:**
+1. Owner calls `GET /api/v1/curation/metrics` (no query parameters, no body).
+2. BFF middleware validates the JWT (BR-21).
+3. Service layer opens ONE read transaction so all counts are mutually coherent (single snapshot) and computes:
+   - `accept_rate` and `reject_rate_by_code` -- aggregated from `curation_action` rows (the `action` and the validation outcome / error code recorded by the layered validation, section 13).
+   - `needs_review_count` -- count of `knowledge_node` rows with `status = 'needs_review'` (section 4.3).
+   - `uncertain_count`, `disputed_count` -- counts from the resolved views (`knowledge_link_resolved`, `node_attribute_resolved`) where `effective_status` is `uncertain` / `disputed` (sections 5.4, 6.6). Display flags -- surfaced here as calibration signal even though they have NO dedicated queue (BR-14).
+   - `entity_match_queue_count`, `disputed_queue_count` -- sizes of the two dedicated review queues (section 10.1).
+4. Service layer stamps `computed_at` with the BFF-side wall clock at the moment the aggregates were computed.
+5. BFF returns `200` with `CurationMetricsResponse`.
+
+**Alternative flows:**
+- `2a` Missing `Authorization` header -> 401 `AUTH_UNAUTHORIZED`.
+- `2b` JWT malformed / signature invalid -> 401 `AUTH_TOKEN_INVALID`.
+- `2c` JWT expired -> 401 `AUTH_TOKEN_EXPIRED`.
+- `5a` Neon database unavailable / timed out -> 503 `SYSTEM_SERVICE_UNAVAILABLE`. Per front spec R1 the SPA `MetricsStrip` MUST tolerate 503 here and fall back to per-kind totals from `listReviewQueue` -- this endpoint is advisory (BR-23) and never blocks the curadoria screen.
+- `5b` Unexpected internal error -> 500 `SYSTEM_INTERNAL_ERROR`.
+
+**Related endpoint:** operationId: `getCurationMetrics`
+
+---
+
 ## 4. Business Rules
 
 > Each BR is programmatically testable. All BRs reference at least one UC.
@@ -385,7 +411,7 @@ Per section 6.5 (corroboration vs. ad-hoc confirmation). Corroboration (automati
 
 Per ADR A26 / section 10.1. The `query-retrieval` domain returns these as `flags[]` on read; this domain does NOT expose them as queue items. The ad-hoc escape for `uncertain` is `confirm_item` (UC-08); for `low_confidence` there is NO direct curator endpoint (the underlying fragment stays `proposed` and the row was never created -- section 6.6).
 
-**Tied to:** UC-01, UC-08.
+**Tied to:** UC-01, UC-08, UC-11.
 
 ### BR-15 -- Date justification chain on `correct_item`
 
@@ -427,13 +453,21 @@ Per ADR A11 / section 4.5 / section 6.5. The duplicate-guard partial unique inde
 
 Every endpoint in this domain is closed behind `bearerAuth` (Neon Auth -- Stack Auth). The middleware verifies the JWT BEFORE any database access against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default). Missing / invalid / expired tokens map to `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED` (401). Neon Auth credentials live in environment variables on the BFF only; PostgreSQL RLS is disabled at the database level (the Neon connection uses a non-RLS application role).
 
-**Tied to:** UC-01 through UC-10.
+**Tied to:** UC-01 through UC-11.
 
 ### BR-22 -- Deleted nodes return 410 on `resolveEntityMatch`
 
 When the path-parameter `node_id` references a `KnowledgeNode` whose `status = 'deleted'` (tombstoned by the `compliance-audit` cascade -- section 11), the endpoint returns 410 `BUSINESS_NODE_DELETED`. This matches the behavior of the `knowledge-graph` read endpoints (knowledge-graph BR-14 / `getNodeById`). The same code is reused; no duplicate registration.
 
 **Tied to:** UC-02, UC-03.
+
+---
+
+### BR-23 -- Metrics endpoint is advisory and read-only
+
+`getCurationMetrics` (UC-11) is a pure read: it MUST NOT mutate any row, MUST NOT write to `curation_action`, and MUST NOT require any schema migration -- every field is derived from existing tables and resolved views. Per front spec R1 (`docs/specs/front/features/curadoria.feature.spec.md` section 1), the SPA `MetricsStrip` treats a 503 response here as recoverable: it falls back to per-kind totals computed from `listReviewQueue`. Failure to reach this endpoint MUST NEVER cascade to a failure of the curadoria screen.
+
+**Tied to:** UC-11.
 
 ---
 
@@ -590,3 +624,4 @@ When the path-parameter `node_id` references a `KnowledgeNode` whose `status = '
 |---------|------|--------|------|-------------|----|
 | 1.0.0 | 2026-06-11 | Spec Writer | initial | Initial business spec for the curation domain. Forward-generated from remember-modelagem-v7.md (sections 1, 2.3, 2.5, 3.5, 4.3, 4.4, 6.5, 6.6, 10, 14.4) and migrations/0001_schema.sql. Covers review-queue listing, entity-match resolution, direct node merge, dispute resolution (prefer_one / adjust_periods / keep_disputed), ad-hoc item actions (confirm / reject / correct). Cross-domain split with `compliance-audit`: `compliance_delete` execution and `CurationAction`/`ComplianceDeletion` reads are owned by `compliance-audit`; this domain writes `CurationAction` rows transactionally and exposes the id as `action_id`. | -- |
 | 1.1.0 | 2026-06-12 | Spec Writer | update | Infrastructure migration: Supabase Auth replaced by Neon Auth (Stack Auth) as the identity provider for both Owner (SPA) and LLM (MCP) actors. JWT is now validated against the Neon Auth JWKS endpoint (`${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA by default) in the BFF middleware. BR-21 rewritten accordingly; §2 actor row, §6 error-behavior table ("Database timeout against Neon"), and §7 cross-domain `auth` row updated to reflect Neon Auth. Underlying Postgres moves from Supabase Cloud to Neon (managed Postgres) -- schema unchanged; no migration required. Single-owner model (ADR A20) is preserved; no `User` entity introduced. No new error codes; no UC contracts changed. | infra-migrate-neon |
+| 1.2.0 | 2026-07-02 | Spec Writer | update | Documented the calibration metrics endpoint end-to-end: added UC-11 (`getCurationMetrics`) with success flow (200 snapshot from a single read transaction), auth failures (401 `AUTH_UNAUTHORIZED` / `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`), and system failures (503 `SYSTEM_SERVICE_UNAVAILABLE`, 500 `SYSTEM_INTERNAL_ERROR`). Added BR-23 stating the metrics endpoint is advisory and read-only, matching the front spec R1 graceful-degradation contract. BR-14 and BR-21 tied-to lists extended to UC-11. Aligned OpenAPI: bumped `info.version` to 1.2.0 to reflect the P2.1 error-code taxonomy already applied (`AUTH_*`, `RESOURCE_*`, `SYSTEM_*`, `BUSINESS_*`, `VALIDATION_*`) plus this doc catch-up, and added the missing 422 response on `confirmItem` (`VALIDATION_REQUIRED_FIELD` / `VALIDATION_INVALID_FORMAT`) so the operation is consistent with the rest of the domain. No behavior change; no new error codes registered. | curation-spec-repair |

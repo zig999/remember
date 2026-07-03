@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.7.0"
+  version: "2.8.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -21,6 +21,49 @@ info:
     write path `ingest_directed` invokes the audited ingestion pipeline
     DETERMINISTICALLY — no server-side LLM — by composing the four `propose_*`
     handlers, NEVER raw SQL).
+
+    ## v2.8.0 — P2.1 error-taxonomy unification (informational — no wire change on chat)
+
+    Owner decision (option (a) — promote NAMESPACED as the sole vocabulary).
+    Historical context: two error vocabularies coexisted on the BFF —
+    (i) NAMESPACED (`AUTH_*`, `VALIDATION_*`, `RESOURCE_*`, `BUSINESS_*`,
+    `SYSTEM_*`) used by `knowledge-graph`, `query-retrieval`, `curation`, and
+    the REST surface of `compliance-audit`; and (ii) the short §14 form
+    (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`, `RULE_VIOLATION`,
+    `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`) used
+    by `ingestion` (both transports) and by the MCP transport of
+    `compliance-audit`. The short vocabulary is now DEPRECATED across the
+    BFF; every domain — including the `ingest_directed` handler consumed
+    by chat — emits namespaced codes on both REST and MCP.
+
+    Effect on the chat surface:
+      1. Chat's own REST envelope was ALREADY fully namespaced (v2.0.0
+         onwards) — every 4xx/5xx pre-stream response and every SSE `error`
+         terminal frame emits a namespaced code (`AUTH_*` / `VALIDATION_*` /
+         `RESOURCE_*` / `BUSINESS_*` / `SYSTEM_*`). No REST or SSE-terminal
+         wire change lands with v2.8.0.
+      2. Chat FORWARDS the `ingest_directed` envelope verbatim through the
+         SSE `tool_result` content block (BR-07 / BR-43 v2.6). Under P2.1
+         that forwarded `error.code` is now namespaced — the descriptive
+         rows in `chat.spec.md` §6 that used to reference
+         `STRUCTURAL_INVALID` are updated to reference
+         `VALIDATION_INVALID_FORMAT` (Zod parse failure / structural
+         rejection of the directed payload / `node_id` pin lookup failure /
+         `ingestRawInformation` layered-validation rejection). The wire
+         shape of the `tool_result` content block is UNCHANGED — only the
+         `error.code` string value that the ingestion handler emits changes,
+         inherited from `ingestion.back.md` P2.1.
+      3. No new error code is registered by chat. No REST/SSE schema
+         change. No migration. No new env var. No new endpoint.
+
+    Downstream reconciliation: this domain does NOT own the mapping table.
+    The canonical §14→namespaced mapping is published in
+    `docs/specs/_global/error-codes.md` alongside the P2.1 emenda; the code
+    seam (`shared/error-mapping.ts`) becomes the single registry and the
+    per-error `code`/`mcpCode` pair (formerly on
+    `compliance-audit/service/errors.ts`, BR-15) is retired. Chat's REST↔MCP
+    parity is unaffected — chat exposes only REST and forwards MCP tool
+    envelopes verbatim.
 
     ## v2.6.0 — Directed ingestion REPLACES async ingestion (breaking, feature-flagged)
 
@@ -1321,17 +1364,27 @@ components:
         id:
           type: string
           format: uuid
+          description: "UUID of the conversation (server-assigned)."
           example: "11111111-1111-1111-1111-111111111111"
         title:
           type: string
           nullable: true
           minLength: 1
           maxLength: 200
+          description: |
+            Optional display title (1–200 chars). Null when not set. When
+            `CHAT_TITLE_ENABLED=true`, auto-distilled after the first assistant
+            turn (BR-34). Set or cleared via `updateConversation`.
           example: "Reuniao Apollo"
         archived_at:
           type: string
           format: date-time
           nullable: true
+          description: |
+            RFC3339 timestamp when the conversation was archived, or null when
+            active. Archived conversations reject writes (`sendMessage`,
+            `cancelTurn`) with 409 `BUSINESS_CONVERSATION_ARCHIVED` (BR-25).
+            Un-archive via `PATCH { "archived_at": null }`.
           example: null
         summary_rolling:
           type: string
@@ -1353,10 +1406,12 @@ components:
         created_at:
           type: string
           format: date-time
+          description: "RFC3339 timestamp when the conversation was created (server-assigned, immutable)."
           example: "2026-06-20T12:00:00Z"
         updated_at:
           type: string
           format: date-time
+          description: "RFC3339 timestamp when the conversation row was last modified (bumped by `set_updated_at` trigger on title, archived_at, or summary_rolling changes)."
           example: "2026-06-20T12:00:00Z"
 
     CreateConversationRequest:
@@ -1366,7 +1421,7 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-          description: "Optional title. When omitted, may be auto-distilled (BR-34)."
+          description: "Optional title. When omitted and `CHAT_TITLE_ENABLED=true`, auto-distilled after the first assistant turn (BR-34)."
           example: "Reuniao Apollo"
 
     UpdateConversationRequest:

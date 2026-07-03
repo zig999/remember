@@ -1,175 +1,117 @@
-# Validation Report — Chat Domain (Back Phase)
+# Validation Report — chat domain (P2.1 final complete)
 
 > Triage: COMPLETED
-> Date: 2026-06-25
-> Mode: incremental_back
-> Requirement: Substituir a ingestão assíncrona do chat por ingestão direcionada síncrona (`ingest_directed`). Chat expõe `ingest_directed` (gated por CHAT_INGEST_ENABLED). Sem migração de banco.
+> Date: 2026-07-03 | Domain: chat | Mode: final_complete | Attempt: 3
+> Validated artifacts: openapi.yaml v2.8.0, chat.spec.md v2.8.2, back/chat.back.md v2.10.1
+> Requirement: P2.1 — Unify BFF error-code taxonomy under canonical NAMESPACED vocabulary
 
 ## Result: VALID
 
-No blocking inconsistencies found. 2 warnings (non-blocking, documented below).
+0 blocking inconsistencies. 0 warnings.
+Handoff is ALLOWED.
 
----
-
-## Artifacts Validated
-
-| File | Version | Status |
-|------|---------|--------|
-| `docs/specs/domains/chat/chat.spec.md` | 2.4.0 | ✓ |
-| `docs/specs/domains/chat/openapi.yaml` | 2.6.0 | ✓ |
-| `docs/specs/domains/chat/back/chat.back.md` | 2.8.0 | ✓ |
-| `docs/specs/_global/error-codes.md` | — | ✓ |
+**Repair summary (attempt 3 — final pass):**
+Both previously known issues are confirmed RESOLVED in chat.back.md v2.10.1:
+- ISSUE-001 (chat.back.md §1 Testing item (xviii) used `STRUCTURAL_INVALID`): FIXED — item (xviii) now uses `VALIDATION_INVALID_FORMAT` as the canonical code throughout; `STRUCTURAL_INVALID` appears only in the historical parenthetical note "(P2.1 canonical; pre-P2.1 short-form was `STRUCTURAL_INVALID`)" which is contextual, not normative.
+- WARN-001 (item (xxv) had a stale positive assertion on `start_async_ingestion`): FIXED — item (xxv) now carries an explicit **negative assertion** that `start_async_ingestion` MUST NOT appear as a key in the resolved catalog on EITHER branch of `CHAT_INGEST_ENABLED`, labelled as "WARN-001 of chat-validation.md 2026-07-03".
 
 ---
 
 ## Coverage Map
 
-| UC | Endpoint / Surface | BRs in back.md | Error Codes | Status |
-|----|-------------------|----------------|-------------|--------|
-| UC-01 | POST /conversations | BR-30, BR-22 | `VALIDATION_INVALID_FORMAT`, `AUTH_*` | ✓ Complete |
-| UC-02 | POST /conversations/:id/messages (SSE) | BR-01..BR-24, BR-26..BR-29, BR-31, BR-32 | All mapped in §6 of spec.md | ✓ Complete |
-| UC-03 | sendMessage (max iterations) | BR-15 | — | ✓ Complete |
-| UC-04 | GET/PATCH/DELETE /conversations[/:id] | BR-22, BR-25, BR-35, BR-36, BR-37 | `RESOURCE_NOT_FOUND`, `VALIDATION_*` | ✓ Complete |
-| UC-05 | sendMessage (turn timeout) | BR-16 | — | ✓ Complete |
-| UC-06 | POST /conversations/:id/cancel | BR-12, BR-38 | `RESOURCE_NOT_FOUND`, `BUSINESS_CONVERSATION_ARCHIVED` | ✓ Complete |
-| UC-07 | sendMessage (idempotent replay) | BR-27 | `BUSINESS_IDEMPOTENCY_MISMATCH`, `BUSINESS_TURN_IN_PROGRESS` | ✓ Complete |
-| UC-08 | GET /conversations/:id/messages + /usage | BR-39, BR-40 | `RESOURCE_NOT_FOUND` | ✓ Complete |
-| UC-09 | Kill-switch (CHAT_ENABLED=false) | BR-14 | `BUSINESS_CHAT_DISABLED` | ✓ Complete |
-| UC-10 | sendMessage (ingest_directed, CHAT_INGEST_ENABLED=true) | BR-05, BR-06, BR-07, BR-09, BR-13, BR-17, BR-18, BR-29, BR-32, BR-43, BR-44 | `STRUCTURAL_INVALID`, `SYSTEM_SERVICE_UNAVAILABLE` | ✓ Complete |
-| UC-11 | RETIRED — placeholder present in chat.spec.md §3 | BR-45 (retired marker) | — | ✓ Retired correctly |
+| UC | Endpoint (openapi.yaml) | BRs (chat.back.md) | Error codes |
+|----|-------------------------|--------------------|-------------|
+| UC-01 | POST /api/v1/conversations (`createConversation`) | BR-30 | `VALIDATION_INVALID_FORMAT`, `AUTH_*` |
+| UC-02 | POST /api/v1/conversations/{id}/messages (`sendMessage`) | BR-01, BR-04, BR-06–BR-16, BR-18–BR-23, BR-25–BR-29, BR-31–BR-33, BR-43, BR-47 | `VALIDATION_INVALID_FORMAT`, `VALIDATION_REQUIRED_FIELD`, `AUTH_*`, `RESOURCE_NOT_FOUND`, `BUSINESS_CONVERSATION_ARCHIVED`, `BUSINESS_TURN_IN_PROGRESS`, `BUSINESS_IDEMPOTENCY_MISMATCH`, `BUSINESS_CHAT_DISABLED`, `BUSINESS_CHAT_PROVIDER_UNAVAILABLE`, `SYSTEM_INTERNAL_ERROR`, `SYSTEM_SERVICE_UNAVAILABLE`, `VALIDATION_INVALID_FORMAT` (ingest_directed) |
+| UC-03 | POST /api/v1/conversations/{id}/messages | BR-15 | n/a (done frame) |
+| UC-04 | GET/PATCH/DELETE /api/v1/conversations, GET /api/v1/conversations/{id} | BR-35, BR-36, BR-37 | `VALIDATION_INVALID_FORMAT`, `VALIDATION_REQUIRED_FIELD`, `AUTH_*`, `RESOURCE_NOT_FOUND` |
+| UC-05 | POST /api/v1/conversations/{id}/messages | BR-16 | n/a (done frame) |
+| UC-06 | POST /api/v1/conversations/{id}/cancel (`cancelTurn`) | BR-12, BR-38 | `RESOURCE_NOT_FOUND`, `BUSINESS_CONVERSATION_ARCHIVED` |
+| UC-07 | POST /api/v1/conversations/{id}/messages | BR-27 | `BUSINESS_IDEMPOTENCY_MISMATCH`, `BUSINESS_TURN_IN_PROGRESS` |
+| UC-08 | GET /api/v1/conversations/{id}/messages, GET /api/v1/conversations/{id}/usage | BR-39, BR-40 | `RESOURCE_NOT_FOUND`, `VALIDATION_INVALID_FORMAT` |
+| UC-09 | All chat endpoints | BR-14 | `BUSINESS_CHAT_DISABLED` |
+| UC-10 | POST /api/v1/conversations/{id}/messages (SSE tool dispatch — `ingest_directed`) | BR-43, BR-44 | `VALIDATION_INVALID_FORMAT` (ingest_directed Zod fail / pin-not-found), `SYSTEM_SERVICE_UNAVAILABLE` (pg down), `SYSTEM_INTERNAL_ERROR` |
+| UC-12 (graph-view get) | GET /api/v1/conversations/{id}/graph (`getConversationGraphView`) | BR-42 | `RESOURCE_NOT_FOUND`, `AUTH_*`, `BUSINESS_CHAT_DISABLED` |
+| UC-13 (graph-view put) | PUT /api/v1/conversations/{id}/graph (`saveConversationGraphView`) | BR-42 | `VALIDATION_INVALID_FORMAT`, `RESOURCE_NOT_FOUND`, `AUTH_*`, `BUSINESS_CHAT_DISABLED` |
 
 ---
 
-## Check 1: Retired Tools — No References to `start_async_ingestion` or `get_ingestion_status` in Active Tool Catalog
+## Error Code Consistency Check
 
-| Check | Verdict |
-|-------|---------|
-| `start_async_ingestion` absent from chat catalog (openapi.yaml ToolStartEvent enum) | ✓ PASS — enum lists 13 query tools + `ingest_directed` only |
-| `get_ingestion_status` absent from chat catalog (openapi.yaml ToolStartEvent enum) | ✓ PASS — not present in the enum |
-| `start_async_ingestion` absent from chat.spec.md BR-05 (active catalog) | ✓ PASS — BR-05 v2.6 documents 13 + (0\|1) `ingest_directed` |
-| `get_ingestion_status` absent from chat.spec.md BR-05 (active catalog) | ✓ PASS — RETIRED via BR-45 v2.6 |
-| `start_async_ingestion` absent from chat.back.md BR-05 (active catalog) | ✓ PASS — BR-05 v2.8 documents 13 + (0\|1) `ingest_directed` |
-| `get_ingestion_status` absent from chat.back.md BR-05 (active catalog) | ✓ PASS — RETIRED via BR-45 v2.8 |
-| Retired names preserved in changelog for traceability | ✓ PASS — v2.3.0 changelog entry in spec.md; v2.4 header in back.md; historical block in openapi.yaml description |
+All error codes used in the three files were verified against `docs/specs/_global/error-codes.md`:
 
----
+| error.code | Catalog HTTP | openapi.yaml | chat.spec.md | chat.back.md | Status |
+|------------|-------------|--------------|--------------|--------------|--------|
+| `VALIDATION_INVALID_FORMAT` | 422 | 422 ✓ | 422 ✓ | 422 ✓ | OK |
+| `VALIDATION_REQUIRED_FIELD` | 422 | 422 ✓ | 422 ✓ | 422 ✓ | OK |
+| `AUTH_UNAUTHORIZED` | 401 | 401 ✓ | 401 ✓ | 401 ✓ | OK |
+| `AUTH_TOKEN_EXPIRED` | 401 | 401 ✓ | 401 ✓ | 401 ✓ | OK |
+| `AUTH_TOKEN_INVALID` | 401 | 401 ✓ | 401 ✓ | 401 ✓ | OK |
+| `RESOURCE_NOT_FOUND` | 404 | 404 ✓ | 404 ✓ | 404 ✓ | OK |
+| `BUSINESS_CONVERSATION_ARCHIVED` | 409 | 409 ✓ | 409 ✓ | 409 ✓ | OK |
+| `BUSINESS_IDEMPOTENCY_MISMATCH` | 409 | 409 ✓ | 409 ✓ | 409 ✓ | OK |
+| `BUSINESS_TURN_IN_PROGRESS` | 409 | 409 ✓ | 409 ✓ | 409 ✓ | OK |
+| `BUSINESS_CHAT_DISABLED` | 503 | 503 ✓ | 503 ✓ | 503 ✓ | OK |
+| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | 503 | 503 ✓ | 503 ✓ | 503 ✓ | OK |
+| `BUSINESS_CHAT_INGEST_DISABLED` | 503 | 503 ✓ | — | 503 ✓ | OK (reserved, not emitted at runtime) |
+| `SYSTEM_INTERNAL_ERROR` | 500 | 500 ✓ | — (in-stream) | — (in-stream) | OK |
+| `SYSTEM_SERVICE_UNAVAILABLE` | 503 | — (not a terminal SSE code) | tool_result ✓ | tool_result ✓ | OK (non-terminal, correct) |
 
-## Check 2: `ingest_directed` Consistency Across All Three Files
+**Deprecated codes in active normative positions:** None detected.
 
-| Aspect | chat.spec.md (v2.4.0) | chat.back.md (v2.8.0) | openapi.yaml (v2.6.0) | Verdict |
-|--------|----------------------|----------------------|----------------------|---------|
-| Tool name | `ingest_directed` | `ingest_directed` | `ingest_directed` (in ToolStartEvent enum) | ✓ PASS |
-| Gating flag | `CHAT_INGEST_ENABLED` (default `false`) — BR-44 v2.6 | `CHAT_INGEST_ENABLED` (default `false`) — BR-44 v2.8 | Documented in endpoint description + ChatUnavailable examples | ✓ PASS |
-| Deterministic / no server-side LLM | Stated in UC-10, BR-43, BR-06 | Stated in BR-43 v2.8 step 2, BR-06 v2.8 | Stated in `/info` description | ✓ PASS |
-| Catalog cardinality | 13 + (0\|1) = max 14 tools | 13 + (0\|1) = max 14 tools | Max 14 (via description + ToolStartEvent enum with 14 entries) | ✓ PASS |
-| `ingest_directed` registered on `ingest` toolset | ✓ BR-05 v2.6 | ✓ BR-05 v2.8 | ✓ description references `POST /api/v1/mcp/ingest` | ✓ PASS |
-| Synchronous return + per-item report | ✓ UC-10 steps 4e, BR-43 v2.6 step 5 | ✓ BR-43 v2.8 step 3 | ✓ SSE example shows `tool_result` + `done` without async polling | ✓ PASS |
-| Confidence forced to 1.0 server-side | ✓ BR-43 v2.6 (decision 2) | ✓ BR-43 v2.8 step 1 | ✓ openapi description states "confidence forced to 1.0" | ✓ PASS |
-| `node_id` PIN bypass | ✓ BR-43 v2.6 (decision 1) | ✓ BR-43 v2.8 step 1 | ✓ description mentions pin | ✓ PASS |
-| Re-assertion uniqueness (timestamp/nonce) | ✓ BR-43 v2.6 (decision 3) | ✓ BR-43 v2.8 step 2 | ✓ description mentions nonce | ✓ PASS |
+All occurrences of `STRUCTURAL_INVALID` in the three files are confined to:
+- Historical annotations in deviation notes (chat.back.md lines 19, 24, 1672) explaining pre-fix behaviour
+- Parenthetical "pre-P2.1 short-form was `STRUCTURAL_INVALID`" contextual notes in BRs and test items
+- Changelog entries describing what changed in v2.8.0/v2.10.0/v2.10.1
+- The informational v2.8.0 description block in openapi.yaml (lines 32–33, 49)
 
----
-
-## Check 3: Error Codes in Global Catalog
-
-| Error Code | Used In | Present in global catalog | HTTP Status | Verdict |
-|-----------|---------|--------------------------|-------------|---------|
-| `VALIDATION_INVALID_FORMAT` | chat.spec.md §6, openapi.yaml | ✓ | 422 | ✓ PASS |
-| `VALIDATION_REQUIRED_FIELD` | chat.spec.md §6, openapi.yaml | ✓ | 422 | ✓ PASS |
-| `AUTH_UNAUTHORIZED` | chat.spec.md §6, openapi.yaml | ✓ | 401 | ✓ PASS |
-| `AUTH_TOKEN_EXPIRED` | chat.spec.md §6, openapi.yaml | ✓ | 401 | ✓ PASS |
-| `AUTH_TOKEN_INVALID` | chat.spec.md §6, openapi.yaml | ✓ | 401 | ✓ PASS |
-| `RESOURCE_NOT_FOUND` | chat.spec.md §6, openapi.yaml | ✓ | 404 | ✓ PASS |
-| `BUSINESS_CONVERSATION_ARCHIVED` | chat.spec.md §6, openapi.yaml | ✓ | 409 | ✓ PASS |
-| `BUSINESS_IDEMPOTENCY_MISMATCH` | chat.spec.md §6, openapi.yaml | ✓ | 409 | ✓ PASS |
-| `BUSINESS_TURN_IN_PROGRESS` | chat.spec.md §6, openapi.yaml | ✓ | 409 | ✓ PASS |
-| `BUSINESS_CHAT_DISABLED` | chat.spec.md §6, openapi.yaml | ✓ | 503 | ✓ PASS |
-| `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` | chat.spec.md §6, openapi.yaml | ✓ | 503 | ✓ PASS |
-| `BUSINESS_CHAT_INGEST_DISABLED` | chat.spec.md §6 (reserved), BR-44 v2.6 | ✓ (added in prior correction cycle) | 503 | ✓ PASS |
-| `SYSTEM_INTERNAL_ERROR` | chat.spec.md §6 (in-stream) | ✓ | 500 | ✓ PASS |
-| `SYSTEM_SERVICE_UNAVAILABLE` | chat.spec.md §6 (tool timeout, pg down) | ✓ | 503 | ✓ PASS |
-| `STRUCTURAL_INVALID` | chat.spec.md §6 (ingest_directed Zod fail) | ✓ (MCP-only envelope codes — documented in error-codes.md note) | N/A (MCP) | ✓ PASS |
+None of these constitute normative wire positions or test assertions. All normative positions use `VALIDATION_INVALID_FORMAT` or other canonical namespaced codes exclusively.
 
 ---
 
-## Check 4: BR Numbering Completeness
+## Orphan Detection
 
-| Range | Status |
-|-------|--------|
-| BR-01..BR-24 | ✓ All present, continuous, no gaps |
-| BR-25..BR-40 | ✓ All present, continuous, no gaps |
-| BR-41..BR-42 | ✓ Present (graph_delta, graph-view snapshot) |
-| BR-43 | ✓ Present — rewritten as `ingest_directed` contract (v2.8) |
-| BR-44 | ✓ Present — `CHAT_INGEST_ENABLED` flag (v2.8) |
-| BR-45 | ✓ Present — retired marker (v2.8) |
-| BR-03 | ✓ Reserved placeholder (was superseded in v2.0) — traceability preserved |
-
-No duplicate BR numbers. No gaps except intentional retired/reserved placeholders (BR-03, BR-45).
+- **BRs without UC coverage:** All BRs traced to at least one UC. BR-41 (graph_delta) traced to UC-02 through the SSE streaming contract; BR-42 (graph-view snapshot) traced to UC-12 and UC-13. No orphaned BRs found.
+- **openapi.yaml operationIds without spec UCs:** All 11 operationIds (`createConversation`, `listConversations`, `getConversation`, `updateConversation`, `deleteConversation`, `sendMessage`, `listMessages`, `getConversationUsage`, `cancelTurn`, `getConversationGraphView`, `saveConversationGraphView`) are covered by UCs.
+- **Retired UC-11** properly retired in v2.4.0 with a retirement marker; no residual operationId.
+- **openapi.yaml $refs:** All 29 component references (schemas + responses + parameters) resolve within the same document. No broken or external $refs.
 
 ---
 
-## Check 5: UC-11 Retired Placeholder
+## Cross-Reference Validation
 
-| Check | Verdict |
-|-------|---------|
-| UC-11 heading present in chat.spec.md §3 | ✓ PASS — line 346: `### UC-11 -- RETIRED in v2.4.0 (was: Owner polls ingestion status via chat)` |
-| Retirement explanation present | ✓ PASS — block quote explains the directed path is synchronous; no background run to poll |
-| Reference to BR-45 v2.6 (retired marker) | ✓ PASS — "See v2.4.0 changelog entry and BR-45 v2.6 (retired marker)" |
-| No active flow steps under UC-11 | ✓ PASS — only the retirement notice appears; no main/alternative flows |
+### BR ↔ UC
+All BRs reference existing UCs. All UCs are covered by at least one BR. No orphaned BRs or UCs.
+
+### Error codes ↔ openapi.yaml
+All error codes used in §6 of chat.spec.md and §10 of chat.back.md are present in the corresponding HTTP responses in openapi.yaml with matching HTTP status codes.
 
 ---
 
-## Check 6: Version Alignment
+## Version Cross-Reference
 
-| Spec | Version | References |
+| File | Version | References |
 |------|---------|-----------|
-| chat.spec.md | 2.4.0 | back.md references `../chat.spec.md (v2.4.0)` ✓ |
-| openapi.yaml | 2.6.0 | back.md references `../openapi.yaml (v2.6.0)` ✓ |
-| chat.back.md | 2.8.0 | — |
+| `openapi.yaml` | 2.8.0 | — |
+| `chat.spec.md` | 2.8.2 | References openapi.yaml v2.8.0 ✓ |
+| `chat.back.md` | 2.10.1 | References chat.spec.md v2.8.2 ✓, openapi.yaml v2.8.0 ✓ |
 
-The version numbering difference (chat.spec.md at 2.4.0 vs chat.back.md at 2.8.0) is intentional and documented. The back spec increments its minor version more frequently than the domain spec (multiple implementation refinements per domain spec release). The back.md header explicitly declares the versions it adopts.
-
----
-
-## Check 7: State Machine Consistency
-
-| State Machine | Declared in spec.md | Declared in back.md | Verdict |
-|---------------|--------------------|--------------------|---------|
-| ST-01 (conversation lifecycle) | §5.1 | ST-01 | ✓ Consistent |
-| ST-02 (turn lifecycle) | §5.2 | ST-02 | ✓ Consistent |
-| `ingest_directed` dispatch path | UC-10 / §5.2 tool_pending state | ST-02 via standard tool dispatch (no special state) | ✓ Consistent — back.md confirms `ingest_directed` uses the standard `dispatchToolUse` path |
+All version cross-references are consistent.
 
 ---
 
-## Inconsistencies
+## Inconsistency Table
 
-| # | Type | Source File | Issue | Agent | Severity | Selected |
-|---|------|-------------|-------|-------|----------|---------|
-| W1 | stale-description | `docs/specs/_global/error-codes.md` line 107 | `BUSINESS_CHAT_INGEST_DISABLED` description still references `start_async_ingestion` / `get_ingestion_status` as the triggering tools. These tools were retired in v2.6/v2.8. The description should be updated to: "Chat ingestion capability (`ingest_directed`) unavailable — `CHAT_INGEST_ENABLED=false` at boot. RESERVED for forward-compatibility; v2.6+ implements this as a boot-time catalog filter and does NOT emit this code at runtime." | Spec Writer | warning | [ ] |
-| W2 | version-naming drift | `docs/specs/domains/chat/chat.spec.md` | BR references inside spec.md use "v2.6" version labels (e.g., BR-05 v2.6, BR-43 v2.6, BR-44 v2.6, BR-18 v2.6) while chat.back.md uses "v2.8" for the same amendments. The domain spec was versioned as 2.4.0 (changelog) but the BR annotations internally use "v2.6" as a label for the directed-ingestion changes — inconsistent with both the domain spec version (2.4.0) and the back spec version (2.8.0). No content contradictions exist; this is a label inconsistency only. Suggest aligning BR version labels in spec.md to match the domain spec version (v2.4) or the back spec version (v2.8). | Spec Writer | warning | [ ] |
+No inconsistencies found.
 
----
-
-## Summary
-
-| Check | Result |
-|-------|--------|
-| 1. Retired tools absent from active catalog | ✓ PASS |
-| 2. `ingest_directed` consistency across 3 files | ✓ PASS |
-| 3. Error codes in global catalog | ✓ PASS |
-| 4. BR numbering completeness | ✓ PASS |
-| 5. UC-11 retired placeholder | ✓ PASS |
-| 6. Version alignment | ✓ PASS |
-| 7. State machine consistency | ✓ PASS |
-
-**Blocking inconsistencies: 0. Warnings: 2 (non-blocking). Handoff allowed.**
+| # | Type | Source | Expected | Problem | Agent | Severity | Selected |
+|---|------|--------|----------|---------|-------|----------|----------|
+| (none) | | | | | | | |
 
 ---
 
 ## Triage History
 
-| Date | Selected items | Activated agents | Result |
-|------|---------------|-----------------|--------|
-| 2026-06-22 (attempt 1) | ISSUE-001 (blocking) | u-spec-writer | PENDING: only openapi.yaml description was fixed; ISSUE-001 and WARN-002 unresolved |
-| 2026-06-22 (attempt 2) | ISSUE-001 (blocking) | u-spec-writer | RESOLVED: BUSINESS_CHAT_INGEST_DISABLED added to global catalog |
-| 2026-06-25 | Full re-validation for directed-ingestion (sdd_chat_spec-validator) | — | VALID: directed ingestion contract consistent across all 3 files; 0 blocking |
+- 2026-07-03T02:23:14Z — Attempt 1: INVALID (1 blocking, 1 warning). ISSUE-001 and WARN-001 identified.
+- 2026-07-03T02:51:30Z — Attempt 2: INVALID (1 blocking, 1 warning). Re-validation confirmed both issues remain unfixed. No changes detected in §1 Testing item (xviii) or item (xxv).
+- 2026-07-03T03:12:00Z — Attempt 3 (final): VALID (0 blocking, 0 warnings). chat.back.md v2.10.1 confirmed ISSUE-001 and WARN-001 both resolved. Handoff ALLOWED.

@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember — Ingestion Domain API"
-  version: "1.4.2"
+  version: "1.5.0"
   description: |
     REST contract for the ingestion domain of the Remember system.
 
@@ -83,6 +83,38 @@ info:
     only: no schema change, no new endpoint, no new error code, no change to
     any request/response shape — the prompt v3 module is the sole site of
     the directive update.
+
+    Canonical error-code taxonomy (P2.1 — v1.5.0). Every layered-validation
+    rejection (structural, graph-rule, temporal, catalog, provenance) that
+    used to surface a v7 §14 short code (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`,
+    `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`, `NOT_FOUND`,
+    `INTERNAL`) now surfaces the namespaced replacement listed in the global
+    catalog (`docs/specs/_global/error-codes.md`) — byte-identical on REST
+    and MCP. The seven short codes are deprecated on both transports.
+    Mapping (Zod-discriminated where applicable):
+      - `STRUCTURAL_INVALID` -> `VALIDATION_REQUIRED_FIELD` | `VALIDATION_INVALID_FORMAT` | `VALIDATION_OUT_OF_RANGE`
+      - `UNKNOWN_TYPE`       -> `BUSINESS_UNKNOWN_NODE_TYPE` | `BUSINESS_UNKNOWN_LINK_TYPE` | `BUSINESS_UNKNOWN_ATTRIBUTE_KEY`
+      - `RULE_VIOLATION`     -> `BUSINESS_LINK_RULE_VIOLATION`
+      - `TEMPORAL_INCOHERENT`-> `BUSINESS_TEMPORAL_INCOHERENT`
+      - `DATE_UNJUSTIFIED`   -> `BUSINESS_DATE_UNJUSTIFIED`
+      - `NOT_FOUND`          -> `RESOURCE_NOT_FOUND`
+      - `INTERNAL`           -> `SYSTEM_INTERNAL_ERROR`
+    Wire semantics unchanged. The REST propose-* mirrors keep returning
+    `200 OK` with the MCP envelope shape (`{ ok:false, error:{ code, ... } }`)
+    for layered-validation rejections — business errors are never HTTP errors
+    (owner-approved unified HTTP-semantics rule); real HTTP 4xx/5xx stay
+    reserved for auth/transport (`AUTH_*`) and infrastructure failure
+    (`SYSTEM_SERVICE_UNAVAILABLE` / `SYSTEM_LLM_PROVIDER_UNAVAILABLE`). Pre-
+    handler REST validation still returns `422 VALIDATION_*` and `404
+    RESOURCE_NOT_FOUND`. The `code/mcpCode` per-transport asymmetry that
+    historically existed on `compliance_delete` (compliance-audit BR-15) is
+    retired in the same landing wave and reconciled in the compliance-audit
+    domain. Every parity contract (compliance BR-14, curation BR-32,
+    knowledge-graph TC-04, ingestion BR-13..BR-18 parity) asserts byte-
+    identical namespaced codes between REST and MCP. No new endpoint, no
+    schema change, no new business condition — only the wire code strings
+    change on the MCP transport; the REST propose-* wire shape and HTTP
+    status set are unchanged.
 
 servers:
   - url: "http://localhost:3000"
@@ -407,6 +439,7 @@ paths:
                   disputed: 0
                   rejected: 0
                   error: 0
+                  orphaned_fragments: 0
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
@@ -440,9 +473,13 @@ paths:
         Run-state pre-checks: the run must exist (`404 RESOURCE_NOT_FOUND`
         otherwise) AND have `status = 'running'` (`409 BUSINESS_RUN_NOT_RUNNING`
         otherwise). Once past the pre-checks, every layered-validation
-        outcome (`STRUCTURAL_INVALID`, `NOT_FOUND` for missing chunks, etc.)
-        is returned **inside** the MCP envelope as `200 OK` with `ok: false`
-        — consistent with the MCP transport so a single client codepath
+        outcome (namespaced per P2.1 — `VALIDATION_*` for Zod-level failures,
+        `RESOURCE_NOT_FOUND` for missing chunks, `BUSINESS_UNKNOWN_*` for
+        catalog misses, `BUSINESS_LINK_RULE_VIOLATION`,
+        `BUSINESS_TEMPORAL_INCOHERENT`, `BUSINESS_DATE_UNJUSTIFIED`,
+        `SYSTEM_INTERNAL_ERROR` for uncaught exceptions) is returned
+        **inside** the MCP envelope as `200 OK` with `ok: false` —
+        consistent with the MCP transport so a single client codepath
         handles both.
       requestBody:
         required: true
@@ -458,8 +495,10 @@ paths:
           description: |
             Service reached: the response body is the MCP envelope. Inspect
             the `ok` field — `true` for accepted / business outcomes,
-            `false` for layered-validation rejections (`STRUCTURAL_INVALID`,
-            `NOT_FOUND`, `INTERNAL`).
+            `false` for layered-validation rejections (P2.1 namespaced
+            codes: `VALIDATION_*`, `RESOURCE_NOT_FOUND`, `BUSINESS_UNKNOWN_*`,
+            `BUSINESS_LINK_RULE_VIOLATION`, `BUSINESS_TEMPORAL_INCOHERENT`,
+            `BUSINESS_DATE_UNJUSTIFIED`, `SYSTEM_INTERNAL_ERROR`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProposeMcpEnvelope" }
@@ -477,7 +516,7 @@ paths:
                   value:
                     ok: false
                     error:
-                      code: "STRUCTURAL_INVALID"
+                      code: "VALIDATION_OUT_OF_RANGE"
                       message: "Field 'text' exceeds 1000 characters."
                       details: { field: "text", limit: 1000 }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -543,7 +582,7 @@ paths:
                   value:
                     ok: false
                     error:
-                      code: "UNKNOWN_TYPE"
+                      code: "BUSINESS_UNKNOWN_NODE_TYPE"
                       message: "node_type 'Animal' is not registered."
                       details: { node_type: "Animal" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -621,7 +660,7 @@ paths:
                   value:
                     ok: false
                     error:
-                      code: "RULE_VIOLATION"
+                      code: "BUSINESS_LINK_RULE_VIOLATION"
                       message: "No active LinkTypeRule authorises (Project, leads, Project)."
                       details:
                         source_node_type: "Project"
@@ -685,7 +724,7 @@ paths:
                   value:
                     ok: false
                     error:
-                      code: "STRUCTURAL_INVALID"
+                      code: "VALIDATION_INVALID_FORMAT"
                       message: "value 'tomorrow' does not parse as date."
                       details: { key: "go_live_date", value_type: "date" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -756,10 +795,12 @@ components:
     RunNotRunning:
       description: |
         REST propose-* mirror called against a run whose `status != 'running'`
-        (UC-08..UC-11 alt 1a, REST branch — BR-21). The MCP transport
-        collapses this case into a `STRUCTURAL_INVALID` envelope; the REST
-        mirror surfaces it as a 409 because human callers benefit from the
-        explicit status code.
+        (UC-08..UC-11 alt 1a, REST branch — BR-21). Under P2.1 the MCP
+        transport surfaces the SAME `BUSINESS_RUN_NOT_RUNNING` code on its
+        wire (not a `STRUCTURAL_INVALID` collapse) — the REST mirror keeps
+        returning the explicit `409` HTTP status because human callers
+        benefit from it; the wire error.code is byte-identical between
+        the two transports.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -1156,9 +1197,22 @@ components:
         Common envelope returned by every propose-* REST mirror, matching
         the MCP envelope verbatim. Inspect `ok`: when `true`, `result`
         holds the business outcome; when `false`, `error` holds the
-        layered-validation rejection code (`STRUCTURAL_INVALID`,
-        `UNKNOWN_TYPE`, `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`,
-        `DATE_UNJUSTIFIED`, `NOT_FOUND`, `INTERNAL`).
+        layered-validation rejection code from the P2.1 namespaced set —
+        `VALIDATION_REQUIRED_FIELD` / `VALIDATION_INVALID_FORMAT` /
+        `VALIDATION_OUT_OF_RANGE` (Zod-discriminated structural failure),
+        `RESOURCE_NOT_FOUND` (referenced chunk/fragment/node id missing),
+        `BUSINESS_UNKNOWN_NODE_TYPE` / `BUSINESS_UNKNOWN_LINK_TYPE` /
+        `BUSINESS_UNKNOWN_ATTRIBUTE_KEY` (catalog miss),
+        `BUSINESS_LINK_RULE_VIOLATION` (no vigent `LinkTypeRule` for the
+        triple), `BUSINESS_TEMPORAL_INCOHERENT` (semi-open interval
+        violation), `BUSINESS_DATE_UNJUSTIFIED` (missing justification
+        chain), `BUSINESS_RUN_NOT_RUNNING` (ambient run not `running` on
+        the MCP transport — REST returns 409 with the same code), or
+        `SYSTEM_INTERNAL_ERROR` (uncaught service exception). The seven
+        deprecated §14 short codes (`STRUCTURAL_INVALID`, `UNKNOWN_TYPE`,
+        `RULE_VIOLATION`, `TEMPORAL_INCOHERENT`, `DATE_UNJUSTIFIED`,
+        `NOT_FOUND`, `INTERNAL`) are retired by P2.1 and MUST NOT appear
+        on the wire once the code consequence lands.
       required: [ok]
       properties:
         ok:
@@ -1175,8 +1229,20 @@ components:
           properties:
             code:
               type: string
-              enum: [STRUCTURAL_INVALID, UNKNOWN_TYPE, RULE_VIOLATION, TEMPORAL_INCOHERENT, DATE_UNJUSTIFIED, NOT_FOUND, INTERNAL]
-              example: "STRUCTURAL_INVALID"
+              enum:
+                - VALIDATION_REQUIRED_FIELD
+                - VALIDATION_INVALID_FORMAT
+                - VALIDATION_OUT_OF_RANGE
+                - RESOURCE_NOT_FOUND
+                - BUSINESS_UNKNOWN_NODE_TYPE
+                - BUSINESS_UNKNOWN_LINK_TYPE
+                - BUSINESS_UNKNOWN_ATTRIBUTE_KEY
+                - BUSINESS_LINK_RULE_VIOLATION
+                - BUSINESS_TEMPORAL_INCOHERENT
+                - BUSINESS_DATE_UNJUSTIFIED
+                - BUSINESS_RUN_NOT_RUNNING
+                - SYSTEM_INTERNAL_ERROR
+              example: "VALIDATION_OUT_OF_RANGE"
             message:
               type: string
               example: "Field 'text' exceeds 1000 characters."
@@ -1215,7 +1281,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: "Seeded NodeType name (e.g., `Person`, `Organization`, `Project`...). Catalog miss → `UNKNOWN_TYPE`."
+          description: "Seeded NodeType name (e.g., `Person`, `Organization`, `Project`...). Catalog miss -> `BUSINESS_UNKNOWN_NODE_TYPE` (P2.1 namespaced)."
           example: "Project"
         name:
           type: string
@@ -1241,7 +1307,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: "Seeded LinkType name. Catalog miss → `UNKNOWN_TYPE`; rule miss → `RULE_VIOLATION`."
+          description: "Seeded LinkType name. Catalog miss -> `BUSINESS_UNKNOWN_LINK_TYPE`; rule miss -> `BUSINESS_LINK_RULE_VIOLATION` (P2.1 namespaced)."
           example: "leads"
         target_node_id: { type: string, format: uuid }
         confidence:
@@ -1278,7 +1344,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: "Seeded AttributeKey `key`. Catalog miss → `UNKNOWN_TYPE`; node_type mismatch → `STRUCTURAL_INVALID`."
+          description: "Seeded AttributeKey `key`. Catalog miss -> `BUSINESS_UNKNOWN_ATTRIBUTE_KEY`; node_type mismatch -> `VALIDATION_INVALID_FORMAT` (P2.1 namespaced)."
           example: "go_live_date"
         value:
           description: "Literal value; MUST parse as the key's declared `value_type` (date / number / text / bool)."

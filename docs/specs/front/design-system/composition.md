@@ -49,15 +49,19 @@ Three glass levels exist (defined in `tokens.md §9`). Each level is a compound 
 The workspace follows the z-scale from `tokens.md §12` (`front.md §2.2`):
 
 ```
-z-toast    (60) — sonner notifications
-z-modal    (50) — actual dialogs, ⌘K palette (focus trap + scrim)
-z-frame    (40) — Header, Footer (fixed, never scrolls)
+z-toast    (50) — sonner notifications (topo de tudo)
+z-modal    (41) — actual dialogs, ⌘K palette (focus trap; glass modal, 28%)
+z-overlay  (40) — modal scrim/backdrop
 z-popover  (30) — dropdowns, pickers (DropdownMenu, ConversationMenu panel)
-z-drawer   (20) — Provenance drawer (later wave)
+z-drawer   (25) — Provenance drawer (non-modal; glass panel, 20%)
+z-chrome   (20) — Header, Footer (ambient glass chrome, 14%)
 z-panel    (10) — graph filter panels, selection context
 z-base      (0) — workspace content (ChatWorkspace, MessageStream, ChatBubble)
-z-backdrop (-1) — ambient landscape backdrop
+z-veil     (-1) — darkening veil above backdrop
+z-backdrop (-2) — ambient landscape backdrop (neon scene)
 ```
+
+> `z-frame` é um alias de migração que aponta para `z-chrome` (20) — remover após Header.tsx migrar.
 
 **Chat-specific rule:** `ChatBubble` is always `z-base`. `ConversationMenu` dropdown panel is at `z-popover` (Radix manages this). The `Dialog` for delete confirmation is at `z-modal`.
 
