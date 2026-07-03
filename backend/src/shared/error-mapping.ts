@@ -67,6 +67,84 @@ export function isPgUniqueViolation(err: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical code → HTTP status registry (P2.1, `docs/specs/_global/error-codes.md`).
+// ---------------------------------------------------------------------------
+//
+// Single source of truth for the REST rendering. MCP transports IGNORE this
+// map (they wrap the same `error.code` inside `content` + `isError: true` on
+// HTTP 200 at the SDK kernel), but every domain sentinel MUST publish its code
+// here so REST + MCP surface byte-identical codes on the same business
+// condition (P2.1 parity contract).
+//
+// Business OUTCOMES (`already_ingested`, `noop_already_deleted`, disputed /
+// uncertain / consolidated proposals, …) are NOT errors and MUST NOT appear
+// here — they surface as `ok: true` on both transports.
+export const codeToHttpStatus: Record<string, number> = {
+  // Authentication — enforced by middleware before any handler runs.
+  AUTH_TOKEN_EXPIRED: 401,
+  AUTH_TOKEN_INVALID: 401,
+  AUTH_UNAUTHORIZED: 401,
+  AUTH_FORBIDDEN: 403,
+
+  // Validation — Zod / DTO structural failure.
+  VALIDATION_REQUIRED_FIELD: 422,
+  VALIDATION_INVALID_FORMAT: 422,
+  VALIDATION_OUT_OF_RANGE: 422,
+
+  // Resource — referenced entity missing / duplicated / conflicted.
+  RESOURCE_NOT_FOUND: 404,
+  RESOURCE_ALREADY_EXISTS: 409,
+  RESOURCE_CONFLICT: 409,
+
+  // Business — Ingestion (`ingestion.spec.md`).
+  BUSINESS_RUN_NOT_RETRYABLE: 409,
+  BUSINESS_RUN_NOT_RUNNABLE: 409,
+  BUSINESS_RUN_NOT_RUNNING: 409,
+  BUSINESS_LINK_RULE_VIOLATION: 422,
+
+  // Business — Knowledge Graph (`knowledge-graph.spec.md`).
+  BUSINESS_NODE_DELETED: 410,
+  BUSINESS_UNKNOWN_NODE_TYPE: 422,
+  BUSINESS_UNKNOWN_LINK_TYPE: 422,
+  BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+  BUSINESS_INVALID_TRAVERSE_DEPTH: 422,
+
+  // Business — Query / Retrieval (`query-retrieval.spec.md`).
+  BUSINESS_INVALID_SEARCH_QUERY: 422,
+  BUSINESS_INVALID_SEARCH_LAYER: 422,
+  BUSINESS_FRAGMENT_NOT_ACCEPTED: 404,
+  BUSINESS_RAW_INFORMATION_DELETED: 410,
+
+  // Business — Curation (`curation.spec.md`).
+  BUSINESS_REVIEW_NOT_PENDING: 409,
+  BUSINESS_TARGET_NODE_REQUIRED: 422,
+  BUSINESS_INVALID_TARGET_NODE: 422,
+  BUSINESS_SELF_MERGE_FORBIDDEN: 409,
+  BUSINESS_ITEM_NOT_DISPUTED: 409,
+  BUSINESS_DISPUTE_WINNER_REQUIRED: 422,
+  BUSINESS_DISPUTE_PERIODS_REQUIRED: 422,
+  BUSINESS_ITEM_NOT_UNCERTAIN: 409,
+  BUSINESS_ITEM_NOT_DELETABLE: 409,
+  BUSINESS_CORRECTION_NO_CHANGES: 422,
+  BUSINESS_DATE_UNJUSTIFIED: 422,
+  BUSINESS_TEMPORAL_INCOHERENT: 422,
+  BUSINESS_REASON_REQUIRED: 422,
+
+  // Business — Chat (`chat.spec.md`).
+  BUSINESS_CHAT_DISABLED: 503,
+  BUSINESS_CHAT_PROVIDER_UNAVAILABLE: 503,
+  BUSINESS_CONVERSATION_ARCHIVED: 409,
+  BUSINESS_IDEMPOTENCY_MISMATCH: 409,
+  BUSINESS_TURN_IN_PROGRESS: 409,
+  BUSINESS_CHAT_INGEST_DISABLED: 503,
+
+  // System — infrastructure / unhandled.
+  SYSTEM_INTERNAL_ERROR: 500,
+  SYSTEM_SERVICE_UNAVAILABLE: 503,
+  SYSTEM_LLM_PROVIDER_UNAVAILABLE: 502,
+};
+
+// ---------------------------------------------------------------------------
 // Shared builders.
 // ---------------------------------------------------------------------------
 
@@ -82,20 +160,40 @@ export function mapped(
   return { statusCode, logLevel, envelope: { ok: false, error } };
 }
 
+/**
+ * Render a `MappedError` from a namespaced code + message, resolving the HTTP
+ * status through the canonical `codeToHttpStatus` registry. Unknown codes fall
+ * back to 500 (defense-in-depth: any sentinel leaking without being registered
+ * still produces a valid response, and the fallback is loud enough — 5xx +
+ * `error` log level — that the miss shows up in metrics).
+ *
+ * `logLevel` is derived from the resolved status: 4xx → `"warn"` (client-side
+ * problem, expected under normal operation), 5xx → `"error"` (server-side or
+ * transport issue, must page).
+ */
+export function renderErrorEnvelope(
+  code: string,
+  message: string,
+  details?: unknown
+): MappedError {
+  const statusCode = codeToHttpStatus[code] ?? 500;
+  const logLevel: "warn" | "error" = statusCode >= 500 ? "error" : "warn";
+  const error: ErrorEnvelope["error"] =
+    details === undefined ? { code, message } : { code, message, details };
+  return { statusCode, logLevel, envelope: { ok: false, error } };
+}
+
 /** 503 — a backing service (pg) is temporarily unavailable. */
 export function serviceUnavailableError(): MappedError {
-  return mapped(503, "error", {
-    code: "SYSTEM_SERVICE_UNAVAILABLE",
-    message: "A backing service is temporarily unavailable.",
-  });
+  return renderErrorEnvelope(
+    "SYSTEM_SERVICE_UNAVAILABLE",
+    "A backing service is temporarily unavailable."
+  );
 }
 
 /** 500 — generic internal error. NEVER leaks `err.message` to the client. */
 export function internalError(): MappedError {
-  return mapped(500, "error", {
-    code: "SYSTEM_INTERNAL_ERROR",
-    message: "Internal server error.",
-  });
+  return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
 }
 
 // ---------------------------------------------------------------------------
