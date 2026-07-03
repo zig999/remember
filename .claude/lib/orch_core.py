@@ -1630,6 +1630,11 @@ def _handle_task_claimed(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
+    # Idempotency guard: same worker re-claiming an already-running task is a no-op.
+    # Prevents duplicate-claim IllegalTransition when two concurrent orchestrators
+    # dispatch the same worker_id for a task that is already running.
+    if task.status == TaskStatus.RUNNING and task.worker_id == event.data.get("worker_id"):
+        return
     if task.status != TaskStatus.READY:
         raise IllegalTransition(
             f"task_claimed: task {task_id!r} is {task.status!r}, expected ready"
