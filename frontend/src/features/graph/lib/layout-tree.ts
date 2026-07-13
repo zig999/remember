@@ -1,25 +1,29 @@
 /**
  * layout-tree — `runTreeLayout` pure function (TC-02).
  *
- * Tidy tree (top-down) layout powered by `d3-hierarchy`. Same signature as
- * `runForceLayout`: takes `(nodeIds, linkPairs, pinnedPositions)` and returns
- * a fresh `Map<string, GraphPosition>` with one entry per input node id.
+ * Tidy tree (left-to-right) layout powered by `d3-hierarchy`. Same signature
+ * as `runForceLayout`: takes `(nodeIds, linkPairs, pinnedPositions)` and
+ * returns a fresh `Map<string, GraphPosition>` with one entry per input id.
+ *
+ * Orientation — left-to-right (LR):
+ *  d3.tree lays a tree out along two axes: BREADTH (siblings, `node.x`) and
+ *  DEPTH (parent→child layers, `node.y`). A top-down tree maps breadth→canvasX
+ *  and depth→canvasY, so a high-fan-out root (a project with many tasks) spreads
+ *  its children across one very wide horizontal row — a barely readable strip.
+ *  We instead grow the tree rightward: DEPTH→canvasX (layers march right) and
+ *  BREADTH→canvasY (siblings stack vertically). A wide fan-out then becomes a
+ *  vertical column, which reads better on a wide viewport with vertical scroll.
+ *  For genuinely hub-and-spoke graphs the radial layout still distributes best.
  *
  * Algorithm:
  *  1. `buildSpanningTree` derives a single rooted tree (or a virtual
  *     super-root over multiple components — see `spanning-tree.ts`).
- *  2. `d3.hierarchy()` wraps the rooted tree; `d3.tree().nodeSize([w, h])`
- *     computes (x, y) for every node so siblings keep at least `w` apart
- *     horizontally and parent/child layers are `h` apart vertically.
- *  3. Pinned positions override the layout output — same contract as the
+ *  2. `d3.hierarchy()` wraps the rooted tree; `d3.tree().nodeSize([b, d])`
+ *     keeps siblings ≥ `b` apart in breadth and layers ≥ `d` apart in depth.
+ *  3. Project with the axes swapped (depth→x, breadth→y) for the LR growth.
+ *  4. Pinned positions override the layout output — same contract as the
  *     other two runners: a pinned node never moves regardless of algorithm.
- *  4. The virtual super-root (when present) is dropped from the output.
- *
- * Calibration:
- *  - LINK_DISTANCE ≈ 180px is the force-layout link target; we calibrate
- *    nodeSize roughly to that scale so visual density across algorithms
- *    stays comparable. Treat the numbers below as implementation judgment —
- *    `assumptions_allowed` covers this.
+ *  5. The virtual super-root (when present) is dropped from the output.
  */
 import { hierarchy, tree } from "d3-hierarchy";
 
@@ -30,12 +34,15 @@ import {
   type SpanningTreeNode,
 } from "./spanning-tree";
 
-/** Horizontal gap between sibling subtrees, in canvas units. Approximates
- *  the d3-force `LINK_DISTANCE` so a tree-laid subgraph looks comparable in
- *  density to the force version. */
-const TREE_NODE_WIDTH = 200;
-/** Vertical gap between layers, in canvas units. */
-const TREE_LAYER_HEIGHT = 140;
+/** Breadth gap between sibling subtrees, in canvas units. In LR orientation
+ *  this is the VERTICAL spacing between stacked siblings — sized to the node
+ *  card height (~64px) plus margin so vertically adjacent cards never touch. */
+const TREE_SIBLING_GAP = 110;
+/** Depth gap between parent and child layers, in canvas units. In LR
+ *  orientation this is the HORIZONTAL spacing between columns — sized to the
+ *  widest node card (`max-w-3xs` ≈ 256px) plus room for the edge label
+ *  ("faz parte de", …) that sits on the connector between columns. */
+const TREE_LEVEL_GAP = 340;
 
 /**
  * Tidy tree (top-down) layout.
@@ -67,13 +74,13 @@ export function runTreeLayout(
   // — works here too, but being explicit documents the shape.
   const root = hierarchy<SpanningTreeNode>(rootSpan, (d) => d.children);
 
-  // `nodeSize` separates siblings by [w, h] regardless of the subtree shape
-  // (vs. `size` which fits everything in a bounding box). For a graph that
-  // can grow per-turn we prefer constant inter-node spacing so the layout
-  // stays predictable.
+  // `nodeSize` separates siblings by [breadth, depth] regardless of the
+  // subtree shape (vs. `size` which fits everything in a bounding box). For a
+  // graph that can grow per-turn we prefer constant inter-node spacing so the
+  // layout stays predictable.
   const layout = tree<SpanningTreeNode>().nodeSize([
-    TREE_NODE_WIDTH,
-    TREE_LAYER_HEIGHT,
+    TREE_SIBLING_GAP,
+    TREE_LEVEL_GAP,
   ]);
   layout(root);
 
@@ -88,10 +95,11 @@ export function runTreeLayout(
       out.set(id, { x: pinned.x, y: pinned.y });
       continue;
     }
-    // `node.x`/`node.y` are guaranteed numbers after `layout(root)` runs
-    // (d3-hierarchy's contract). `?? 0` defends against a hypothetical
-    // future API change — keeps `out` valued.
-    out.set(id, { x: node.x ?? 0, y: node.y ?? 0 });
+    // Axis swap for LR growth: d3's `node.y` (depth) → canvasX so layers march
+    // rightward, and `node.x` (breadth) → canvasY so siblings stack vertically.
+    // Both are guaranteed numbers after `layout(root)` (d3-hierarchy contract);
+    // `?? 0` defends against a hypothetical future API change.
+    out.set(id, { x: node.y ?? 0, y: node.x ?? 0 });
   }
 
   return out;

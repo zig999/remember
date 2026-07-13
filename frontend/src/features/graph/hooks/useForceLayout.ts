@@ -46,6 +46,7 @@ import { useEffect, useRef } from "react";
 
 import {
   forceCenter,
+  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
@@ -69,12 +70,27 @@ import { runRadialLayout } from "../lib/layout-radial";
  *  visually settled layout. */
 const SIM_TICKS = 100;
 
-/** Distance the link force tries to keep between connected nodes. Picked to
- *  match the visual node size in `ds/GraphNode` (≈ 140px wide) plus margin. */
-const LINK_DISTANCE = 180;
+/** Footprint reserved per node, in canvas units — the widest node card
+ *  (`GraphNode` is `max-w-3xs` ≈ 256px) plus margin. Shared calibration with
+ *  the tree/radial runners so density reads consistently across algorithms. */
+const NODE_FOOTPRINT = 270;
 
-/** Charge (repulsion) strength. Negative → repulsion. Calibrated against the
- *  link distance so nodes don't bunch up and don't fly off-canvas. */
+/** Collision radius. `forceCollide` keeps node centres at least `2·radius`
+ *  (= one footprint) apart — a hard floor that neither the link nor the charge
+ *  force guarantees on their own. This is what stops connected AND unconnected
+ *  cards from overlapping. Circular (d3's only shape); since the card is wide
+ *  and short, the radius is sized to the WIDTH, so the layout is a touch airy
+ *  vertically — an acceptable trade for a zero-overlap guarantee. */
+const COLLIDE_RADIUS = NODE_FOOTPRINT / 2;
+
+/** Distance the link force tries to keep between connected nodes. Sized to the
+ *  node footprint so a connected pair rests roughly a card-width apart. The
+ *  collision force is the hard floor; this is the soft target. */
+const LINK_DISTANCE = NODE_FOOTPRINT;
+
+/** Charge (repulsion) strength. Negative → repulsion. Spreads clusters and
+ *  separates disconnected components; `forceCollide` handles the local no-touch
+ *  guarantee, so charge only needs to give the graph breathing room. */
 const CHARGE_STRENGTH = -300;
 
 /** Center of the simulation field. Coordinates are in canvas units; React
@@ -170,6 +186,11 @@ export function runForceLayout(
         .distance(LINK_DISTANCE),
     )
     .force("charge", forceManyBody<SimNode>().strength(CHARGE_STRENGTH))
+    // Hard no-overlap floor: no two node centres end a tick closer than one
+    // footprint. `forceCollide` modifies x/y during the tick, but the
+    // simulation re-applies `fx`/`fy` afterwards, so PINNED nodes still land
+    // exactly on their pinned coordinates — the AC-F.12 invariant holds.
+    .force("collide", forceCollide<SimNode>(COLLIDE_RADIUS))
     .force("center", forceCenter<SimNode>(CENTER_X, CENTER_Y))
     .stop();
 

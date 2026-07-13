@@ -39,11 +39,11 @@ describe("runTreeLayout — single node", () => {
 });
 
 describe("runTreeLayout — two-node chain", () => {
-  it("places the root above the child (root has smaller y in tree layout)", () => {
+  it("places the child to the RIGHT of the root (left-to-right orientation)", () => {
     // Two nodes connected by one link. Highest-degree tiebreak: both have
-    // degree 1, smallest id wins → 'a' is root. d3.tree(nodeSize=[w, h])
-    // places the root at y=0 and the single child at y=h>0. Our convention
-    // matches d3's default (no inversion), so the child has the LARGER y.
+    // degree 1, smallest id wins → 'a' is root. In LR orientation the depth
+    // axis maps to canvasX, so the single child sits at a LARGER x than the
+    // root (layers march rightward), at roughly the same y.
     const out = runTreeLayout(
       ["a", "b"],
       [{ source: "a", target: "b" }],
@@ -55,9 +55,35 @@ describe("runTreeLayout — two-node chain", () => {
     const childPos = out.get("b")!;
     expect(rootPos).toBeDefined();
     expect(childPos).toBeDefined();
-    // The child sits below the root — strict inequality so a regression
-    // that swaps the axis is caught.
-    expect(childPos.y).toBeGreaterThan(rootPos.y);
+    // The child sits to the right of the root — strict inequality so a
+    // regression that swaps the axis back to top-down is caught.
+    expect(childPos.x).toBeGreaterThan(rootPos.x);
+    expect(childPos.y).toBeCloseTo(rootPos.y);
+  });
+});
+
+describe("runTreeLayout — wide fan-out (anti-overlap)", () => {
+  it("stacks many siblings vertically with a gap that clears the card height", () => {
+    // A root with many children lays them out in a single column (LR): they
+    // share one x (same depth) and are spread along y. Adjacent siblings must
+    // be at least TREE_SIBLING_GAP (110) apart so the ~64px cards never touch.
+    const CHILD_COUNT = 12;
+    const children = Array.from({ length: CHILD_COUNT }, (_, i) => `c${i}`);
+    const out = runTreeLayout(
+      ["root", ...children],
+      children.map((id) => ({ source: "root", target: id })),
+      new Map(),
+    );
+
+    // All children share the same column (one depth level) → same x.
+    const xs = children.map((id) => out.get(id)!.x);
+    for (const x of xs) expect(x).toBeCloseTo(xs[0]!);
+
+    // Sorted y positions: consecutive siblings clear the card height.
+    const ys = children.map((id) => out.get(id)!.y).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i]! - ys[i - 1]!).toBeGreaterThanOrEqual(110 - 1e-6);
+    }
   });
 });
 

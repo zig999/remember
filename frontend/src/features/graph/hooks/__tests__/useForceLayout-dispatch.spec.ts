@@ -91,7 +91,7 @@ function makeDelta(): GraphDelta {
 }
 
 describe("useForceLayout — algorithm dispatch", () => {
-  it("under 'tree', the hub (highest-degree root) sits at y=0 — a tree-layout signature", () => {
+  it("under 'tree', the hub (highest-degree root) sits at x=0 — a tree-layout signature", () => {
     // Switch BEFORE adding nodes so the very first effect runs with the
     // tree dispatcher selected.
     useGraphStore.getState().setLayoutAlgorithm("tree");
@@ -102,17 +102,16 @@ describe("useForceLayout — algorithm dispatch", () => {
     expect(positions.size).toBe(3);
     const hubPos = positions.get("hub")!;
     expect(hubPos).toBeDefined();
-    // d3.tree() with nodeSize places the root at y=0 (the layer at depth 0).
-    // Leaves at depth 1 sit at y = TREE_LAYER_HEIGHT. The force runner would
-    // NEVER produce y=0 exactly for a settled simulation — charge + center
-    // pull the root off the origin by a small but non-zero amount.
-    expect(hubPos.y).toBeCloseTo(0);
-    // Both leaves sit at the SAME y (one layer below the hub) — a tree
-    // invariant that force-layout violates.
-    const leafAY = positions.get("z-leaf-a")!.y;
-    const leafBY = positions.get("z-leaf-b")!.y;
-    expect(leafAY).toBeCloseTo(leafBY);
-    expect(leafAY).toBeGreaterThan(hubPos.y);
+    // LR tree: d3.tree() puts the root at depth 0 → x=0 (layers march right).
+    // The force runner would NEVER produce x=0 exactly for a settled
+    // simulation — charge + center pull the root off the origin.
+    expect(hubPos.x).toBeCloseTo(0);
+    // Both leaves sit in the SAME column (one layer right of the hub) — same
+    // x, and to the right of it — a tree invariant force-layout violates.
+    const leafAX = positions.get("z-leaf-a")!.x;
+    const leafBX = positions.get("z-leaf-b")!.x;
+    expect(leafAX).toBeCloseTo(leafBX);
+    expect(leafAX).toBeGreaterThan(hubPos.x);
   });
 
   it("switching the algorithm re-runs the layout (positions change after setLayoutAlgorithm)", () => {

@@ -85,6 +85,71 @@ describe("runRadialLayout — star topology", () => {
   });
 });
 
+describe("runRadialLayout — adaptive radius (anti-overlap)", () => {
+  it("a densely populated ring spreads so adjacent nodes never overlap", () => {
+    // Hub with many leaves: all leaves land on ring 1. With the old fixed
+    // radius (320) the arc-length per leaf collapses below the node width and
+    // cards overlap. The adaptive radius must grow the ring so the arc-length
+    // between the two closest neighbours is at least the node footprint.
+    const LEAF_COUNT = 20;
+    const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => `leaf-${i}`);
+    const out = runRadialLayout(
+      ["hub", ...leaves],
+      leaves.map((id) => ({ source: "hub", target: id })),
+      new Map(),
+    );
+
+    const hub = out.get("hub")!;
+    expect(hub.x).toBeCloseTo(0);
+    expect(hub.y).toBeCloseTo(0);
+
+    // Ring radius: every leaf is equidistant from the hub.
+    const r = Math.hypot(out.get("leaf-0")!.x, out.get("leaf-0")!.y);
+
+    // Closest pairwise distance across all leaves must clear the node
+    // footprint (270). This is the property that guarantees no overlap —
+    // it fails under the old fixed-radius layout (2π·320/20 ≈ 100px < 270).
+    let minDist = Infinity;
+    for (let i = 0; i < LEAF_COUNT; i++) {
+      for (let j = i + 1; j < LEAF_COUNT; j++) {
+        const a = out.get(`leaf-${i}`)!;
+        const b = out.get(`leaf-${j}`)!;
+        minDist = Math.min(minDist, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    expect(minDist).toBeGreaterThanOrEqual(270 - 1e-6);
+    // Sanity: the ring grew well past the old fixed 320 to make room.
+    expect(r).toBeGreaterThan(320);
+  });
+
+  it("deep chains keep a constant radial gap between rings (no compression)", () => {
+    // A path graph puts one node per depth. Under the old `size([2π, R])` the
+    // rings compress into R=320. The adaptive radius must keep every distinct
+    // ring at least MIN_RING_GAP (200) apart. NOTE: buildSpanningTree re-roots
+    // at the highest-degree node (the path's centre), so node id order is NOT
+    // depth order — we compare the SORTED set of distinct ring radii instead.
+    const ids = ["root", "n1", "n2", "n3", "n4", "n5", "n6"];
+    const links = ids.slice(1).map((id, i) => ({ source: ids[i]!, target: id }));
+    const out = runRadialLayout(ids, links, new Map());
+
+    const distinctRadii = [
+      ...new Set(
+        ids.map((id) =>
+          Math.round(Math.hypot(out.get(id)!.x, out.get(id)!.y)),
+        ),
+      ),
+    ].sort((a, b) => a - b);
+
+    // Re-rooted at the centre, a 7-node path has depths 0..3 → 4 distinct rings.
+    expect(distinctRadii.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < distinctRadii.length; i++) {
+      expect(distinctRadii[i]! - distinctRadii[i - 1]!).toBeGreaterThanOrEqual(
+        200 - 1,
+      );
+    }
+  });
+});
+
 describe("runRadialLayout — pin invariant", () => {
   it("pinned nodes keep their EXACT coordinates", () => {
     const pinned = new Map<string, GraphPosition>([

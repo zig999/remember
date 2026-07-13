@@ -146,6 +146,48 @@ describe("runForceLayout — pin invariant (AC-F.12 / D5)", () => {
   });
 });
 
+describe("runForceLayout — collision (anti-overlap)", () => {
+  it("keeps every pair of unpinned nodes at least a node-footprint apart", () => {
+    // A hub with many leaves: without forceCollide the leaves bunch up around
+    // the hub and overlap. The collision force must guarantee that NO pair of
+    // node centres ends closer than one footprint (270). We check the closest
+    // pair across the whole settled layout.
+    const LEAF_COUNT = 15;
+    const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => `leaf-${i}`);
+    const ids = ["hub", ...leaves];
+    const result = runForceLayout(
+      ids,
+      leaves.map((id) => ({ source: "hub", target: id })),
+      new Map(),
+    );
+
+    let minDist = Infinity;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = result.get(ids[i]!)!;
+        const b = result.get(ids[j]!)!;
+        minDist = Math.min(minDist, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    // forceCollide is iterative and not a hard constraint, so allow a small
+    // slack below the ideal footprint — but it must clear the old bunched
+    // distance (nodes used to settle ~180px apart, the old LINK_DISTANCE).
+    expect(minDist).toBeGreaterThan(230);
+  });
+
+  it("pinned nodes stay EXACT even when collision would push them apart", () => {
+    // Two nodes pinned closer than the footprint. Collision wants to shove
+    // them apart, but fx/fy must win — pinned coordinates are inviolate.
+    const pinned = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 10, y: 0 }], // only 10px apart — well inside the footprint
+    ]);
+    const result = runForceLayout(["a", "b"], [], pinned);
+    expect(result.get("a")).toEqual({ x: 0, y: 0 });
+    expect(result.get("b")).toEqual({ x: 10, y: 0 });
+  });
+});
+
 describe("runForceLayout — output shape", () => {
   it("returns a Map<string, {x:number;y:number}> with one entry per input node", () => {
     const result = runForceLayout(
