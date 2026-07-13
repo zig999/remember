@@ -1,31 +1,38 @@
 /**
  * withAmbientBackdrop — Storybook decorator (TC-07).
  *
- * Renders a representative slice of the treated ambient backdrop *under*
- * the story so glass-surface composition (translucency + blur +
- * top-edge highlight) is visible. Without this decorator, GlassSurface
- * over an empty white background is meaningless
- * (GlassSurface.component.spec.md §9, "Implementation rule").
+ * Renders the SAME ambient backdrop the application uses, so glass-surface
+ * composition (translucency + blur + top-edge highlight) is visible exactly as
+ * in-app. Without a real backdrop under it, a GlassSurface over an empty white
+ * background is meaningless (GlassSurface.component.spec.md §9).
+ *
+ * Fidelity — reuses the real `<AmbientBackdrop/>` shell component instead of a
+ * hand-rolled slice. That component is the app's single source of truth for the
+ * backdrop treatment: the committed cityscape photo
+ * (`public/backdrop/cityscape-dusk.png`, served in Storybook via
+ * `staticDirs: ["../public"]`) rendered `object-cover object-center` at
+ * `opacity-60` over `bg-primary` (`--color-primary`), fixed at `z-backdrop`.
+ * The transparency is therefore identical to production — including the
+ * BR-15 graceful fallback (on image error the src is cleared and the flat
+ * `bg-primary` shows through, e.g. in a hermetic addon-vitest run).
+ *
+ * Layout mirrors the app (`__root` → AppShell workspace): the fixed backdrop
+ * sits behind, the story stacks over it on `z-base` inside a padded wrapper.
  *
  * Spec references:
- *  - docs/specs/front/design-system/tokens.md §10.1 — ambient backdrop
- *    treatment chain (blur + saturate + brightness).
- *  - docs/specs/front/components/GlassSurface.component.spec.md §9
- *    (Storybook stories MUST use this decorator).
- *  - docs/specs/front/front.back.md BR-15 — image fallback: when the real
- *    landscape image is not available (e.g. CI, hermetic tests), a solid
- *    color slice in the same hue family is acceptable.
- *
- * The app is dark-only: this renders the real cityscape backdrop
- * (`/backdrop/cityscape-dusk.png`, committed under `public/`) so the glass
- * blur/refraction is actually visible. A gradient tint slice is layered UNDER
- * the photo as the BR-15 fallback — shown if the asset is missing (e.g. a
- * hermetic CI). The slice colour matches the primary surface so the contrast
- * smoke test in `A11y/ContrastSmoke` keeps its semantic value (the glass tint
- * must still read as a frosted layer over a darker base).
+ *  - docs/specs/front/design-system/tokens.md §10.1 — ambient backdrop treatment.
+ *  - docs/specs/front/components/GlassSurface.component.spec.md §9 (stories MUST
+ *    use this decorator).
+ *  - docs/specs/front/front.md §2.3 (ambient backdrop rules) + front.back.md
+ *    BR-15 (lazy src, flat-color fallback).
  */
 import type { Decorator } from "@storybook/react-vite";
 import type { ReactElement } from "react";
+
+// Relative import (not the `@` alias): this file lives under `.storybook/`,
+// outside the tsconfig `include`, so vite-tsconfig-paths does not rewrite `@`
+// here.
+import { AmbientBackdrop } from "../../src/shell/AmbientBackdrop";
 
 interface BackdropOptions {
   /** Padding around the story slot; default `md`. */
@@ -33,48 +40,28 @@ interface BackdropOptions {
 }
 
 /**
- * Returns a Storybook decorator that wraps the story in a positioned
- * container with a treated tint slice underneath. The story content stacks
- * over the slice on `z-base`.
- *
- * Implementation note: the backdrop colors and the radial gradient are
- * written to scoped CSS rules via an inline `<style>` tag instead of inline
- * `style={{}}` on the wrapper div. This honors the no-inline-CSS rule from
- * u-fe-standards while preserving the BR-15 fallback (these values
- * intentionally live outside the token system because addon-vitest runs
- * hermetically and the CSS-variable layer may not be loaded at
- * decorator-render time).
+ * Returns a Storybook decorator that renders the real ambient backdrop behind
+ * the story. The story content stacks over the backdrop on `z-base`, in a
+ * padded wrapper — the same layering the app uses between the fixed backdrop
+ * and the workspace region.
  */
 export function withAmbientBackdrop(opts: BackdropOptions = {}): Decorator {
   const padding = opts.padding ?? "md";
   const paddingClass =
     padding === "sm" ? "p-md" : padding === "lg" ? "p-2xl" : "p-xl";
 
-  const scopeClass = "sb-ambient-backdrop-dark";
-
-  // Solid tint slice — matches --color-primary so the glass surface still
-  // composites visibly (BR-15 fallback). The two-stop gradient adds enough
-  // variation that the blur effect of the glass surface is visible (a
-  // perfectly flat colour leaves backdrop-filter imperceptible).
-  const slice = "oklch(15% 0.012 250)";
-  const gradient =
-    "radial-gradient(circle at 30% 30%, oklch(22% 0.018 240), oklch(12% 0.012 260))";
-
-  // Stack the real photo ON TOP of the gradient (first layer wins); if the
-  // photo 404s the gradient shows through (BR-15 fallback).
-  const bgImage = `url('/backdrop/cityscape-dusk.png'), ${gradient}`;
-
-  const css = `.${scopeClass}{min-height:320px;background-color:${slice};background-image:${bgImage};background-size:cover;background-position:center;}`;
-
   const Decorated: Decorator = (Story): ReactElement => {
     return (
-      <div
-        data-theme="dark"
-        data-backdrop="ambient"
-        className={`relative isolate ${paddingClass} ${scopeClass}`}
-      >
-        <style>{css}</style>
-        <Story />
+      // Dark-only app: pin the theme so the token set matches production even
+      // if a story overrides `data-theme` on an inner node.
+      <div data-theme="dark" className="min-h-full">
+        <AmbientBackdrop />
+        <div
+          data-backdrop="ambient"
+          className={`relative z-base ${paddingClass}`}
+        >
+          <Story />
+        </div>
       </div>
     );
   };
