@@ -222,7 +222,7 @@ export const ChatBubble: FC<ChatBubbleProps> = ({
             the text flow so it sits at the end of the streamed content). */}
         <p
           data-testid="bubble-content"
-          className="whitespace-pre-wrap break-words text-body text-foreground"
+          className="whitespace-pre-wrap break-words text-xs text-foreground"
         >
           {content}
           {streaming ? <StreamingCursorStub /> : null}
