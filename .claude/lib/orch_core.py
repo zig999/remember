@@ -13,6 +13,7 @@ except ImportError:  # pragma: no cover — Windows (fcntl is POSIX-only)
     fcntl = None  # type: ignore[assignment]
     _HAS_FCNTL = False
     import msvcrt
+import fnmatch
 import hashlib
 import json
 import os
@@ -236,13 +237,14 @@ def _safe_parse_iso(ts: str) -> datetime | None:
         return None
 
 
-_WORKFLOW_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
+# 5-a: no '_' — underscore is the task-ID namespace delimiter (see slugify_workflow_id).
+_WORKFLOW_ID_RE = re.compile(r"[A-Za-z0-9.-]+")
 
 
 def slugify_workflow_id(raw: str | None) -> str | None:
     """Returns a sanitized human-readable workflow_id, or None if unusable (F-04).
 
-    A usable id is a non-empty string of [A-Za-z0-9._-] with no path separators
+    A usable id is a non-empty string of [A-Za-z0-9.-] with no path separators
     (a workflow_id keys a session directory `.orch/sessions/<id>/`, so it must be a
     single safe path segment). The id is lowercased: targets run on a Windows
     case-insensitive filesystem, so 'Chat-UI' and 'chat-ui' would otherwise be two
@@ -251,10 +253,17 @@ def slugify_workflow_id(raw: str | None) -> str | None:
     project's domain-slug convention. UUIDs pass this filter — they are valid ids —
     but the engine should only MINT a UUID-like opaque id when nothing readable was
     requested; see resolve_workflow_id.
+
+    5-a: '_' is mapped to '-' — underscore is the component delimiter inside
+    namespaced task IDs (sdd_{wf}_{domain}_{stage}), so a workflow id containing
+    '_' would make the namespace non-injective: workflow 'pay_v2' + domain 'auth'
+    and workflow 'pay' + domain 'v2_auth' would mint the SAME task id, and every
+    startswith('dev_pay_') prefix filter would leak into 'pay_v2'. Mapping (not
+    rejecting) keeps operator-requested ids usable.
     """
     if not isinstance(raw, str):
         return None
-    raw = raw.strip().lower()
+    raw = raw.strip().lower().replace("_", "-")
     if not raw or "/" in raw or "\\" in raw or raw in (".", ".."):
         return None
     if not _WORKFLOW_ID_RE.fullmatch(raw):
@@ -354,7 +363,7 @@ class EventType(str, Enum):
     CONTEXT_BUDGET_EVALUATED = "context_budget_evaluated"
     OPERATION_MODE_DECLARED = "operation_mode_declared"
 
-    # Management and operations (7)
+    # Management and operations (9)
     CIRCUIT_BREAKER_TRIPPED = "circuit_breaker_tripped"
     ESCALATION = "escalation"
     HUMAN_RESPONSE = "human_response"
@@ -364,6 +373,13 @@ class EventType(str, Enum):
     # Emitted by the orchestrator at the start of each dispatch loop iteration.
     # Used by on_stop.py to detect a stale orchestrator (alive but not making progress).
     ORCHESTRATOR_HEARTBEAT = "orchestrator_heartbeat"
+    # Supervised auto-resume (E2 / B(b) — CONF-05 follow-up). Both AUDIT-ONLY: no reducer
+    # handler, so the log is the single source for budget/cooldown accounting (P1/P2).
+    # ORCHESTRATOR_RESUME_REQUESTED: appended by supervisor_tick.py when a phase is stalled
+    # (total phase silence) and within the resume budget. ORCHESTRATOR_RESUMED: appended by
+    # the /u-supervise command after it re-invokes the meta-orchestrator in foreground.
+    ORCHESTRATOR_RESUME_REQUESTED = "orchestrator_resume_requested"
+    ORCHESTRATOR_RESUMED = "orchestrator_resumed"
     # Handoff loop-closure (prod-hardening task 08, A3-F5): a receipt that a
     # manifest was consumed — a logged event (not a session side-file) so
     # consumed/orphan handoff state is derived from the log (P1/P12).
@@ -596,6 +612,18 @@ _VALID_SKIP_REASONS: frozenset[str] = frozenset({
     "implementation_only_no_spec_change",
     "targeted_mode_step_not_in_scope",
     "phase_short_circuit",
+})
+
+# Failure reasons emitted ONLY by the framework when it synthesizes a terminal for
+# a worker it believes died: the stale reaper (reap_stale_tasks -> stale_timeout)
+# and the SubagentStop hook (worker_exited_without_terminal). A worker never emits
+# these — its own task_failed carries a worker-emitted reason (validation_failed,
+# internal_error, ...). This set is the key for the F2 false-positive reconciliation
+# in _handle_task_completed: a synthesized FAILED that is later contradicted by a
+# genuine task_completed from the same worker was a false positive, not corruption.
+_SYNTHESIZED_FAILURE_REASONS: frozenset[str] = frozenset({
+    "stale_timeout",
+    "worker_exited_without_terminal",
 })
 
 
@@ -869,6 +897,104 @@ def verify_chain(
         ok=True,
         message=f"Chain verified: {count} event(s)",
         mode=mode,
+        events_verified=count,
+    )
+
+
+def _verify_cache_path() -> Path:
+    return STATE_DIR / "verify_cache.json"
+
+
+def _write_verify_cache(seq: int, boundary_offset: int, event_hash: str,
+                        events_verified: int) -> None:
+    """Best-effort atomic write of the verified-prefix cache."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema": 1,
+            "engine_rev": _engine_rev(),
+            "seq": seq,
+            "boundary_offset": boundary_offset,
+            "event_hash": event_hash,
+            "events_verified": events_verified,
+            "written_at": now_iso(),
+        }
+        tmp = _verify_cache_path().with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp, _verify_cache_path())
+    except Exception:  # noqa: BLE001 — cache write is opportunistic
+        pass
+
+
+def _full_verify_and_cache() -> VerifyResult:
+    result = verify_chain(mode="strict")
+    if result.ok:
+        b = _last_event_boundary()
+        if b is not None:
+            _write_verify_cache(b[1].seq, b[0], b[1].hash, result.events_verified)
+    return result
+
+
+def verify_chain_cached() -> VerifyResult:
+    """Strict-mode verify accelerated by the verified-prefix cache.
+
+    The append path already re-validates the tail hash on every write
+    (_append_event_locked), so re-hashing the whole chain from GENESIS on
+    every cycle re-proves what was already proven. This variant re-reads the
+    cached boundary line in place (seq + hash must match) and hash-verifies
+    only the tail appended since. EVERY anomaly — missing/corrupt cache,
+    engine change, boundary mismatch, or a tail error — defers to the
+    canonical full verify_chain('strict'), so failure reports are always
+    authoritative (first_error_seq from a GENESIS scan). Semantics are
+    therefore identical to strict mode; only the happy path is cheaper.
+    Audit mode is untouched — periodic full audits still re-hash everything.
+    ORCH_SNAPSHOT=0 disables the cache here too.
+    """
+    if not _snapshot_enabled():
+        return verify_chain(mode="strict")
+    try:
+        cache = json.loads(_verify_cache_path().read_text(encoding="utf-8"))
+        if not isinstance(cache, dict) or cache.get("schema") != 1 \
+                or cache.get("engine_rev") != _engine_rev():
+            return _full_verify_and_cache()
+        boundary = int(cache["boundary_offset"])
+        if not LOG_PATH.exists() or LOG_PATH.stat().st_size <= boundary:
+            return _full_verify_and_cache()
+        with open(LOG_PATH, "rb") as f:
+            f.seek(boundary)
+            line = f.readline()
+            tail_start = f.tell()
+        event = Event.from_dict(json.loads(line.decode("utf-8")))
+        if event.seq != int(cache["seq"]) or event.hash != cache["event_hash"]:
+            return _full_verify_and_cache()
+    except Exception:  # noqa: BLE001 — unusable cache → canonical full verify
+        return _full_verify_and_cache()
+
+    prev_hash = event.hash
+    count = int(cache.get("events_verified", 0))
+    last_boundary: tuple[int, str, int] | None = None
+    pairs = _read_offset_lines(LOG_PATH, tail_start)
+    last_idx = len(pairs) - 1
+    for i, (off, raw) in enumerate(pairs):
+        try:
+            ev = Event.from_dict(json.loads(raw.decode("utf-8")))
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError):
+            if i == last_idx:
+                break  # truncated last line — tolerated, same as verify_chain
+            return _full_verify_and_cache()
+        if ev.prev_hash != prev_hash or ev.compute_hash() != ev.hash:
+            return _full_verify_and_cache()
+        prev_hash = ev.hash
+        count += 1
+        last_boundary = (off, ev.hash, ev.seq)
+
+    if last_boundary is not None:
+        _write_verify_cache(last_boundary[2], last_boundary[0],
+                            last_boundary[1], count)
+    return VerifyResult(
+        ok=True,
+        message=f"Chain verified: {count} event(s) (cached prefix)",
+        mode="strict",
         events_verified=count,
     )
 
@@ -1230,65 +1356,122 @@ def append_event(
                 _reason = _fn(data, _existing)
                 if _reason:
                     raise PreconditionViolation(f"{event_type} rejected: {_reason}")
-        last = last_event()
-        # SIEGARD-03: refuse to chain onto a corrupted tail. If the last event no
-        # longer matches its own hash, the log is already corrupt — fail HERE (at
-        # append) instead of propagating an invalid prev_hash into every following
-        # event (the cascade that forces recovery to truncate N valid events).
-        # Cost: one hash recompute per append (cheap).
-        if last is not None and last.compute_hash() != last.hash:
-            raise CorruptedLogError(
-                f"refusing to append onto corrupted tail: seq={last.seq} hash mismatch"
-            )
-        seq = (last.seq + 1) if last else 1
-        prev_hash = last.hash if last else "GENESIS"
+        return _append_event_locked(agent, event_type, task_id, attempt, data)
 
-        event_id = new_event_id()
 
-        serialized_size = len(canonical_json(data).encode("utf-8"))
-        if serialized_size > MAX_INLINE_PAYLOAD:
-            blob_ref, blob_hash = externalize_blob(data, event_id)
-            stored_data: dict[str, Any] = {
-                "_blob_ref": blob_ref,
-                "_size": serialized_size,
-                "_blob_hash": blob_hash,
-            }
-        else:
-            stored_data = data
-
-        event = Event(
-            seq=seq,
-            event_id=event_id,
-            ts=now_iso(),
-            agent=agent,
-            event_type=event_type,
-            task_id=task_id,
-            attempt=attempt,
-            data=stored_data,
-            prev_hash=prev_hash,
-            hash="",
+def _append_event_locked(
+    agent: str,
+    event_type: str,
+    task_id: str | None,
+    attempt: int,
+    data: dict[str, Any],
+) -> Event:
+    """Write path of append_event. Caller MUST hold LogLock and have validated
+    event_type/data already. Extracted so claim_task can run a state check and
+    the append under the SAME lock acquisition (atomic check-and-append)."""
+    last = last_event()
+    # SIEGARD-03: refuse to chain onto a corrupted tail. If the last event no
+    # longer matches its own hash, the log is already corrupt — fail HERE (at
+    # append) instead of propagating an invalid prev_hash into every following
+    # event (the cascade that forces recovery to truncate N valid events).
+    # Cost: one hash recompute per append (cheap).
+    if last is not None and last.compute_hash() != last.hash:
+        raise CorruptedLogError(
+            f"refusing to append onto corrupted tail: seq={last.seq} hash mismatch"
         )
-        event.hash = event.compute_hash()
+    seq = (last.seq + 1) if last else 1
+    prev_hash = last.hash if last else "GENESIS"
 
-        line_bytes = (
-            json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            + "\n"
-        ).encode("utf-8")
+    event_id = new_event_id()
 
-        # SIEGARD-03: append in a single os.write on an O_APPEND fd. Under LogLock
-        # there are no concurrent cooperating writers; the win is shrinking the
-        # "partial line" window if the process is killed mid-append (the dominant
-        # corruption vector, correlated with worker kills). fsync preserves
-        # durability. Blobs (MAX_INLINE_PAYLOAD) keep the line small, so it
-        # typically fits in a single atomic write (<= PIPE_BUF).
-        fd = os.open(LOG_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-        try:
-            os.write(fd, line_bytes)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+    serialized_size = len(canonical_json(data).encode("utf-8"))
+    if serialized_size > MAX_INLINE_PAYLOAD:
+        blob_ref, blob_hash = externalize_blob(data, event_id)
+        stored_data: dict[str, Any] = {
+            "_blob_ref": blob_ref,
+            "_size": serialized_size,
+            "_blob_hash": blob_hash,
+        }
+    else:
+        stored_data = data
+
+    event = Event(
+        seq=seq,
+        event_id=event_id,
+        ts=now_iso(),
+        agent=agent,
+        event_type=event_type,
+        task_id=task_id,
+        attempt=attempt,
+        data=stored_data,
+        prev_hash=prev_hash,
+        hash="",
+    )
+    event.hash = event.compute_hash()
+
+    line_bytes = (
+        json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+
+    # SIEGARD-03: append in a single os.write on an O_APPEND fd. Under LogLock
+    # there are no concurrent cooperating writers; the win is shrinking the
+    # "partial line" window if the process is killed mid-append (the dominant
+    # corruption vector, correlated with worker kills). fsync preserves
+    # durability. Blobs (MAX_INLINE_PAYLOAD) keep the line small, so it
+    # typically fits in a single atomic write (<= PIPE_BUF).
+    fd = os.open(LOG_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, line_bytes)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
     return event
+
+
+def claim_task(
+    agent: str,
+    task_id: str,
+    attempt: int = 1,
+    data: dict[str, Any] | None = None,
+) -> tuple[Event | None, str | None]:
+    """Atomic check-and-claim — serializes dispatch against the append lock.
+
+    The orchestrators' dispatch cycle is read-then-append: derive state, pick a
+    batch, append task_claimed per task. Two concurrent orchestrator instances
+    can both read the same READY task before either claim lands (double-dispatch
+    race). This function closes that window: it re-derives the task's status
+    from the log INSIDE LogLock and appends task_claimed only when the task is
+    still claimable (status == ready). Racing claimants serialize on the lock;
+    the loser gets a structured refusal instead of writing a duplicate claim.
+
+    Returns:
+        (event, None)  — claim appended.
+        (None, reason) — not claimable; reason is "task_not_found" or
+                         "not_ready:<current status>". Caller MUST drop the
+                         task from its dispatch batch and NOT spawn a worker.
+
+    Raises:
+        EventValidationError: data missing required task_claimed fields.
+        IllegalTransition / CorruptedLogError: log cannot be replayed.
+        LockTimeoutError, OSError: as append_event.
+    """
+    if data is None:
+        data = {}
+    _validate_event_data(EventType.TASK_CLAIMED.value, data)
+    ensure_dirs()
+    with LogLock():
+        state = reduce_all()
+        task = state.tasks.get(task_id)
+        if task is None:
+            return None, "task_not_found"
+        if task.status != TaskStatus.READY:
+            return None, f"not_ready:{TaskStatus(task.status).value}"
+        event = _append_event_locked(
+            agent, EventType.TASK_CLAIMED.value, task_id, attempt, data
+        )
+        return event, None
 
 
 # ---------------------------------------------------------------------------
@@ -1309,6 +1492,10 @@ class TaskState:
     max_attempts: int = 3
     worker_id: str | None = None
     stack: str | None = None
+    # 5-a: explicit workflow binding from task_created data.workflow_id (None on
+    # legacy events). Lets orchestrators and exit gates scope task queries per
+    # workflow by FIELD instead of parsing/prefix-matching the task ID.
+    workflow_id: str | None = None
     artifacts: list[str] = field(default_factory=list)
     last_error: str | None = None
     last_failure_reason: str | None = None
@@ -1332,6 +1519,7 @@ class TaskState:
             "max_attempts": self.max_attempts,
             "worker_id": self.worker_id,
             "stack": self.stack,
+            "workflow_id": self.workflow_id,
             "artifacts": self.artifacts,
             "last_error": self.last_error,
             "last_failure_reason": self.last_failure_reason,
@@ -1364,6 +1552,7 @@ class TaskState:
             max_attempts=d.get("max_attempts", 3),
             worker_id=d.get("worker_id"),
             stack=d.get("stack"),
+            workflow_id=d.get("workflow_id"),
             artifacts=d.get("artifacts", []),
             last_error=d.get("last_error"),
             last_failure_reason=d.get("last_failure_reason"),
@@ -1434,6 +1623,11 @@ class OrchState:
     last_snapshot_seq: int = 0
     # ISO timestamps of every task_failed event — used by evaluate_circuit_state
     failure_timestamps: list[str] = field(default_factory=list)
+    # Audited no-op events: duplicates the reducer absorbed instead of raising
+    # IllegalTransition (e.g. a duplicate task_claimed from a concurrent
+    # orchestrator). Fail loud, not fail dead — visible in reduce output, never
+    # silent, never fatal. Each entry: {seq, event_type, task_id, reason}.
+    anomalies: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1448,6 +1642,7 @@ class OrchState:
             "last_snapshot_seq": self.last_snapshot_seq,
             # C3: expose failure_timestamps so orchestrator can evaluate circuit breaker
             "failure_timestamps": self.failure_timestamps,
+            "anomalies": self.anomalies,
         }
 
     @classmethod
@@ -1464,6 +1659,7 @@ class OrchState:
         obj.tasks = {k: TaskState.from_dict(v) for k, v in d.get("tasks", {}).items()}
         obj.phases = {k: PhaseState.from_dict(v) for k, v in d.get("phases", {}).items()}
         obj.failure_timestamps = list(d.get("failure_timestamps", []))
+        obj.anomalies = list(d.get("anomalies", []))
         return obj
 
     def tasks_by_status(self, status: str) -> list["TaskState"]:
@@ -1617,6 +1813,7 @@ def _handle_task_created(state: OrchState, event: Event) -> None:
         task_type=data.get("type", ""),
         spec=data.get("spec", ""),
         stack=data.get("stack"),
+        workflow_id=data.get("workflow_id"),
         max_attempts=Tier(data.get("tier", Tier.STANDARD.value)).default_max_attempts,
         last_event_at=event.ts,
     )
@@ -1630,10 +1827,18 @@ def _handle_task_claimed(state: OrchState, event: Event) -> None:
     if task_id is None or task_id not in state.tasks:
         return
     task = state.tasks[task_id]
-    # Idempotency guard: same worker re-claiming an already-running task is a no-op.
-    # Prevents duplicate-claim IllegalTransition when two concurrent orchestrators
-    # dispatch the same worker_id for a task that is already running.
+    # C2: Idempotency — a duplicate claim of an already-RUNNING task by the same
+    # worker_id is residue from a concurrent orchestrator dispatching the same
+    # batch (double-dispatch race). The log is append-only, so raising here would
+    # make every future replay fail — the duplicate must be an audited no-op, not
+    # a fatal transition. Recorded in state.anomalies (fail loud, not fail dead).
     if task.status == TaskStatus.RUNNING and task.worker_id == event.data.get("worker_id"):
+        state.anomalies.append({
+            "seq": event.seq,
+            "event_type": EventType.TASK_CLAIMED.value,
+            "task_id": task_id,
+            "reason": "duplicate_claim_same_worker",
+        })
         return
     if task.status != TaskStatus.READY:
         raise IllegalTransition(
@@ -1644,6 +1849,36 @@ def _handle_task_claimed(state: OrchState, event: Event) -> None:
     task.claimed_at = event.ts
     task.last_event_at = event.ts
     task.evidence.append(event.seq)
+
+
+def _handle_task_progress(state: OrchState, event: Event) -> None:
+    """Heartbeat: a live worker's progress checkpoint resets the staleness timer.
+
+    F1 (SIEGARD): the stale reaper (stale_tasks) and the SubagentStop liveness gate
+    (worker_liveness_expired) both measure silence as (now - task.last_event_at).
+    stale_tasks' own docstring promises task_progress updates last_event_at so
+    heartbeats reset the timer — but task_progress had NO reducer handler, so
+    last_event_at only advanced on state transitions (task_claimed, ...). A worker
+    emitting context_loaded -> analysis_complete -> draft_written without any
+    transition never reset the timer and was reaped while alive. This handler makes
+    the implementation match the contract.
+
+    Only a progress for the CURRENT attempt of a RUNNING task counts (mirrors the
+    straggler guards in _handle_task_completed/_handle_task_failed): progress on a
+    non-running task (e.g. one already reaped to FAILED) must not revive it, and an
+    older attempt's straggler progress must not reset a newer attempt's timer.
+    last_event_at is advanced but evidence is NOT appended — heartbeats are frequent
+    and would grow the evidence list unbounded.
+    """
+    task_id = event.task_id
+    if task_id is None or task_id not in state.tasks:
+        return
+    task = state.tasks[task_id]
+    if task.status != TaskStatus.RUNNING:
+        return
+    if event.attempt < (task.attempts or 1):
+        return
+    task.last_event_at = event.ts
 
 
 def _handle_task_completed(state: OrchState, event: Event) -> None:
@@ -1662,7 +1897,29 @@ def _handle_task_completed(state: OrchState, event: Event) -> None:
     # path (attempts=0, event.attempt=1) evaluates `1 < 1` → False and proceeds.
     if event.attempt < (task.attempts or 1):
         return
-    if task.status != TaskStatus.RUNNING:
+    # F2 (SIEGARD): false-positive reconciliation. A SYNTHESIZED terminal — emitted
+    # by the stale reaper (stale_timeout) or the SubagentStop hook
+    # (worker_exited_without_terminal), never by the worker — marked a still-live
+    # worker as FAILED. Its late task_completed (same attempt, no retry advanced the
+    # attempt counter) proves the worker was alive and finished; the FAILED was the
+    # error, not this event. Accept FAILED->COMPLETED and record the anomaly (fail
+    # loud, not fail dead) so a single false positive no longer makes the whole log
+    # irreducible. This is deliberately NARROW: a completed over a WORKER-reported
+    # FAILED (validation_failed, internal_error, ...) or over a never-claimed task
+    # still raises below — the validator rejecting genuine corruption stays a feature.
+    reconciled_false_positive = (
+        task.status == TaskStatus.FAILED
+        and task.last_failure_reason in _SYNTHESIZED_FAILURE_REASONS
+    )
+    if reconciled_false_positive:
+        state.anomalies.append({
+            "seq": event.seq,
+            "event_type": EventType.TASK_COMPLETED.value,
+            "task_id": task_id,
+            "reason": "reconciled_false_positive_completion",
+            "prior_failure": task.last_failure_reason,
+        })
+    elif task.status != TaskStatus.RUNNING:
         raise IllegalTransition(
             f"task_completed: task {task_id!r} is {task.status!r}, expected running"
         )
@@ -1806,6 +2063,7 @@ _HANDLERS: dict[str, Any] = {
     EventType.PHASE_RESUMED: _handle_phase_resumed,
     EventType.TASK_CREATED: _handle_task_created,
     EventType.TASK_CLAIMED: _handle_task_claimed,
+    EventType.TASK_PROGRESS: _handle_task_progress,
     EventType.TASK_COMPLETED: _handle_task_completed,
     EventType.TASK_SKIPPED: _handle_task_skipped,
     EventType.TASK_FAILED: _handle_task_failed,
@@ -1830,8 +2088,9 @@ def apply_event(state: OrchState, event: Event) -> OrchState:
     Mutates state in-place and returns it. deepcopy before calling if you
     need to preserve the original.
 
-    Known event types with no reducer effect (e.g. task_progress, snapshot)
-    are silently skipped — last_seq is still updated.
+    Known event types with no reducer effect (e.g. snapshot) are silently
+    skipped — last_seq is still updated. (task_progress DOES have an effect: it
+    advances last_event_at as a liveness heartbeat — see _handle_task_progress.)
 
     Raises:
         IllegalTransition: Event implies an illegal state transition.
@@ -1870,17 +2129,174 @@ def apply_event(state: OrchState, event: Event) -> OrchState:
     return state
 
 
+# ---------------------------------------------------------------------------
+# State snapshot cache (Task 1.8) — O(tail) reduction instead of O(log)
+# ---------------------------------------------------------------------------
+# The snapshot is a DERIVED CACHE, not state (P1 — the log stays the only
+# truth): a JSON file under STATE_DIR holding {seq, boundary_offset,
+# event_hash, engine_rev, state}. Loading seeks to boundary_offset, re-reads
+# that one line, and accepts the cache only if the event there still has the
+# recorded seq and hash — any mismatch (log truncated by recovery, log
+# replaced, file tampered, engine code changed, JSON corrupt) silently falls
+# back to a full replay, which then re-primes the cache. Deleting the file is
+# always safe. ORCH_SNAPSHOT=0 disables both load and write.
+
+_SNAPSHOT_SCHEMA = 1
+_ENGINE_REV: str | None = None
+
+
+def _engine_rev() -> str:
+    """Content hash of this module — any engine change invalidates all
+    snapshots (over-invalidation is safe: one full replay re-primes)."""
+    global _ENGINE_REV
+    if _ENGINE_REV is None:
+        try:
+            _ENGINE_REV = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+        except OSError:
+            _ENGINE_REV = "unknown"
+    return _ENGINE_REV
+
+
+def _snapshot_enabled() -> bool:
+    return os.environ.get("ORCH_SNAPSHOT", "1") != "0"
+
+
+def _snapshot_path() -> Path:
+    return STATE_DIR / "snapshot.json"
+
+
+def _read_offset_lines(path: Path, start_offset: int = 0) -> list[tuple[int, bytes]]:
+    """Non-empty lines of `path` from `start_offset`, as (line_start_offset, raw)."""
+    with open(path, "rb") as f:
+        f.seek(start_offset)
+        data = f.read()
+    out: list[tuple[int, bytes]] = []
+    pos = start_offset
+    for raw in data.split(b"\n"):
+        if raw.strip():
+            out.append((pos, raw))
+        pos += len(raw) + 1
+    return out
+
+
+def _last_event_boundary() -> tuple[int, "Event"] | None:
+    """(line_start_offset, event) of the last parseable log line, or None."""
+    if not LOG_PATH.exists():
+        return None
+    try:
+        pairs = _read_offset_lines(LOG_PATH)
+    except OSError:
+        return None
+    for off, raw in reversed(pairs):
+        try:
+            return off, Event.from_dict(json.loads(raw.decode("utf-8")))
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError):
+            continue
+    return None
+
+
+def _load_reduce_snapshot() -> tuple["OrchState", int, int] | None:
+    """Validated snapshot as (base_state, tail_start_offset, base_seq), or None.
+
+    None ALWAYS means "do a full replay" — the cache is disposable by design,
+    so every anomaly is swallowed here rather than surfaced.
+    """
+    if not _snapshot_enabled():
+        return None
+    try:
+        snap = json.loads(_snapshot_path().read_text(encoding="utf-8"))
+        if not isinstance(snap, dict) or snap.get("schema") != _SNAPSHOT_SCHEMA:
+            return None
+        if snap.get("engine_rev") != _engine_rev():
+            return None
+        seq = int(snap["seq"])
+        boundary = int(snap["boundary_offset"])
+        if not LOG_PATH.exists():
+            return None
+        with open(LOG_PATH, "rb") as f:
+            f.seek(0, 2)
+            if f.tell() <= boundary:
+                return None  # log shrank (recovery truncation / replacement)
+            f.seek(boundary)
+            line = f.readline()
+        event = Event.from_dict(json.loads(line.decode("utf-8")))
+        if event.seq != seq or event.hash != snap["event_hash"]:
+            return None
+        state = OrchState.from_dict(snap["state"])
+        if state.last_seq != seq:
+            return None
+    except Exception:  # noqa: BLE001 — cache must never take the engine down
+        return None
+    return state, boundary + len(line), seq
+
+
+def _write_reduce_snapshot(state: "OrchState", boundary_offset: int,
+                           event_hash: str) -> None:
+    """Best-effort atomic cache write — failure is silent by design."""
+    if not _snapshot_enabled():
+        return
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema": _SNAPSHOT_SCHEMA,
+            "engine_rev": _engine_rev(),
+            "seq": state.last_seq,
+            "boundary_offset": boundary_offset,
+            "event_hash": event_hash,
+            "written_at": now_iso(),
+            "state": state.to_dict(),
+        }
+        tmp = _snapshot_path().with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp, _snapshot_path())
+    except Exception:  # noqa: BLE001 — cache write is opportunistic
+        pass
+
+
 def reduce_all() -> OrchState:
     """
-    Builds state from scratch by replaying all events from log start.
+    Builds state by replaying events — from the snapshot cache's boundary
+    when a valid snapshot exists (O(tail)), else from log start (O(log)).
+
+    Snapshot semantics: the cache is validated against the log (seq + hash of
+    the boundary event re-read in place) before use; any mismatch falls back
+    to a full replay. A fresh snapshot is written whenever the replayed tail
+    reaches SNAPSHOT_EVERY_N_EVENTS. Both paths produce the identical state —
+    ORCH_SNAPSHOT=0 forces the full path.
 
     Raises:
         IllegalTransition: Log contains illegal transition.
         CorruptedLogError: Log is corrupted.
     """
+    loaded = _load_reduce_snapshot()
+    if loaded is not None:
+        state, tail_start, base_seq = loaded
+        last_boundary: tuple[int, str] | None = None
+        pairs = _read_offset_lines(LOG_PATH, tail_start)
+        last_idx = len(pairs) - 1
+        for i, (off, raw) in enumerate(pairs):
+            try:
+                event = Event.from_dict(json.loads(raw.decode("utf-8")))
+            except (json.JSONDecodeError, KeyError, UnicodeDecodeError) as exc:
+                if i == last_idx:
+                    break  # truncated last line — tolerate (read_events semantics)
+                raise CorruptedLogError(
+                    f"Invalid JSON at byte offset {off}: {exc}"
+                ) from exc
+            apply_event(state, event)
+            last_boundary = (off, event.hash)
+        if last_boundary is not None \
+                and state.last_seq - base_seq >= SNAPSHOT_EVERY_N_EVENTS:
+            _write_reduce_snapshot(state, last_boundary[0], last_boundary[1])
+        return state
+
     state = OrchState()
     for event in read_events():
         apply_event(state, event)
+    if _snapshot_enabled() and state.last_seq >= SNAPSHOT_EVERY_N_EVENTS:
+        b = _last_event_boundary()
+        if b is not None and b[1].seq == state.last_seq:
+            _write_reduce_snapshot(state, b[0], b[1].hash)
     return state
 
 
@@ -1946,12 +2362,18 @@ def reduce_workflow(workflow_id: str) -> OrchState:
     """Reduce ONLY the events belonging to `workflow_id` into a fresh OrchState.
 
     Workflow isolation (strategy B — derive on reduction; compatible with existing
-    logs, no back-fill). Task events do NOT carry `workflow_id`; association is
-    derived exactly as monitor.py's `_collect_workflow_index` does: every event
-    between one `phase_declared` and the next is attributed to the workflow named
-    by that `phase_declared`. An explicit `data.workflow_id` on an event always
-    wins over the tracked boundary. Events before any `phase_declared` (no tracked
-    workflow and no embedded id) belong to no workflow and are skipped.
+    logs, no back-fill). Attribution precedence per event:
+
+    1. explicit `data.workflow_id` on the event (always wins);
+    2. the task→workflow map: a `task_created` whose resolved workflow is known
+       binds its task_id, and every later event for that task follows the
+       binding — robust against interleaved workflows (5-a: orchestrators stamp
+       `workflow_id` into every task_created they emit);
+    3. positional fallback (legacy logs): every event between one
+       `phase_declared` and the next belongs to the workflow it declared.
+
+    Events before any `phase_declared` with no embedded id and no task binding
+    belong to no workflow and are skipped.
 
     Why this exists: `reduce_all` is global — a single illegal transition in ONE
     workflow aborts reduction for the WHOLE log, stalling every other workflow.
@@ -1969,6 +2391,7 @@ def reduce_workflow(workflow_id: str) -> OrchState:
     """
     state = OrchState()
     current_wf: str | None = None
+    task_wf: dict[str, str] = {}
     for event in read_events():
         data = event.data
         if is_blob_ref(data):
@@ -1980,10 +2403,43 @@ def reduce_workflow(workflow_id: str) -> OrchState:
             declared = data.get("workflow_id")
             if declared:
                 current_wf = declared
-        event_wf = data.get("workflow_id") or current_wf
+        if event.event_type == EventType.TASK_CREATED.value:
+            # A task_created is a (re-)incarnation: attribute it by explicit id or
+            # the positional boundary — NEVER by the binding map, or the first
+            # creation would own the id forever and a legacy workflow's legitimate
+            # reuse of a bare id (pre-5-a logs) would misattribute every later
+            # event to the earlier workflow. The new creation REBINDS the id.
+            event_wf = data.get("workflow_id") or current_wf
+            if event.task_id and event_wf:
+                task_wf[event.task_id] = event_wf
+        else:
+            event_wf = (
+                data.get("workflow_id")
+                or (task_wf.get(event.task_id) if event.task_id else None)
+                or current_wf
+            )
         if event_wf == workflow_id:
             apply_event(state, event)
     return state
+
+
+def scoped_phase_tasks(state: "OrchState", phase: str) -> list["TaskState"]:
+    """Tasks of `phase`, scoped to ORCH_WORKFLOW_ID when set (5-a gate scoping).
+
+    Exit gates used to read the GLOBAL state: another workflow's non-terminal
+    task in the shared log could block (or wrongly satisfy) the current
+    workflow's phase exit forever. When ORCH_WORKFLOW_ID is set, a task is in
+    scope when its TaskState.workflow_id (stamped from task_created data)
+    matches — or when it has NO binding (legacy pre-5-a task): a workflow
+    upgraded mid-flight must keep seeing its own un-namespaced tasks, and the
+    residual overlap with other legacy workflows is exactly the pre-5-a status
+    quo, never worse. With ORCH_WORKFLOW_ID unset behavior is unchanged (global).
+    """
+    wf = os.environ.get("ORCH_WORKFLOW_ID")
+    tasks = [t for t in state.tasks.values() if t.phase == phase]
+    if not wf:
+        return tasks
+    return [t for t in tasks if t.workflow_id == wf or t.workflow_id is None]
 
 
 def detect_stale_orchestrator(
@@ -2186,11 +2642,12 @@ def reap_stale_tasks(now: str | None = None) -> list[str]:
     from check_stale.py (orchestrator Step 5.0) and on_stop.py (session-end backstop).
     """
     now = now or now_iso()
+    cfg = load_config()
     state = reduce_all()
     reaped: list[str] = []
-    for task in stale_tasks(state, now):
+    for task in stale_tasks(state, now, cfg):
         try:
-            append_event(
+            failed = append_event(
                 agent="stale-monitor",
                 event_type=EventType.TASK_FAILED.value,
                 task_id=task.task_id,
@@ -2198,6 +2655,9 @@ def reap_stale_tasks(now: str | None = None) -> list[str]:
                 data={"phase": task.phase, "reason": "stale_timeout", "retryable": True},
             )
             reaped.append(task.task_id)
+            # F3/F4: schedule the retry atomically in this same Python call so the
+            # task never stalls in FAILED if the orchestrator turn ends before Step 5.5.
+            schedule_retry_if_due(task.task_id, failed.seq, now, cfg)
         except Exception:  # noqa: BLE001 — a reaper must never raise
             continue
     return reaped
@@ -2235,16 +2695,37 @@ def default_config() -> dict[str, Any]:
             },
             "overrides_by_task_type": {},
         },
+        # Allowlist for the clean-tree gates (check_qa_on_integrated_main,
+        # check_all_branches_integrated). fnmatch patterns matched against each
+        # dirty entry's repo-relative path AND basename. Default [] = every
+        # dirty entry blocks (behavior unchanged unless the operator opts in).
+        # Gates MUST surface what they ignored in evidence — nothing silent.
+        "clean_tree_gates": {
+            "ignore_patterns": [],
+        },
         "circuit_breaker": {
-            # A4: window-based breaker only. It relaxes as failures age out of the
-            # rolling window, or via a manual reset (scripts/circuit_breaker.py). There
-            # is no cooldown / success-reset logic — do NOT re-add cooldown_minutes or
-            # reset_on_success_count here unless evaluate_circuit_state implements them
-            # (they were inert config that promised behavior the engine never had).
+            # A4/CONF-01: window-based detection, STICKY trip. When failures in the
+            # rolling window first reach failure_threshold, run_circuit_check.py appends
+            # circuit_breaker_tripped (trip_circuit_if_due) and state.circuit_breaker is
+            # set; the breaker then stays blocked (already_tripped) until a manual reset
+            # (scripts/circuit_breaker.py --reset → human_response). It does NOT relax on
+            # age-out — a persisted trip forces human attention. No cooldown / success-
+            # reset logic — do NOT re-add cooldown_minutes or reset_on_success_count.
             "enabled": True,
             "window_minutes": 10,
             "failure_threshold": 50,
             "scope": "workflow",
+        },
+        # E2/B(b): bounded supervised auto-resume. supervisor_tick.py + /u-supervise
+        # re-invoke a stalled phase orchestrator, capped so a persistently stuck workflow
+        # escalates to a human (E23_resume_budget_exhausted) instead of looping forever.
+        # All accounting is derived from the log (orchestrator_resumed / _resume_requested).
+        "supervisor_policy": {
+            "enabled": True,
+            "max_auto_resumes": 3,          # per phase, since its last phase_entered
+            "cooldown_seconds": 300,        # min gap between resumes of the same phase
+            "in_flight_ttl_seconds": 900,   # a resume_requested older than this with no
+                                            # following resumed/heartbeat is expired (no wedge)
         },
         "payload_limits": {
             "max_inline_bytes": 3500,
@@ -2332,6 +2813,44 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
     # silently dropped the writer-protective stale defaults (F-02 regression).
     _deep_merge(cfg, loaded)
     return cfg
+
+
+def split_porcelain_by_allowlist(
+    porcelain: str,
+    patterns: list[str],
+) -> tuple[list[str], list[str]]:
+    """Partitions `git status --porcelain` output into (dirty, ignored) lines.
+
+    The clean-tree gates block on ANY dirty entry, which lets pre-existing
+    operator tooling unrelated to the workflow (dev.sh, tmux.conf) hard-block a
+    phase transition. `clean_tree_gates.ignore_patterns` (.orch/config.json)
+    declares fnmatch patterns for such entries: a line is ignored when its
+    repo-relative path OR its basename matches any pattern (renames match on
+    either side of `->`). With no patterns (the default) every dirty line
+    blocks — exactly the pre-allowlist behavior.
+
+    Transparency contract: callers MUST surface the returned `ignored` list in
+    the gate's evidence — an allowlisted entry is visible, never silent.
+    """
+    dirty: list[str] = []
+    ignored: list[str] = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        path_part = line[3:] if len(line) > 3 else line
+        names: set[str] = set()
+        for cand in path_part.split(" -> "):
+            cand = cand.strip().strip('"')
+            if cand:
+                names.add(cand)
+                names.add(cand.rsplit("/", 1)[-1])
+        if patterns and any(
+            fnmatch.fnmatch(name, pat) for name in names for pat in patterns
+        ):
+            ignored.append(line)
+        else:
+            dirty.append(line)
+    return dirty, ignored
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -2444,13 +2963,18 @@ def should_retry(task: TaskState, policy: RetryPolicy) -> bool:
       - attempts >= policy.max_attempts → False (max exhausted)
       - otherwise → True
 
-    Structural reasons (agent could not execute, not a logic error):
-      subagent_invalid_response, worker_exited_without_terminal, stale_timeout
+    Structural reasons (agent could not execute, not a logic error) — these are the
+    synthesized worker/task-level task_failed reasons in _VALID_FAILURE_REASONS:
+      worker_exited_without_terminal, stale_timeout
+    (CONF-02: `subagent_invalid_response` was previously listed here but is a
+    meta→phase-orchestrator envelope/escalation concept — code E13_subagent_invalid_response,
+    with its own retry logic in orchestrator.md — never a task_failed reason. It is not
+    in _VALID_FAILURE_REASONS, so a task's last_failure_reason can never equal it; the
+    entry was dead. Removed to keep this set == the real structural reason enum.)
     """
     if task.last_failure_retryable is False:
         return False
     _STRUCTURAL_REASONS = frozenset({
-        "subagent_invalid_response",
         "worker_exited_without_terminal",
         "stale_timeout",
     })
@@ -2459,6 +2983,68 @@ def should_retry(task: TaskState, policy: RetryPolicy) -> bool:
     if task.attempts >= policy.max_attempts:
         return False
     return True
+
+
+def schedule_retry_if_due(
+    task_id: str,
+    previous_failure_seq: int,
+    now: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> str | None:
+    """Emit task_scheduled_retry for a just-failed task IN THE SAME PYTHON CALL as the
+    failure, when the failure is retryable (F3/F4 — SIEGARD BUG-4).
+
+    The stale reaper and the SubagentStop hook emit task_failed from Python, but the
+    matching task_scheduled_retry was emitted only later by the orchestrator LLM (Step
+    5.5). If the orchestrator turn ended between the two, the task stalled in FAILED
+    forever with nobody scheduling the retry. Emitting the retry here removes that
+    single point of failure: even if the turn dies immediately after, the task is
+    already SCHEDULED and the next orchestrator invocation resumes it via due_retries.
+
+    Contract:
+      - Re-derives state and acts ONLY when the task is currently FAILED. A concurrent
+        retry/DLQ that already advanced it is left untouched (no double-schedule; the
+        orchestrator's Step 5.5 iterates status==failed, so it won't re-schedule this).
+      - Non-retryable failures (should_retry False — max attempts, structural cap, or
+        retryable=False) are left FAILED for the orchestrator to route to DLQ.
+      - Never raises: a reaper/hook path must not crash. Returns next_retry_at when it
+        scheduled a retry, else None.
+    """
+    from datetime import timedelta
+
+    now = now or now_iso()
+    cfg = config if config is not None else load_config()
+    try:
+        state = reduce_all()
+    except Exception:  # noqa: BLE001 — never raise from a reaper/hook path
+        return None
+    task = state.tasks.get(task_id)
+    if task is None or task.status != TaskStatus.FAILED:
+        return None
+    policy = RetryPolicy.for_task(task.task_type or "", task.tier, cfg)
+    if not should_retry(task, policy):
+        return None
+    delay = backoff_seconds(task.attempts, policy.base_delay_s, policy.cap_s)
+    retry_dt = parse_iso(now) + timedelta(seconds=delay)
+    next_retry_at = (
+        retry_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{retry_dt.microsecond // 1000:03d}Z"
+    )
+    try:
+        append_event(
+            agent="stale-monitor",
+            event_type=EventType.TASK_SCHEDULED_RETRY.value,
+            task_id=task_id,
+            attempt=task.attempts,
+            data={
+                "phase": task.phase,
+                "next_retry_at": next_retry_at,
+                "backoff_seconds": round(delay, 3),
+                "previous_failure_seq": previous_failure_seq,
+            },
+        )
+    except Exception:  # noqa: BLE001 — never raise from a reaper/hook path
+        return None
+    return next_retry_at
 
 
 def parse_manifest_fields(content: str) -> dict[str, Any]:
@@ -2632,6 +3218,53 @@ def evaluate_circuit_state(
         "window_end": now,
         "window_minutes": window_minutes,
     }
+
+
+def trip_circuit_if_due(
+    now: str | None = None,
+    config: dict | None = None,
+    state: "OrchState | None" = None,
+) -> "Event | None":
+    """Append `circuit_breaker_tripped` when the failure window first crosses the
+    threshold, so the breaker becomes PERSISTED state instead of an ephemeral
+    per-cycle gate (CONF-01 — SIEGARD self-spec).
+
+    Before this, `evaluate_circuit_state`/`run_circuit_check.py` only computed
+    `should_trip` and blocked the cycle; nothing ever appended the event, so
+    `state.circuit_breaker` was always None, the breaker relaxed silently when
+    failures aged out of the window, and `circuit_breaker.py --reset` was
+    unreachable (`no_cb_event`). Emitting the event here makes the breaker STICKY:
+    once tripped it stays blocked (via `already_tripped`) until a human resets it
+    with `circuit_breaker.py --reset` (human_response → `_handle_human_response`).
+
+    Idempotent: `should_trip` is `(not already_tripped) and (count >= threshold)`,
+    so once the trip is persisted a second call is a no-op (no duplicate event).
+    Never raises — an infra check must not crash the orchestrator cycle.
+
+    Returns the appended Event when it tripped, else None.
+    """
+    now = now or now_iso()
+    cfg = config if config is not None else load_config()
+    try:
+        st = state if state is not None else reduce_all()
+    except Exception:  # noqa: BLE001 — an infra check must not raise
+        return None
+    cb = evaluate_circuit_state(st, now, cfg)
+    if not cb.get("should_trip"):
+        return None
+    try:
+        return append_event(
+            agent="circuit-monitor",
+            event_type=EventType.CIRCUIT_BREAKER_TRIPPED.value,
+            data={
+                "window_start": cb["window_start"],
+                "window_end": cb["window_end"],
+                "failure_count": cb["failure_count"],
+                "threshold": cb["threshold"],
+            },
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -3002,12 +3635,16 @@ __all__ = [
     # Verification
     "VerifyResult",
     "verify_chain",
+    "verify_chain_cached",
     # Blob externalization
     "is_blob_ref",
     "externalize_blob",
     "load_blob_data",
     # Log I/O
     "append_event",
+    "claim_task",
+    "split_porcelain_by_allowlist",
+    "scoped_phase_tasks",
     "read_events",
     "last_event",
     "read_events_filtered",
@@ -3032,6 +3669,7 @@ __all__ = [
     "tasks_ready_for_retry",
     # Circuit breaker
     "evaluate_circuit_state",
+    "trip_circuit_if_due",
     # Recovery
     "verify_and_recover",
     # Dependency helpers
@@ -3357,6 +3995,9 @@ DEV_TRANSITIONS: dict[tuple[str, Callable[[dict], bool]], Action] = {
             "dispatch_parallel_planners",
             {
                 "workers": ["u-be-planner", "u-fe-planner"],
+                # tasks are namespaced by the DevStateMachine wrapper when the
+                # orchestrator passes workflow_id (5-a); this static value is the
+                # legacy fallback for callers that do not.
                 "tasks": ["dev_planning_be", "dev_planning_fe"],
             },
         ),
@@ -3400,6 +4041,19 @@ class DevStateMachine(StateMachine):
 
     def evaluate(self, state: str, inputs: dict) -> Action:
         action = super().evaluate(state, inputs)
+        # 5-a: task IDs are namespaced by workflow so a shared log never
+        # collides across workflows (dev_{workflow_id}_planning_be/fe).
+        # Without workflow_id in inputs the legacy un-namespaced ids stand.
+        if state == "dispatch_planner_stack" and action.name == "dispatch_parallel_planners":
+            wf = inputs.get("workflow_id")
+            if wf:
+                return Action(
+                    "dispatch_parallel_planners",
+                    {
+                        "workers": action.params["workers"],
+                        "tasks": [f"dev_{wf}_planning_be", f"dev_{wf}_planning_fe"],
+                    },
+                )
         if state == "dispatch_planner_stack" and action.name == "error":
             return Action(
                 "error",
@@ -3666,12 +4320,29 @@ class SddStateMachine(StateMachine):
             )
         if state == "exit_criteria_failed" and action.name == "dispatch_repair_pipeline":
             cycles = int(inputs.get("repair_cycles", 0))
+            domains = list(inputs.get("invalid_domains", []))
+            # Stage-granular repair (conservative). defect_origins maps each
+            # INVALID domain to the pipeline stage its blocking issues point at
+            # (derived from validation-result.yaml `responsible` fields by
+            # identify_invalid_domains.py). Only the unambiguous back-only case
+            # gets a reduced pipeline — earlier-stage artifacts were approved
+            # and are reused as inputs, not regenerated. ANY other origin
+            # (writer, front, mixed, missing, unparseable) falls back to the
+            # full pipeline: mis-attribution must degrade to redundant work,
+            # never to an under-repair loop.
+            origins = inputs.get("defect_origins") or {}
+            full = ["spec-writer", "spec-reviewer", "spec-back", "spec-validator"]
+            reduced = {"back": ["spec-back", "spec-validator"]}
+            pipelines = {
+                d: reduced.get(origins.get(d), full) for d in domains
+            }
             return Action(
                 "dispatch_repair_pipeline",
                 {
                     "repair_cycle_n": cycles + 1,
-                    "domains": list(inputs.get("invalid_domains", [])),
-                    "pipeline": ["spec-writer", "spec-reviewer", "spec-back", "spec-validator"],
+                    "domains": domains,
+                    "pipeline": full,
+                    "pipelines": pipelines,
                 },
             )
         if state == "exit_criteria_failed" and action.name == "escalate_e08":

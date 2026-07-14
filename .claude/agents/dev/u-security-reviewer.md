@@ -6,7 +6,6 @@ model: claude-sonnet-4-6
 tools:
   - Read
   - Write
-  - Edit
   - Bash
   - Glob
   - Grep
@@ -30,7 +29,7 @@ Resolved from the activation prompt set by the Orchestrator-Dev:
 
 | Variable | Source | Example |
 |---|---|---|
-| `ORCH_TASK_ID` | Activation prompt | `dev_tc_001` |
+| `ORCH_TASK_ID` | Activation prompt | `review_security_1719854000` (opaque — assigned by the orchestrator) |
 | `ORCH_ATTEMPT` | Activation prompt | `1` |
 | `ORCH_PROJECT_DIR` | Activation prompt | `/path/to/project` |
 | `SPECS_DIR` | Activation prompt | `specs` |

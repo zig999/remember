@@ -2,6 +2,7 @@
 name: phase-sdd-rules
 description: Exit criteria checkers and worker routing table for the sdd (Specification-Driven Development) phase. Consumed by orchestrator-sdd.md to dispatch spec workers via select_worker.py and evaluate phase transition gates (check_handoff_manifest_approved, check_all_domains_validated, check_error_codes_synced). Includes check_structural_diff.py to determine if spec changes require domain worker dispatch during improve flows. Not user-invocable — orchestrators call scripts directly.
 user-invocable: false
+allowed-tools: Bash(python3 *), Read
 ---
 
 # phase-sdd-rules
@@ -90,8 +91,8 @@ Evaluated by `orchestrator-sdd.md` at the end of each cycle.
 | Criterion | Script | Description |
 |-----------|--------|-------------|
 | `handoff_manifest_approved` | `scripts/check_handoff_manifest_approved.py` | `handoff-manifest.yaml` exists and `Status: approved` |
-| `all_domains_validated` | `scripts/check_all_domains_validated.py` | No `INVALID` status in `_validation/` |
-| `error_codes_synced` | `scripts/check_error_codes_synced.py` | All `error.code` values in specs are in `error-codes.md` |
+| `all_domains_validated` | `scripts/check_all_domains_validated.py` | No `INVALID` status in `_validation/` (scoped to the change's domains on `/u-improve` via `--workflow-id`) |
+| `error_codes_synced` | `scripts/check_error_codes_synced.py` | All `error.code` values in in-scope specs are in `error-codes.md` (scoped to touched domains on `/u-improve` via `--workflow-id`) |
 
 See `exit-criteria.json` for the machine-readable declaration.
 
@@ -129,11 +130,18 @@ Output schema:
 
 ## scripts/check_all_domains_validated.py
 
-Criterion: no `INVALID` status in any `.yaml` or `.md` file under `SPECS_DIR/_validation/`.
+Criterion: no `INVALID` status in any in-scope `.yaml` or `.md` file under `SPECS_DIR/_validation/`.
 
 ```bash
-python3 .claude/skills/phase-sdd-rules/scripts/check_all_domains_validated.py
+python3 .claude/skills/phase-sdd-rules/scripts/check_all_domains_validated.py [--workflow-id <wid>]
 ```
+
+Scope (fix F1): with `--workflow-id`, an `/u-improve` gates only the domains the
+change touched (`scope.py`). Untouched domains inherit their last verdict, so a
+stale `INVALID` in an unrelated domain does not block the change — it is reported
+under `out_of_scope_invalid` for audit. For u-spec / greenfield / un-derivable
+scope the check stays global (every domain must be VALID). Without `--workflow-id`
+it is global (prior behavior).
 
 Output schema:
 ```json
@@ -145,22 +153,49 @@ Output schema:
     "exists": true,
     "total": 5,
     "passing": 5,
-    "failing": []
+    "failing": [],
+    "out_of_scope_invalid": [],
+    "scoped": false,
+    "scope_domains": null
   }
 }
 ```
 
-`met` is `false` if the `_validation/` directory does not exist or contains no files.
+`met` is `false` if the `_validation/` directory does not exist or contains no in-scope files.
+
+---
+
+## scripts/scope.py
+
+Derives the set of domains a change actually touches, so the gate, the handoff
+scan, and the orchestrator dispatch can restrict work to them (fix F1). Reads
+`triage.json`.
+
+```bash
+python3 .claude/skills/phase-sdd-rules/scripts/scope.py --workflow-id <wid>
+# → {"scoped": true,  "domains": ["<affected>", ...]}   /u-improve
+# → {"scoped": false, "domains": null}                  u-spec / greenfield / un-derivable
+```
+
+`scoped: false` (domains `null`) always means "no scoping — evaluate every
+domain" (never "empty scope"), keeping greenfield and legacy triage on prior
+behavior. Also exposes `domain_of_validation_file(filename)` used by the gate and
+the handoff scan to map a `_validation/` artifact back to its domain.
 
 ---
 
 ## scripts/check_error_codes_synced.py
 
-Criterion: every `error.code` / `code: Exxx` value found in spec YAML files is registered in
-`SPECS_DIR/error-codes.md`. Trivially met if no error codes are defined in specs.
+Criterion: every `error.code` / `code: Exxx` value found in an in-scope spec YAML/MD file is
+registered in `SPECS_DIR/error-codes.md`. Trivially met if no error codes are defined in specs.
+
+With `--workflow-id`, an `/u-improve` gates only the codes referenced by touched domains
+(scope.py, fix F1) — an unregistered code living exclusively in untouched domains is reported
+under `out_of_scope_missing` and does not block. Files outside `domains/<slug>/` are always
+in scope. Without `--workflow-id` (or for u-spec / greenfield) the check is global.
 
 ```bash
-python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py
+python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py [--workflow-id <wid>]
 ```
 
 Output schema:
@@ -174,12 +209,48 @@ Output schema:
     "spec_codes_found": ["E001", "E002"],
     "registered_codes_count": 10,
     "missing_codes": [],
-    "files_scanned": ["domain-auth.yaml", "domain-billing.yaml"]
+    "out_of_scope_missing": [],
+    "files_scanned": ["domain-auth.yaml", "domain-billing.yaml"],
+    "scoped": false,
+    "scope_domains": null
   }
 }
 ```
 
 ---
+
+## scripts/identify_invalid_domains.py
+
+Utility (repair loop Step R2): lists domains whose validation report in
+`{SPECS_DIR}/_validation/` is INVALID and derives each one's defect origin from
+the machine-readable `{domain}-validation-result.yaml` (`blocking_issues[].responsible`).
+Feeds the SM's stage-granular repair (S16): origin `"back"` (all blocking issues
+belong to `u-spec-back`) routes a reduced `["spec-back", "spec-validator"]` repair
+pipeline; any other origin (mixed, front, writer, missing or unparseable companion)
+returns `null` and keeps the full pipeline — mis-attribution degrades to redundant
+work, never to under-repair.
+
+### Usage
+
+```bash
+ORCH_PROJECT_DIR=<path> SPECS_DIR=<specs> python3 .claude/skills/phase-sdd-rules/scripts/identify_invalid_domains.py [--workflow-id <wid>]
+```
+
+With `--workflow-id`, an `/u-improve` restricts the repair-target set to the touched domains
+(scope.py, fix F1): a stale INVALID report in an untouched domain goes to `out_of_scope_invalid`
+and never enters `invalid_domains` — the repair loop must not dispatch workers for domains this
+workflow did not touch. Without `--workflow-id` (or for u-spec / greenfield) the scan is global.
+
+### Output (exit 0)
+
+```json
+{
+  "invalid_domains": ["chat", "ingestion"],
+  "defect_origins": {"chat": "back", "ingestion": null},
+  "out_of_scope_invalid": [],
+  "scoped": false
+}
+```
 
 ## scripts/check_structural_diff.py
 

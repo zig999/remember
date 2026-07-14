@@ -44,11 +44,26 @@ def evaluate() -> dict:
 
     state = reduce_all()
 
+    # 5-a: task IDs are workflow-namespaced (sdd_{workflow_id}_improve_*).
+    # With ORCH_WORKFLOW_ID set the check is scoped to the current workflow —
+    # improve reviewers from an earlier workflow in the shared log no longer
+    # satisfy (or block) this criterion. Legacy un-namespaced IDs
+    # (sdd_improve_*) are still accepted when no workflow is given.
+    wf = os.environ.get("ORCH_WORKFLOW_ID", "")
+
+    def _is_improve_reviewer(task_id: str) -> bool:
+        if not task_id.endswith("_spec-reviewer"):
+            return False
+        if wf:
+            return task_id.startswith(f"sdd_{wf}_improve_")
+        # No workflow given: accept ONLY true legacy un-namespaced IDs. A broad
+        # contains-match would swallow every workflow's namespaced reviewers and
+        # reintroduce the cross-workflow contamination this scoping removes.
+        return task_id.startswith("sdd_improve_")
+
     reviewers = [
         t for t in state.tasks.values()
-        if t.phase == "sdd"
-        and t.task_id.startswith("sdd_improve_")
-        and t.task_id.endswith("_spec-reviewer")
+        if t.phase == "sdd" and _is_improve_reviewer(t.task_id)
     ]
 
     if not reviewers:

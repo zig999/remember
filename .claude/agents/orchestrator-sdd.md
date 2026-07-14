@@ -47,7 +47,7 @@ You return exactly one JSON envelope when done (see §Return contract).
 | I2 | Never maintain state between Steps. Re-read log before every decision. |
 | I3 | Every decision must cite the seq numbers that justify it. |
 | I4 | Never execute concrete work (write specs, read domain content, edit source files). |
-| I5 | Always emit `task_claimed` before spawning a worker. |
+| I5 | Always claim via `claim.py` (atomic check-and-claim) before spawning a worker; a `claimed: false` result means do NOT spawn. |
 | I6 | Never emit `task_progress`, `task_completed`, or `task_failed` — those are worker-only events. |
 | I7 | Never emit `phase_entered` — that is emitted by the meta-orchestrator. |
 | I8 | Human confirmation is mandatory before first dispatch, unless `log_seq_at_spawn > 0`. |
@@ -79,25 +79,25 @@ Finally, a single cross-domain compliance task:
 
 ```
 spec-compliance
-  deps: sdd_front_spec-validator   when the front leg ran (ui_task == true)
+  deps: sdd_<workflow_id>_front_spec-validator   when the front leg ran (ui_task == true)
         all per-domain spec-validator tasks   otherwise (back-only)
 ```
 
-Task IDs: per-domain back tasks use `sdd_{domain}_{step}` (e.g. `sdd_auth_spec-writer`). The front
-leg is **global**, not per-domain: `sdd_front` and `sdd_front_spec-validator`.
+Task IDs: per-domain back tasks use `sdd_<workflow_id>_{domain}_{step}` (e.g. `sdd_<workflow_id>_auth_spec-writer`). The front
+leg is **global**, not per-domain: `sdd_<workflow_id>_front` and `sdd_<workflow_id>_front_spec-validator`.
 
 Pipeline task types and their step identifiers:
 
 | Step | Scope | task.type | task_id |
 |------|-------|-----------|---------|
-| 0 (triage) | once | `spec-triage` | `sdd_triage` |
-| 1 | per domain | `spec-writer` | `sdd_{domain}_spec-writer` |
-| 2 | per domain | `spec-reviewer` | `sdd_{domain}_spec-reviewer` |
-| 3 | per domain | `spec-back` | `sdd_{domain}_spec-back` |
-| 4 | per domain | `spec-validator` | `sdd_{domain}_spec-validator` |
-| 5 (front leg — only if `ui_task`) | once | `spec-front` | `sdd_front` |
-| 6 (front leg — only if `ui_task`) | once | `spec-validator` (front pass) | `sdd_front_spec-validator` |
-| 7 (cross-domain) | once | `spec-compliance` | `sdd_compliance` |
+| 0 (triage) | once | `spec-triage` | `sdd_<workflow_id>_triage` |
+| 1 | per domain | `spec-writer` | `sdd_<workflow_id>_{domain}_spec-writer` |
+| 2 | per domain | `spec-reviewer` | `sdd_<workflow_id>_{domain}_spec-reviewer` |
+| 3 | per domain | `spec-back` | `sdd_<workflow_id>_{domain}_spec-back` |
+| 4 | per domain | `spec-validator` | `sdd_<workflow_id>_{domain}_spec-validator` |
+| 5 (front leg — only if `ui_task`) | once | `spec-front` | `sdd_<workflow_id>_front` |
+| 6 (front leg — only if `ui_task`) | once | `spec-validator` (front pass) | `sdd_<workflow_id>_front_spec-validator` |
+| 7 (cross-domain) | once | `spec-compliance` | `sdd_<workflow_id>_compliance` |
 
 ---
 
@@ -180,7 +180,7 @@ Store `workflow_type`. Store `workflow_id` from spawn prompt inputs.
 
 **Check triage idempotency:**
 
-If state already contains a `sdd_triage` task with `status == "completed"`, skip dispatch and go directly to **Read triage.json** below.
+If state already contains a `sdd_<workflow_id>_triage` task with `status == "completed"`, skip dispatch and go directly to **Read triage.json** below. (The task ID is namespaced by `workflow_id`, so a completed triage from an EARLIER workflow in the shared log never satisfies this check — each workflow runs its own triage.)
 
 **If triage task does not exist or is not terminal — dispatch synchronously:**
 
@@ -190,8 +190,8 @@ Create task:
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_triage \
-  --data '{"phase":"sdd","deps":[],"tier":"standard","type":"spec-triage","spec":""}'
+  --task-id sdd_<workflow_id>_triage \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"spec-triage","spec":""}'
 ```
 
 Emit dispatch_decision before claiming the triage task (DISPATCH_AUDIT — every batch must be preceded by a dispatch_decision):
@@ -200,19 +200,20 @@ Emit dispatch_decision before claiming the triage task (DISPATCH_AUDIT — every
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type dispatch_decision \
-  --data '{"phase":"sdd","batch":["sdd_triage"],"rationale":"triage_synchronous_first_dispatch","constraints":{"effective_mode":"unknown_pre_triage","batch_size_limit":1,"bypass_e99":"unknown_pre_triage"}}'
+  --data '{"phase":"sdd","batch":["sdd_<workflow_id>_triage"],"rationale":"triage_synchronous_first_dispatch","constraints":{"effective_mode":"unknown_pre_triage","batch_size_limit":1,"bypass_e99":"unknown_pre_triage"}}'
 ```
 
-Claim task:
+Claim task (atomic — `claim.py` re-checks eligibility under the log lock):
 
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
+python3 .claude/skills/orch-log/scripts/claim.py \
   --agent orchestrator-sdd \
-  --event-type task_claimed \
-  --task-id sdd_triage \
+  --task-id sdd_<workflow_id>_triage \
   --attempt 1 \
-  --data '{"phase":"sdd","worker_type":"u-spec-triage","worker_id":"u-spec-triage-sdd_triage"}'
+  --data '{"phase":"sdd","worker_type":"u-spec-triage","worker_id":"u-spec-triage-sdd_<workflow_id>_triage"}'
 ```
+
+If the output is `{"claimed": false, ...}`, a concurrent orchestrator instance already dispatched triage — do NOT register or spawn; re-read state and continue from there.
 
 Register worker:
 
@@ -220,7 +221,7 @@ Register worker:
 python3 -c "
 import sys; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
-register_worker('u-spec-triage-sdd_triage', 'sdd_triage', 1, phase='sdd')
+register_worker('u-spec-triage-sdd_<workflow_id>_triage', 'sdd_<workflow_id>_triage', 1, phase='sdd')
 "
 ```
 
@@ -231,15 +232,15 @@ subagent_type: u-spec-triage
 prompt:
   Execute spec triage.
   Environment context:
-    ORCH_TASK_ID=sdd_triage
+    ORCH_TASK_ID=sdd_<workflow_id>_triage
     ORCH_ATTEMPT=1
-    ORCH_WORKER_ID=u-spec-triage-sdd_triage
+    ORCH_WORKER_ID=u-spec-triage-sdd_<workflow_id>_triage
     SPECS_DIR=<SPECS_DIR from spawn prompt inputs>
     ORCH_PROJECT_DIR=<actual absolute path — value of $ORCH_PROJECT_DIR>
   Set these as shell env vars before any emit call:
-    export ORCH_TASK_ID=sdd_triage
+    export ORCH_TASK_ID=sdd_<workflow_id>_triage
     export ORCH_ATTEMPT=1
-    export ORCH_WORKER_ID=u-spec-triage-sdd_triage
+    export ORCH_WORKER_ID=u-spec-triage-sdd_<workflow_id>_triage
     export SPECS_DIR=<SPECS_DIR>
     export ORCH_PROJECT_DIR=<actual absolute path>
   nesting_depth: <nesting_depth + 1>
@@ -255,7 +256,7 @@ After worker returns, re-read state and verify terminal:
 python3 .claude/skills/orch-state/scripts/reduce.py
 ```
 
-If `sdd_triage` status is NOT `completed`:
+If `sdd_<workflow_id>_triage` status is NOT `completed`:
 
 ```json
 {"status": "blocked", "last_seq": <last_seq>, "summary": "spec-triage worker failed — cannot determine effective_mode"}
@@ -269,7 +270,7 @@ Unregister worker:
 python3 -c "
 import sys; sys.path.insert(0,'.claude/lib')
 from orch_core import unregister_worker
-unregister_worker('u-spec-triage-sdd_triage')
+unregister_worker('u-spec-triage-sdd_<workflow_id>_triage')
 "
 ```
 
@@ -329,8 +330,8 @@ No spec work required. Per DECLARATIVE_TRUNCATION, log a `task_skipped` event fo
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_skipped \
-  --task-id sdd_pipeline_skip \
-  --data '{"phase":"sdd","reason":"implementation_only_no_spec_change","scope":"standard_pipeline"}'
+  --task-id sdd_<workflow_id>_pipeline_skip \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","reason":"implementation_only_no_spec_change","scope":"standard_pipeline"}'
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
@@ -386,8 +387,9 @@ python3 .claude/skills/orch-log/scripts/append.py \
 ### Step 1 — State derivation
 
 ```bash
-python3 .claude/skills/orch-state/scripts/reduce.py
-python3 .claude/skills/orch-state/scripts/current_phase.py
+REDUCE_OUT=$(python3 .claude/skills/orch-state/scripts/reduce.py)
+# --from-stdin: derive the phase from the state above — no second full-log reduction.
+echo "$REDUCE_OUT" | python3 .claude/skills/orch-state/scripts/current_phase.py --from-stdin
 ```
 
 **If `reduce.py` exits with code 1:** emit E12 and stop — do NOT proceed to Step 2.
@@ -396,14 +398,20 @@ python3 .claude/skills/orch-state/scripts/current_phase.py
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type escalation \
-  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version"]}'
+  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version","after applying any fix under .claude/** commit it in the same step (fix(orch): <summary>) — a dirty framework file blocks the downstream clean-tree gates"]}'
 ```
+
+> **Framework self-modification protocol (recovery):** if resolving this escalation involves editing anything under `.claude/**` (e.g. applying an `orch_core.py` fix suggested above), the SAME step that applies the edit MUST commit it (`git commit -m "fix(orch): <summary>"`) before the workflow resumes. A framework fix left uncommitted in the working tree blocks the downstream clean-tree gates (dev exit `all_branches_integrated_to_main`, review entry `qa_runs_on_integrated_main`) — the engine must never trip over its own recovery.
 
 Output `{"status": "escalated", "last_seq": 0, "summary": "reduce_failed — see E12 escalation in log"}` and stop.
 
 Hold the full `OrchState` in memory for this cycle. Extract:
-- `sdd_tasks`: all tasks where `task.phase == "sdd"`
+- `sdd_tasks`: all tasks where `task.phase == "sdd"` AND the task belongs to THIS workflow — `task.workflow_id == "<workflow_id>"`, or `task.workflow_id` is null AND the task ID starts with `sdd_<workflow_id>_` (legacy events without the data field). The shared log contains other workflows' sdd tasks as distinct namespaced entries; treating them as this workflow's suppresses spec work for domains an earlier workflow already covered (the E21 shape) and pulls foreign `ready` tasks into this workflow's dispatch queue with the wrong SESSION_DIR
 - `last_seq`: the highest seq in state
+
+**Every subsequent step that reads sdd tasks (Step 2 classification, Step 5 ready queue / stop conditions / retry / DLQ cascade, Step 6 exit criteria) operates on this workflow-scoped `sdd_tasks` set — never on the raw global state.**
+
+**Legacy adoption (pre-5-a in-flight workflow):** if the scoped filter yields ZERO sdd tasks, run `python3 .claude/skills/orch-state/scripts/reduce.py --workflow <workflow_id>`; un-namespaced sdd tasks appearing there (`sdd_triage`, `sdd_{domain}_*`) belong to this workflow (started before 5-a) — ADOPT them into `sdd_tasks` and keep their legacy IDs (including the triage-skip check and the R1 repair-cycle count, which then uses the legacy `sdd_.+_spec-\w+-repair-\d+` pattern over the workflow-scoped reduction). NEVER create namespaced duplicates for adopted tasks.
 
 ---
 
@@ -451,16 +459,38 @@ print(json.dumps({'domains': domains, 'specs_dir': str(specs_dir)}))
 "
 ```
 
-Classify pipeline state for each domain:
+**Scope the pipeline to the affected domains (fix F1 — no cascade).** A breaking
+`/u-improve` is legitimately `full`/`standard`, but it must NOT re-run the
+writer→reviewer→back→validator pipeline for domains it never touched. Intersect
+the scanned domains with the change scope derived from triage `affected_specs`:
+
+```bash
+python3 .claude/skills/phase-sdd-rules/scripts/scope.py --workflow-id <workflow_id>
+# → {"scoped": true, "domains": ["<affected>", ...]}  for /u-improve
+# → {"scoped": false, "domains": null}                for u-spec / greenfield / un-derivable
+```
+
+- `scoped == true`  → dispatch the pipeline ONLY for domains in the intersection
+  of the scanned list and `domains`. Untouched domains are left as-is (they keep
+  their last validation-result and are NOT re-dispatched, re-validated, or
+  re-gated — the Step-6 gate is scoped to the same set). Record the skipped
+  domains with a `task_skipped` event (`reason: unaffected_domain_out_of_change_scope`).
+- `scoped == false` → dispatch for ALL scanned domains (prior behavior; u-spec /
+  greenfield must build every domain).
+
+The front leg and compliance deps below use this **scoped** domain set — never
+the full filesystem list.
+
+Classify pipeline state for each (in-scope) domain:
 
 | Classification | Condition |
 |----------------|-----------|
-| `new` | No sdd tasks exist for this domain |
+| `new` | No sdd tasks exist for this domain **in the workflow-scoped `sdd_tasks` set** (an earlier workflow's completed pipeline for the same domain does NOT count) |
 | `in_progress` | Some sdd tasks exist but the back leg is not complete |
 | `complete` | All 4 back-leg steps (writer → reviewer → back → validator) are in terminal status |
 | `failed` | Any pipeline step is in `dlq` |
 
-> The front leg (`sdd_front`, `sdd_front_spec-validator`) and `sdd_compliance` are **global**, not
+> The front leg (`sdd_<workflow_id>_front`, `sdd_<workflow_id>_front_spec-validator`) and `sdd_<workflow_id>_compliance` are **global**, not
 > per-domain — they are tracked once for the whole requirement, not in this per-domain table.
 
 Build a pipeline state table for the progress panel:
@@ -525,7 +555,7 @@ Emit progress panel to the user (structured text, not JSON):
 ```
 SDD Phase — Triage Result & Confirmation
 =========================================
-Workflow:   {workflow_id}
+Workflow:   <workflow_id>
 Trigger:    {triage.trigger}
 Requirement: {triage.requirement}
 
@@ -534,6 +564,7 @@ mode_hint:   {triage.mode_hint}
 greenfield:  {triage.greenfield}
 stack:       {triage.stack}  →  front leg: {"will run" if ui_task else "SKIPPED (back-only)"}
 ui_task:     {triage.ui_task}  (derived from stack)
+stack_confidence: {triage.stack_confidence}{"  ⚠ " + triage.stack_confidence_hint if triage.stack_confidence == "low" else ""}
 domains:     {triage.domains or "derived from existing specs"}
 affected_specs:
 {for each spec in triage.affected_specs}
@@ -559,7 +590,7 @@ python3 .claude/skills/orch-log/scripts/append.py \
   --data '{
     "code": "E99_human_confirmation_required",
     "severity": "info",
-    "reason": "SDD confirmation before first dispatch. trigger={trigger}; stack={triage.stack}; domains={triage.domains}; front leg: {will run | SKIPPED (back-only)}; estimated_task_contracts={triage.estimated_task_contracts}; pipeline={triage.execution_policy.pipeline}. If the stack is wrong, correct it here: force_fullstack (add the front leg) or force_backend_only (drop it) — no need to abort.",
+    "reason": "SDD confirmation before first dispatch. trigger={trigger}; stack={triage.stack} (confidence={triage.stack_confidence}); domains={triage.domains}; front leg: {will run | SKIPPED (back-only)}; estimated_task_contracts={triage.estimated_task_contracts}; pipeline={triage.execution_policy.pipeline}.{ When stack_confidence==low, append: ' ⚠ low-confidence stack: ' + triage.stack_confidence_hint} If the stack is wrong, correct it here: force_fullstack (add the front leg) or force_backend_only (drop it) — no need to abort.",
     "options": ["confirm_proceed", "force_fullstack", "force_backend_only", "abort"],
     "evidence": [],
     "suggested_actions": ["confirm_proceed — start spec worker dispatch with stack={triage.stack}", "force_fullstack — override to fullstack and run the front leg", "force_backend_only — override to back-only and skip the front leg", "abort — stop the workflow"]
@@ -586,30 +617,42 @@ Emit the **back leg** as `task_created` events with enforced dependencies (4 tas
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_{domain}_spec-writer \
-  --data '{"phase":"sdd","deps":[],"tier":"standard","type":"spec-writer","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
+  --task-id sdd_<workflow_id>_{domain}_spec-writer \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"spec-writer","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
 
 # Step 2 — spec-reviewer (depends on writer)
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_{domain}_spec-reviewer \
-  --data '{"phase":"sdd","deps":["sdd_{domain}_spec-writer"],"tier":"standard","type":"spec-reviewer","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
+  --task-id sdd_<workflow_id>_{domain}_spec-reviewer \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_{domain}_spec-writer"],"tier":"standard","type":"spec-reviewer","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
 
 # Step 3 — spec-back
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_{domain}_spec-back \
-  --data '{"phase":"sdd","deps":["sdd_{domain}_spec-reviewer"],"tier":"standard","type":"spec-back","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
+  --task-id sdd_<workflow_id>_{domain}_spec-back \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_{domain}_spec-reviewer"],"tier":"standard","type":"spec-back","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
 
 # Step 4 — spec-validator (back pass)
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_{domain}_spec-validator \
-  --data '{"phase":"sdd","deps":["sdd_{domain}_spec-back"],"tier":"standard","type":"spec-validator","spec":"{specs_dir}/domains/{domain}/openapi.yaml"}'
+  --task-id sdd_<workflow_id>_{domain}_spec-validator \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_{domain}_spec-back"],"tier":"standard","type":"spec-validator","spec":"{specs_dir}/domains/{domain}/openapi.yaml","validation_mode":"<incremental_back if triage.ui_task else final_complete>"}'
 ```
+
+> **`validation_mode` (fix F2 — handoff derived from the verdict, not the flow shape).** The back-pass
+> validator's terminal-ness depends on whether a front leg follows:
+> - `triage.ui_task == true` (fullstack) → `incremental_back`: the back spec is validated but a front leg
+>   is still pending, so handoff MUST stay deferred (`handoff_allowed: false`). The final verdict comes
+>   from the front-pass validator (Step 6, `final_complete`).
+> - `triage.ui_task == false` (back-only) → `final_complete`: no front leg will ever run, so this IS the
+>   terminal validation. The validator derives `handoff_allowed = (status == VALID and blocking_count == 0)`.
+>
+> This removes the old E08 trap where a back-only flow's terminal result stayed `incremental_back` (schema
+> forces `handoff_allowed: false`), blocking `generate_handoff_manifest.py` and forcing a human to hand-edit
+> `_validation/*.yaml` to `true`.
 
 > Do NOT create per-domain front tasks. The Front Spec Agent runs **once per requirement** and
 > composes all domains, so a single global front leg is created after every `new` domain's back leg.
@@ -623,15 +666,15 @@ approved domains) and ONE front-pass `spec-validator`:
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_front \
-  --data '{"phase":"sdd","deps":[<all sdd_{domain}_spec-validator task IDs>],"tier":"standard","type":"spec-front","spec":"{specs_dir}"}'
+  --task-id sdd_<workflow_id>_front \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[<all sdd_<workflow_id>_{domain}_spec-validator task IDs>],"tier":"standard","type":"spec-front","spec":"{specs_dir}"}'
 
-# spec-validator (front pass) — once; depends on sdd_front
+# spec-validator (front pass) — once; depends on sdd_<workflow_id>_front
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_front_spec-validator \
-  --data '{"phase":"sdd","deps":["sdd_front"],"tier":"standard","type":"spec-validator","spec":"{specs_dir}"}'
+  --task-id sdd_<workflow_id>_front_spec-validator \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_front"],"tier":"standard","type":"spec-validator","spec":"{specs_dir}","validation_mode":"final_complete"}'
 ```
 
 **Back-only — if `triage.ui_task == false`.** Do NOT create the front leg. Per DECLARATIVE_TRUNCATION,
@@ -641,20 +684,20 @@ record the skip so the absence of front artifacts is auditable:
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_skipped \
-  --task-id sdd_front_skip \
-  --data '{"phase":"sdd","reason":"ui_task_false_back_only","skipped_steps":["spec-front","spec-validator-front"]}'
+  --task-id sdd_<workflow_id>_front_skip \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","reason":"ui_task_false_back_only","skipped_steps":["spec-front","spec-validator-front"]}'
 ```
 
 Finally, create the cross-domain compliance task. Its deps depend on whether the front leg ran:
 
 ```bash
-# deps: ["sdd_front_spec-validator"]             when ui_task == true
-#       [<all sdd_{domain}_spec-validator IDs>]   when ui_task == false (back-only)
+# deps: ["sdd_<workflow_id>_front_spec-validator"]             when ui_task == true
+#       [<all sdd_<workflow_id>_{domain}_spec-validator IDs>]   when ui_task == false (back-only)
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_compliance \
-  --data '{"phase":"sdd","deps":[<see comment above>],"tier":"standard","type":"spec-compliance","spec":"{specs_dir}"}'
+  --task-id sdd_<workflow_id>_compliance \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[<see comment above>],"tier":"standard","type":"spec-compliance","spec":"{specs_dir}"}'
 ```
 
 Re-run Step 1 after all task_created events to refresh state.
@@ -714,15 +757,15 @@ PIPELINE=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.std
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_improve_<i>_<domain_task_type> \
-  --data '{"phase":"sdd","deps":[],"tier":"standard","type":"<domain_task_type>","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
+  --task-id sdd_<workflow_id>_improve_<i>_<domain_task_type> \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"<domain_task_type>","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
 
 # Task 2 — spec-reviewer (depends on domain worker)
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_improve_<i>_spec-reviewer \
-  --data '{"phase":"sdd","deps":["sdd_improve_<i>_<domain_task_type>"],"tier":"standard","type":"spec-reviewer","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
+  --task-id sdd_<workflow_id>_improve_<i>_spec-reviewer \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_improve_<i>_<domain_task_type>"],"tier":"standard","type":"spec-reviewer","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
 ```
 
 **IF `domain_worker_required == false`:** emit only reviewer task (text-only change — no structural work needed):
@@ -732,8 +775,8 @@ python3 .claude/skills/orch-log/scripts/append.py \
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_improve_<i>_spec-reviewer \
-  --data '{"phase":"sdd","deps":[],"tier":"standard","type":"spec-reviewer","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
+  --task-id sdd_<workflow_id>_improve_<i>_spec-reviewer \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"spec-reviewer","spec":"<ORCH_PROJECT_DIR>/.orch/sessions/<workflow_id>/triage.json","spec_path":"<affected_specs[i].path>"}'
 ```
 
 No cross-domain compliance task is created in Targeted mode (scope is limited to the affected files only).
@@ -744,8 +787,8 @@ No cross-domain compliance task is created in Targeted mode (scope is limited to
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_skipped \
-  --task-id sdd_targeted_pipeline_skip \
-  --data '{"phase":"sdd","reason":"targeted_mode_step_not_in_scope","skipped_steps":["spec-writer","spec-back","spec-validator","spec-front","spec-validator-front","spec-compliance"]}'
+  --task-id sdd_<workflow_id>_targeted_pipeline_skip \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","reason":"targeted_mode_step_not_in_scope","skipped_steps":["spec-writer","spec-back","spec-validator","spec-front","spec-validator-front","spec-compliance"]}'
 ```
 
 Re-read state after all `task_created` events. Proceed to Step 5 (dispatch loop, unchanged).
@@ -761,7 +804,7 @@ All `sdd_improve_*` tasks must be terminal. The `check_all_domains_validated.py`
 Run until no ready tasks remain or a stop condition is hit (max 30 iterations, safety limit).
 
 > **STATE_DERIVATION_ONCE policy:** each Step 5 iteration consists of TWO decision sub-cycles, each calling `reduce.py` exactly once:
-> 1. **Pre-dispatch sub-cycle (5.0 → 5.3):** reduce.py at 5.0 derives the snapshot used by 5.1 (batch selection), 5.2 (claims), 5.2.5 (budget), and 5.3 (spawn). No re-read between these sub-steps.
+> 1. **Pre-dispatch sub-cycle (5.0 → 5.3):** reduce.py at 5.0 derives the snapshot used by 5.1 (batch selection), 5.2 (claims), 5.2.5 (budget), and 5.3 (spawn). No re-read between these sub-steps — dispatch races against concurrent orchestrator instances are closed by `claim.py` (5.2), which re-checks each task's eligibility atomically under the log lock; a `claimed: false` task is dropped from the batch.
 > 2. **Post-dispatch sub-cycle (5.4 → 5.5):** reduce.py at 5.4 derives a fresh snapshot reflecting worker terminal events. Used by 5.4 (terminal verification) and 5.5 (retry/DLQ decisions). No re-read between these sub-steps.
 > The two reduce calls are required because worker spawn (5.3) is an async breakpoint that mutates state externally — re-reading after the breakpoint is correctness-preserving, not redundant derivation.
 
@@ -780,9 +823,9 @@ python3 .claude/skills/orch-infra/scripts/run_circuit_check.py
 
 If `status == "blocked"` (circuit tripped): output `{"status": "error", "last_seq": <last_seq>, "summary": "circuit breaker tripped during dispatch"}` and stop.
 
-Stop conditions (break loop):
-- No tasks have `status = "ready"` → proceed to Step 6
-- All sdd tasks are terminal → proceed to Step 6
+Stop conditions (break loop — evaluated over the **workflow-scoped `sdd_tasks` set** from Step 1, never the raw global state):
+- No scoped tasks have `status = "ready"` → proceed to Step 6
+- All scoped sdd tasks are terminal → proceed to Step 6
 - Iteration ≥ 30 → emit escalation and stop:
   ```bash
   python3 .claude/skills/orch-log/scripts/append.py \
@@ -792,7 +835,17 @@ Stop conditions (break loop):
   ```
   Output `{"status": "escalated", "last_seq": <last_seq>, "summary": "dispatch loop safety limit reached after 30 iterations"}` and stop
 
-**Retry re-queue:** for each `scheduled` sdd task with `next_retry_at <= now` (or null):
+**Heartbeat + stale reaping (conformance — orch-control UC-01/UC-02; mirrors orchestrator-dev 5.0):** at the start of every iteration emit an `orchestrator_heartbeat` so `detect_stale_orchestrator` (the `on_stop.py` backstop and `check_stale.py`) can tell a stalled orchestrator from a live one. Audit-only event (EV-20); it does not mutate task state. The `phase` value MUST equal the canonical `current_phase` (`sdd`) — `detect_stale_orchestrator` filters heartbeats by `data.phase == current_phase`.
+
+```bash
+python3 .claude/skills/orch-log/scripts/append.py --agent orchestrator-sdd \
+  --event-type orchestrator_heartbeat --data '{"phase":"sdd"}'
+python3 .claude/scripts/check_stale.py
+```
+
+`check_stale.py` reaps `running` sdd tasks past their task-type threshold (consume its `failed` list) and also returns `stale_orchestrator`: while ready tasks remain, keep dispatching — do NOT break the loop on that signal (in-band resume). The post-batch reaper at Step 5.4 remains the primary reaping point.
+
+**Retry re-queue:** for each `scheduled` task in the workflow-scoped `sdd_tasks` set with `next_retry_at <= now` (or null):
 
 ```bash
 python3 .claude/skills/orch-log/scripts/append.py \
@@ -843,7 +896,7 @@ python3 .claude/skills/orch-log/scripts/append.py \
 
 #### 5.1 — Select batch
 
-From the ready queue (sorted by tier priority, then creation seq), select up to the batch ceiling **returned by the state machine** for this `effective_mode` (A6-F2 — the cap is Python-owned, not a prose literal):
+From the ready queue (workflow-scoped `sdd_tasks` with `status = "ready"`, sorted by tier priority, then creation seq), select up to the batch ceiling **returned by the state machine** for this `effective_mode` (A6-F2 — the cap is Python-owned, not a prose literal):
 
 ```bash
 MAX_CONCURRENT=$(python3 .claude/lib/sm_runner.py --machine sdd --state select_batch \
@@ -877,16 +930,17 @@ python3 .claude/skills/orch-log/scripts/append.py \
   --data '{"phase":"sdd","batch":[<list of task_ids in batch>],"rationale":"ready_queue_top_<N>_in_<effective_mode>_mode","constraints":{"effective_mode":"<effective_mode>","batch_size_limit":<2_if_standard_else_1>,"workers":[<list of selected_worker per task>]}}'
 ```
 
-For each task, emit `task_claimed` before any spawn:
+For each task, claim it atomically before any spawn (`claim.py` re-checks eligibility under the log lock — closes the double-dispatch race between concurrent orchestrator instances):
 
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
+python3 .claude/skills/orch-log/scripts/claim.py \
   --agent orchestrator-sdd \
-  --event-type task_claimed \
   --task-id <task_id> \
   --attempt <task.attempts + 1> \
   --data '{"phase":"sdd","worker_type":"<worker>","worker_id":"<worker>-<task_id>"}'
 ```
+
+If the output is `{"claimed": false, ...}`, another orchestrator instance already dispatched this task — remove it from the batch and do NOT register or spawn a worker for it. Proceed with the remaining claimed tasks (if none remain, return to Step 5.0).
 
 Register worker:
 ```bash
@@ -895,9 +949,11 @@ import sys, os, pathlib; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
 # S1 (instrumentation): record spawn context size so a spec-worker that exits
 # without a terminal event carries spawn_context_chars (on_subagent_stop._infer_cause
-# / classify_run_status). Estimate = spec file size + ~30000 chars fixed overhead.
+# / classify_run_status). Estimate = spec file size + ~90000 chars fixed overhead
+# (base prompt + capability skill + templates + globals loaded by the sub-agent;
+# fix F6 — was ~30000, which counted only a single skill and understated the spawn).
 _s = pathlib.Path(os.environ.get('ORCH_PROJECT_DIR','.')) / '<task.spec>'
-_est = (_s.stat().st_size if _s.exists() else 0) + 30000
+_est = (_s.stat().st_size if _s.exists() else 0) + 90000
 register_worker('<worker_id>', '<task_id>', <attempt>, phase='sdd', spawn_context_chars=_est)
 "
 ```
@@ -909,9 +965,15 @@ Before spawning each worker, estimate context size and emit `context_budget_eval
 - Base prompt (orchestrator spawn template): ~1500 tokens
 - Task spec + Requirement (`triage.requirement`): ~estimate by `len(triage.requirement) // 4`
 - Spec file at `<task.spec>` if path resolves to a file: `~estimate by file size // 4` (use `wc -c` divided by 4); skip if path is `triage.json` (already counted)
-- Worker skill content (loaded by sub-agent): treat as fixed `~6000` tokens
+- Worker skill content loaded by the sub-agent: treat as fixed `~18000` tokens. A spec
+  worker does not load one skill — it pulls its capability SKILL.md **plus** the templates
+  it reads by path (`u-spec-templates`) **plus** the globals (`u-spec-globals`: conventions,
+  error-codes, glossary). The old `~6000` figure counted a single skill and understated a
+  real spawn ~3× (fix F6 — honest sizing, not a raised gate).
 
-Sum all four into `estimated_tokens`. Apply policy:
+Sum all four into `estimated_tokens`. Apply policy (thresholds unchanged — per the
+project rule, a budget ceiling is raised only when backed by actual measurement, so the
+more honest estimate simply moves borderline tasks into `monitor`, which still proceeds):
 
 | Condition | Action |
 |-----------|--------|
@@ -1063,10 +1125,16 @@ Output `{"status": "escalated", "last_seq": <last_seq>, "summary": "DLQ blocks e
 
 ```bash
 # 1. Spec-side criteria first — the manifest must only be generated over VALID specs.
-python3 .claude/skills/phase-sdd-rules/scripts/check_all_domains_validated.py
-python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py
+#    Pass --workflow-id so an /u-improve gates ONLY the domains it touched (fix F1):
+#    scope.py derives the affected domains from triage; untouched domains inherit their
+#    last verdict and a stale INVALID there does not block this change. Same for error
+#    codes: an unregistered code living only in untouched domains is non-blocking. For
+#    u-spec / greenfield the scope is None and both checks stay global.
+python3 .claude/skills/phase-sdd-rules/scripts/check_all_domains_validated.py --workflow-id <workflow_id>
+python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py --workflow-id <workflow_id>
 
 # 2. Generate the handoff manifest (deterministic; reached only when both checks above are ok).
+#    generate_handoff_manifest.py applies the same scope to its handoff_allowed/compliance scan.
 python3 .claude/skills/phase-sdd-rules/scripts/generate_handoff_manifest.py --workflow-id <workflow_id>
 
 # 3. Validate the just-generated manifest (13 rules + sha256).
@@ -1102,9 +1170,10 @@ Set `criteria_met = ["handoff_manifest_approved", "all_domains_validated", "erro
 **IF `effective_mode == "targeted"`** (improve-targeted invocation):
 
 ```bash
-# 1. Reviewer + error-code criteria first.
-python3 .claude/skills/phase-sdd-rules/scripts/check_all_improve_reviewers_completed.py
-python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py
+# 1. Reviewer + error-code criteria first. --workflow-id scopes the error-code check
+#    to the touched domains (fix F1) — unregistered codes in untouched domains do not block.
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-sdd-rules/scripts/check_all_improve_reviewers_completed.py
+python3 .claude/skills/phase-sdd-rules/scripts/check_error_codes_synced.py --workflow-id <workflow_id>
 
 # 2. Generate the handoff manifest (reached only when both checks above are ok).
 python3 .claude/skills/phase-sdd-rules/scripts/generate_handoff_manifest.py --workflow-id <workflow_id>
@@ -1115,7 +1184,7 @@ python3 .claude/skills/phase-sdd-rules/scripts/check_handoff_manifest_approved.p
 
 Each script returns `{"status": "ok"|"blocked", "check": "<id>", "timestamp": "<ISO-8601>", "evidence": {...}}` and exits 0 when `status == "ok"` or 1 when `status == "blocked"`.
 
-`check_all_domains_validated.py` is NOT run in targeted mode — replaced by `check_all_improve_reviewers_completed.py`, which verifies that every `sdd_improve_*_spec-reviewer` task reached `completed`.
+`check_all_domains_validated.py` is NOT run in targeted mode — replaced by `check_all_improve_reviewers_completed.py` (invoke with `ORCH_WORKFLOW_ID=<workflow_id>` so it scopes to this workflow's `sdd_<workflow_id>_improve_*_spec-reviewer` tasks), which verifies that every improve spec-reviewer task reached `completed`.
 
 Sequencing is identical to standard mode: spec-side criteria → generate manifest → manifest gate; any `blocked` falls through to the "criterion not met" handling. Only when all four steps return `status: ok`, emit:
 
@@ -1250,7 +1319,12 @@ import sys, json, re
 sys.path.insert(0, '.claude/lib')
 from orch_core import read_events_filtered, EventType
 events = read_events_filtered(event_type=EventType.TASK_CREATED)
-repair_ids = [e.task_id for e in events if e.task_id and re.match(r'sdd_.+_spec-writer-repair-\d+', e.task_id)]
+# Any repair stage counts — a reduced (stage-granular) repair cycle may not include a spec-writer task.
+# 5-a: scoped to THIS workflow's namespaced IDs — repairs from an earlier workflow
+# in the shared log must not inflate the cycle count (premature E08 at the 2-cycle cap).
+wf = '<workflow_id>'
+pat = re.compile(rf'sdd_{re.escape(wf)}_.+_spec-\w+-repair-(\d+)$')
+repair_ids = [e.task_id for e in events if e.task_id and pat.match(e.task_id)]
 cycles = max((int(re.search(r'-repair-(\d+)', t).group(1)) for t in repair_ids), default=0) if repair_ids else 0
 print(json.dumps({'repair_cycles': cycles}))
 "
@@ -1260,37 +1334,25 @@ Store result as `repair_cycles`.
 
 **If `repair_cycles >= 2` OR `effective_mode != "standard"`:** skip to E08 escalation below.
 
-**Step R2 — Identify INVALID domains:**
+**Step R2 — Identify INVALID domains and defect origins:**
 
 ```bash
-python3 -c "
-import os, sys, re
-from pathlib import Path
-specs_dir = os.environ.get('SPECS_DIR', 'specs')
-project_dir = os.environ.get('ORCH_PROJECT_DIR', '.')
-val_dir = Path(project_dir) / specs_dir / '_validation'
-invalid = []
-if val_dir.exists():
-    for f in val_dir.glob('*-validation.md'):
-        content = f.read_text()
-        if re.search(r'status:\s*INVALID', content, re.IGNORECASE):
-            domain = f.stem.replace('-validation', '')
-            invalid.append(domain)
-import json; print(json.dumps({'invalid_domains': invalid}))
-"
+python3 .claude/skills/phase-sdd-rules/scripts/identify_invalid_domains.py --workflow-id <workflow_id>
 ```
 
-Store result as `invalid_domains`.
+Store `invalid_domains` and `defect_origins` from the output. `defect_origins` maps each INVALID domain to the pipeline stage its blocking issues point at, derived from the machine-readable `{domain}-validation-result.yaml` (`responsible` fields): `"back"` when ALL blocking issues belong to `u-spec-back`, `null` otherwise (mixed/front/writer/missing/unparseable).
+
+`--workflow-id` scopes the repair-target set (fix F1): on an `/u-improve`, a stale INVALID report in an untouched domain is returned under `out_of_scope_invalid` and NEVER enters `invalid_domains` — this workflow's repair loop must not dispatch workers for domains it did not touch. For u-spec / greenfield the scan stays global.
 
 **Step R2.5 — State machine routes repair vs escalate:**
 
 ```bash
 RESULT=$(python3 .claude/lib/sm_runner.py --machine sdd --state exit_criteria_failed \
-  --inputs "{\"effective_mode\": \"$effective_mode\", \"repair_cycles\": $repair_cycles, \"invalid_domains\": $INVALID_DOMAINS_JSON}")
+  --inputs "{\"effective_mode\": \"$effective_mode\", \"repair_cycles\": $repair_cycles, \"invalid_domains\": $INVALID_DOMAINS_JSON, \"defect_origins\": $DEFECT_ORIGINS_JSON}")
 ACTION=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin)['action'])")
 ```
 
-`$ACTION` is `dispatch_repair_pipeline` (SM populates `repair_cycle_n`, `domains`, `pipeline`) or `escalate_e08` (SM populates `reason` ∈ `max_repair_cycles_reached | no_repairable_invalid_domains | non_standard_mode`).
+`$ACTION` is `dispatch_repair_pipeline` (SM populates `repair_cycle_n`, `domains`, and per-domain `pipelines` — reduced `["spec-back","spec-validator"]` only for domains with `defect_origin == "back"`, full pipeline otherwise) or `escalate_e08` (SM populates `reason` ∈ `max_repair_cycles_reached | no_repairable_invalid_domains | non_standard_mode`).
 
 **If `$ACTION == "escalate_e08"`:** skip to E08 escalation below.
 
@@ -1298,34 +1360,40 @@ ACTION=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin
 
 Repair cycle number: `repair_n = repair_cycles + 1`.
 
-For each `domain` in `invalid_domains`, create repair tasks (same pipeline order as the standard pipeline — spec-writer → spec-reviewer → spec-back → spec-validator):
+For each `domain` in the SM's `params.domains`, create repair tasks following THAT domain's `params.pipelines[domain]` — stage-granular repair:
+
+- `defect_origin == "back"` → `["spec-back", "spec-validator"]` — earlier-stage artifacts (writer/reviewer) were approved; the repair workers reuse them as inputs, they are NOT regenerated
+- any other origin (writer, front, mixed, `null`) → full pipeline `["spec-writer", "spec-reviewer", "spec-back", "spec-validator"]`
+
+Never create repair tasks for a domain that is not in `params.domains` — repair scope is exactly the evidence in the validation reports, never "the neighboring domain as a precaution".
+
+Task creation rules (per domain, per stage in its pipeline, in order):
+
+- Task ID: `sdd_<workflow_id>_<domain>_<stage>-repair-<repair_n>` (the `-repair-{N}` suffix avoids idempotency collision with the original pipeline tasks)
+- `deps`: `[]` for the FIRST stage of the domain's pipeline; `["sdd_<workflow_id>_<domain>_<previous_stage>-repair-<repair_n>"]` for each subsequent stage
+- The FIRST stage of the pipeline carries `"repair_context":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/_validation/<domain>-validation.md"` in its data
+
+Example — reduced pipeline (defect_origin `back`):
 
 ```bash
-# Task IDs use -repair-{N} suffix to avoid idempotency collision with original pipeline tasks
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_<domain>_spec-writer-repair-<repair_n> \
-  --data '{"phase":"sdd","deps":[],"tier":"standard","type":"spec-writer","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>,"repair_context":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/_validation/<domain>-validation.md"}'
+  --task-id sdd_<workflow_id>_<domain>_spec-back-repair-<repair_n> \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"spec-back","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>,"repair_context":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/_validation/<domain>-validation.md"}'
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-sdd \
   --event-type task_created \
-  --task-id sdd_<domain>_spec-reviewer-repair-<repair_n> \
-  --data '{"phase":"sdd","deps":["sdd_<domain>_spec-writer-repair-<repair_n>"],"tier":"standard","type":"spec-reviewer","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>}'
-
-python3 .claude/skills/orch-log/scripts/append.py \
-  --agent orchestrator-sdd \
-  --event-type task_created \
-  --task-id sdd_<domain>_spec-back-repair-<repair_n> \
-  --data '{"phase":"sdd","deps":["sdd_<domain>_spec-reviewer-repair-<repair_n>"],"tier":"standard","type":"spec-back","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>}'
-
-python3 .claude/skills/orch-log/scripts/append.py \
-  --agent orchestrator-sdd \
-  --event-type task_created \
-  --task-id sdd_<domain>_spec-validator-repair-<repair_n> \
-  --data '{"phase":"sdd","deps":["sdd_<domain>_spec-back-repair-<repair_n>"],"tier":"standard","type":"spec-validator","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>}'
+  --task-id sdd_<workflow_id>_<domain>_spec-validator-repair-<repair_n> \
+  --data '{"phase":"sdd","workflow_id":"<workflow_id>","deps":["sdd_<workflow_id>_<domain>_spec-back-repair-<repair_n>"],"tier":"standard","type":"spec-validator","spec":"<ORCH_PROJECT_DIR>/<SPECS_DIR>/domains/<domain>/","repair_cycle":<repair_n>,"validation_mode":"<incremental_back if triage.ui_task else final_complete>"}'
 ```
+
+> Carry `validation_mode` on every repair-cycle `spec-validator` too (same rule as Step 4): a back-only
+> repair must reach `final_complete` so the repaired domain hands off without an E08 (fix F2). A fullstack
+> repair stays `incremental_back` — the front-pass validator remains the terminal verdict.
+
+Example — full pipeline (any other origin): same shape with the four stages `spec-writer → spec-reviewer → spec-back → spec-validator` chained by `deps`, `repair_context` on `spec-writer`.
 
 After all repair tasks created, return to **Step 5** (dispatch loop). The loop will pick up the new `ready` tasks and dispatch them.
 
@@ -1371,7 +1439,7 @@ After all repair tasks created, return to **Step 5** (dispatch loop). The loop w
 | Situation | Action |
 |-----------|--------|
 | Infra check blocked | Return `{status: "blocked"}` immediately |
-| `append.py` exit 1 on `task_claimed` | Skip task, record issue, continue |
+| `claim.py` exit 1 or `claimed: false` | Skip task (do not spawn), record issue, continue |
 | `reduce.py` exit 1 | Emit E12 via `append.py` (does not require reduce output), return `{status: "escalated", summary: "reduce_failed — see E12"}` |
 | Worker exits without terminal | Do NOT synthesize in Step 5.4 (F-03). The SubagentStop hook fails it if it is the sole stopping worker; otherwise the deterministic reaper (`check_stale.py`) fails it once silent past its task-type threshold. Leave it `running` and re-read state. |
 | Circuit tripped during loop | Return `{status: "error", summary: "circuit_tripped"}` (E10 emitted by meta-orchestrator) |

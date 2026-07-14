@@ -2,6 +2,7 @@
 name: u-spec-triage-rules
 description: Triage skill for the SDD phase. Always runs at SDD phase start via dedicated worker. Detects trigger type (standard /u-spec vs improve /u-improve), classifies the requirement or improvement, identifies affected specs and domains, determines mode_hint and execution_policy, and writes triage.json to the session directory. Orchestrator-sdd reads triage.json to derive effective_mode and dispatch workers. Not user-invocable.
 user-invocable: false
+allowed-tools: Bash(python3 *), Read
 ---
 
 # SKILL: Spec Triage
@@ -48,6 +49,8 @@ File written to: `$ORCH_PROJECT_DIR/.orch/sessions/{workflow_id}/triage.json`
   "requirement": "{requirement text — available to ALL downstream workers}",
   "stack": "fe | be | fullstack",
   "ui_task": true,
+  "stack_confidence": "high | low",
+  "stack_confidence_hint": "{advisory — surfaced at the E99 gate; never changes the decision}",
   "greenfield": true,
   "domains": ["{slug}"],
   "type": "spec_change_required | implementation_only",
@@ -178,7 +181,7 @@ python3 .claude/skills/u-spec-triage-rules/scripts/classify_stack.py \
 Output:
 
 ```json
-{"stack":"fe|be|fullstack","ui_task":<bool>,"ui_signals":[...],"backend_signals":[...],"rationale":"..."}
+{"stack":"fe|be|fullstack","ui_task":<bool>,"ui_signals":[...],"backend_signals":[...],"rationale":"...","confidence":"high|low","confidence_hint":"..."}
 ```
 
 Decision rule (implemented by the script — never override it):
@@ -192,6 +195,11 @@ Decision rule (implemented by the script — never override it):
 
 Store `stack` and `ui_task` from the script output. `ui_task` is derived
 (`ui_task = stack in {"fe","fullstack"}`) and kept only for orchestrator back-compat.
+Also store `stack_confidence` (from `confidence`) and `stack_confidence_hint` (from
+`confidence_hint`) in `triage.json` — these do NOT change the decision (fix F5); the
+orchestrator surfaces them at the E99 gate so a `low`-confidence `fullstack` (e.g. one
+incidental UI word in a backend-heavy requirement) steers a fast `force_backend_only`
+instead of reading as a hard impasse.
 
 > **Why this replaced the old keyword suppression:** a single backend keyword
 > (`API`, `endpoint`, `database`, …) must NOT suppress the front leg when UI
@@ -433,7 +441,7 @@ python3 .claude/skills/orch-log/scripts/append.py \
 ```
 
 > `task_completed` is mandatory. Without it, the orchestrator's terminal check returns
-> `sdd_triage.status != "completed"` and blocks the entire SDD phase.
+> `sdd_{workflow_id}_triage.status != "completed"` and blocks the entire SDD phase.
 
 ---
 

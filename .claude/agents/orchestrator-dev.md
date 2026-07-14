@@ -48,10 +48,10 @@ You return exactly one JSON envelope when done (see §Return contract).
 | I2 | Never maintain state between Steps. Re-read log before every decision. |
 | I3 | Every decision must cite the seq numbers that justify it. |
 | I4 | Never execute concrete work (write code, run tests, edit source files). |
-| I5 | Always emit `task_claimed` before spawning a worker. |
+| I5 | Always claim via `claim.py` (atomic check-and-claim) before spawning a worker; a `claimed: false` result means do NOT spawn. |
 | I6 | Never emit `task_progress`, `task_completed`, or `task_failed` — those are worker-only events. |
 | I7 | Never emit `phase_entered` — that is emitted by the meta-orchestrator. |
-| I8 | Dispatch `dev_planning` before any `impl` task. Never dispatch impl without a completed backlog. |
+| I8 | Dispatch `dev_<workflow_id>_planning` before any `impl` task. Never dispatch impl without a completed backlog. |
 | I9 | Stack is derived from `handoff-manifest.yaml`. Never hardcode it. |
 
 ---
@@ -60,8 +60,13 @@ You return exactly one JSON envelope when done (see §Return contract).
 
 | Purpose | Pattern | Example |
 |---------|---------|---------|
-| Planning task | `dev_planning` | `dev_planning` |
-| Implementation task | `dev_tc_{n}` | `dev_tc_001`, `dev_tc_002` |
+| Planning task | `dev_<workflow_id>_planning` (`_be`/`_fe` suffix for fullstack) | `dev_etax-unify_planning` |
+| Implementation task | `dev_<workflow_id>_tc_{n}` | `dev_etax-unify_tc_001` |
+
+Task IDs are namespaced by `workflow_id` (5-a): the log is shared across workflows, and un-namespaced IDs from an earlier workflow collide with the current one (silent skip / state reset). Two rules:
+
+* **Backlog IDs are local.** The planner writes `dev_tc_{n}` in backlog.json; THIS orchestrator applies the namespace when emitting `task_created` — IDs and every entry in `deps` are prefixed together. Workers receive the namespaced ID in `ORCH_TASK_ID` as an opaque value.
+* **Never parse components out of a task ID.** Cross-references travel as explicit data fields (`workflow_id`, `dev_task_id`, `revision_of`).
 
 ---
 
@@ -155,8 +160,9 @@ Store as `workflow_type`. This value drives the R4 guard and the planning skip i
 ### Step 1 — State derivation
 
 ```bash
-python3 .claude/skills/orch-state/scripts/reduce.py
-python3 .claude/skills/orch-state/scripts/current_phase.py
+REDUCE_OUT=$(python3 .claude/skills/orch-state/scripts/reduce.py)
+# --from-stdin: derive the phase from the state above — no second full-log reduction.
+echo "$REDUCE_OUT" | python3 .claude/skills/orch-state/scripts/current_phase.py --from-stdin
 ```
 
 **If `reduce.py` exits with code 1:** emit E12 and stop — do NOT proceed to Step 2.
@@ -165,16 +171,26 @@ python3 .claude/skills/orch-state/scripts/current_phase.py
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type escalation \
-  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version"]}'
+  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version","after applying any fix under .claude/** commit it in the same step (fix(orch): <summary>) — a dirty framework file blocks the downstream clean-tree gates"]}'
 ```
+
+> **Framework self-modification protocol (recovery):** if resolving this escalation involves editing anything under `.claude/**` (e.g. applying an `orch_core.py` fix suggested above), the SAME step that applies the edit MUST commit it (`git commit -m "fix(orch): <summary>"`) before the workflow resumes. A framework fix left uncommitted in the working tree blocks the downstream clean-tree gates (dev exit `all_branches_integrated_to_main`, review entry `qa_runs_on_integrated_main`) — the engine must never trip over its own recovery.
 
 Output `{"status": "escalated", "last_seq": 0, "summary": "reduce_failed — see E12 escalation in log"}` and stop.
 
 Hold the full `OrchState` in memory. Extract:
 - `dev_tasks`: all tasks where `task.phase == "dev"`
-- `planning_task`: `dev_tasks["dev_planning"]` if it exists, else `null`
-- `impl_tasks`: all `dev_tasks` where `task.task_id` starts with `dev_tc_`
+- `planning_task`: the `dev_tasks` entry with `task_type == "planning"` for this workflow (ID `dev_<workflow_id>_planning`), else `null`
+- `impl_tasks`: all `dev_tasks` where `task.task_type == "impl"` and the ID starts with `dev_<workflow_id>_` — filter by FIELDS plus the workflow prefix, never by the bare `dev_tc_` prefix (a shared log contains other workflows' impl tasks)
 - `last_seq`: highest seq in state
+
+**Legacy adoption (pre-5-a in-flight workflow):** if the namespaced filter yields ZERO planning/impl tasks, run the workflow-scoped reduction before concluding the phase is fresh:
+
+```bash
+python3 .claude/skills/orch-state/scripts/reduce.py --workflow <workflow_id>
+```
+
+If it contains un-namespaced dev tasks (`dev_planning*`, `dev_tc_*`), this workflow started before 5-a — ADOPT them: use them as `planning_task`/`impl_tasks` and keep their legacy IDs for the rest of the workflow (claims, retries, revisions). NEVER create namespaced duplicates for adopted tasks: Step 4's "create them all" rule applies only when NEITHER namespaced NOR adoptable legacy tasks exist. Skipping this check re-implements already-merged work on conflicting branches.
 
 ---
 
@@ -368,8 +384,8 @@ Record the skip in the log (P8 — every decision must be auditable):
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type task_skipped \
-  --task-id dev_planning \
-  --data '{"phase":"dev","reason":"implementation_only_no_spec_change","detail":"planner_required=false in triage.json; backlog synthesized from triage.json"}'
+  --task-id dev_<workflow_id>_planning \
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","reason":"implementation_only_no_spec_change","detail":"planner_required=false in triage.json; backlog synthesized from triage.json"}'
 ```
 
 Then synthesize the backlog:
@@ -394,6 +410,8 @@ if not triage_path.exists():
 triage = json.loads(triage_path.read_text())
 affected = triage.get('affected_specs', []) or []
 tcs = []
+# task_id here is the LOCAL backlog id — Step 4 applies the dev_<workflow_id>_ namespace
+# to ids and deps when emitting task_created (same rule as planner-produced backlogs).
 for i, spec in enumerate(affected, start=1):
     tcs.append({
         'task_id': f'dev_tc_{i:03d}',
@@ -435,11 +453,19 @@ python3 .claude/skills/orch-log/scripts/append.py \
 
 Output `{"status": "escalated", "last_seq": <last_seq>, "summary": "improve flow planner skip: triage.json unusable"}` and stop.
 
+**Derive the change scope (L4 — passed to every planner prompt, enforced by the Step 4 guard):**
+
+```bash
+SCOPE_OUT=$(python3 .claude/skills/phase-sdd-rules/scripts/scope.py --workflow-id <workflow_id>)
+```
+
+Store `scope_domains` from the output: the sorted `domains` list when `scoped == true`, or the literal string `unrestricted` when `scoped == false` (u-spec / greenfield / underivable — no narrowing).
+
 **Stack-conditional planning dispatch (D8, via state machine):**
 
 ```bash
 RESULT=$(python3 .claude/lib/sm_runner.py --machine dev --state dispatch_planner_stack \
-  --inputs "{\"stack\": \"$stack\"}")
+  --inputs "{\"stack\": \"$stack\", \"workflow_id\": \"$workflow_id\"}")
 ACTION=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin)['action'])")
 ```
 
@@ -450,21 +476,21 @@ ACTION=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin
 
 **IF `$ACTION == "dispatch_parallel_planners"`:** spawn parallel BE and FE planners.
 
-If neither `dev_planning_be` nor `dev_planning_fe` task exists yet:
+If neither `dev_<workflow_id>_planning_be` nor `dev_<workflow_id>_planning_fe` task exists yet:
 
 ```bash
 # Create both planning tasks (no dependency between them)
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type task_created \
-  --task-id dev_planning_be \
-  --data '{"phase":"dev","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
+  --task-id dev_<workflow_id>_planning_be \
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
 
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type task_created \
-  --task-id dev_planning_fe \
-  --data '{"phase":"dev","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
+  --task-id dev_<workflow_id>_planning_fe \
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
 ```
 
 Look up both planner workers:
@@ -473,36 +499,38 @@ python3 .claude/skills/phase-dev-rules/scripts/select_worker.py --task-type plan
 python3 .claude/skills/phase-dev-rules/scripts/select_worker.py --task-type planning --stack fullstack_fe
 ```
 
-Claim both:
+Claim both (atomic — `claim.py` re-checks eligibility under the log lock):
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py --agent orchestrator-dev --event-type task_claimed \
-  --task-id dev_planning_be --attempt 1 \
-  --data '{"phase":"dev","worker_type":"u-be-planner","worker_id":"u-be-planner-dev_planning_be"}'
+python3 .claude/skills/orch-log/scripts/claim.py --agent orchestrator-dev \
+  --task-id dev_<workflow_id>_planning_be --attempt 1 \
+  --data '{"phase":"dev","worker_type":"u-be-planner","worker_id":"u-be-planner-dev_<workflow_id>_planning_be"}'
 
-python3 .claude/skills/orch-log/scripts/append.py --agent orchestrator-dev --event-type task_claimed \
-  --task-id dev_planning_fe --attempt 1 \
-  --data '{"phase":"dev","worker_type":"u-fe-planner","worker_id":"u-fe-planner-dev_planning_fe"}'
+python3 .claude/skills/orch-log/scripts/claim.py --agent orchestrator-dev \
+  --task-id dev_<workflow_id>_planning_fe --attempt 1 \
+  --data '{"phase":"dev","worker_type":"u-fe-planner","worker_id":"u-fe-planner-dev_<workflow_id>_planning_fe"}'
 ```
+
+If either output is `{"claimed": false, ...}`, a concurrent orchestrator instance already dispatched that task — do NOT register or spawn that planner; continue with the one(s) actually claimed (re-enter the cycle if none).
 
 Register both workers:
 ```bash
 python3 -c "
 import sys; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
-register_worker('u-be-planner-dev_planning_be', 'dev_planning_be', 1, phase='dev', stack='fullstack_be', task_type='planning')
-register_worker('u-fe-planner-dev_planning_fe', 'dev_planning_fe', 1, phase='dev', stack='fullstack_fe', task_type='planning')
+register_worker('u-be-planner-dev_<workflow_id>_planning_be', 'dev_<workflow_id>_planning_be', 1, phase='dev', stack='fullstack_be', task_type='planning')
+register_worker('u-fe-planner-dev_<workflow_id>_planning_fe', 'dev_<workflow_id>_planning_fe', 1, phase='dev', stack='fullstack_fe', task_type='planning')
 "
 ```
 
 Spawn **both planners in a single response turn** (two parallel Agent tool calls):
-- BE: `subagent_type: "u-be-planner"`, `ORCH_TASK_ID=dev_planning_be`, write to `<session_dir>/backlog/backlog_be.json`
-- FE: `subagent_type: "u-fe-planner"`, `ORCH_TASK_ID=dev_planning_fe`, write to `<session_dir>/backlog/backlog_fe.json`
-- Each planner prompt must include: ORCH_TASK_ID, ORCH_ATTEMPT, ORCH_WORKER_ID, SPECS_DIR, ORCH_PROJECT_DIR, SESSION_DIR, nesting_depth, handoff_type, changed_files, dev_impact, the original requirement text (Rec A — verbatim `.requirement` from `<session_dir>/triage.json`, or `""` if absent), and explicit instruction to scope tasks to its own stack only (no cross-stack tasks)
+- BE: `subagent_type: "u-be-planner"`, `ORCH_TASK_ID=dev_<workflow_id>_planning_be`, write to `<session_dir>/backlog/backlog_be.json`
+- FE: `subagent_type: "u-fe-planner"`, `ORCH_TASK_ID=dev_<workflow_id>_planning_fe`, write to `<session_dir>/backlog/backlog_fe.json`
+- Each planner prompt must include: ORCH_TASK_ID, ORCH_ATTEMPT, ORCH_WORKER_ID, SPECS_DIR, ORCH_PROJECT_DIR, SESSION_DIR, nesting_depth, handoff_type, changed_files, dev_impact, the original requirement text (Rec A — verbatim `.requirement` from `<session_dir>/triage.json`, or `""` if absent), the change-scope line (`Change scope: <scope_domains>` — same wording as the single-planner prompt below; L4), and explicit instruction to scope tasks to its own stack only (no cross-stack tasks)
 - Each planner must `Emit task_completed with artifacts: [<session_dir>/backlog/backlog_{be|fe}.json] when done`
 
 Wait for both planners to return. Re-read state.
 
-If either `dev_planning_be` or `dev_planning_fe` is not `completed`:
+If either `dev_<workflow_id>_planning_be` or `dev_<workflow_id>_planning_fe` is not `completed`:
 - Apply retry logic for the failed one
 - If non-retryable or attempts exhausted: escalate E07 and stop
 
@@ -529,7 +557,7 @@ print(json.dumps({'total': len(deduped), 'be': len(be), 'fe': len(fe)}))
 
 Set `backlog_path = <session_dir>/backlog/backlog.json`. Proceed to Step 4.
 
-If `dev_planning_be` and `dev_planning_fe` already exist and both are `completed`: skip creation and dispatch. Read `backlog_path` from the merged file if it exists, else re-merge.
+If `dev_<workflow_id>_planning_be` and `dev_<workflow_id>_planning_fe` already exist and both are `completed`: skip creation and dispatch. Read `backlog_path` from the merged file if it exists, else re-merge.
 
 ---
 
@@ -541,8 +569,8 @@ If `planning_task` is `null` (not yet created):
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type task_created \
-  --task-id dev_planning \
-  --data '{"phase":"dev","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
+  --task-id dev_<workflow_id>_planning \
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","deps":[],"tier":"critical","type":"planning","spec":"<specs_dir>/handoff-manifest.yaml"}'
 ```
 
 Re-read state. If `planning_task` is now ready, dispatch it immediately (do not wait for Step 5):
@@ -553,24 +581,25 @@ python3 .claude/skills/phase-dev-rules/scripts/select_worker.py \
   --task-type planning --stack <stack>
 ```
 
-Store the `worker` field from the output as `planner_worker`. Construct `planner_worker_id = "<planner_worker>-dev_planning"`.
+Store the `worker` field from the output as `planner_worker`. Construct `planner_worker_id = "<planner_worker>-dev_<workflow_id>_planning"`.
 
-Claim:
+Claim (atomic — `claim.py` re-checks eligibility under the log lock):
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
+python3 .claude/skills/orch-log/scripts/claim.py \
   --agent orchestrator-dev \
-  --event-type task_claimed \
-  --task-id dev_planning \
+  --task-id dev_<workflow_id>_planning \
   --attempt 1 \
-  --data '{"phase":"dev","worker_type":"<planner_worker>","worker_id":"<planner_worker>-dev_planning"}'
+  --data '{"phase":"dev","worker_type":"<planner_worker>","worker_id":"<planner_worker>-dev_<workflow_id>_planning"}'
 ```
+
+If the output is `{"claimed": false, ...}`, a concurrent orchestrator instance already dispatched this task — do NOT register or spawn; re-enter the cycle.
 
 Register worker:
 ```bash
 python3 -c "
 import sys; sys.path.insert(0,'.claude/lib')
 from orch_core import register_worker
-register_worker('<planner_worker>-dev_planning', 'dev_planning', 1, phase='dev', stack='<stack>', task_type='planning')
+register_worker('<planner_worker>-dev_<workflow_id>_planning', 'dev_<workflow_id>_planning', 1, phase='dev', stack='<stack>', task_type='planning')
 "
 ```
 
@@ -580,7 +609,7 @@ Spawn via Agent tool:
   ```
   Generate the implementation backlog.
   Environment context:
-    ORCH_TASK_ID=dev_planning
+    ORCH_TASK_ID=dev_<workflow_id>_planning
     ORCH_ATTEMPT=1
     ORCH_WORKER_ID=<worker_id>
     SPECS_DIR=<specs_dir>
@@ -597,6 +626,12 @@ Spawn via Agent tool:
      Cross-check that every clause of this requirement is decomposed into a TC; if a
      clause is intentionally out of scope, record it explicitly in the backlog. The
      spec_requirements_covered gate blocks dev exit on any UC/FEAT left uncovered.)
+  Change scope: <scope_domains>
+    (L4 — from scope.py. On an /u-improve this lists the ONLY domains your Task
+     Contracts may target: the manifest enumerates every on-disk domain, but
+     untouched domains are NOT in scope for this change. A deterministic gate
+     (check_backlog_scope.py) rejects the backlog if any TC references only
+     out-of-scope domains. "unrestricted" for u-spec/greenfield — plan freely.)
   Write backlog.json to: <session_dir>/backlog/backlog.json
   Write backlog.md  to: <session_dir>/backlog/backlog.md
   Write individual TC files to: <session_dir>/backlog/tc-NNN.md
@@ -626,6 +661,45 @@ If `planning_task` exists and `status == "running"`: planning is in progress. Ou
 
 ### Step 4 — Impl task creation
 
+#### 4.0 — Backlog scope guard (L4 — deterministic, BEFORE any impl task exists)
+
+```bash
+python3 .claude/skills/phase-dev-rules/scripts/check_backlog_scope.py \
+  --backlog <backlog_path> --workflow-id <workflow_id>
+```
+
+The guard derives the change scope from triage (same single source as the SDD
+gates — lib/spec_scope.py) and scans every Task Contract file for
+`domains/<slug>/` references. On u-spec / greenfield (`scoped: false`) it
+passes trivially.
+
+- **`status == "ok"`** → proceed to 4.1.
+- **`status == "blocked"` with `reason: backlog_unreadable`** → planner artifact defect: treat exactly as a planning failure (retry logic; exhausted → E07) — do NOT proceed.
+- **`status == "blocked"` with `violations`** → the planner re-broadened an `/u-improve` beyond its change scope:
+  - **If `dev_<workflow_id>_planning_scope_r1` does NOT exist:** create it (`type: planning`, `tier: critical`, `deps: []`), claim, register, and re-spawn the SAME planner worker(s) with the original prompt PLUS this block (verbatim, filling the placeholders):
+    ```
+    SCOPE VIOLATIONS — regenerate the backlog.
+    Change scope for this /u-improve: <scope_domains>.
+    Rejected Task Contracts (reference ONLY out-of-scope domains): <violations JSON>.
+    Remove them or re-scope them to the change scope. Do NOT plan work for
+    untouched domains. Overwrite <backlog_path> and the affected tc-NNN.md files.
+    ```
+    When the revision task completes, re-run the guard (this step).
+  - **If `dev_<workflow_id>_planning_scope_r1` exists and is `completed` and the guard is STILL blocked:** escalate and stop:
+    ```bash
+    python3 .claude/skills/orch-log/scripts/append.py \
+      --agent orchestrator-dev \
+      --event-type escalation \
+      --data '{"code":"E22_backlog_scope_violation","severity":"critical","reason":"planner produced Task Contracts referencing only out-of-scope domains twice — an /u-improve must not be re-broadened past its change scope (L4)","evidence":[<planning_task_seqs>],"violations":<violations JSON>,"scope_domains":<scope_domains JSON>,"suggested_actions":["inspect the rejected tc-NNN.md files","if the extra domains are genuinely required, re-run /u-improve with a broader improvement description so triage widens the scope","or edit the backlog manually and re-invoke"]}'
+    ```
+    Output `{"status": "escalated", "last_seq": <last_seq>, "summary": "backlog scope violation after planner revision"}` and stop.
+
+> Never create impl tasks from a backlog the guard has not approved — an
+> out-of-scope TC that reaches `task_created` re-broadens every downstream
+> phase (dev → QA → test) against domains this change never touched.
+
+#### 4.1 — Create impl tasks
+
 Read the backlog from the artifact path:
 
 ```bash
@@ -641,9 +715,9 @@ Parse the backlog. Each task contract must provide:
 
 | Field | Source |
 |-------|--------|
-| `task_id` | `dev_tc_{n}` where n is zero-padded (001, 002, ...) |
+| `task_id` | backlog `dev_tc_{n}` (local), emitted as `dev_<workflow_id>_tc_{n}` |
 | `spec` | path to task contract file (e.g. `<session_dir>/backlog/tc-001.md`) |
-| `deps` | list of `dev_tc_{n}` IDs this task depends on (from backlog dependency graph) |
+| `deps` | backlog lists local `dev_tc_{n}` IDs — apply the SAME `dev_<workflow_id>_` prefix to every dep when emitting `task_created` (IDs and deps are namespaced together, or the dependency graph breaks) |
 | `tier` | `standard` unless explicitly marked `critical` in backlog |
 | `stack` | `be` or `fe` — propagated from the planner output; required for per-task worker routing in Step 5.1 |
 
@@ -654,8 +728,8 @@ If no impl tasks exist yet (`impl_tasks` is empty), create them all:
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-dev \
   --event-type task_created \
-  --task-id dev_tc_{n} \
-  --data '{"phase":"dev","deps":[<deps>],"tier":"<tier>","type":"impl","spec":"<tc-path>","stack":"<be|fe>"}'
+  --task-id dev_<workflow_id>_tc_{n} \
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","deps":[<deps>],"tier":"<tier>","type":"impl","spec":"<tc-path>","stack":"<be|fe>"}'
 ```
 
 > **Stack propagation:** for fullstack projects the merged backlog contains TCs from both planners with explicit per-TC `stack` (`be` or `fe`). Step 5.1 relies on this per-task `stack` to route FE TCs to `u-fe-developer` and BE TCs to `u-be-developer`. If the planner output omits `stack`, default to the project-level `<stack>` from Step 2 (single-stack projects only).
@@ -806,16 +880,17 @@ python3 .claude/skills/orch-log/scripts/append.py \
   --data "{\"phase\":\"dev\",\"estimated_tokens\":$((<total_chars> / 4)),\"threshold_warn\":40000,\"threshold_block\":50000,\"mitigation\":\"<none|split_spec|summarize_spec|inline_excerpt>\"}"
 ```
 
-Then for each task, emit `task_claimed` before any spawn:
+Then for each task, claim it atomically before any spawn (`claim.py` re-checks eligibility under the log lock — closes the double-dispatch race between concurrent orchestrator instances):
 
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
+python3 .claude/skills/orch-log/scripts/claim.py \
   --agent orchestrator-dev \
-  --event-type task_claimed \
   --task-id <task_id> \
   --attempt <task.attempts + 1> \
   --data '{"phase":"dev","worker_type":"<worker>","worker_id":"<worker>-<task_id>"}'
 ```
+
+If the output is `{"claimed": false, ...}`, another orchestrator instance already dispatched this task — remove it from the batch and do NOT register or spawn a worker for it. Proceed with the remaining claimed tasks (if none remain, return to the cycle start).
 
 Register worker:
 ```bash
@@ -995,8 +1070,8 @@ The end state (HEAD on `main`, clean tree, no unmerged `feat/TC-*` branch, no le
 ### Step 6 — Exit criteria evaluation
 
 ```bash
-python3 .claude/skills/phase-dev-rules/scripts/check_all_impl_tasks_terminal.py
-python3 .claude/skills/phase-dev-rules/scripts/check_all_deliveries_qa_ready.py
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-dev-rules/scripts/check_all_impl_tasks_terminal.py
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-dev-rules/scripts/check_all_deliveries_qa_ready.py
 python3 .claude/skills/phase-dev-rules/scripts/check_no_open_prohibitions.py
 python3 .claude/skills/phase-dev-rules/scripts/check_all_branches_integrated.py
 python3 .claude/skills/phase-dev-rules/scripts/check_acceptance_criteria_covered.py
@@ -1096,6 +1171,7 @@ Re-read state. Determine:
 | `E04_critical_task_dlq` | critical | Non-retryable impl task failure |
 | `E08_exit_criteria_not_met` | warning | All tasks terminal but delivery criteria not met |
 | `E13_improve_scope_unusable` | critical | improve flow with `planner_required=false` but `triage.json` missing — cannot synthesize backlog |
+| `E22_backlog_scope_violation` | critical | Planner produced TCs referencing only out-of-scope domains twice (post-revision) — `/u-improve` must not be re-broadened (L4) |
 
 ---
 
@@ -1106,7 +1182,7 @@ Re-read state. Determine:
 | Infra check blocked | Return `{status: "blocked"}` immediately |
 | `handoff-manifest.yaml` missing or not approved | Return `{status: "blocked"}` |
 | Backlog artifact not found after planning | Escalate E07 |
-| `append.py` exit 1 on `task_claimed` | Skip task, continue |
+| `claim.py` exit 1 or `claimed: false` | Skip task (do not spawn), continue |
 | `reduce.py` exit 1 | Emit E12 via `append.py` (does not require reduce output), return `{status: "escalated", summary: "reduce_failed — see E12"}` |
 | Worker exits without terminal | Do NOT synthesize in Step 5.4 (F-03). The SubagentStop hook fails it if it is the sole stopping worker; otherwise the deterministic reaper (`check_stale.py`, Step 5.0) fails it once silent past its task-type threshold. Leave it `running` and re-read state. |
 | Circuit tripped during loop | Return `{status: "error", summary: "circuit_tripped"}` |

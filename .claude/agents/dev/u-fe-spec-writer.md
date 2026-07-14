@@ -6,6 +6,7 @@ model: claude-opus-4-7
 tools:
   - Read
   - Write
+  - Edit
   - Bash
   - Glob
   - Grep
@@ -31,7 +32,7 @@ The orchestrator activates you with these environment variables (set them as she
 
 | Variable | Description |
 |----------|-------------|
-| `ORCH_TASK_ID` | Task ID (e.g. `dev_tc_005`) |
+| `ORCH_TASK_ID` | Task ID (e.g. `dev_myflow_tc_005` — opaque, workflow-namespaced) |
 | `ORCH_ATTEMPT` | Attempt number (integer) |
 | `ORCH_WORKER_ID` | Worker ID string |
 | `SPECS_DIR` | Path to the specs directory (e.g. `specs`) |

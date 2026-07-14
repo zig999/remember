@@ -51,7 +51,7 @@ You return exactly one JSON envelope when done (see §Return contract).
 | I2 | Never maintain state between Steps. Re-read log before every decision. |
 | I3 | Every decision must cite the seq numbers that justify it. |
 | I4 | Never execute concrete work (run tests, edit source files, read test output directly). |
-| I5 | Always emit `task_claimed` before spawning a worker. |
+| I5 | Always claim via `claim.py` (atomic check-and-claim) before spawning a worker; a `claimed: false` result means do NOT spawn. |
 | I6 | Never emit `task_progress`, `task_completed`, or `task_failed` — worker-only events. |
 | I7 | Never emit `phase_entered` — emitted by the meta-orchestrator. |
 | I8 | Human intervention is required only when tests fail or exit criteria are not met. |
@@ -63,7 +63,9 @@ You return exactly one JSON envelope when done (see §Return contract).
 
 | Purpose | Pattern | Example |
 |---------|---------|---------|
-| Test execution task | `test_{dev_task_id}` | `test_dev_tc_001` |
+| Test execution task | `test_{dev_task_id}` | `test_dev_etax-unify_tc_001` |
+
+Dev task IDs are workflow-namespaced (5-a: `dev_<workflow_id>_tc_{n}`), so `test_{dev_task_id}` inherits uniqueness across workflows in the shared log. The authoritative test↔dev correspondence is the `dev_task_id` field in the test task's `task_created` data — never parse it from the task ID.
 
 ---
 
@@ -133,9 +135,10 @@ If `log_seq_at_spawn` is a positive integer (`> 0`): skip infra script calls.
 ### Step 1 — State derivation
 
 ```bash
-python3 .claude/skills/orch-state/scripts/reduce.py
+REDUCE_OUT=$(python3 .claude/skills/orch-state/scripts/reduce.py)
 REDUCE_EXIT=$?
-python3 .claude/skills/orch-state/scripts/current_phase.py
+# --from-stdin: derive the phase from the state above — no second full-log reduction.
+echo "$REDUCE_OUT" | python3 .claude/skills/orch-state/scripts/current_phase.py --from-stdin
 ```
 
 **Reduce error gate (T2, via state machine):**
@@ -152,8 +155,10 @@ If `$ACTION == "escalate_e12"`: emit E12 and stop — do NOT proceed to Step 2.
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-test \
   --event-type escalation \
-  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version"]}'
+  --data '{"code":"E12_state_reduction_failed","severity":"critical","reason":"reduce.py failed — log may be corrupt or orch_core.py version mismatch. Workflow cannot proceed until log integrity is restored.","evidence":[],"suggested_actions":["run: python3 .claude/scripts/recover_retry_sequence.py --dry-run","run: python3 .claude/skills/orch-log/scripts/verify.py","inspect tail of .orch/log.jsonl for malformed events","ensure deployed .claude/lib/orch_core.py matches dist version","after applying any fix under .claude/** commit it in the same step (fix(orch): <summary>) — a dirty framework file blocks the downstream clean-tree gates"]}'
 ```
+
+> **Framework self-modification protocol (recovery):** if resolving this escalation involves editing anything under `.claude/**` (e.g. applying an `orch_core.py` fix suggested above), the SAME step that applies the edit MUST commit it (`git commit -m "fix(orch): <summary>"`) before the workflow resumes. A framework fix left uncommitted in the working tree blocks the downstream clean-tree gates (dev exit `all_branches_integrated_to_main`, review entry `qa_runs_on_integrated_main`) — the engine must never trip over its own recovery.
 
 Output `{"status": "escalated", "last_seq": 0, "summary": "reduce_failed — see E12 escalation in log"}` and stop.
 
@@ -192,19 +197,22 @@ Store `stack` for worker routing in Step 4.
 ### Step 3 — Test task creation
 
 For each `dev_completed_task` in `dev_completed_tasks`:
-- Skip if a `test_{dev_task_id}` task already exists in `test_tasks`
 - Skip if the dev task has no delivery artifacts
+- Skip if none of the dev task's delivery artifact paths contain `.orch/sessions/<workflow_id>/` — the task belongs to an earlier workflow in the shared log, not to this one
+- **Session-linkage guard (legacy logs):** if a `test_{dev_task_id}` task already exists in `test_tasks`, do NOT skip on existence alone — skip only when its `spec` contains `.orch/sessions/<workflow_id>/` (same workflow → legitimate reuse). Otherwise the existing task belongs to an EARLIER workflow that used the same TC number; create the task as `test_<workflow_id>_{dev_task_id}` instead. (With namespaced dev IDs this cannot happen; the guard protects logs that predate 5-a.)
 
 For each new task to create, extract `delivery_path` from `dev_completed_task.artifacts`
-(first artifact whose name contains "delivery"):
+(first artifact whose name contains "delivery"). Resolve `<test_task_id>` per the guard above: `test_{dev_task_id}` normally, `test_<workflow_id>_{dev_task_id}` on cross-workflow collision — then emit with the RESOLVED id:
 
 ```bash
 python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-test \
   --event-type task_created \
-  --task-id test_{dev_task_id} \
-  --data '{"phase":"test","deps":[],"tier":"standard","type":"test-run","spec":"<delivery_path>","stack":"<stack>"}'
+  --task-id <test_task_id> \
+  --data '{"phase":"test","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"test-run","spec":"<delivery_path>","stack":"<stack>","dev_task_id":"<dev_task_id>"}'
 ```
+
+The `dev_task_id` field is the authoritative test↔dev link (used by the return-to-dev flow) — never derive it by parsing the test task ID.
 
 **Delivery artifacts gate (T3, via state machine):**
 
@@ -247,15 +255,15 @@ Stop conditions:
 - All test tasks terminal → proceed to Step 5
 - Iteration ≥ 30 → output `{"status": "error", "last_seq": <last_seq>, "summary": "dispatch loop safety limit reached"}` and stop
 
-**Stale detection:** threshold by tier: `critical` → 600s, `standard` → 300s, `bulk` → 120s.
+**Heartbeat + stale reaping (conformance — orch-control UC-01/UC-02; mirrors orchestrator-dev 5.0):** at the start of every iteration emit an `orchestrator_heartbeat` so `detect_stale_orchestrator` (the `on_stop.py` backstop and `check_stale.py`) can tell a stalled orchestrator from a live one. Audit-only event (EV-20); it does not mutate task state. The `phase` value MUST equal the canonical `current_phase` (`test`) — `detect_stale_orchestrator` filters heartbeats by `data.phase == current_phase`. Then run the deterministic reaper — never synthesize `stale_timeout` from the prompt (F-03).
 
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
-  --agent orchestrator-test \
-  --event-type task_failed \
-  --task-id <task_id> --attempt <attempt> \
-  --data '{"phase":"test","reason":"stale_timeout","retryable":true,"synthesized_by":"orchestrator-test"}'
+python3 .claude/skills/orch-log/scripts/append.py --agent orchestrator-test \
+  --event-type orchestrator_heartbeat --data '{"phase":"test"}'
+python3 .claude/scripts/check_stale.py
 ```
+
+`check_stale.py` reaps `running` test tasks past their tier threshold (consume its `failed` list) and also returns `stale_orchestrator`: while ready tasks remain, keep dispatching — do NOT break the loop on that signal (in-band resume). The Step 4.4 reaper remains the post-batch reaping point.
 
 **Retry re-queue:** for `scheduled` tasks with `next_retry_at <= now`:
 
@@ -299,14 +307,17 @@ If the output contains `"status":"error"`, skip this task and emit `task_failed`
 
 #### 4.2 — Claim batch
 
+Claim each task atomically (`claim.py` re-checks eligibility under the log lock — closes the double-dispatch race between concurrent orchestrator instances):
+
 ```bash
-python3 .claude/skills/orch-log/scripts/append.py \
+python3 .claude/skills/orch-log/scripts/claim.py \
   --agent orchestrator-test \
-  --event-type task_claimed \
   --task-id <task_id> \
   --attempt <task.attempts + 1> \
   --data '{"phase":"test","worker_type":"<worker>","worker_id":"<worker>-<task_id>"}'
 ```
+
+If the output is `{"claimed": false, ...}`, another orchestrator instance already dispatched this task — remove it from the batch and do NOT register or spawn a worker for it.
 
 Register:
 ```bash
@@ -422,9 +433,9 @@ Return to 4.0.
 ### Step 5 — Exit criteria evaluation
 
 ```bash
-python3 .claude/skills/phase-test-rules/scripts/check_all_test_tasks_terminal.py
-python3 .claude/skills/phase-test-rules/scripts/check_all_tests_passed.py
-python3 .claude/skills/phase-test-rules/scripts/check_no_critical_failures.py
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-test-rules/scripts/check_all_test_tasks_terminal.py
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-test-rules/scripts/check_all_tests_passed.py
+ORCH_WORKFLOW_ID=<workflow_id> python3 .claude/skills/phase-test-rules/scripts/check_no_critical_failures.py
 ```
 
 **All criteria met** — no human gate required (tests are deterministic):
@@ -513,8 +524,9 @@ Stop.
 
 When `human_response.data.action == "return_to_dev"`:
 
-For each failing test task, determine the originating dev task ID
-(strip the `test_` prefix: `test_dev_tc_001` → `dev_tc_001`).
+For each failing test task, determine the originating dev task ID from the
+`dev_task_id` field in the test task's `task_created` data (Step 3). For legacy
+test tasks without that field, fall back to stripping the `test_` prefix.
 
 Create a revision task in the dev phase:
 
@@ -523,10 +535,10 @@ python3 .claude/skills/orch-log/scripts/append.py \
   --agent orchestrator-test \
   --event-type task_created \
   --task-id <dev_task_id>_r{revision_n} \
-  --data '{"phase":"dev","deps":[],"tier":"standard","type":"impl","spec":"<original_task.spec>","revision_of":"<dev_task_id>","test_feedback":"<test_report_path>"}'
+  --data '{"phase":"dev","workflow_id":"<workflow_id>","deps":[],"tier":"standard","type":"impl","spec":"<original_task.spec>","revision_of":"<dev_task_id>","test_feedback":"<test_report_path>"}'
 ```
 
-Where `revision_n` is 1-based (e.g., `dev_tc_001_r1`). If a revision already exists, increment (`_r2`, `_r3`, ...).
+Where `revision_n` is 1-based (e.g., `dev_etax-unify_tc_001_r1` — the namespaced dev ID is inherited). If a revision already exists, increment (`_r2`, `_r3`, ...).
 
 Emit `phase_transitioned` back to dev:
 
@@ -568,7 +580,7 @@ Stop.
 |-----------|--------|
 | Infra check blocked | Return `{status: "blocked"}` immediately |
 | No dev delivery artifacts | Return `{status: "blocked"}` |
-| `append.py` exit 1 on `task_claimed` | Skip task, continue |
+| `claim.py` exit 1 or `claimed: false` | Skip task (do not spawn), continue |
 | `reduce.py` exit 1 | Emit E12 via `append.py` (does not require reduce output), return `{status: "escalated", summary: "reduce_failed — see E12"}` |
 | Worker exits without terminal | Do NOT synthesize in Step 4.4 (F-03). The SubagentStop hook fails it if it is the sole stopping worker; otherwise the deterministic reaper (`check_stale.py`) fails it once silent past its task-type threshold. Leave it `running` and re-read state. |
 | Circuit tripped during loop | Return `{status: "error", summary: "circuit_tripped"}` |
