@@ -1,5 +1,10 @@
 # Component Spec — GraphEdge
 
+> ## ⚠ v2.0 — cores de link remapeadas para accents do TUI
+> As 13 cores de LinkType foram **remapeadas** para os poucos accents do kit (colisões aceitas); a distinção
+> confiável passa a ser o **estilo de traço** (temporal=sólido / estável=tracejado) + rótulo. Larguras
+> `--border-*` (1/2/3px por corroboração/seleção) inalteradas. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §4.2.
+
 > File: `frontend/src/features/graph/components/GraphEdgeAdapter.tsx`
 > (Registered as `edgeTypes.graphEdge` in the React Flow instance inside `GraphCanvas`)
 > Version: 1.2.0 | Status: draft

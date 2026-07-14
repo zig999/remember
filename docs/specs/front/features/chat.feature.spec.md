@@ -1,5 +1,10 @@
 # Feature Spec — Chat (`/chat`)
 
+> ## ⚠ v2.0 — UI-Kit (TUI): superfícies flat, ChatBubble em body sm
+> As `GlassSurface` (Composer ambient, ChatBubble modal, stubs) renderizam **flat** (opaco, sem blur); o
+> texto do `ChatBubble` usa **`text-xs`** (body sm); cores/tipografia seguem o contrato do kit (mono, phosphor).
+> O contrato de dados/estados (UI-01..UI-14, SSE) é inalterado. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > Route: `/chat` — **primary view** (owner decision 2026-06-20; `/` redirects here)
 > Domain: chat (single domain — all 9 operationIds)
 > Version: 1.4.0 | Status: draft | Layer: permanent

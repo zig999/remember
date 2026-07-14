@@ -2,7 +2,12 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.3.0 | Status: draft
+> Version: 2.0.0 | Status: draft
+>
+> ## ⚠ v2.0 — primitivos migrados para o UI-Kit (TUI)
+> Os primitivos genéricos vêm do **kit** (`@/shared/components/ui/`, submodule `vendor/ui-kit`) — ver §3.
+> Os atoms `ds/*` (§2) permanecem exclusivos mas consomem o contrato do kit (GlassSurface **flat**,
+> StateBadge/cores **remapeadas**). **Autoridade de tokens:** [`tokens.md`](./tokens.md) §Migração.
 
 ---
 
@@ -74,22 +79,41 @@ Feature-local components (inside `features/*/components/`) are listed by name in
 
 ---
 
-## 3. shadcn/ui Primitives (`components/ui/`)
+## 3. Primitivos
 
-These are **owned code** — do not regenerate via CLI. Extend by composition.
+> ⚠ **v2.0 — primitivos agora vêm do UI-Kit (TUI).** Os primitivos genéricos foram **substituídos pelos
+> do kit compartilhado**, importados via alias `@/shared/components/ui/<nome>` (submodule read-only —
+> nunca editar). Só permanecem em `components/ui/` (owned, eternal) os que o kit não tem. Os `ds/*` do §2
+> continuam exclusivos, mas consomem o contrato do kit (GlassSurface agora **flat**; StateBadge/cores
+> **remapeadas** — ver as component specs).
 
-| Component | Path | Used by |
+### 3.1 Compartilhados — do kit (`@/shared/components/ui/`)
+
+| Component | API (mudança relevante) | Usado por |
 |---|---|---|
-| `Button` | `components/ui/button/` | Composer (send/stop), MessageStream (retry), ConversationMenu, ArchivedBanner, SignInForm |
-| `Input` | `components/ui/input/` | ConversationMenu (rename), SignInForm (email, password) |
-| `Label` | `components/ui/label/` | SignInForm |
-| `Textarea` | `components/ui/textarea/` | Composer |
-| `Switch` | `components/ui/switch/` | ConversationMenu (include-archived toggle) |
-| `Dialog` + `DialogContent` + `DialogHeader` + `DialogFooter` + `DialogTitle` + `DialogDescription` | `components/ui/dialog/` | ConversationMenu (delete confirmation) |
-| `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuItem` + `DropdownMenuSeparator` | `components/ui/dropdown-menu/` | ConversationMenu, Header (settings) |
-| `Select` + `SelectTrigger` + `SelectContent` + `SelectItem` + `SelectValue` | `components/ui/select/` | `GraphCanvas` algorithm selector (graph-improvement wave: `'Força'` / `'Árvore'` / `'Radial'` options) |
-| `Tooltip` | `components/ui/tooltip/` | (available — not yet used) |
-| `Popover` | `components/ui/popover/` | (available — not yet used) |
+| `Button` | `variant="primary"` (antes `default`); `asChild` | Composer, MessageStream, ConversationMenu, ArchivedBanner, SignInForm |
+| `Input` | passthrough; estado inválido via `aria-invalid` (não prop `invalid`) | ConversationMenu (rename), SignInForm |
+| `Label` | passthrough | SignInForm |
+| `Textarea` | passthrough; `aria-invalid` | Composer, IngestPanel |
+| `Switch` | `onChange(checked)` (não `onCheckedChange`) | ConversationMenu |
+| `Checkbox` | nativo, `onChange(e)` | (forms) |
+| `RadioGroup` / `Tabs` | compostos (kit) | curadoria / QueueTabs |
+| `Card` | único, prop `tone` (não composto) | — |
+| `Dialog` (+ Content/Header/Footer/Title/Description) | composto | ConversationMenu (delete) |
+| `Select` | **componente único, prop `options[]`** (`onChange(value)`) — **não** `SelectTrigger/Content/Item/Value` | GraphCanvas (algoritmo), IngestPanel, DateJustification |
+
+### 3.2 Exclusivos do eternal (`components/ui/` — owned; kit não tem)
+
+| Component | Path | Usado por |
+|---|---|---|
+| `badge` | `components/ui/badge/` | (usa tokens `state-*`) |
+| `form` | `components/ui/form/` | RHF wrapper |
+| `command` | `components/ui/command/` | command palette |
+| `dropdown-menu` | `components/ui/dropdown-menu/` | ConversationMenu, Header |
+| `popover` | `components/ui/popover/` | (disponível) |
+| `avatar` | `components/ui/avatar/` | (disponível) |
+
+> Removidos do eternal (usar sob demanda a partir do kit): `table`, `tooltip`.
 
 ---
 

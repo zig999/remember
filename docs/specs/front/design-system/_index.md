@@ -1,8 +1,12 @@
 # Design System — Remember
 
 > Path: `docs/specs/front/design-system/`
-> Implementation: `frontend/src/styles/theme.css` (Tailwind v4 `@theme` block, single source of CSS tokens)
-> Version: 1.4.0 | Layer: permanent
+> Implementation: `frontend/src/styles/theme.css` (importa o tema do UI-Kit + suplemento exclusivo)
+> Version: 2.0.0 | Layer: permanent
+>
+> ## ⚠ v2.0 — migrado para o UI-Kit (TUI)
+> O contrato base de tokens vem do **kit** (submodule `vendor/ui-kit`). **Autoridade:** [`tokens.md`](./tokens.md) §Migração.
+> Identidade atual: mono única (JetBrains Mono), Tailwind sizes (16px), phosphor, cantos retos, flat, glass opaco.
 
 ---
 

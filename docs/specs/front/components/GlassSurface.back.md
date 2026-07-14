@@ -1,5 +1,11 @@
 # GlassSurface — Back (Technical Decisions)
 
+> ## ⚠ v2.0 — material flat (adoção do UI-Kit / TUI)
+> Decisões técnicas de vidro fosco (backdrop-filter/blur, tint translúcido oklch, inner-highlight,
+> `--shadow-glass`) estão **superadas**: os tokens `surface-glass-*` apontam para superfícies opacas do kit,
+> `--blur-glass-*` = 0 e sombras = none. O componente permanece (API igual) mas renderiza flat. Autoridade:
+> [`../design-system/tokens.md`](../design-system/tokens.md) §6.
+
 > Companion to: `GlassSurface.component.spec.md` (COMP-02, v1.1.0)
 > Layer: permanent | Status: draft v1.0.0
 > Scope: **frontend foundation atom** — no backend domain. Sections that would normally describe data model, business rules (BR), domain events (EV), and external integrations are marked **N/A** with rationale in §3.

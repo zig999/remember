@@ -1,5 +1,10 @@
 # Feature Spec — Curadoria Manual (`/curadoria`)
 
+> ## ⚠ v2.0 — UI-Kit (TUI): superfícies flat, cores de estado remapeadas
+> As `GlassSurface` (painéis/drawer/DecisionPanel/BatchBar) renderizam **flat** (opaco, sem blur); as cores
+> de confiança do `StateBadge` foram **remapeadas** para os accents do kit (colisão low-confidence/superseded →
+> distinção por ícone). Contrato de dados/estados inalterado. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > Route: `/curadoria` — protected layout route (guard via `protectedLayoutRoute`)
 > Domains: curation (primary writes) · knowledge-graph (node reads, history) · query-retrieval (provenance, fragment lookup)
 > Version: 1.0.0 | Status: draft | Layer: permanent

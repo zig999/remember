@@ -1,5 +1,10 @@
 # Component Spec — GraphSpace
 
+> ## ⚠ v2.0 — adoção do UI-Kit (TUI)
+> Componentes consumidos renderizam na identidade terminal: `GlassSurface`/overlays agora **flat** (opaco,
+> sem blur), cores de nó/link **remapeadas** para accents do kit, `Select` do algoritmo é o do kit (prop
+> `options[]`). A garantia de contraste (texto sobre superfície) permanece. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > File: `frontend/src/features/graph/components/GraphSpace.tsx`
 > Version: 1.0.0 | Status: draft
 

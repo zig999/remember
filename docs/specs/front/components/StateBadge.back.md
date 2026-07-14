@@ -1,5 +1,10 @@
 # StateBadge -- Back-end Spec (frontend component implementation reference)
 
+> ## ⚠ v2.0 — cores remapeadas para accents do TUI
+> As cores oklch de estado foram **remapeadas** para os accents do kit (accepted→success, uncertain→warning,
+> disputed→destructive, low-confidence/superseded→muted-foreground; colisão nesses dois → distinção por ícone).
+> Tipografia via tamanhos built-in do Tailwind; cantos retos. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §3.
+
 > Stack: Vite 6 + React 19 + TypeScript (strict) + Tailwind CSS v4 + Framer Motion + lucide-react + CVA | DB: N/A | Version: 1.0.0 | Status: draft | Layer: permanent
 > Business spec: `StateBadge.component.spec.md`
 >

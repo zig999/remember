@@ -1,5 +1,11 @@
 # ConversationMenu — Component Spec
 
+> ## ⚠ v2.0 — primitivos internos agora do UI-Kit (TUI)
+> O contrato público (props/callbacks) é **inalterado**. Mudou a origem dos primitivos internos:
+> `Dialog` (confirmação de exclusão) e `Switch` (toggle "incluir arquivadas") vêm do **kit** (`@/shared/...`)
+> — o `Switch` do kit usa `onChange(checked)` (adaptado internamente). `DropdownMenu` permanece local (eternal).
+> Visual segue a identidade terminal (flat, mono, cantos retos). Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > Path: `frontend/src/components/ds/ConversationMenu/`
 > COMP-04 | Used in features: chat (via `shell/HeaderConversationMenu.tsx` mounted in `Header`)
 > Status: draft | Layer: permanent

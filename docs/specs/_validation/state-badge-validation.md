@@ -1,5 +1,10 @@
 # Validation Report — StateBadge Component Spec
 
+> ## ⚠ SUPERADO pela migração v2.0 (UI-Kit / TUI)
+> Validou as cores de estado oklch próprias. Após a adoção do TUI, as 5 cores foram **remapeadas** para os
+> accents do kit (colisão low-confidence/superseded → distinção por ícone). Resultado desatualizado —
+> **regenerar pelo pipeline**. Ver `front/components/StateBadge.component.spec.md` e `front/design-system/tokens.md` §3.
+
 > Domain: `state-badge` | Mode: component spec validation | Date: 2026-06-19
 > Validated by: u-spec-validator | Triage: N/A
 

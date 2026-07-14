@@ -1,5 +1,12 @@
 # GlassSurface — Component Spec
 
+> ## ⚠ v2.0 — GlassSurface agora renderiza FLAT (adoção do UI-Kit / TUI)
+> A identidade terminal do kit **removeu o material de vidro fosco**: os tokens `surface-glass-*` foram
+> remapeados para superfícies **opacas** do kit, `--blur-glass-*` = **0**, sombras = **none**, cantos **retos**.
+> A **API** (`level` ambient/panel/modal, `fill`, `radius`, `accent`, `role`) permanece, mas o resultado
+> visual é um **painel sólido de borda** — sem translucidez, sem `backdrop-filter`, sem inner-highlight.
+> Toda referência abaixo a "frosted/translúcido/blur/oklch" é **histórica**. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §6.
+
 > Path: `frontend/src/components/ds/GlassSurface/`
 > COMP-02 | Used in features: (foundation atom — base material of every floating layer in the shell: header, footer, Graph filter panel, Graph selection-context panel, Provenance drawer, popovers, command palette, modals — `front.md §2.2`, `tokens.md §9`)
 > Status: approved | Layer: permanent

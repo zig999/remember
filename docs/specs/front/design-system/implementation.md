@@ -2,7 +2,14 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.2.0 | Status: draft
+> Version: 2.0.0 | Status: draft
+>
+> ## ⚠ v2.0 — migrado para o UI-Kit (TUI)
+> A implementação de tokens agora **importa o tema do kit** (submodule `vendor/ui-kit`) em `theme.css` +
+> suplemento exclusivo. Detalhes de wiring atuais: alias `@/shared/*`, `@source` do submodule, isolamento
+> de tipos via `tsconfig.vendor.json` (composite + references), `vendor/**` ignorado no ESLint, base 16px,
+> fonte JetBrains Mono. Referências a 13px, Space Grotesk/Mono e escala nomeada estão **desatualizadas**.
+> **Autoridade:** [`tokens.md`](./tokens.md) §Migração / §2.
 
 ---
 

@@ -1,5 +1,11 @@
 # Sign-In -- Feature Spec
 
+> ## ⚠ v2.0 — tipografia/superfície seguem o UI-Kit (TUI)
+> Tipografia agora é **mono única** (JetBrains Mono) + tamanhos built-in do Tailwind; a escala nomeada
+> (`text-heading`/`text-body-lg`/`text-caption`) e as fontes Space Grotesk/Mono **não existem mais**.
+> `GlassSurface level="panel"` renderiza **flat** (opaco). O overlay CRT vem do tema do kit. Autoridade:
+> [`../design-system/tokens.md`](../design-system/tokens.md) §5–§6.
+
 > Route: `/sign-in` | Related flows: `_flows/auth.flow.md`
 > Consumed domains: **none (client-side auth via Better Auth — no BFF endpoints)** | Status: draft | Layer: permanent
 
@@ -38,8 +44,8 @@
 - Full-screen `AmbientBackdrop` behind everything (rendered by `__root`).
 - Center of viewport: `GlassSurface variant="panel"` wrapped in the CRT power-on entrance animation (`transitionCrtPowerOn`). The `GlassSurface`'s own entrance (`animate` prop) is **disabled** (`animate={false}`) to avoid competing with the CRT motion (R4).
 - Inside the panel, stagger-revealed content (Framer Motion `staggerContainer` + `listItem`):
-  - Heading: "Bem-vindo ao Remember," in `text-heading` (Space Grotesk), `text-content`.
-  - Sub-copy: "sua memória virtual." in `text-body-lg` (Space Mono), `text-body`.
+  - Heading: "Bem-vindo ao Remember," in `text-lg font-semibold tracking-tight` (mono), `text-foreground`.
+  - Sub-copy: "sua memória virtual." in `text-base` (mono), `text-foreground`.
   - Form (React Hook Form):
     - Field "Login" — `<label>` + `<Input type="email">` (shadcn/ui `Input`).
     - Field "Senha" — `<label>` + `<Input type="password">`.

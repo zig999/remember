@@ -1,5 +1,9 @@
 # ChatBubble — Component Spec
 
+> ## ⚠ v2.0 — texto em body sm + fill flat (adoção do UI-Kit / TUI)
+> O texto da mensagem usa **`text-xs`** (body sm). O `GlassSurface` de fundo renderiza **flat** (opaco, sem blur).
+> Cores/tipografia seguem o contrato do kit (mono única, Tailwind sizes). Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > Path: `frontend/src/components/ds/ChatBubble/`
 > COMP-03 | Used in features: chat (`MessageStream`)
 > Status: draft | Layer: permanent

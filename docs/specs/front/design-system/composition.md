@@ -2,7 +2,13 @@
 
 > Part of: `docs/specs/front/design-system/` | Layer: permanent
 > Index: [`_index.md`](./_index.md)
-> Version: 1.0.0 | Status: draft
+> Version: 2.0.0 | Status: draft
+>
+> ## ⚠ v2.0 — migrado para o UI-Kit (TUI)
+> Padrões de composição que citam vidro fosco/blur, fontes Space Grotesk/Mono, escala tipográfica nomeada,
+> cores oklch azul/violeta ou radius/`pill` estão **desatualizados**. Realidade atual: mono única, Tailwind
+> sizes (16px), phosphor, cantos retos, **flat** (glass = painel opaco de borda). **Autoridade:** [`tokens.md`](./tokens.md) §Migração.
+> As regras de *composição estrutural* (hierarquia, espaçamento 4-pt, layers/z-index) permanecem válidas.
 
 ---
 

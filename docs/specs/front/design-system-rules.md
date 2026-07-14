@@ -1,7 +1,15 @@
 # Design System Rules — Remember (compact summary)
 
 > Source: `docs/specs/front/design-system/` (tokens.md, composition.md, components.md, implementation.md)
-> Version: 1.3.0 | Status: draft
+> Version: 2.0.0 | Status: draft
+
+> ## ⚠ v2.0 — design system migrado para o UI-Kit (TUI)
+> O contrato base de tokens (cores/tipografia/fontes/radius/sombra) vem do **kit** (submodule
+> `vendor/ui-kit`), consumido em `theme.css`. **Autoridade:** [`design-system/tokens.md`](./design-system/tokens.md) §Migração.
+> Mudou: fontes → **JetBrains Mono única**; escala tipográfica → **Tailwind built-in** (base 16px);
+> cores → **phosphor**; radius **0**; **flat** (sem sombra); **glass achatado**; `state/node/link`
+> **remapeados p/ accents do TUI**. As regras de contrato/border/motion/z-index/feature/a11y abaixo
+> permanecem válidas; os nomes de token de **cor/tipografia** foram atualizados (§1.1, §3).
 
 ---
 
@@ -10,19 +18,22 @@
 ### 1.1 Semantic tokens only — no raw values
 
 ```
-bg-primary / bg-surface / bg-elevated / bg-input / bg-overlay
-bg-surface-glass-ambient / -panel / -modal    backdrop-blur-glass-sm / -md / -lg
-text-content / text-body / text-muted / text-content-inverse
-text-action / text-danger / text-warning / text-data
+# Contrato base (do kit): superfícies + texto + ação
+bg-background / bg-surface / bg-elevated / bg-muted / bg-hover / bg-input
+text-foreground / text-muted-foreground / text-accent
+bg-primary / text-primary-foreground / bg-destructive / bg-warning / text-info / text-success
+# Domínio (eternal) — catálogos em tokens.md §3–§4; cores REMAPEADAS p/ accents do TUI
 text-state-{accepted,uncertain,low-confidence,disputed,superseded}[-fg]
-bg-state-* / bg-node-* / bg-link-* (full catalogs: tokens.md §6–§7)
-border border-border-{glass,focus,error,accepted,uncertain,disputed,superseded}
-rounded-{sm,md,lg,xl,pill}   shadow-{sm,md,lg,glass}
-gap-{xs,sm,md,lg,xl,2xl}    p-{xs,sm,md,lg,xl,2xl}    m-{xs,sm,md,lg,xl,2xl}
-max-w-{3xs…7xl}  (resolve to --container-* via unlayered override — §4.1)
+bg-state-* / bg-node-* / stroke-link-*
+# Borda (cor + largura), radius=0 (sem pill), FLAT (sem shadow), glass achatado
+border border-border / border-border-strong / border-border-focus
+rounded-{sm,md,lg,xl}(=0)   (sem shadow-*; sem rounded-pill)
+# Tipografia: escala built-in do Tailwind + peso/tracking (base 16px, mono única)
+text-{xs,sm,base,lg,xl,2xl,3xl,4xl}  font-{normal,medium,semibold,bold}  tracking-{tight,normal,wide}
+# Layout / stacking / motion (mantidos)
+gap-{xs..2xl}  p-{xs..2xl}  m-{xs..2xl}   max-w-{3xs…7xl} (→ --container-* §4.1)
 z-{backdrop,base,panel,drawer,popover,frame,modal,toast}
-duration-{instant,fast,moderate,entrance,pulse}
-ease-{out,in,in-out,out-quint,out-expo,back}
+duration-{instant,fast,moderate,entrance,pulse}   ease-{out,in,in-out,out-quint,out-expo,back}
 ```
 
 **No arbitrary values** (`w-[347px]`, `p-[13px]`). Use spacing tokens.
@@ -78,11 +89,15 @@ Every border must write **both** a width utility AND a color utility.
 
 ## 3. Glass Material Levels
 
-| Level | Token class | Blur | Use |
+> ⚠ **v2.0 — glass agora é FLAT** (identidade terminal): os tokens `surface-glass-*` foram remapeados
+> para superfícies **opacas** do kit e `--blur-glass-*` = **0** (sem translucidez/blur). Os níveis abaixo
+> permanecem como distinção de *elevação/uso*, mas renderizam como painéis sólidos de borda. Ver `tokens.md §6`.
+
+| Level | Token class | Blur (agora) | Use |
 |---|---|---|---|
-| `ambient` | `bg-surface-glass-ambient` | `backdrop-blur-sm` | Header, footer, Composer |
-| `panel` | `bg-surface-glass-panel` | `backdrop-blur-md` | Filter panels, **sign-in panel** |
-| `modal` | `bg-surface-glass-modal` | `backdrop-blur-lg` | ChatBubble, dialogs, command palette |
+| `ambient` | `bg-surface-glass-ambient` (→ `surface`) | 0 | Header, footer, Composer |
+| `panel` | `bg-surface-glass-panel` (→ `surface`) | 0 | Filter panels, **sign-in panel** |
+| `modal` | `bg-surface-glass-modal` (→ `elevated`) | 0 | ChatBubble, dialogs, command palette |
 
 Sign-in exception: `GlassSurface level="panel" animate={false}` — CRT wrapper controls entrance.
 

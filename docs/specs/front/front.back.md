@@ -2,6 +2,15 @@
 
 > Stack: Vite 6 + React 19 + TypeScript strict | Client state: Zustand v5 | Server state: TanStack Query v5 | Router: TanStack Router | Auth: Better Auth (Neon Auth) 2-step JWT | Version: 1.1.0 | Status: draft | Layer: permanent
 > Business spec: `front.md`
+>
+> ## ⚠ v2.0 — wiring do UI-Kit (TUI) via submodule
+> Decisões técnicas adicionadas pela adoção do design system compartilhado:
+> - **Submodule** read-only em `frontend/vendor/ui-kit` (`.gitmodules` → `git@github.com:zig999/tui.git`); fixado por SHA. Nunca editar `vendor/`.
+> - **Alias** `@/shared/* → vendor/ui-kit/frontend/src/shared/*` no `tsconfig.json` (ponte via `vite-tsconfig-paths`, cobre Vite/Vitest/Storybook). Em arquivos `.spec` (excluídos do tsconfig) o alias não resolve → usar caminho relativo ao `vendor/`.
+> - **Tailwind:** `@source "../../vendor/ui-kit/frontend/src"` em `theme.css` (gera as utilities do kit); tema do kit importado antes do suplemento.
+> - **Tipos:** `tsconfig.vendor.json` (composite, `emitDeclarationOnly`) + `references` isola o kit das flags estritas do eternal (`exactOptionalPropertyTypes` etc.); scripts `typecheck`/`build` rodam `tsc -b tsconfig.vendor.json` antes.
+> - **Deps:** `motion@^11` adicionado (kit usa `motion/react`). **ESLint:** `vendor/**` em `ignores`.
+> - **Storybook compartilhado:** `main.ts` faz glob das stories do submodule + do eternal; toolbar de tema (`phosphor`/`default`); stories exclusivas sob `Eternal/*`.
 
 > Scope note: this `front-global` domain is a **frontend foundation wave** — there is no BFF code being designed here. This document collects the technical decisions that support the frontend architecture defined in `front.md`: build config, state architecture, router config, API client, auth client, theming, graph visualization config, tests, dev tooling. Standard `.back.md` sections (Data Model, BR, ST, EV) are reinterpreted for the frontend context — there is no database, so "Data Model" describes the **shape of persisted client state**, "BR" describes **invariant behaviours** the implementation must enforce, "EV" describes the **named motion/state transitions** referenced by `front.md §9`.
 

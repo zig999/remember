@@ -1,7 +1,16 @@
 # design-system-tokens -- Back-end Spec (frontend implementation reference)
 
-> Stack: Vite 6 + React 19 + TypeScript (strict) + Tailwind CSS v4 (CSS-first) | DB: N/A | Version: 1.0.0 | Status: draft | Layer: permanent
+> Stack: Vite 6 + React 19 + TypeScript (strict) + Tailwind CSS v4 (CSS-first) | DB: N/A | Version: 2.0.0 | Status: draft | Layer: permanent
 > Business spec: `tokens.md`
+>
+> ## ⚠ v2.0 — migrado para o UI-Kit (TUI)
+> O design system base (cores/tipografia/fontes/radius/sombra) agora vem do **kit** (submodule
+> `vendor/ui-kit`), consumido em `theme.css` via `@import`. **Autoridade:** [`tokens.md`](./tokens.md) §Migração.
+> Os valores/manifests deste back-spec (Space Grotesk/Mono, base 13px, escala nomeada, cores oklch,
+> radius/`pill`, sombras, glass fosco) estão **desatualizados** — a realidade é mono única (JetBrains Mono),
+> tamanhos built-in do Tailwind (16px), phosphor, cantos retos, flat, glass opaco. Wiring atual:
+> submodule read-only, alias `@/shared/*`, `tsconfig.vendor.json` (composite) isolando os tipos do kit,
+> `@source` do submodule no Tailwind, `vendor/**` ignorado no ESLint.
 >
 > **Domain shape.** This is a frontend design-system foundation domain — there is no backend, no database, no domain events. "Back" here means **the technical decisions the implementation group needs in order to wire the tokens into the React/Vite/Tailwind/Storybook toolchain**. Sections of `TEMPLATE.back.md` that map to BFF concerns (data model, BRs, state machine, EVs, integrations) are marked `N/A` with the reason — `u-spec-back-writing` §Quality Gate explicitly allows this.
 

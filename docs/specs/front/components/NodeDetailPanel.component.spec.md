@@ -1,5 +1,11 @@
 # Component Spec — NodeDetailPanel
 
+> ## ⚠ v2.0 — adoção do UI-Kit (TUI)
+> O contrato/dados deste painel é inalterado, mas os componentes que ele compõe seguem o kit:
+> `GlassSurface level="panel"` renderiza **flat** (opaco, sem blur) e `StateBadge` usa **cores remapeadas**
+> para os accents do kit. Ver `GlassSurface.component.spec.md` / `StateBadge.component.spec.md` e
+> [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
+
 > File: `frontend/src/features/graph/components/NodeDetailPanel.tsx`
 > Version: 2.1.0 | Status: draft
 

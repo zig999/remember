@@ -1,5 +1,10 @@
 # Validation Report — design-system-tokens
 
+> ## ⚠ SUPERADO pela migração v2.0 (UI-Kit / TUI)
+> Este relatório validou os valores de token **antigos** (oklch azul/violeta, escala nomeada, radius/`pill`,
+> glass fosco). Após a adoção do design system do TUI, o contrato base vem do kit e os tokens mudaram — este
+> resultado **não reflete mais o estado atual**. Deve ser **regenerado pelo pipeline**. Ver `front/design-system/tokens.md` §Migração.
+
 > Triage: COMPLETED
 > Date: 2026-06-18
 > Domain: design-system-tokens

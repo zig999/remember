@@ -1,5 +1,10 @@
 # Validation Report — GlassSurface
 
+> ## ⚠ SUPERADO pela migração v2.0 (UI-Kit / TUI)
+> Validou o material de **vidro fosco** (translúcido, blur, oklch). Após a adoção do TUI, o GlassSurface
+> renderiza **flat** (opaco, blur 0). Resultado desatualizado — **regenerar pelo pipeline**. Ver
+> `front/components/GlassSurface.component.spec.md` e `front/design-system/tokens.md` §6.
+
 > Triage: COMPLETED
 > Date: 2026-06-19
 > Domain: glass-surface

@@ -1,7 +1,14 @@
 # Front-end Spec — Global (Remember)
 
-> Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP
-> Version: 1.6.0 | Status: draft | Layer: permanent
+> Stack: Vite 6 + React 19 + TypeScript strict | State: Zustand v5 (client) + TanStack Query v5 (server) | Fetching: TanStack Query v5 over Fastify REST + MCP | UI base: **UI-Kit (TUI)** via git submodule
+> Version: 2.0.0 | Status: draft | Layer: permanent
+
+> ## ⚠ v2.0 — a fundação do design system é o UI-Kit (TUI)
+> A base do design system (tokens, primitivos, temas) **não é mais própria do eternal**: vem do **kit
+> compartilhado (TUI)** como git submodule read-only em `frontend/vendor/ui-kit`, consumido via alias
+> `@/shared/*` e importado em `theme.css`. `design-system/` passou a documentar o contrato herdado + a
+> camada exclusiva do eternal (ver [`design-system/tokens.md`](./design-system/tokens.md) §Migração).
+> Identidade atual: terminal/phosphor, mono única, Tailwind sizes (16px), cantos retos, flat.
 
 > This is the global frontend architecture document for the Remember SPA — written once, updated as the project evolves. Per-feature configurations (data fetching, error mapping, transforms) go in each `.feature.spec.md`. The foundation of the design system lives in `design-system/`. This wave specifies **the foundation only**; the five functional areas (Graph / Search / Ingest / Curation / History) are out of scope here and will be specified in subsequent `/u-spec` waves.
 

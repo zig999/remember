@@ -1,5 +1,12 @@
 # StateBadge — Component Spec
 
+> ## ⚠ v2.0 — cores de estado remapeadas para os accents do TUI
+> As 5 cores de confiança não usam mais a paleta oklch própria: foram **remapeadas** para os accents do kit
+> (`accepted→success`, `uncertain→warning`, `disputed→destructive`, `low-confidence`/`superseded→muted-foreground`).
+> ⚠ `low-confidence` e `superseded` **colidem** no mesmo tom → distinção por **ícone**. Tipografia usa
+> tamanhos built-in do Tailwind (badge = `text-xs font-bold`); cantos retos (sem `pill`). A semântica dos
+> estados (thresholds, ícones, motion) é inalterada. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §3.
+
 > Path: `frontend/src/components/ds/StateBadge/`
 > COMP-01 | Used in features: (foundation atom — consumed wherever a fact's confidence state must be legible: `/search` results, `/graph` node selection panel, `/curation` cards, provenance drawer)
 > Status: approved | Layer: permanent
