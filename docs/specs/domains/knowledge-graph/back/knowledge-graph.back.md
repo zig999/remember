@@ -470,7 +470,7 @@ A service throw NEVER produces `INTERNAL_ERROR` for a known business condition -
 - `list_nodes` (UC-04) -- wraps `listNodes`.
 - `list_node_types` (UC-01) -- wraps `listNodeTypes`.
 - `list_link_types` (UC-02) -- wraps `listLinkTypes`.
-- `list_attribute_keys` (UC-03) -- wraps `listAttributeKeys`.
+- `list_attribute_keys` (UC-03) -- wraps `listAttributeKeys`; each returned `AttributeKey` carries the OPTIONAL `valid_values: string[]` (sorted) for CLOSED value domains, ABSENT for open ones (up-front surfacing of the closed-domain catalog — `ingestion.back.md` BR-35). Same field on the REST mirror.
 
 `search` and `get_provenance_{link,attribute,fragment}` are registered by the `query-retrieval` module's toolset registrar (`query-retrieval.back.md` BR-23). The two registrars are composed at boot into a single tool registry exposed by the query transport.
 
@@ -492,7 +492,7 @@ The tool's output shape is the same JSON the REST handler would return (the serv
 |----------|-----------------------|----------------------|
 | `GET /api/v1/node-types` | `listNodeTypes` | `NodeTypeList` (`{ total, items }`) |
 | `GET /api/v1/link-types` | `listLinkTypes` | `LinkTypeList` (`{ total, items }`, optional `items[].rules`) |
-| `GET /api/v1/attribute-keys` | `listAttributeKeys` | `AttributeKeyList` (`{ total, items }`) |
+| `GET /api/v1/attribute-keys` | `listAttributeKeys` | `AttributeKeyList` (`{ total, items }`; each item carries optional `valid_values` for closed domains — `ingestion.back.md` BR-35) |
 | `GET /api/v1/nodes` | `listNodes` | `NodeList` (`{ total, limit, offset, items }`) |
 | `GET /api/v1/nodes/{node_id}` | `getNodeById` | `NodeDetail` (`{ node, aliases, attributes }`) |
 | `GET /api/v1/links/{link_id}` | `getLinkById` | `LinkDetail` |

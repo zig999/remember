@@ -79,7 +79,7 @@
 1. Owner calls `GET /api/v1/attribute-keys?node_type=Project`.
 2. BFF middleware validates the JWT.
 3. Service layer reads `attribute_key` rows joined to `node_type` filtered by name.
-4. BFF returns `200` with envelope `{ ok: true, result: { items: AttributeKey[] } }` (4 rows for `Project` per seed §15.3: `deadline`, `start_date`, `status_text`, `budget`).
+4. BFF returns `200` with envelope `{ ok: true, result: { items: AttributeKey[] } }` (4 rows for `Project` per seed §15.3: `deadline`, `start_date`, `status_text`, `budget`). Each `AttributeKey` with a CLOSED value domain additionally carries `valid_values: string[]` (sorted); the field is ABSENT when the domain is open. This is the up-front surfacing of the closed-domain catalog — see `ingestion.back.md` BR-35.
 
 **Alternative flows:**
 - `2a` Missing or invalid JWT -> 401.

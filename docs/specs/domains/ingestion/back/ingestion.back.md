@@ -540,6 +540,23 @@ A node item with an explicit `node_id` pin that fails the active-node lookup als
 
 ---
 
+### BR-35 -- Closed value domains for AttributeKeys (`attribute_valid_value`) -- validation gate + up-front surfacing
+
+**Related UC:** the `propose_attribute` write path (structural validation layer, shared by BR-26 LLM extraction, BR-28 REST mirrors, and BR-34 directed ingestion); surfacing on `knowledge-graph.back.md` UC-03 (`list_attribute_keys` / `GET /api/v1/attribute-keys`) and `chat.back.md` BR-18 (ontology block 4A / directive 4C.6).
+
+**Where to validate:** the gate `assertValueInDomain` in `modules/ingestion/validation/structural.ts`, wired into `modules/ingestion/service/propose-attribute.service.ts` immediately after `parseAttributeValue`. The domain catalog is loaded once at boot from the `attribute_valid_value` table — table DDL in the structural bootstrap `migrations/0001_init.sql`; values seeded in `migrations/seeds/0001_seed.sql` (§15 catalog) and extended by additive seed migrations (`seeds/0002_ontology_status_task.sql` → `Project.status`; `seeds/0003_event_type_taxonomy.sql` → `Event.event_type`) — into BOTH catalog snapshots: `modules/ingestion/catalog/catalog.ts#domainOf` (validation) and `modules/knowledge-graph/catalog/catalog.ts#attributeValidValuesByKeyId` (surfacing on UC-03 + chat block 4A). (Note: several code comments cite a non-existent `0003_attribute_valid_value.sql`; the real DDL lives in `0001_init.sql` — another code-comment inaccuracy to fix in the code-only cleanup.)
+
+**Description:**
+- **Domain model.** A *closed value domain* is the set of allowed literal values for an `AttributeKey`, stored one-row-per-value in `attribute_valid_value(attribute_key_id, value)` (`UNIQUE(attribute_key_id, value)`). An `AttributeKey` with ≥ 1 row is **CLOSED** — only the listed values are accepted; with zero rows it is **OPEN** — any literal that parses against the key's `value_type` is accepted. Backward-compatible default: every pre-existing key is open (`domainOf` returns `null` on an absent/empty set).
+- **Validation gate.** `assertValueInDomain` runs in the structural layer of `propose_attribute`, right after value parsing. Match is **exact — no normalisation, no case-folding, no trim** (v1 semantics). A value outside the domain is an **item-level `rejected`** outcome (never a run-level failure): the envelope is `VALIDATION_INVALID_FORMAT` with `details: { value, allowed_values }`, where `allowed_values` is the sorted domain.
+- **Governance (§12).** Domains grow/shrink ONLY by versioned migration; the catalog is loaded once at boot, so a new value requires a **BFF restart** to take effect (same rule as every catalog table, `knowledge-graph.back.md` BR-10). Values are never mutated at runtime.
+- **Up-front surfacing (this revision).** The closed domain is now exposed to callers/models **proactively**, not only reactively on rejection: (a) `knowledge-graph.back.md` UC-03 / `GET /api/v1/attribute-keys` (+ MCP `list_attribute_keys`) returns the OPTIONAL `valid_values: string[]` (sorted) on each closed-domain key — `openapi.yaml#components/schemas/AttributeKey.valid_values`; (b) the chat ontology block 4A (`chat.back.md` BR-18) renders the ` [dominio fechado: <v1> | <v2> | ...]` segment, and block 4C directive 6 requires the model to use a listed value verbatim (never translate/invent). This closes the failure mode where a client guessed a foreign value (e.g. `in_progress` against the pt-BR `status` domain) and learned the domain only by rejection.
+- **Rule identity / code-label note (divergence, not a defect of this BR).** The implementation currently labels this rule **`BR-30`** in code comments (`ingestion/validation/structural.ts`, `service/propose-attribute.service.ts`, `prompts/extraction.v1.ts`, `ingestion/catalog/catalog.ts`, `knowledge-graph/catalog/catalog.ts`, and the corresponding tests) and in the `TC-02` / `TC-03` "valid-values-attribute-domains" dev artifacts — a label that **COLLIDES** with this file's BR-30 (`ingest_document`). **BR-35 is the canonical normative home.** Aligning the code labels to `BR-35` is a future **code-only** cleanup that MUST be applied coordinatedly across every file at once (never partial). This BR introduces **no code or behaviour change** — it documents an already-implemented, tested mechanism (1308 backend tests green as of commit `f2205d0`).
+
+**Error returned:** `VALIDATION_INVALID_FORMAT` with `details: { value, allowed_values }` (sorted). Already registered in `docs/specs/_global/error-codes.md` — **no new error code**.
+
+---
+
 ## 4. State Machine (ST)
 
 ### ST-01 -- LLMRun lifecycle (ST-LR of `ingestion.spec.md` §5.1)
