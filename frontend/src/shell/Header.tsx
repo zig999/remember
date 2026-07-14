@@ -24,6 +24,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/shared/components/ui/button";
 import { useCommandPaletteStore } from "@/state/command-palette";
 import { HeaderConversationMenu } from "./HeaderConversationMenu";
+import { ThemeSelect } from "./ThemeSelect";
 
 export interface HeaderProps {
   className?: string;
@@ -86,7 +87,7 @@ export function Header({ className }: HeaderProps) {
               to={item.to}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex items-center gap-xs rounded-md px-md py-1 text-xs font-semibold transition-colors",
+                "inline-flex items-center gap-xs rounded-md px-md py-1 text-xs font-semibold uppercase tracking-wider transition-colors",
                 active
                   ? "bg-surface text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -110,6 +111,7 @@ export function Header({ className }: HeaderProps) {
 
       {/* Actions */}
       <div className="ml-auto flex shrink-0 items-center gap-xs">
+        <ThemeSelect />
         <Button
           variant="ghost"
           size="sm"
