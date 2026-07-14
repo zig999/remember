@@ -185,8 +185,19 @@ export function renderOntologyBlock(catalog: CatalogSnapshot): string {
   for (const attr of catalog.attributeKeyById.values()) {
     const owner = catalog.nodeTypeById.get(attr.node_type_id);
     const ownerName = owner !== undefined ? owner.name : "?";
+    // BR-30 — when the key has a CLOSED domain, list its allowed values inline
+    // so the model uses one of them verbatim instead of guessing (e.g. an
+    // English convention against a pt-BR domain). Values are SORTED for
+    // determinism (byte-stability / cache-control invariant) and to match the
+    // `allowed_values` order the validator returns on rejection. Absence of a
+    // domain leaves the line unchanged (open domain).
+    const domain = catalog.attributeValidValuesByKeyId.get(attr.id);
+    const domainSuffix =
+      domain !== undefined && domain.size > 0
+        ? ` [dominio fechado: ${[...domain].sort().join(" | ")}]`
+        : "";
     parts.push(
-      `- ${ownerName}.${attr.key} (${attr.value_type}): ${attr.description}`
+      `- ${ownerName}.${attr.key} (${attr.value_type}): ${attr.description}${domainSuffix}`
     );
   }
 

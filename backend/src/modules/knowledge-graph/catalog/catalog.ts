@@ -59,6 +59,12 @@ export interface AttributeKeyRow {
   readonly version: number;
 }
 
+/** Row shape for `attribute_valid_value` (closed-domain catalog, BR-30). */
+export interface AttributeValidValueRow {
+  readonly attribute_key_id: string;
+  readonly value: string;
+}
+
 /** Read-only snapshot exposed to validation layers (services). */
 export interface CatalogSnapshot {
   readonly nodeTypeByName: ReadonlyMap<string, NodeTypeRow>;
@@ -69,6 +75,13 @@ export interface CatalogSnapshot {
   /** Keyed by `${node_type_id}\x1F${key}`. */
   readonly attributeKeyByNodeTypeAndKey: ReadonlyMap<string, AttributeKeyRow>;
   readonly attributeKeyById: ReadonlyMap<string, AttributeKeyRow>;
+  /**
+   * Closed value domains keyed by `attribute_key.id` (BR-30). An `AttributeKey`
+   * WITHOUT an entry here has an OPEN domain (any literal parsing against its
+   * `value_type` is accepted). Consumed by the chat ontology block so the model
+   * SEES the allowed values up-front instead of discovering them by rejection.
+   */
+  readonly attributeValidValuesByKeyId: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** Build the composite lookup key `(node_type_id, key)` for attribute_key. */
@@ -107,11 +120,18 @@ export async function loadCatalog(
             description, version
        FROM attribute_key`
   );
+  // BR-30 — closed value domains per AttributeKey. Only the two columns the
+  // renderer needs are loaded (the migration's `label` column is deliberately
+  // omitted). Table is owned by 0003_attribute_valid_value.sql.
+  const validValueRes = await client.query<AttributeValidValueRow>(
+    `SELECT attribute_key_id, value FROM attribute_valid_value`
+  );
   return buildSnapshot({
     nodeTypes: nodeTypeRes.rows,
     linkTypes: linkTypeRes.rows,
     linkTypeRules: ruleRes.rows,
     attributeKeys: attrRes.rows,
+    attributeValidValues: validValueRes.rows,
   });
 }
 
@@ -121,6 +141,13 @@ export function buildSnapshot(args: {
   linkTypes: readonly LinkTypeRow[];
   linkTypeRules: readonly LinkTypeRuleRow[];
   attributeKeys: readonly AttributeKeyRow[];
+  /**
+   * Optional — when omitted, every `AttributeKey` is treated as OPEN (no
+   * closed-domain entries). Test fixtures that do not exercise BR-30 may leave
+   * it out; the live `loadCatalog` always passes the full result of
+   * `SELECT attribute_key_id, value FROM attribute_valid_value`.
+   */
+  attributeValidValues?: readonly AttributeValidValueRow[];
 }): CatalogSnapshot {
   const nodeTypeByName = new Map<string, NodeTypeRow>();
   const nodeTypeById = new Map<string, NodeTypeRow>();
@@ -143,6 +170,18 @@ export function buildSnapshot(args: {
     );
     attributeKeyById.set(r.id, r);
   }
+  // BR-30 — accumulate the closed value domain per attribute_key_id. The DB's
+  // UNIQUE(attribute_key_id, value) constraint already guarantees uniqueness;
+  // the `Set` deduplicates hand-built test fixtures too.
+  const attributeValidValuesByKeyId = new Map<string, Set<string>>();
+  for (const r of args.attributeValidValues ?? []) {
+    let bucket = attributeValidValuesByKeyId.get(r.attribute_key_id);
+    if (bucket === undefined) {
+      bucket = new Set<string>();
+      attributeValidValuesByKeyId.set(r.attribute_key_id, bucket);
+    }
+    bucket.add(r.value);
+  }
   return {
     nodeTypeByName,
     nodeTypeById,
@@ -151,5 +190,6 @@ export function buildSnapshot(args: {
     linkTypeRules: args.linkTypeRules,
     attributeKeyByNodeTypeAndKey,
     attributeKeyById,
+    attributeValidValuesByKeyId,
   };
 }

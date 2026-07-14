@@ -29,6 +29,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSnapshot,
   type AttributeKeyRow,
+  type AttributeValidValueRow,
   type CatalogSnapshot,
   type LinkTypeRow,
   type LinkTypeRuleRow,
@@ -227,6 +228,53 @@ describe("v4.system(catalog) — block 4A ONTOLOGY (BR-18 v4 inherits v3, Testin
     expect(sha256(extended)).not.toBe(sha256(base));
     expect(extended).toContain("Event");
     expect(extended).toContain("A dated occurrence in the corpus.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (xix, BR-30) Block 4A — closed value domains flow through v4's renderer
+// (xxi, BR-30) Block 4C — attribute write-discipline (root fix for the two
+// observed failures: inventing an unrequested `status`, and guessing a foreign
+// closed-domain value)
+// ---------------------------------------------------------------------------
+
+describe("v4.system(catalog) — closed value domains + attribute discipline (BR-30)", () => {
+  it("block 4A renders closed domains inline (delegates to v3's renderOntologyBlock)", () => {
+    const closedValues: AttributeValidValueRow[] = [
+      { attribute_key_id: "ak-project-status", value: "em andamento" },
+      { attribute_key_id: "ak-project-status", value: "a fazer" },
+    ];
+    const out = v4System(
+      buildSnapshot({
+        nodeTypes: [NT_PERSON, NT_PROJECT, NT_TASK],
+        linkTypes: [LT_OWNS, LT_PART_OF],
+        linkTypeRules: [
+          RULE_PERSON_OWNS_PROJECT,
+          RULE_PERSON_OWNS_TASK,
+          RULE_TASK_PART_OF_PROJECT,
+        ],
+        attributeKeys: [AK_PROJECT_STATUS, AK_TASK_PRIORITY],
+        attributeValidValues: closedValues,
+      })
+    );
+    expect(out).toContain("[dominio fechado: a fazer | em andamento]");
+  });
+
+  it("block 4C tells the model to record ONLY owner-stated attributes (not infer status/state)", () => {
+    const out = v4System(buildFixtureCatalog());
+    expect(out).toMatch(/Grave\s+APENAS\s+atributos\s+que\s+o\s+dono\s+declarou/i);
+    expect(out).toMatch(/NAO\s+infira[\s\S]{0,60}status/i);
+    expect(out).toMatch(/PERGUNTE\s+antes\s+de\s+gravar/i);
+  });
+
+  it("block 4C tells the model to use closed-domain values verbatim, never translate/invent", () => {
+    const out = v4System(buildFixtureCatalog());
+    expect(out).toMatch(/DOMINIO\s+FECHADO/i);
+    expect(out).toMatch(/EXATAMENTE\s+um\s+dos\s+valores\s+listados/i);
+    expect(out).toMatch(/NUNCA\s+traduza/i);
+    // The concrete failure example is spelled out so the guidance is unmissable.
+    expect(out).toContain("in_progress");
+    expect(out).toContain("em andamento");
   });
 });
 

@@ -14,6 +14,7 @@ import type {
 import type { CatalogSnapshot } from "../catalog/catalog.js";
 import {
   listAttributeKeys,
+  listAttributeValidValues,
   listLinkTypeRules,
   listLinkTypes,
   listNodeTypes,
@@ -105,19 +106,42 @@ export async function listAttributeKeysService(
   }
 
   const rows = await listAttributeKeys(client, { node_type_id: nodeTypeId });
+
+  // BR-30 — attach closed-domain values so REST/MCP clients see the allowed
+  // set up-front (parity with the chat ontology block). Group per key id;
+  // keys with no rows stay OPEN (no `valid_values`).
+  const validValueRows = await listAttributeValidValues(client, {
+    node_type_id: nodeTypeId,
+  });
+  const valuesByKeyId = new Map<string, string[]>();
+  for (const vv of validValueRows) {
+    const arr = valuesByKeyId.get(vv.attribute_key_id);
+    if (arr === undefined) {
+      valuesByKeyId.set(vv.attribute_key_id, [vv.value]);
+    } else {
+      arr.push(vv.value);
+    }
+  }
+
   return {
     total: rows.length,
-    items: rows.map((r) => ({
-      id: r.id,
-      node_type: r.node_type,
-      key: r.key,
-      value_type: r.value_type,
-      is_temporal: r.is_temporal,
-      allows_multiple_current: r.allows_multiple_current,
-      requires_valid_from: r.requires_valid_from,
-      description: r.description,
-      version: r.version,
-    })),
+    items: rows.map((r) => {
+      const base = {
+        id: r.id,
+        node_type: r.node_type,
+        key: r.key,
+        value_type: r.value_type,
+        is_temporal: r.is_temporal,
+        allows_multiple_current: r.allows_multiple_current,
+        requires_valid_from: r.requires_valid_from,
+        description: r.description,
+        version: r.version,
+      };
+      const values = valuesByKeyId.get(r.id);
+      return values !== undefined && values.length > 0
+        ? { ...base, valid_values: [...values].sort() }
+        : base;
+    }),
   };
 }
 

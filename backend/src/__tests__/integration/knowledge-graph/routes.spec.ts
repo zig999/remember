@@ -150,6 +150,8 @@ interface Store {
   link_types: LinkTypeMem[];
   link_type_rules: LinkTypeRuleMem[];
   attribute_keys: AttrKeyMem[];
+  /** BR-30 closed-domain values (optional; absent -> every key is open). */
+  attribute_valid_values?: { attribute_key_id: string; value: string }[];
   nodes: NodeRowMem[];
   aliases: AliasRowMem[];
   attributes: AttrRowMem[];
@@ -342,6 +344,24 @@ function buildFakeClient(store: Store): import("pg").PoolClient {
         }));
         if (text.includes("WHERE ak.node_type_id = $1")) {
           rows = rows.filter((r) => r.node_type_id === String(params[0]));
+        }
+        return { rows, rowCount: rows.length };
+      }
+      // attribute_valid_value listing (BR-30; optional node_type filter via
+      // join through attribute_key)
+      if (text.includes("FROM attribute_valid_value avv")) {
+        let rows = (store.attribute_valid_values ?? []).map((v) => ({
+          attribute_key_id: v.attribute_key_id,
+          value: v.value,
+        }));
+        if (text.includes("WHERE ak.node_type_id = $1")) {
+          const ntId = String(params[0]);
+          const keyIds = new Set(
+            store.attribute_keys
+              .filter((ak) => ak.node_type_id === ntId)
+              .map((ak) => ak.id)
+          );
+          rows = rows.filter((r) => keyIds.has(r.attribute_key_id));
         }
         return { rows, rowCount: rows.length };
       }

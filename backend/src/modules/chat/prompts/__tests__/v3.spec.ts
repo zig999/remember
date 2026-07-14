@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSnapshot,
   type AttributeKeyRow,
+  type AttributeValidValueRow,
   type CatalogSnapshot,
   type LinkTypeRow,
   type LinkTypeRuleRow,
@@ -262,6 +263,89 @@ describe("v3.system(catalog) — block 4A ONTOLOGY (BR-18 v3, Testing xix)", () 
     expect(out).not.toContain("Project");
     expect(out).not.toContain("Task");
     expect(out).toContain("Asteroid");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (xix, BR-30) Block 4A — closed value domains rendered inline
+//
+// Intent: the model must SEE the allowed values of a closed-domain attribute in
+// the system prompt so it uses one verbatim instead of guessing a foreign
+// convention (the `Task.status = "in_progress"` failure). This is the root fix
+// for that failure mode — anchored on rendering, not on post-hoc rejection.
+// ---------------------------------------------------------------------------
+
+describe("renderOntologyBlock — closed value domains (BR-30)", () => {
+  // Project.status closed to a pt-BR lifecycle vocabulary; Task.priority open.
+  const CLOSED_DOMAIN_VALUES: AttributeValidValueRow[] = [
+    { attribute_key_id: "ak-project-status", value: "em andamento" },
+    { attribute_key_id: "ak-project-status", value: "concluida" },
+    { attribute_key_id: "ak-project-status", value: "a fazer" },
+  ];
+
+  function buildClosedDomainCatalog(
+    extraValues: readonly AttributeValidValueRow[] = []
+  ): CatalogSnapshot {
+    return buildSnapshot({
+      nodeTypes: [NT_PERSON, NT_PROJECT, NT_TASK],
+      linkTypes: [LT_OWNS, LT_PART_OF],
+      linkTypeRules: [
+        RULE_PERSON_OWNS_PROJECT,
+        RULE_PERSON_OWNS_TASK,
+        RULE_TASK_PART_OF_PROJECT,
+      ],
+      attributeKeys: [AK_PROJECT_STATUS, AK_TASK_PRIORITY],
+      attributeValidValues: [...CLOSED_DOMAIN_VALUES, ...extraValues],
+    });
+  }
+
+  it("buildSnapshot indexes closed values by key id; open keys stay absent", () => {
+    const c = buildClosedDomainCatalog();
+    expect(c.attributeValidValuesByKeyId.get("ak-project-status")).toEqual(
+      new Set(["em andamento", "concluida", "a fazer"])
+    );
+    // Task.priority has no attribute_valid_value rows -> OPEN domain (absent).
+    expect(
+      c.attributeValidValuesByKeyId.get("ak-task-priority")
+    ).toBeUndefined();
+  });
+
+  it("renders the closed domain inline with SORTED values (model uses one verbatim, never guesses)", () => {
+    const out = renderOntologyBlock(buildClosedDomainCatalog());
+    // Sorted ascending, ` | `-joined, appended to the owning AttributeKey line.
+    expect(out).toContain(
+      "Project.status (text): Lifecycle status (proposed / active / done). " +
+        "[dominio fechado: a fazer | concluida | em andamento]"
+    );
+  });
+
+  it("does NOT annotate an OPEN-domain attribute (no noise on Task.priority)", () => {
+    const out = renderOntologyBlock(buildClosedDomainCatalog());
+    expect(out).toContain(
+      "Task.priority (number): Numeric priority (lower is more urgent)."
+    );
+    expect(out).not.toMatch(/Task\.priority[^\n]*dominio fechado/);
+  });
+
+  it("is byte-stable across calls when a closed domain is present (cache-control invariant)", () => {
+    const c = buildClosedDomainCatalog();
+    expect(v3System(c)).toBe(v3System(c));
+    expect(sha256(v3System(c))).toBe(sha256(v3System(c)));
+  });
+
+  it("changing a closed-domain value changes the rendered string AND hash (sensitivity)", () => {
+    const base = renderOntologyBlock(buildClosedDomainCatalog());
+    const changed = renderOntologyBlock(
+      buildClosedDomainCatalog([
+        { attribute_key_id: "ak-project-status", value: "bloqueada" },
+      ])
+    );
+    expect(changed).not.toBe(base);
+    expect(sha256(changed)).not.toBe(sha256(base));
+    // New value lands in sorted position: a fazer | bloqueada | concluida | ...
+    expect(changed).toContain(
+      "[dominio fechado: a fazer | bloqueada | concluida | em andamento]"
+    );
   });
 });
 

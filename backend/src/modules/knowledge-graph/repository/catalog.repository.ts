@@ -144,5 +144,44 @@ export async function listAttributeKeys(
   return res.rows;
 }
 
+// ---------------------------------------------------------------------------
+// attribute_valid_value (closed domains, BR-30)
+// ---------------------------------------------------------------------------
+
+/** A single closed-domain value, tied to its owning `attribute_key.id`. */
+export interface AttributeValidValueJoined {
+  readonly attribute_key_id: string;
+  readonly value: string;
+}
+
+/**
+ * List closed-domain values (optionally restricted to one `node_type_id`,
+ * joined through `attribute_key`). Rows are grouped per key by the service.
+ * Keys with no rows here have an OPEN domain and get no `valid_values`.
+ */
+export async function listAttributeValidValues(
+  client: PoolClient,
+  filter: { node_type_id?: string } = {}
+): Promise<readonly AttributeValidValueJoined[]> {
+  if (filter.node_type_id !== undefined) {
+    const res = await client.query<AttributeValidValueJoined>(
+      `SELECT avv.attribute_key_id, avv.value
+         FROM attribute_valid_value avv
+         JOIN attribute_key ak ON ak.id = avv.attribute_key_id
+         WHERE ak.node_type_id = $1
+         ORDER BY avv.attribute_key_id, avv.value ASC`,
+      [filter.node_type_id]
+    );
+    return res.rows;
+  }
+
+  const res = await client.query<AttributeValidValueJoined>(
+    `SELECT avv.attribute_key_id, avv.value
+       FROM attribute_valid_value avv
+       ORDER BY avv.attribute_key_id, avv.value ASC`
+  );
+  return res.rows;
+}
+
 // kept here only to placate downstream unused-import checks
 export type { AttributeKeyRow };

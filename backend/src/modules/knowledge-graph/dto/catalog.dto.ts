@@ -77,6 +77,13 @@ export const AttributeKeyResponseSchema = z.object({
   requires_valid_from: z.boolean(),
   description: z.string(),
   version: z.number().int().min(1),
+  /**
+   * Closed-domain allowed values (BR-30), sorted. Present ONLY when the key
+   * has a closed domain; absent means OPEN (any literal parsing against
+   * `value_type` is accepted). Mirrors the chat ontology block so a client
+   * knows the allowed set up-front instead of learning it by rejection.
+   */
+  valid_values: z.array(z.string()).optional(),
 });
 export type AttributeKeyResponse = z.infer<typeof AttributeKeyResponseSchema>;
 
