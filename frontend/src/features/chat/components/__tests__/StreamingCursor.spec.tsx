@@ -55,7 +55,7 @@ describe("StreamingCursor", () => {
     const cls = cursor?.className ?? "";
     // Consumer class lands…
     expect(cls).toContain("ml-md");
-    // …without erasing the bg-content fill that gives the caret its body.
-    expect(cls).toContain("bg-content");
+    // …without erasing the bg-foreground fill that gives the caret its body.
+    expect(cls).toContain("bg-foreground");
   });
 });

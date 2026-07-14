@@ -9,16 +9,10 @@
  */
 import { type FC } from "react";
 import { Controller, type Control } from "react-hook-form";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/shared/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
+import { Label } from "@/shared/components/ui/label";
+import { Select } from "@/shared/components/ui/select";
 import { useListAcceptedFragments } from "../../api/provenance.hooks";
 import type { ValidFromSource } from "../../types";
 import type { CorrectionFormValues } from "./correction-schema";
@@ -82,7 +76,7 @@ export const DateJustification: FC<DateJustificationProps> = ({
 
   return (
     <fieldset className="flex flex-col gap-sm rounded-md border border-border p-md">
-      <legend className="px-xs text-body-sm font-medium">
+      <legend className="px-xs text-xs font-medium">
         Justificativa da data
       </legend>
       <Controller
@@ -97,7 +91,7 @@ export const DateJustification: FC<DateJustificationProps> = ({
             {SOURCE_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
-                className="flex items-start gap-sm text-body-sm"
+                className="flex items-start gap-sm text-xs"
               >
                 <RadioGroupItem value={opt.value} id={`cf-src-${opt.value}`} />
                 <span className="flex flex-col">
@@ -123,29 +117,20 @@ export const DateJustification: FC<DateJustificationProps> = ({
               // from <SelectValue>.
               <Select
                 value={field.value ?? ""}
-                onValueChange={(v) => field.onChange(v)}
-              >
-                <SelectTrigger
-                  id="cf-frag"
-                  aria-invalid={!!fieldState.error || undefined}
-                  className={
-                    fieldState.error ? "border-border-error" : undefined
-                  }
-                >
-                  <SelectValue placeholder="Selecione um fragmento…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {fragmentQ.data?.items.map((f) => (
-                    <SelectItem key={f.fragmentId} value={f.fragmentId}>
-                      {f.text.slice(0, 80)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(v) => field.onChange(v)}
+                options={(fragmentQ.data?.items ?? []).map((f) => ({
+                  value: f.fragmentId,
+                  label: f.text.slice(0, 80),
+                }))}
+                placeholder="Selecione um fragmento…"
+                id="cf-frag"
+                aria-invalid={!!fieldState.error || undefined}
+                className={fieldState.error ? "border-border-error" : undefined}
+              />
             )}
           />
           {fragmentErrorMessage && (
-            <p role="alert" className="text-body-sm text-danger">
+            <p role="alert" className="text-xs text-destructive">
               {fragmentErrorMessage}
             </p>
           )}
@@ -163,17 +148,17 @@ export const DateJustification: FC<DateJustificationProps> = ({
                 {...field}
                 id="cf-frag-manual"
                 value={field.value ?? ""}
-                invalid={!!fieldState.error}
+                aria-invalid={!!fieldState.error}
                 placeholder="UUID do fragmento accepted"
                 aria-describedby="cf-frag-manual-hint"
               />
             )}
           />
-          <p id="cf-frag-manual-hint" className="text-caption text-body">
+          <p id="cf-frag-manual-hint" className="text-xs text-body">
             Listagem de fragmentos indisponível — informe o id manualmente.
           </p>
           {fragmentErrorMessage && (
-            <p role="alert" className="text-body-sm text-danger">
+            <p role="alert" className="text-xs text-destructive">
               {fragmentErrorMessage}
             </p>
           )}

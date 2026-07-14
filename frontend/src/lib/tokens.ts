@@ -7,13 +7,13 @@
  *
  * This module is a pure, frozen-object index — no runtime logic. Components
  * consume tokens via Tailwind v4 utility classes (e.g. `bg-surface`,
- * `text-content`, `rounded-md`) declared from the same `@theme` block in
+ * `text-foreground`, `rounded-md`) declared from the same `@theme` block in
  * `frontend/src/styles/theme.css`. Use the `cssVar(...)` helper only for
  * dynamic inline values that have no Tailwind utility (e.g. a React Flow
  * node coordinate computed by d3-force).
  *
  * Naming rule (tokens.md §1.1): token suffix maps directly to the Tailwind
- * class — `--color-content` -> `text-content`; `--spacing-lg` -> `p-lg`; etc.
+ * class — `--color-content` -> `text-foreground`; `--spacing-lg` -> `p-lg`; etc.
  *
  * Border namespaces (tokens.md §7.2, front.md §8.3): `borderColor` lives in
  * `--color-border-*` and `borderWidth` in `--border-*`. They are deliberately

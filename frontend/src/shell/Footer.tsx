@@ -19,8 +19,8 @@ import { Clock, Scale, Upload } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { cn } from "@/lib/cn";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import { useAsOfStore } from "@/state/as-of";
 
 export type HealthStatus = "ok" | "down" | "checking";
@@ -38,8 +38,8 @@ export interface FooterProps {
 const HEALTH: Readonly<Record<HealthStatus, { dot: string; label: string }>> =
   Object.freeze({
     ok: { dot: "bg-state-accepted", label: "online" },
-    down: { dot: "bg-danger", label: "banco inacessível" },
-    checking: { dot: "bg-muted", label: "verificando…" },
+    down: { dot: "bg-destructive", label: "banco inacessível" },
+    checking: { dot: "bg-muted-foreground", label: "verificando…" },
   });
 
 function formatAsOf(asOf: Date | null): string {
@@ -62,7 +62,7 @@ export function Footer({
       role="contentinfo"
       aria-label="Rodapé"
       className={cn(
-        "fixed inset-x-0 bottom-0 z-frame flex h-8 items-center gap-md px-lg text-caption text-muted",
+        "fixed inset-x-0 bottom-0 z-frame flex h-8 items-center gap-md px-lg text-xs text-muted-foreground",
         className,
       )}
     >
@@ -78,14 +78,14 @@ export function Footer({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="inline-flex items-center gap-xs rounded-sm px-1 text-caption text-body transition-colors hover:text-content"
+              className="inline-flex items-center gap-xs rounded-sm px-1 text-xs text-body transition-colors hover:text-foreground"
             >
               <Clock className="size-3" aria-hidden="true" /> Como em: {formatAsOf(asOf)}
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-64">
-            <p className="text-label font-semibold text-content">Recorte temporal</p>
-            <p className="mt-xs text-body-sm text-muted">
+            <p className="text-xs font-medium font-semibold text-foreground">Recorte temporal</p>
+            <p className="mt-xs text-xs text-muted-foreground">
               Veja o que era verdade numa data (as_of).
             </p>
             <Input
@@ -113,7 +113,7 @@ export function Footer({
       {curationPending > 0 && (
         <Link
           to="/curation"
-          className="inline-flex items-center gap-xs border-l border-border pl-md text-caption text-body transition-colors hover:text-content"
+          className="inline-flex items-center gap-xs border-l border-border pl-md text-xs text-body transition-colors hover:text-foreground"
         >
           <Scale className="size-3" aria-hidden="true" /> {curationPending} pendentes
         </Link>
@@ -123,7 +123,7 @@ export function Footer({
       {activeRun && (
         <Link
           to="/history"
-          className="ml-auto inline-flex items-center gap-xs text-caption text-data transition-colors hover:text-content"
+          className="ml-auto inline-flex items-center gap-xs text-xs text-data transition-colors hover:text-foreground"
         >
           <Upload className="size-3 animate-pulse" aria-hidden="true" /> {activeRun.label}
         </Link>

@@ -46,8 +46,8 @@ export const IngestSummary: FC<IngestSummaryProps> = ({ summary, className }) =>
           className="flex items-center justify-between gap-md"
           data-testid={`ingest-summary-row-${key}`}
         >
-          <dt className="text-body-sm text-muted">{label}</dt>
-          <dd className="text-body-sm font-medium text-content">
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd className="text-xs font-medium text-foreground">
             {summary[key]}
           </dd>
         </div>

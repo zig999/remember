@@ -43,7 +43,7 @@ export const SuccessView: FC<SuccessViewProps> = ({
         trailing={
           <>
             <span
-              className="text-caption text-muted"
+              className="text-xs text-muted-foreground"
               data-testid="node-detail-type"
             >
               {data.nodeType}
@@ -61,9 +61,9 @@ export const SuccessView: FC<SuccessViewProps> = ({
                 className={cn(
                   "inline-flex items-center gap-xs",
                   "min-h-8 px-md py-xs rounded-md",
-                  "text-body-sm text-content-inverse bg-action hover:bg-action-hover",
+                  "text-xs text-primary-foreground bg-primary hover:bg-primary-hover",
                   "transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 )}
               >
                 <Stethoscope aria-hidden="true" className="size-4" />
@@ -79,11 +79,11 @@ export const SuccessView: FC<SuccessViewProps> = ({
       >
         {/* ---------- Aliases ---------------------------------------- */}
         <section className="mt-md">
-          <h3 className="text-subheading text-content mb-sm">
+          <h3 className="text-sm font-medium text-foreground mb-sm">
             {NODE_DETAIL_COPY.aliasesHeading}
           </h3>
           {data.aliases.length === 0 ? (
-            <p className="text-body-sm text-muted">
+            <p className="text-xs text-muted-foreground">
               {NODE_DETAIL_COPY.noAliases}
             </p>
           ) : (
@@ -95,11 +95,11 @@ export const SuccessView: FC<SuccessViewProps> = ({
               {data.aliases.map((alias) => (
                 <li
                   key={alias.id}
-                  className="flex items-center gap-sm text-body-sm text-content"
+                  className="flex items-center gap-sm text-xs text-foreground"
                 >
                   <span>{alias.alias}</span>
                   {alias.kind === "canonical" && (
-                    <span className="text-caption text-muted">(canônico)</span>
+                    <span className="text-xs text-muted-foreground">(canônico)</span>
                   )}
                 </li>
               ))}
@@ -109,20 +109,20 @@ export const SuccessView: FC<SuccessViewProps> = ({
 
         {/* ---------- Attributes ------------------------------------- */}
         <section className="mt-lg">
-          <h3 className="text-subheading text-content mb-sm">
+          <h3 className="text-sm font-medium text-foreground mb-sm">
             {NODE_DETAIL_COPY.attributesHeading}
           </h3>
           {data.attributes.length === 0 ? (
-            <p className="text-body-sm text-muted">
+            <p className="text-xs text-muted-foreground">
               {NODE_DETAIL_COPY.noAttributes}
             </p>
           ) : (
             <table
-              className="w-full text-body-sm text-content"
+              className="w-full text-xs text-foreground"
               data-testid="node-detail-attributes"
             >
               <thead>
-                <tr className="text-caption text-muted">
+                <tr className="text-xs text-muted-foreground">
                   <th scope="col" className="text-left p-xs font-normal">
                     {NODE_DETAIL_COPY.attrColKey}
                   </th>

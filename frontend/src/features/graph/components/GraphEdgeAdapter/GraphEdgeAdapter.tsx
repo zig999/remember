@@ -11,7 +11,7 @@
  *    "superseded"` (out-of-effect / historical edge, GraphEdge.spec §3).
  *  - The catalog-resolved **pt-BR display label** (`data.linkTypeLabel`)
  *    rendered as a small centred label via `EdgeLabelRenderer`, using the
- *    `text-caption` token. The slug (`data.label`) is **never** rendered as
+ *    `text-xs` token. The slug (`data.label`) is **never** rendered as
  *    text — it is used only as the stroke-color lookup key
  *    (`LINK_STROKE_CLASS[data.label]`). See GraphEdge.spec §1, §2, §7
  *    scenarios 7 / 8.
@@ -210,7 +210,7 @@ export const GraphEdgeAdapter: FC<GraphEdgeAdapterProps> = ({
           }}
           className={cn(
             "rounded-sm bg-surface-glass-panel px-xs py-xs",
-            "text-caption text-content",
+            "text-xs text-foreground",
             "border border-border-glass",
             isDimmed && "opacity-40",
           )}

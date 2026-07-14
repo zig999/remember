@@ -13,10 +13,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "./dropdown-menu";
-import { Button } from "../button";
+import { Button } from "@/shared/components/ui/button";
 
 const meta: Meta<typeof DropdownMenu> = {
-  title: "Components/DropdownMenu",
+  title: "Eternal/Components/DropdownMenu",
   component: DropdownMenu,
   parameters: { a11y: { element: "#storybook-root" } },
 };

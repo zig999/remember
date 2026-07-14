@@ -11,7 +11,7 @@
  * QueueList itself; the parent wires `aria-controls` if needed.
  */
 import type { FC } from "react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import type { ReviewQueueKind } from "../types";
 
 /** `undefined` means "Tudo" (both queues). Keep the value space narrow
@@ -60,6 +60,7 @@ function filterToKey(value: QueueKindFilter): string {
 export const QueueTabs: FC<QueueTabsProps> = ({ value, onChange }) => {
   return (
     <Tabs
+      defaultValue={filterToKey(value)}
       value={filterToKey(value)}
       onValueChange={(next) => onChange(keyToFilter(next))}
       data-testid="curation-queue-tabs"

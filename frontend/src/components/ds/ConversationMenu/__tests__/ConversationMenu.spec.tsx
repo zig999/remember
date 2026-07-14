@@ -87,7 +87,10 @@ vi.mock("../../../ui/dropdown-menu", () => {
   };
 });
 
-vi.mock("../../../ui/dialog", () => {
+// O alias @/shared não resolve dentro de .spec (fora do escopo do
+// vite-tsconfig-paths); mockamos o kit dialog pelo caminho relativo — resolve
+// para o MESMO módulo que o componente importa via @/shared, então intercepta.
+vi.mock("../../../../../vendor/ui-kit/frontend/src/shared/components/ui/dialog", () => {
   return {
     Dialog: ({
       open,

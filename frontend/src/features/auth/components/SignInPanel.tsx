@@ -102,11 +102,11 @@ export function SignInPanel({
             <motionLib.div variants={itemVariants} className="flex flex-col gap-xs">
               <h1
                 id="sign-in-heading"
-                className="text-heading text-content"
+                className="text-lg font-semibold tracking-tight text-foreground"
               >
                 Bem-vindo ao Remember,
               </h1>
-              <p className="text-body-lg text-body">sua memória virtual.</p>
+              <p className="text-base text-body">sua memória virtual.</p>
             </motionLib.div>
 
             <motionLib.div variants={itemVariants}>

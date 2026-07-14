@@ -29,10 +29,10 @@ export const EvidenceChip: FC<EvidenceChipProps> = ({ viewed, className }) => {
           : "Veja a evidência antes de decidir"
       }
       className={cn(
-        "inline-flex items-center gap-xs rounded-pill border px-md py-xs text-caption",
+        "inline-flex items-center gap-xs rounded-pill border px-md py-xs text-xs",
         viewed
           ? "border-border-accepted bg-state-accepted text-state-accepted-fg"
-          : "border-border-glass bg-surface-glass-panel text-content motion-safe:animate-pulse",
+          : "border-border-glass bg-surface-glass-panel text-foreground motion-safe:animate-pulse",
         className,
       )}
     >

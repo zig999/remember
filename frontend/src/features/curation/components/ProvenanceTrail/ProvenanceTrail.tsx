@@ -157,12 +157,12 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
         role="alert"
         aria-label="Proveniência indisponível"
         className={cn(
-          "flex items-start gap-md rounded-md border border-border bg-warning p-md text-content",
+          "flex items-start gap-md rounded-md border border-border bg-warning p-md text-foreground",
           className,
         )}
       >
         <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
-        <p className="text-body-sm">
+        <p className="text-xs">
           A fonte original foi excluída por conformidade. Sem proveniência
           disponível.
         </p>
@@ -176,12 +176,12 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
         role="alert"
         aria-label="Erro ao carregar proveniência"
         className={cn(
-          "flex items-start gap-md rounded-md border border-border-error p-md text-danger",
+          "flex items-start gap-md rounded-md border border-border-error p-md text-destructive",
           className,
         )}
       >
         <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
-        <p className="text-body-sm">Não foi possível carregar a evidência.</p>
+        <p className="text-xs">Não foi possível carregar a evidência.</p>
       </section>
     );
   }
@@ -203,7 +203,7 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
       >
         {/* Alert lives inside so the ambient surface keeps a non-alert role
             (GlassSurface §14: never sets role=alert/status). */}
-        <p role="alert" className="text-body-sm">
+        <p role="alert" className="text-xs">
           Nenhuma proveniência disponível.
         </p>
       </GlassSurface>
@@ -224,24 +224,24 @@ export const ProvenanceTrail: FC<ProvenanceTrailProps> = ({
           key={frag.id}
           className="flex flex-col gap-sm rounded-md border border-border bg-surface-glass-panel p-md"
         >
-          <header className="flex items-center gap-sm text-body-sm text-body">
+          <header className="flex items-center gap-sm text-xs text-body">
             <Quote aria-hidden="true" className="size-4" />
             <span>Fragmento</span>
             <span aria-hidden="true">·</span>
             <span>confiança {(frag.confidence * 100).toFixed(0)}%</span>
           </header>
-          <p className="text-body-sm text-content">{truncate(frag.text)}</p>
+          <p className="text-xs text-foreground">{truncate(frag.text)}</p>
           {frag.chunks.map((chunk) => (
             <div
               key={chunk.id}
               className="flex flex-col gap-xs border-t border-border pt-sm"
             >
-              <p className="text-caption text-body">
+              <p className="text-xs text-body">
                 {formatSourceType(chunk.rawInformation.sourceType)} ·{" "}
                 {formatDate(chunk.rawInformation.receivedAt)} · trecho{" "}
                 {chunk.offsetStart}–{chunk.offsetEnd}
               </p>
-              <p className="text-body-sm text-content">
+              <p className="text-xs text-foreground">
                 <FileText
                   aria-hidden="true"
                   className="mr-xs inline size-3 align-text-bottom"

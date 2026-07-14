@@ -25,9 +25,9 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/components/ui/button";
+import { Textarea } from "@/shared/components/ui/textarea";
+import { Label } from "@/shared/components/ui/label";
 import type { CorrectionFormProps } from "./CorrectionForm.types";
 import {
   buildCorrectItemRequest,
@@ -136,7 +136,7 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
       {formLevelError !== null && (
         <p
           role="alert"
-          className="flex items-start gap-sm rounded-md border border-border-error bg-surface p-md text-body-sm text-danger"
+          className="flex items-start gap-sm rounded-md border border-border-error bg-surface p-md text-xs text-destructive"
         >
           <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
           {formLevelError}
@@ -168,7 +168,7 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
             <Textarea
               {...field}
               id="cf-reason"
-              invalid={!!fieldState.error}
+              aria-invalid={!!fieldState.error}
               aria-describedby={fieldState.error ? "cf-reason-err" : undefined}
               placeholder="Explique brevemente por que a correção é necessária."
               rows={3}
@@ -176,7 +176,7 @@ export const CorrectionForm: FC<CorrectionFormProps> = ({
           )}
         />
         {errors.reason && (
-          <p id="cf-reason-err" role="alert" className="text-body-sm text-danger">
+          <p id="cf-reason-err" role="alert" className="text-xs text-destructive">
             {errors.reason.message}
           </p>
         )}

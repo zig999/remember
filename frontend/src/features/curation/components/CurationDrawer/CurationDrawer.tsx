@@ -286,9 +286,9 @@ const DrawerBody: FC<DrawerBodyProps> = ({ kind, itemId, close }) => {
       >
         <Loader2
           aria-hidden="true"
-          className="size-5 animate-spin text-content"
+          className="size-5 animate-spin text-foreground"
         />
-        <span aria-live="polite" className="text-body-sm text-content">
+        <span aria-live="polite" className="text-xs text-foreground">
           Carregando item de curadoria…
         </span>
       </div>
@@ -363,11 +363,11 @@ export const CurationDrawer: FC<CurationDrawerProps> = ({
             {/* Header */}
             <header className="flex items-start gap-md border-b border-border p-lg">
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className="font-sans text-subheading font-bold text-content">
+                <DialogPrimitive.Title className="font-sans text-sm font-medium font-bold text-foreground">
                   Curadoria
                 </DialogPrimitive.Title>
                 {itemLabel !== undefined && itemLabel.length > 0 && (
-                  <DialogPrimitive.Description className="mt-xs text-body-sm text-muted truncate">
+                  <DialogPrimitive.Description className="mt-xs text-xs text-muted-foreground truncate">
                     {itemLabel}
                   </DialogPrimitive.Description>
                 )}
@@ -378,8 +378,8 @@ export const CurationDrawer: FC<CurationDrawerProps> = ({
                 className={cn(
                   // Hit target ≥ 32px (project floor; §8 + WCAG 2.2 SC 2.5.8).
                   "inline-flex size-8 shrink-0 items-center justify-center rounded-md",
-                  "text-content hover:bg-elevated transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+                  "text-foreground hover:bg-elevated transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 )}
               >
                 <X aria-hidden="true" className="size-4" />
@@ -424,7 +424,7 @@ const DrawerInlineError: FC<DrawerInlineErrorProps> = ({
       className="flex flex-col items-center gap-md p-2xl text-center"
     >
       <AlertTriangle aria-hidden="true" className="size-6 text-warning" />
-      <p className="text-body-sm text-content max-w-md">{message}</p>
+      <p className="text-xs text-foreground max-w-md">{message}</p>
       <Link
         to="/curation"
         search={{ item: escapeItemParam }}
@@ -432,9 +432,9 @@ const DrawerInlineError: FC<DrawerInlineErrorProps> = ({
         data-testid="curation-drawer-escape-link"
         className={cn(
           "inline-flex items-center gap-xs rounded-md px-md py-sm",
-          "text-body-sm text-content-inverse bg-action hover:bg-action-hover",
+          "text-xs text-primary-foreground bg-primary hover:bg-primary-hover",
           "transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         )}
       >
         Abrir na fila de curadoria

@@ -71,7 +71,7 @@ export function CommandPalette() {
               value={a.label}
               onSelect={() => run(() => void navigate({ to: a.to }))}
             >
-              <a.icon className="size-4 text-muted" aria-hidden="true" />
+              <a.icon className="size-4 text-muted-foreground" aria-hidden="true" />
               {a.label}
             </CommandItem>
           ))}

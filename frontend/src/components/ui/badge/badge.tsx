@@ -11,17 +11,17 @@ import { cn } from "@/lib/cn";
 import type { BadgeProps } from "./badge.types";
 
 export const badgeVariants = cva(
-  "inline-flex items-center gap-xs whitespace-nowrap rounded-pill px-md py-1 text-badge",
+  "inline-flex items-center gap-xs whitespace-nowrap rounded-pill px-md py-1 text-xs font-bold",
   {
     variants: {
       variant: {
-        default: "bg-action text-content-inverse",
-        accent: "bg-accent text-content-inverse",
-        data: "bg-data text-primary",
+        default: "bg-primary text-primary-foreground",
+        accent: "bg-accent text-primary-foreground",
+        data: "bg-data text-background",
         success: "bg-state-accepted text-state-accepted-fg",
-        warning: "bg-warning text-primary",
-        danger: "bg-danger text-content-inverse",
-        outline: "border-2 border-border bg-transparent text-content",
+        warning: "bg-warning text-background",
+        danger: "bg-destructive text-primary-foreground",
+        outline: "border-2 border-border bg-transparent text-foreground",
       },
     },
     defaultVariants: { variant: "default" },

@@ -8,7 +8,7 @@ import { extendTailwindMerge } from "tailwind-merge";
  * Tailwind v4 CSS-first config note: `tailwind-merge` ships built-in conflict
  * groups for v3's default scale only. Our project tokens (declared in
  * `styles/theme.css` via `@theme`) extend that scale — `rounded-pill`,
- * `text-caption`/`text-body-sm`/etc., the `p-{xs|sm|md|lg|xl|2xl}` spacing
+ * `text-xs`/`text-xs`/etc., the `p-{xs|sm|md|lg|xl|2xl}` spacing
  * tokens — are unknown to the default merger and either silently dropped
  * (when they collide with a built-in like `text-<color>`) or fail to be
  * overridden (when a consumer passes a built-in like `rounded-md`).

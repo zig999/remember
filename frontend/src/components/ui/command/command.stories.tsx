@@ -15,7 +15,7 @@ import {
 } from "./command";
 
 const meta: Meta<typeof Command> = {
-  title: "Components/Command",
+  title: "Eternal/Components/Command",
   component: Command,
   parameters: { a11y: { element: "#storybook-root" } },
 };
@@ -31,19 +31,19 @@ export const Palette: Story = {
           <CommandEmpty>Nada encontrado.</CommandEmpty>
           <CommandGroup heading="Ir para">
             <CommandItem>
-              <Network className="size-4 text-muted" aria-hidden="true" /> Grafo
+              <Network className="size-4 text-muted-foreground" aria-hidden="true" /> Grafo
             </CommandItem>
             <CommandItem>
-              <Search className="size-4 text-muted" aria-hidden="true" /> Buscar
+              <Search className="size-4 text-muted-foreground" aria-hidden="true" /> Buscar
             </CommandItem>
             <CommandItem>
-              <Upload className="size-4 text-muted" aria-hidden="true" /> Ingerir
+              <Upload className="size-4 text-muted-foreground" aria-hidden="true" /> Ingerir
             </CommandItem>
             <CommandItem>
-              <Scale className="size-4 text-muted" aria-hidden="true" /> Curar
+              <Scale className="size-4 text-muted-foreground" aria-hidden="true" /> Curar
             </CommandItem>
             <CommandItem>
-              <History className="size-4 text-muted" aria-hidden="true" /> Histórico
+              <History className="size-4 text-muted-foreground" aria-hidden="true" /> Histórico
             </CommandItem>
           </CommandGroup>
           <CommandSeparator />

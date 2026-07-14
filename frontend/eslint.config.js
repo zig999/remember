@@ -5,7 +5,13 @@ import storybook from "eslint-plugin-storybook";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "storybook-static/**"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "storybook-static/**",
+      // Submodule read-only do UI-Kit (TUI) — nunca lintar/editar aqui.
+      "vendor/**",
+    ],
   },
   {
     files: ["**/*.{ts,tsx}"],

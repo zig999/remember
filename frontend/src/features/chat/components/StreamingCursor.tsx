@@ -42,7 +42,7 @@ export const StreamingCursor: FC<StreamingCursorProps> = ({ className }) => {
       // The fixed inline-block ensures the caret keeps a stable footprint as
       // surrounding text grows (no layout shift between deltas).
       className={cn(
-        "ml-[1px] inline-block h-[1em] w-[0.45em] align-text-bottom bg-content",
+        "ml-[1px] inline-block h-[1em] w-[0.45em] align-text-bottom bg-foreground",
         "motion-safe:[animation:cursor-blink_1.1s_ease-in-out_infinite]",
         className,
       )}

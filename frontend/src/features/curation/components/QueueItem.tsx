@@ -145,9 +145,9 @@ export const QueueItem: FC<QueueItemProps> = ({
     >
       <div className="flex w-full items-center justify-between gap-sm">
         <StateBadge state={badge.state} size="sm" label={badge.label} />
-        <span className="text-caption text-muted">{relative}</span>
+        <span className="text-xs text-muted-foreground">{relative}</span>
       </div>
-      <span className="text-body-sm font-medium text-content">{scope}</span>
+      <span className="text-xs font-medium text-foreground">{scope}</span>
     </button>
   );
 };

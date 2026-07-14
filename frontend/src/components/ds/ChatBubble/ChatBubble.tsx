@@ -68,7 +68,7 @@ function ToolChipStub({
   // the real chip will replace this entirely in TC-10).
   const tone =
     ok === null
-      ? "border-border-glass text-muted"
+      ? "border-border-glass text-muted-foreground"
       : ok
         ? "border-border-accepted text-state-accepted-fg"
         : "border-border-error text-state-disputed-fg";
@@ -78,7 +78,7 @@ function ToolChipStub({
       data-tool={tool}
       data-ok={ok === null ? "pending" : ok ? "ok" : "error"}
       className={cn(
-        "inline-flex items-center gap-xs rounded-pill border bg-surface-glass-ambient px-sm py-xs text-caption",
+        "inline-flex items-center gap-xs rounded-pill border bg-surface-glass-ambient px-sm py-xs text-xs",
         tone,
       )}
     >
@@ -99,7 +99,7 @@ function StreamingCursorStub(): ReactElement {
     <span
       aria-hidden="true"
       data-testid="streaming-cursor"
-      className="ml-[1px] inline-block animate-pulse text-content"
+      className="ml-[1px] inline-block animate-pulse text-foreground"
     >
       {"▍"}
     </span>
@@ -222,7 +222,7 @@ export const ChatBubble: FC<ChatBubbleProps> = ({
             the text flow so it sits at the end of the streamed content). */}
         <p
           data-testid="bubble-content"
-          className="whitespace-pre-wrap break-words text-body text-content"
+          className="whitespace-pre-wrap break-words text-body text-foreground"
         >
           {content}
           {streaming ? <StreamingCursorStub /> : null}
@@ -238,7 +238,7 @@ export const ChatBubble: FC<ChatBubbleProps> = ({
           // The notice is informational (not an alert) — no role='status' /
           // 'alert'. It enters with the bubble and persists; it does not
           // re-announce.
-          className="text-caption text-muted"
+          className="text-xs text-muted-foreground"
         >
           {stopNotice}
         </p>

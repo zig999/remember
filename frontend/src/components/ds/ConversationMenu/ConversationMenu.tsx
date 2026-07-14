@@ -75,10 +75,10 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+} from "@/shared/components/ui/dialog";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/lib/cn";
 import type { ConversationMenuProps } from "./ConversationMenu.types";
 
@@ -259,16 +259,16 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
               className,
             )}
           >
-            <span className="truncate text-label">{triggerLabel}</span>
+            <span className="truncate text-xs font-medium">{triggerLabel}</span>
             {isLoading ? (
               <Loader2
-                className="size-4 shrink-0 animate-spin text-muted"
+                className="size-4 shrink-0 animate-spin text-muted-foreground"
                 aria-hidden="true"
                 data-testid="conversation-menu-spinner"
               />
             ) : (
               <ChevronDown
-                className="size-4 shrink-0 text-muted"
+                className="size-4 shrink-0 text-muted-foreground"
                 aria-hidden="true"
               />
             )}
@@ -284,10 +284,10 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
           {/* "Nova conversa" — top CTA, spec §8 "Open dropdown" scenario */}
           <DropdownMenuItem
             onSelect={handleCreate}
-            className="min-h-10 gap-sm font-medium text-content"
+            className="min-h-10 gap-sm font-medium text-foreground"
             data-testid="conversation-menu-create"
           >
-            <Plus className="size-4 text-action" aria-hidden="true" />
+            <Plus className="size-4 text-primary" aria-hidden="true" />
             <span>{STRINGS.newConversation}</span>
           </DropdownMenuItem>
 
@@ -299,13 +299,13 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
               className="flex flex-col gap-sm p-md"
               data-testid="conversation-menu-skeleton"
             >
-              <div className="h-4 w-3/4 rounded-sm bg-muted/30 animate-pulse" />
-              <div className="h-4 w-1/2 rounded-sm bg-muted/30 animate-pulse" />
-              <div className="h-4 w-2/3 rounded-sm bg-muted/30 animate-pulse" />
+              <div className="h-4 w-3/4 rounded-sm bg-muted-foreground/30 animate-pulse" />
+              <div className="h-4 w-1/2 rounded-sm bg-muted-foreground/30 animate-pulse" />
+              <div className="h-4 w-2/3 rounded-sm bg-muted-foreground/30 animate-pulse" />
             </div>
           ) : conversations.length === 0 ? (
             <div
-              className="px-md py-sm text-label text-muted"
+              className="px-md py-sm text-xs font-medium text-muted-foreground"
               data-testid="conversation-menu-empty"
             >
               {STRINGS.empty}
@@ -345,7 +345,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                       type="button"
                       onClick={() => commitRename(c.id)}
                       aria-label={STRINGS.confirmRename}
-                      className="inline-flex size-7 items-center justify-center rounded-sm text-action hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                      className="inline-flex size-7 items-center justify-center rounded-sm text-primary hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                       data-testid={`conversation-menu-rename-confirm-${c.id}`}
                     >
                       <Check className="size-4" aria-hidden="true" />
@@ -354,7 +354,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                       type="button"
                       onClick={cancelRename}
                       aria-label={STRINGS.cancelRename}
-                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                       data-testid={`conversation-menu-rename-cancel-${c.id}`}
                     >
                       <X className="size-4" aria-hidden="true" />
@@ -379,12 +379,12 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                     isActive && "bg-elevated",
                   )}
                 >
-                  <span className="flex-1 truncate text-content">{itemTitle}</span>
+                  <span className="flex-1 truncate text-foreground">{itemTitle}</span>
 
                   {isArchived && (
                     <span
                       aria-hidden="true"
-                      className="rounded-sm bg-muted/30 px-xs py-px text-caption text-muted"
+                      className="rounded-sm bg-muted-foreground/30 px-xs py-px text-xs text-muted-foreground"
                     >
                       {STRINGS.archivedBadge}
                     </span>
@@ -399,7 +399,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                         startRename(c.id, c.title);
                       }}
                       aria-label={`${STRINGS.rename} ${itemTitle}`}
-                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted hover:bg-elevated hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                       data-testid={`conversation-menu-rename-btn-${c.id}`}
                     >
                       <Pencil className="size-3.5" aria-hidden="true" />
@@ -413,7 +413,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                           handleUnarchive(c.id);
                         }}
                         aria-label={`${STRINGS.unarchive} ${itemTitle}`}
-                        className="inline-flex size-7 items-center justify-center rounded-sm text-muted hover:bg-elevated hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                        className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                         data-testid={`conversation-menu-unarchive-btn-${c.id}`}
                       >
                         <ArchiveRestore className="size-3.5" aria-hidden="true" />
@@ -427,7 +427,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                           handleArchive(c.id);
                         }}
                         aria-label={`${STRINGS.archive} ${itemTitle}`}
-                        className="inline-flex size-7 items-center justify-center rounded-sm text-muted hover:bg-elevated hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                        className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                         data-testid={`conversation-menu-archive-btn-${c.id}`}
                       >
                         <Archive className="size-3.5" aria-hidden="true" />
@@ -441,7 +441,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
                         requestDelete(c.id);
                       }}
                       aria-label={`${STRINGS.delete} ${itemTitle}`}
-                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted hover:bg-elevated hover:text-state-disputed-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-elevated hover:text-state-disputed-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                       data-testid={`conversation-menu-delete-btn-${c.id}`}
                     >
                       <Trash2 className="size-3.5" aria-hidden="true" />
@@ -462,14 +462,14 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
           >
             <label
               htmlFor="conversation-menu-include-archived"
-              className="text-label text-content"
+              className="text-xs font-medium text-foreground"
             >
               {STRINGS.showArchived}
             </label>
             <Switch
               id="conversation-menu-include-archived"
               checked={includeArchived}
-              onCheckedChange={onIncludeArchivedChange}
+              onChange={onIncludeArchivedChange}
               aria-label={STRINGS.showArchived}
               data-testid="conversation-menu-include-archived"
             />
@@ -507,7 +507,7 @@ export const ConversationMenu: FC<ConversationMenuProps> = ({
             </Button>
             <Button
               type="button"
-              variant="default"
+              variant="primary"
               onClick={confirmDelete}
               data-testid="conversation-menu-delete-confirm"
             >

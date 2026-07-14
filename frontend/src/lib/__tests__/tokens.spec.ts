@@ -248,7 +248,7 @@ describe("tokens.ts — z-index scale matches tokens.md §12", () => {
 });
 
 describe("tokens.ts — surface / content / backdrop spot checks (tokens.md §13 YAML)", () => {
-  it("matches root-background and text-content dark values", () => {
+  it("matches root-background and text-foreground dark values", () => {
     expect(color.primary).toBe("oklch(15% 0.012 250)");
     expect(color.content).toBe("oklch(97% 0.008 250)");
     expect(color.muted).toBe("oklch(65% 0.012 250)");

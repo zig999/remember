@@ -206,6 +206,6 @@ describe("UsageBadge — className composition", () => {
     const badge = find("usage-badge");
     expect(badge.classList.contains("extra-class")).toBe(true);
     // Base typography class still present.
-    expect(badge.classList.contains("text-caption")).toBe(true);
+    expect(badge.classList.contains("text-xs")).toBe(true);
   });
 });

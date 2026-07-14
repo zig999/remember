@@ -163,16 +163,16 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
         )}
       >
         <UploadCloud
-          className="size-6 text-muted"
+          className="size-6 text-muted-foreground"
           aria-hidden="true"
         />
-        <p className="text-body-sm text-content">
+        <p className="text-xs text-foreground">
           Arraste um arquivo .txt ou clique para selecionar
         </p>
       </div>
       <p
         id={helperId}
-        className="text-caption text-muted"
+        className="text-xs text-muted-foreground"
         data-testid="ingest-dropzone-helper"
       >
         {HELPER_TEXT}
@@ -181,7 +181,7 @@ export const IngestDropzone: FC<IngestDropzoneProps> = ({
         <p
           role="alert"
           aria-live="assertive"
-          className="text-caption text-danger"
+          className="text-xs text-destructive"
           data-testid="ingest-dropzone-error"
         >
           {error}

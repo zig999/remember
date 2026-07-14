@@ -36,7 +36,7 @@ const InlineProvenance: FC<InlineProvenanceProps> = ({ entries }) => {
       className="rounded-md border border-border bg-elevated"
       data-testid="attribute-inline-provenance"
     >
-      <summary className="min-h-8 cursor-pointer px-sm py-xs text-body-sm text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action">
+      <summary className="min-h-8 cursor-pointer px-sm py-xs text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {NODE_DETAIL_COPY.attributeProvenanceSummary(entries.length)}
       </summary>
       <ul className="flex flex-col gap-sm p-sm">
@@ -46,8 +46,8 @@ const InlineProvenance: FC<InlineProvenanceProps> = ({ entries }) => {
             className="flex flex-col gap-xs"
             data-testid="attribute-inline-provenance-entry"
           >
-            <p className="text-body-sm text-content">{p.fragmentText}</p>
-            <div className="flex flex-wrap items-center gap-sm text-caption text-muted">
+            <p className="text-xs text-foreground">{p.fragmentText}</p>
+            <div className="flex flex-wrap items-center gap-sm text-xs text-muted-foreground">
               {p.confidenceLabel !== null && (
                 <span data-testid="attribute-inline-provenance-confidence">
                   {p.confidenceLabel}
@@ -93,7 +93,7 @@ const LazyOrigin: FC<LazyOriginProps> = ({ attributeId }) => {
       data-testid="attribute-lazy-origin"
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="min-h-8 cursor-pointer px-sm py-xs text-body-sm text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action">
+      <summary className="min-h-8 cursor-pointer px-sm py-xs text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {NODE_DETAIL_COPY.originSummary}
       </summary>
       {open && (
@@ -134,7 +134,7 @@ export const NodeAttributeRow: FC<NodeAttributeRowProps> = ({ attr }) => {
         <td className="p-xs align-top">
           <span>{attr.value}</span>
           {(attr.validFromLabel !== null || attr.validToLabel !== null) && (
-            <span className="block text-caption text-muted">
+            <span className="block text-xs text-muted-foreground">
               {attr.validFromLabel ?? "—"}
               {" → "}
               {attr.validToLabel ?? "—"}

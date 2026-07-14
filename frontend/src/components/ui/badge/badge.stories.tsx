@@ -19,7 +19,7 @@ const VARIANTS: BadgeVariant[] = [
 ];
 
 const meta: Meta<typeof Badge> = {
-  title: "Components/Badge",
+  title: "Eternal/Components/Badge",
   component: Badge,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { children: "Badge", variant: "default" },
@@ -67,7 +67,7 @@ export const Motion: Story = {
           </m.span>
           <button
             onClick={() => setN((x) => x + 1)}
-            className="rounded-pill border border-border px-md py-1 text-label text-content transition active:scale-95"
+            className="rounded-pill border border-border px-md py-1 text-xs font-medium text-foreground transition active:scale-95"
           >
             +1
           </button>

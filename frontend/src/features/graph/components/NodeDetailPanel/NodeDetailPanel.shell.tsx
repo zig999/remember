@@ -42,7 +42,7 @@ export const PanelHeader: FC<PanelHeaderProps> = ({
     <header className="flex items-start gap-md p-lg pb-md">
       <div className="min-w-0 flex-1">
         <h2
-          className="text-heading text-content truncate"
+          className="text-lg font-semibold tracking-tight text-foreground truncate"
           data-testid="node-detail-title"
         >
           {title}
@@ -62,9 +62,9 @@ export const PanelHeader: FC<PanelHeaderProps> = ({
         className={cn(
           "shrink-0 inline-flex items-center justify-center",
           "size-8 rounded-md",
-          "text-content hover:bg-elevated",
+          "text-foreground hover:bg-elevated",
           "transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         )}
       >
         <X size={16} aria-hidden="true" />
@@ -94,10 +94,10 @@ export const LoadingView: FC<LoadingViewProps> = ({
         data-testid="node-detail-loading"
       >
         <Loader2
-          className="size-5 shrink-0 animate-spin text-content"
+          className="size-5 shrink-0 animate-spin text-foreground"
           aria-hidden="true"
         />
-        <span aria-live="polite" className="text-body-sm text-content">
+        <span aria-live="polite" className="text-xs text-foreground">
           {NODE_DETAIL_COPY.loading}
         </span>
       </div>
@@ -142,11 +142,11 @@ export const ErrorView: FC<ErrorViewProps> = ({
         <AlertTriangle
           className={cn(
             "size-6 shrink-0",
-            variant === "generic" ? "text-warning" : "text-danger",
+            variant === "generic" ? "text-warning" : "text-destructive",
           )}
           aria-hidden="true"
         />
-        <p className="text-body-sm text-content max-w-md">{message}</p>
+        <p className="text-xs text-foreground max-w-md">{message}</p>
         {showRetry && (
           <button
             type="button"
@@ -154,9 +154,9 @@ export const ErrorView: FC<ErrorViewProps> = ({
             data-testid="node-detail-retry"
             className={cn(
               "inline-flex items-center gap-xs px-md py-sm rounded-md",
-              "text-body-sm text-content-inverse bg-action hover:bg-action-hover",
+              "text-xs text-primary-foreground bg-primary hover:bg-primary-hover",
               "transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
             )}
           >
             <Network size={14} aria-hidden="true" />

@@ -67,10 +67,10 @@ function NotFoundComponent() {
 function NotFoundFallback() {
   return (
     <section
-      className="flex min-h-[60vh] flex-col items-center justify-center gap-md px-lg text-content"
+      className="flex min-h-[60vh] flex-col items-center justify-center gap-md px-lg text-foreground"
       data-testid="not-found-page"
     >
-      <h1 className="text-heading">Página não encontrada.</h1>
+      <h1 className="text-lg font-semibold tracking-tight">Página não encontrada.</h1>
       <p className="text-body text-body">
         O endereço solicitado não existe ou foi removido.
       </p>

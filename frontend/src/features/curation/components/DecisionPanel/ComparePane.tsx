@@ -51,7 +51,7 @@ const EntityMatchView: FC<{
     const top = item.candidates[0]!;
     return (
       <div className="flex flex-col gap-sm">
-        <p className="text-body-sm text-content">
+        <p className="text-xs text-foreground">
           Candidato com alta similaridade (≥{" "}
           {Math.round(HIGH_SIMILARITY_THRESHOLD * 100)}%): podemos fundir
           diretamente.
@@ -71,11 +71,11 @@ const EntityMatchView: FC<{
       aria-label="Candidatos para fusão"
       className="flex flex-col gap-sm"
     >
-      <p className="text-body-sm text-content">
+      <p className="text-xs text-foreground">
         Múltiplos candidatos — escolha qual representa a mesma entidade.
       </p>
       {item.candidates.length === 0 ? (
-        <p className="text-body-sm text-body">
+        <p className="text-xs text-body">
           Nenhum candidato sugerido. Você pode manter separados ou fundir
           ad-hoc por busca.
         </p>
@@ -107,7 +107,7 @@ const DisputeSubject: FC<{ readonly item: DisputeQueueItem }> = ({ item }) => {
 
   return (
     <div className="flex flex-col gap-xs rounded-md border border-border-glass bg-surface-glass-panel p-md">
-      <p className="text-body-sm text-content">
+      <p className="text-xs text-foreground">
         {isLink ? (
           <>
             Há <span className="font-medium">{n} alvos conflitantes</span> para
@@ -120,7 +120,7 @@ const DisputeSubject: FC<{ readonly item: DisputeQueueItem }> = ({ item }) => {
           </>
         )}
       </p>
-      <p className="text-caption text-muted">
+      <p className="text-xs text-muted-foreground">
         {isLink
           ? `“${relation}” admite apenas um destino vigente por vez, e as vigências abaixo se sobrepõem. Escolha qual vale (os perdedores são arquivados) ou ajuste os períodos para que não se sobreponham.`
           : `Apenas um valor pode vigorar por vez no mesmo período. Escolha qual vale ou ajuste os períodos.`}
@@ -142,7 +142,7 @@ const DisputeView: FC<{
       className="flex flex-col gap-sm"
     >
       <DisputeSubject item={item} />
-      <p className="text-body-sm text-content">
+      <p className="text-xs text-foreground">
         {mode === "summary"
           ? "Selecione qual lado prefere."
           : "Selecione qual lado prefere ou ajuste os períodos."}

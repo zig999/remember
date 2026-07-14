@@ -18,7 +18,7 @@ function OpenPalette() {
 }
 
 const meta: Meta = {
-  title: "Components/CommandPalette",
+  title: "Eternal/Components/CommandPalette",
   parameters: { layout: "fullscreen", a11y: { element: "#storybook-root" } },
   decorators: [withRouter()],
 };

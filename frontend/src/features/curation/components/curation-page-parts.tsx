@@ -9,7 +9,7 @@ import { type FC } from "react";
 import { AlertTriangle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 /**
  * Polling pill — "N novos" when the queue grows. `role="status"` so AT
@@ -52,7 +52,7 @@ export const EmptyQueue: FC = () => (
     className="flex flex-col items-center justify-center gap-sm p-2xl text-center"
   >
     <CheckCircle aria-hidden="true" className="size-8 text-state-accepted-fg" />
-    <p className="text-body-sm text-content">Nada pendente. A fila está limpa.</p>
+    <p className="text-xs text-foreground">Nada pendente. A fila está limpa.</p>
   </div>
 );
 
@@ -70,7 +70,7 @@ export const QueueErrorBanner: FC<{ readonly onRetry: () => void }> = ({
   >
     <div className="flex items-start gap-sm">
       <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
-      <p className="text-body-sm">Não foi possível carregar a fila.</p>
+      <p className="text-xs">Não foi possível carregar a fila.</p>
     </div>
     <Button
       type="button"

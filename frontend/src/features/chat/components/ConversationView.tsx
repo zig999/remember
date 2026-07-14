@@ -40,7 +40,7 @@ export const ConversationView: FC<ConversationViewProps> = ({
     return (
       <section
         aria-label="Conversa"
-        className="flex h-full w-full flex-col items-center justify-center gap-md px-lg text-content"
+        className="flex h-full w-full flex-col items-center justify-center gap-md px-lg text-foreground"
         data-testid="conversation-view-empty"
       >
         <p className="text-body text-body">

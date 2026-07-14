@@ -99,7 +99,7 @@ export const GraphStatusOverlay: FC<GraphStatusOverlayProps> = ({
             the state to screen readers. */}
         {!isError && (
           <Loader2
-            className="size-4 shrink-0 animate-spin text-content"
+            className="size-4 shrink-0 animate-spin text-foreground"
             aria-hidden="true"
           />
         )}
@@ -109,7 +109,7 @@ export const GraphStatusOverlay: FC<GraphStatusOverlayProps> = ({
             // error accent border on the surrounding glass surface — we do
             // NOT also colour the text, since the surface + role="status"
             // already convey the state. WCAG 2.2 AA contrast is preserved.
-            "text-body-sm text-content",
+            "text-xs text-foreground",
             // Truncate horizontally instead of wrapping more than two
             // lines — error messages from the backend are usually short
             // sentences; long-form goes to the chat bubble.

@@ -7,7 +7,7 @@ import type { ComponentProps } from "react";
 import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Dialog, DialogContent, DialogTitle } from "../dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/shared/components/ui/dialog";
 import type { CommandDialogProps } from "./command.types";
 
 export function Command({
@@ -17,7 +17,7 @@ export function Command({
   return (
     <CommandPrimitive
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden rounded-md bg-elevated text-content",
+        "flex h-full w-full flex-col overflow-hidden rounded-md bg-elevated text-foreground",
         className,
       )}
       {...props}
@@ -31,10 +31,10 @@ export function CommandInput({
 }: ComponentProps<typeof CommandPrimitive.Input>) {
   return (
     <div className="flex items-center gap-sm border-b border-border px-md">
-      <Search className="size-4 shrink-0 text-muted" aria-hidden="true" />
+      <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <CommandPrimitive.Input
         className={cn(
-          "h-11 w-full bg-transparent text-label text-content outline-none placeholder:text-muted",
+          "h-11 w-full bg-transparent text-xs font-medium text-foreground outline-none placeholder:text-muted-foreground",
           className,
         )}
         {...props}
@@ -60,7 +60,7 @@ export function CommandEmpty(
 ) {
   return (
     <CommandPrimitive.Empty
-      className="py-6 text-center text-body-sm text-muted"
+      className="py-6 text-center text-xs text-muted-foreground"
       {...props}
     />
   );
@@ -73,7 +73,7 @@ export function CommandGroup({
   return (
     <CommandPrimitive.Group
       className={cn(
-        "overflow-hidden p-1 text-content [&_[cmdk-group-heading]]:px-md [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-caption [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted",
+        "overflow-hidden p-1 text-foreground [&_[cmdk-group-heading]]:px-md [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground",
         className,
       )}
       {...props}
@@ -88,8 +88,8 @@ export function CommandItem({
   return (
     <CommandPrimitive.Item
       className={cn(
-        "relative flex cursor-pointer select-none items-center gap-sm rounded-sm px-md py-2 text-label text-content outline-none transition-colors",
-        "data-[selected=true]:bg-primary data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
+        "relative flex cursor-pointer select-none items-center gap-sm rounded-sm px-md py-2 text-xs font-medium text-foreground outline-none transition-colors",
+        "data-[selected=true]:bg-background data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
         className,
       )}
       {...props}

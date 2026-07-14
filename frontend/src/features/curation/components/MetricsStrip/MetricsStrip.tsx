@@ -134,8 +134,8 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
           {/* Lead: acceptance rate is the calibration headline — one
               emphasized number, not five competing ones. */}
           <div className="flex items-baseline justify-between gap-sm">
-            <span className="text-caption text-muted">{lead.label}</span>
-            <span className="text-heading tabular-nums text-content">
+            <span className="text-xs text-muted-foreground">{lead.label}</span>
+            <span className="text-lg font-semibold tracking-tight tabular-nums text-foreground">
               {lead.value}
             </span>
           </div>
@@ -144,8 +144,8 @@ export const MetricsStrip: FC<MetricsStripProps> = (props) => {
           <div className="grid grid-cols-2 gap-x-md gap-y-sm">
             {counts.map((cell) => (
               <div key={cell.label} className="flex flex-col gap-xs">
-                <span className="text-caption text-muted">{cell.label}</span>
-                <span className="text-subheading tabular-nums text-content">
+                <span className="text-xs text-muted-foreground">{cell.label}</span>
+                <span className="text-sm font-medium tabular-nums text-foreground">
                   {cell.value}
                 </span>
               </div>

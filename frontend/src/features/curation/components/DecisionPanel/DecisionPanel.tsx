@@ -171,7 +171,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           {
             id: "merge_into",
             label: "Fundir neste",
-            variant: "default",
+            variant: "primary",
             destructive: true,
             onClick: () => dispatch("merge_into"),
           },
@@ -186,7 +186,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           {
             id: "prefer_one",
             label: "Preferir este",
-            variant: "default",
+            variant: "primary",
             destructive: true,
             onClick: () => dispatch("prefer_one"),
           },
@@ -224,12 +224,12 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         <div className="flex items-center justify-between gap-md">
           <div className="flex items-center gap-md">
             <StateBadge state={badge.state} size="md" label={badge.label} />
-            <h2 className="text-heading text-content">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
               {headerSubject}
               {item.kind === "disputed" &&
                 subjectQ.data != null &&
                 headerRelation && (
-                  <span className="ml-sm align-middle text-body-sm font-normal text-muted">
+                  <span className="ml-sm align-middle text-xs font-normal text-muted-foreground">
                     · {headerRelation}
                   </span>
                 )}
@@ -237,7 +237,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           </div>
           <EvidenceChip viewed={evidenceViewed} />
         </div>
-        <p className="text-caption text-body">{relative(now, item.createdAt)}</p>
+        <p className="text-xs text-body">{relative(now, item.createdAt)}</p>
       </header>
 
       {/* Generic server-error banner for codes we don't field-project */}
@@ -251,7 +251,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
         ].includes(serverError.code) && (
           <p
             role="alert"
-            className="mx-md flex items-start gap-sm rounded-md border border-border-error bg-surface p-md text-body-sm text-danger"
+            className="mx-md flex items-start gap-sm rounded-md border border-border-error bg-surface p-md text-xs text-destructive"
           >
             <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
             {serverError.message}
@@ -264,7 +264,7 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
       {serverError?.code === "BUSINESS_SELF_MERGE_FORBIDDEN" && (
         <p
           role="alert"
-          className="mx-md rounded-md border border-border-error bg-surface p-md text-body-sm text-danger"
+          className="mx-md rounded-md border border-border-error bg-surface p-md text-xs text-destructive"
         >
           Não é possível fundir um nó com ele mesmo.
         </p>

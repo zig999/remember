@@ -8,13 +8,13 @@ import { Footer } from "./Footer";
 import { withRouter } from "../../.storybook/decorators/withRouter";
 
 const meta: Meta<typeof Footer> = {
-  title: "Components/Footer",
+  title: "Eternal/Components/Footer",
   component: Footer,
   parameters: { a11y: { element: "#storybook-root" } },
   decorators: [
     withRouter(),
     (Story) => (
-      <div className="bg-primary p-md">
+      <div className="bg-background p-md">
         <Story />
       </div>
     ),

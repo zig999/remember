@@ -33,7 +33,7 @@ const withDarkTheme: Decorator = (Story) => {
 };
 
 const meta: Meta<typeof AppToaster> = {
-  title: "Shell/AppToaster",
+  title: "Eternal/Shell/AppToaster",
   component: AppToaster,
   parameters: { layout: "fullscreen" },
   decorators: [withDarkTheme],
@@ -43,7 +43,7 @@ export default meta;
 type Story = StoryObj<typeof AppToaster>;
 
 const triggerClass =
-  "rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content hover:bg-elevated";
+  "rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground hover:bg-elevated";
 
 /** Backdrop + trigger buttons + the toaster under test. */
 const Demo = (): ReactElement => (

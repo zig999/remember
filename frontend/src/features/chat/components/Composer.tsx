@@ -70,8 +70,8 @@ import {
 import { z, type ZodType } from "zod";
 import { Send, Square, ArchiveRestore, AlertTriangle } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Textarea } from "@/shared/components/ui/textarea";
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useSendMessage } from "../api/useSendMessage";
 import { useChatTurnStore } from "../state/chat-turn";
@@ -167,7 +167,7 @@ const ArchivedBanner: FC<ArchivedBannerProps> = ({
     aria-label={ARCHIVED_TITLE}
     animate={false}
     className={cn(
-      "flex flex-col gap-sm rounded-md px-lg py-md text-content",
+      "flex flex-col gap-sm rounded-md px-lg py-md text-foreground",
       className,
     )}
     data-testid="composer-archived-banner"
@@ -178,10 +178,10 @@ const ArchivedBanner: FC<ArchivedBannerProps> = ({
         aria-hidden="true"
       />
       <div className="flex-1">
-        <p className="text-label font-semibold text-content">
+        <p className="text-xs font-medium font-semibold text-foreground">
           {ARCHIVED_TITLE}
         </p>
-        <p className="mt-xs text-body-sm text-muted">{ARCHIVED_BODY}</p>
+        <p className="mt-xs text-xs text-muted-foreground">{ARCHIVED_BODY}</p>
       </div>
     </div>
     <div className="flex justify-end">
@@ -397,7 +397,7 @@ const ComposerSendBand: FC<ComposerSendBandProps> = ({
           <Textarea
             id={textareaId}
             placeholder="Pergunte algo…"
-            invalid={hasError}
+            aria-invalid={hasError}
             disabled={isTextareaDisabled}
             aria-describedby={describedBy}
             onKeyDown={onTextareaKeyDown}
@@ -421,7 +421,7 @@ const ComposerSendBand: FC<ComposerSendBandProps> = ({
           ) : (
             <Button
               type="submit"
-              variant="default"
+              variant="primary"
               size="md"
               aria-label={ARIA_SEND}
               disabled={disabledNotice !== null}
@@ -441,8 +441,8 @@ const ComposerSendBand: FC<ComposerSendBandProps> = ({
             id={messageId}
             role={hasError ? "alert" : undefined}
             className={cn(
-              "text-caption",
-              hasError ? "text-state-disputed" : "text-muted",
+              "text-xs",
+              hasError ? "text-state-disputed" : "text-muted-foreground",
             )}
             data-testid="composer-message"
           >

@@ -93,8 +93,8 @@ export const stateBadgeVariants = cva(
   {
     variants: {
       size: {
-        sm: "text-caption p-xs gap-xs",
-        md: "text-body-sm p-sm gap-sm",
+        sm: "text-xs p-xs gap-xs",
+        md: "text-xs p-sm gap-sm",
       },
       state: {
         accepted: "bg-state-accepted text-state-accepted-fg border-border-accepted",

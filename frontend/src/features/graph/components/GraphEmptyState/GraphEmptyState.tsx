@@ -46,10 +46,10 @@ export const GraphEmptyState: FC<GraphEmptyStateProps> = ({
       )}
     >
       <p
-        // `text-muted` — placeholder content per tokens.md §6.1; this is
+        // `text-muted-foreground` — placeholder content per tokens.md §6.1; this is
         // ambient (not primary content), so it picks the muted text token
-        // rather than `text-content`.
-        className="text-body-sm text-muted text-center max-w-md"
+        // rather than `text-foreground`.
+        className="text-xs text-muted-foreground text-center max-w-md"
       >
         {GRAPH_EMPTY_STATE_COPY}
       </p>

@@ -21,7 +21,7 @@ const noopSubmit = async () => {
 };
 
 const meta: Meta<typeof SignInPanel> = {
-  title: "Features/Auth/SignInPanel",
+  title: "Eternal/Features/Auth/SignInPanel",
   component: SignInPanel,
   parameters: {
     a11y: { element: "#storybook-root" },

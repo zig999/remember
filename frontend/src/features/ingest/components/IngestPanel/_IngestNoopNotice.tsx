@@ -9,7 +9,7 @@
  * from the per-component `index.ts`.
  */
 import type { FC } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 export interface IngestNoopNoticeProps {
   /** Raised on "Ver grafo existente" click. */
@@ -27,8 +27,8 @@ export const IngestNoopNotice: FC<IngestNoopNoticeProps> = ({
       data-testid="ingest-noop-notice"
       className="flex flex-col gap-sm rounded-md border border-border-glass bg-surface-glass-ambient p-md"
     >
-      <p className="text-label text-content">Documento já ingerido</p>
-      <p className="text-body-sm text-muted">
+      <p className="text-xs font-medium text-foreground">Documento já ingerido</p>
+      <p className="text-xs text-muted-foreground">
         Este conteúdo já foi processado anteriormente. O grafo abaixo
         mostra os nós extraídos.
       </p>

@@ -34,7 +34,7 @@
 import { useEffect, useState, type FC } from "react";
 import { Undo2 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 export interface UndoToastProps {
   /** Caption above the countdown (e.g. "Item removido" or
@@ -80,7 +80,7 @@ export const UndoToast: FC<UndoToastProps> = ({
       // aria-live is provided by sonner (role=status on the toast root) —
       // we don't add a second live region to avoid double-announcing.
       className={cn(
-        "flex items-center justify-between gap-md text-body-sm text-content",
+        "flex items-center justify-between gap-md text-xs text-foreground",
         className,
       )}
     >
@@ -88,7 +88,7 @@ export const UndoToast: FC<UndoToastProps> = ({
         <span>{label}</span>
         <span
           aria-label={`Tempo restante para desfazer: ${remaining} segundos`}
-          className="text-caption text-body"
+          className="text-xs text-body"
         >
           {remaining}s
         </span>

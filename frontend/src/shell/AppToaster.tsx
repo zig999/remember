@@ -50,7 +50,7 @@ import type { CSSProperties } from "react";
 const glassVars = {
   "--normal-bg": "var(--color-surface-glass-panel)",
   "--normal-border": "var(--color-border-glass)",
-  "--normal-text": "var(--color-content)",
+  "--normal-text": "var(--color-foreground)",
   "--border-radius": "var(--radius-lg)",
 } as CSSProperties;
 
@@ -86,7 +86,7 @@ export function AppToaster() {
         style: {
           boxShadow: "var(--shadow-md)",
           fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-body-lg)",
+          fontSize: "1rem",
           letterSpacing: "0",
         },
         // backdrop-filter has no sonner rule → the layered utility applies.

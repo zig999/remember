@@ -75,10 +75,10 @@
  *     CLAUDE.md frontend §"Animation accessibility").
  *
  * Design system (CLAUDE.md "Stack Frontend" + tokens.md):
- *   - Layout/typography: `gap-xs`, `px-lg`, `py-xs`, `text-caption` (~11px,
+ *   - Layout/typography: `gap-xs`, `px-lg`, `py-xs`, `text-xs` (~11px,
  *     `--color-muted` per tokens.md §typography). One-line height keeps
  *     the bubble→indicator transition compact.
- *   - Colours: `text-muted` for the prose, `text-muted` for the spinner —
+ *   - Colours: `text-muted-foreground` for the prose, `text-muted-foreground` for the spinner —
  *     low priority, secondary content (tokens.md §5.3 "muted = lowest
  *     priority").
  *   - No CVA: single visual variant (TC assumption line 46).
@@ -171,11 +171,11 @@ export const ChatStatusIndicator: FC<ChatStatusIndicatorProps> = ({
       data-state={chatStatus}
       className={cn(
         // `flex items-center gap-xs` keeps the spinner inline with the
-        // phrase; `text-caption text-muted` is the "metadata / hint" pair
+        // phrase; `text-xs text-muted-foreground` is the "metadata / hint" pair
         // from tokens.md (§5.3 + §typography). `px-lg py-xs` matches the
         // bubble row gutter so the indicator aligns visually with the
         // message column gutters in MessageStream.
-        "flex items-center gap-xs px-lg py-xs text-caption text-muted",
+        "flex items-center gap-xs px-lg py-xs text-xs text-muted-foreground",
         className,
       )}
     >

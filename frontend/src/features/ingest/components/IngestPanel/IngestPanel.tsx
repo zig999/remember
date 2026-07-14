@@ -20,16 +20,10 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/shared/components/ui/button";
+import { Textarea } from "@/shared/components/ui/textarea";
+import { Label } from "@/shared/components/ui/label";
+import { Select } from "@/shared/components/ui/select";
 import type { IngestSourceType } from "../../api";
 import type { IngestPanelProps } from "./IngestPanel.types";
 import { IngestSummary } from "./IngestSummary";
@@ -137,8 +131,8 @@ export const IngestPanel: FC<IngestPanelProps> = ({
       )}
     >
       <header className="flex flex-col gap-xs">
-        <h2 className="text-heading text-content">Ingerir documento</h2>
-        <p className="text-body-sm text-muted">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Ingerir documento</h2>
+        <p className="text-xs text-muted-foreground">
           Cole o texto ou arraste um arquivo .txt para extrair conhecimento
           estruturado.
         </p>
@@ -169,7 +163,7 @@ export const IngestPanel: FC<IngestPanelProps> = ({
             value={content}
             disabled={disabled}
             aria-label="Conteúdo do documento"
-            invalid={hasValidation}
+            aria-invalid={hasValidation || undefined}
             onChange={(e) => onContentChange(e.target.value)}
           />
         </div>
@@ -179,30 +173,23 @@ export const IngestPanel: FC<IngestPanelProps> = ({
           <Select
             value={sourceType}
             disabled={disabled}
-            onValueChange={(v) => onSourceTypeChange(v as IngestSourceType)}
-          >
-            <SelectTrigger
-              id="ingest-source-type"
-              data-testid="ingest-source-type"
-              aria-label="Tipo de fonte"
-              aria-invalid={hasValidation || undefined}
-            >
-              <SelectValue placeholder="Selecione o tipo…" />
-            </SelectTrigger>
-            <SelectContent>
-              {SOURCE_TYPE_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(v) => onSourceTypeChange(v as IngestSourceType)}
+            options={SOURCE_TYPE_OPTIONS.map((opt) => ({
+              value: opt.value,
+              label: opt.label,
+            }))}
+            placeholder="Selecione o tipo…"
+            id="ingest-source-type"
+            data-testid="ingest-source-type"
+            aria-label="Tipo de fonte"
+            aria-invalid={hasValidation || undefined}
+          />
         </div>
 
         {hasValidation ? (
           <p
             data-testid="ingest-validation"
-            className="text-body-sm text-state-disputed"
+            className="text-xs text-state-disputed"
           >
             {validationMessage}
           </p>
@@ -233,7 +220,7 @@ export const IngestPanel: FC<IngestPanelProps> = ({
         {progress !== null ? (
           <p
             data-testid="ingest-progress-copy"
-            className="text-body-sm text-content"
+            className="text-xs text-foreground"
           >
             {progress}
           </p>
@@ -260,12 +247,12 @@ export const IngestPanel: FC<IngestPanelProps> = ({
             data-testid="ingest-complete"
             className="flex flex-col gap-sm rounded-md border border-border-glass p-md"
           >
-            <p className="text-label text-content">Extração concluída</p>
+            <p className="text-xs font-medium text-foreground">Extração concluída</p>
             <IngestSummary summary={summary} />
             {summary.needsReview > 0 ? (
               <p
                 data-testid="ingest-needs-review-notice"
-                className="text-body-sm text-state-uncertain"
+                className="text-xs text-state-uncertain"
               >
                 Alguns nós aguardam revisão. Acesse Curadoria para detalhes.
               </p>

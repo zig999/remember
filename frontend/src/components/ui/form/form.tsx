@@ -2,7 +2,7 @@
  * Form — react-hook-form integration layer (DS port §4.15).
  *
  * The wiring here is load-bearing and copied faithfully from the port guide,
- * remapped to Remember tokens (error text -> `text-danger`, help -> `text-muted`):
+ * remapped to Remember tokens (error text -> `text-destructive`, help -> `text-muted-foreground`):
  *   - FormField provides the field `name` via context and wraps RHF Controller.
  *   - FormItem mints a useId() base and derives the three a11y ids from it.
  *   - useFormField() joins both contexts + RHF state; THROWS if used outside a
@@ -29,7 +29,7 @@ import {
 } from "react-hook-form";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/cn";
-import { Label } from "../label";
+import { Label } from "@/shared/components/ui/label";
 import type {
   FormFieldContextValue,
   FormItemContextValue,
@@ -92,7 +92,7 @@ export function FormLabel({ className, ...props }: ComponentProps<typeof Label>)
   return (
     <Label
       htmlFor={formItemId}
-      className={cn("transition-colors", error && "text-danger", className)}
+      className={cn("transition-colors", error && "text-destructive", className)}
       {...props}
     />
   );
@@ -117,7 +117,7 @@ export function FormDescription({ className, ...props }: ComponentProps<"p">) {
   return (
     <p
       id={formDescriptionId}
-      className={cn("text-body-sm text-body", className)}
+      className={cn("text-xs text-body", className)}
       {...props}
     />
   );
@@ -135,7 +135,7 @@ export function FormMessage({
     <p
       id={formMessageId}
       // reveals (fade + small rise) when the error appears (front.md §9)
-      className={cn("animate-message-in text-body-sm font-medium text-danger", className)}
+      className={cn("animate-message-in text-xs font-medium text-destructive", className)}
       {...props}
     >
       {body}

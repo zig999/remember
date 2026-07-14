@@ -37,10 +37,10 @@ export const NodeRelationshipsSection: FC<NodeRelationshipsSectionProps> = ({
         data-testid="node-detail-relationships-loading"
       >
         <Loader2
-          className="size-4 shrink-0 animate-spin text-content"
+          className="size-4 shrink-0 animate-spin text-foreground"
           aria-hidden="true"
         />
-        <span aria-live="polite" className="text-body-sm text-muted">
+        <span aria-live="polite" className="text-xs text-muted-foreground">
           {NODE_DETAIL_COPY.relationshipsLoading}
         </span>
       </div>
@@ -52,7 +52,7 @@ export const NodeRelationshipsSection: FC<NodeRelationshipsSectionProps> = ({
         role="alert"
         data-testid="node-detail-relationships-error"
       >
-        <div className="flex items-center gap-xs text-body-sm text-content">
+        <div className="flex items-center gap-xs text-xs text-foreground">
           <AlertTriangle
             className="size-4 text-warning"
             aria-hidden="true"
@@ -65,7 +65,7 @@ export const NodeRelationshipsSection: FC<NodeRelationshipsSectionProps> = ({
             void query.refetch();
           }}
           data-testid="node-detail-relationships-retry"
-          className="min-h-8 inline-flex items-center px-md py-xs rounded-md text-body-sm text-content-inverse bg-action hover:bg-action-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action"
+          className="min-h-8 inline-flex items-center px-md py-xs rounded-md text-xs text-primary-foreground bg-primary hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {NODE_DETAIL_COPY.relationshipsRetry}
         </button>
@@ -74,7 +74,7 @@ export const NodeRelationshipsSection: FC<NodeRelationshipsSectionProps> = ({
   } else if (query.data === undefined || query.data.links.length === 0) {
     body = (
       <p
-        className="p-sm text-body-sm text-muted"
+        className="p-sm text-xs text-muted-foreground"
         data-testid="node-detail-relationships-empty"
       >
         {NODE_DETAIL_COPY.relationshipsEmpty}
@@ -100,7 +100,7 @@ export const NodeRelationshipsSection: FC<NodeRelationshipsSectionProps> = ({
       data-testid="node-detail-relationships"
       aria-busy={query.isPending ? "true" : "false"}
     >
-      <h3 className="text-subheading text-content mb-sm">
+      <h3 className="text-sm font-medium text-foreground mb-sm">
         {NODE_DETAIL_COPY.relationshipsHeading}
       </h3>
       {body}

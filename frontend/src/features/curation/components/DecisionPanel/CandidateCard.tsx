@@ -50,15 +50,15 @@ export const CandidateCard: FC<CandidateCardProps> = ({
         "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-scrim-glass",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         selected
-          ? "border-action"
+          ? "border-primary"
           : "border-border-glass hover:bg-elevated",
         invalid ? "border-border-error" : null,
         className,
       )}
     >
       <span className="flex items-center justify-between gap-md">
-        <span className="font-medium text-content">{candidate.canonicalName}</span>
-        <span className="text-caption text-body">{pct}%</span>
+        <span className="font-medium text-foreground">{candidate.canonicalName}</span>
+        <span className="text-xs text-body">{pct}%</span>
       </span>
       <span
         role="progressbar"
@@ -66,7 +66,7 @@ export const CandidateCard: FC<CandidateCardProps> = ({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label="Similaridade com o nó proposto"
-        className="text-caption text-body"
+        className="text-xs text-body"
       >
         Similaridade {pct} de 100
       </span>

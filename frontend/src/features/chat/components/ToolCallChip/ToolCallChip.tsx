@@ -23,7 +23,7 @@
  *      Loader2 (spinning) for pending, CheckCircle2 for success, XCircle for
  *      error. Icons are decorative (`aria-hidden`); the human-readable status
  *      lives on the chip's `aria-label`.
- *  - Colors come from semantic state tokens — `text-muted` for pending (no
+ *  - Colors come from semantic state tokens — `text-muted-foreground` for pending (no
  *    state hue yet — see tokens.md §5.3), `text-state-accepted` for success,
  *    `text-state-disputed` for error. Never raw hex/rgb (CLAUDE.md §Stack
  *    Frontend "No arbitrary values — use tokens").
@@ -56,7 +56,7 @@ export const ToolCallChip: FC<ToolCallChipProps> = ({ chip, className }) => {
   const icon =
     ok === null ? (
       <Loader2
-        className="size-3.5 shrink-0 animate-spin text-muted"
+        className="size-3.5 shrink-0 animate-spin text-muted-foreground"
         aria-hidden="true"
       />
     ) : ok ? (
@@ -78,14 +78,14 @@ export const ToolCallChip: FC<ToolCallChipProps> = ({ chip, className }) => {
       data-testid="tool-call-chip"
       data-state={ok === null ? "pending" : ok ? "ok" : "error"}
       className={cn(
-        "inline-flex items-center gap-xs rounded-pill border border-border bg-elevated px-md py-xs text-caption text-content",
+        "inline-flex items-center gap-xs rounded-pill border border-border bg-elevated px-md py-xs text-xs text-foreground",
         className,
       )}
     >
       {icon}
       <span className="font-medium">{tool}</span>
       {argsSummary.length > 0 && (
-        <span className="text-muted">{argsSummary}</span>
+        <span className="text-muted-foreground">{argsSummary}</span>
       )}
     </span>
   );

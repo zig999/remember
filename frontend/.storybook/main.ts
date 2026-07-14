@@ -20,6 +20,10 @@ import type { StorybookConfig } from "@storybook/react-vite";
 
 const config: StorybookConfig = {
   stories: [
+    // Componentes COMPARTILHADOS do UI-Kit (TUI) — via submodule read-only.
+    // Aparecem sob suas seções funcionais (Actions/Forms/Data Display/…).
+    "../vendor/ui-kit/frontend/src/**/*.stories.@(ts|tsx)",
+    // Stories EXCLUSIVAS do eternal (retituladas sob "Eternal/*").
     "../src/**/*.stories.@(ts|tsx)",
   ],
   // Serve the app's public/ assets (e.g. the ambient backdrop photo at

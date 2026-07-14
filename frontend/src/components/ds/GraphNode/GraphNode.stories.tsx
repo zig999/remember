@@ -32,7 +32,7 @@ const STATES: ConfidenceState[] = [
 ];
 
 const meta: Meta<typeof GraphNode> = {
-  title: "Components/GraphNode",
+  title: "Eternal/Components/GraphNode",
   component: GraphNode,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { type: "project", label: "Apollo", state: "accepted" },

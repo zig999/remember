@@ -60,10 +60,10 @@ function EnvErrorFallback() {
     <div
       role="alert"
       aria-live="assertive"
-      className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-content"
+      className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-foreground"
       data-testid="env-error-fallback"
     >
-      <h1 className="text-heading">Configuração inválida.</h1>
+      <h1 className="text-lg font-semibold tracking-tight">Configuração inválida.</h1>
       <p className="text-body text-body">
         Verifique as variáveis VITE_BFF_URL e VITE_NEON_AUTH_URL e recarregue.
       </p>

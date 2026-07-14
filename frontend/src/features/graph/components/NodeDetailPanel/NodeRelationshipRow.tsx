@@ -34,7 +34,7 @@ const LinkInlineProvenance: FC<LinkInlineProvenanceProps> = ({ entries }) => {
       className="rounded-md border border-border bg-elevated"
       data-testid="link-inline-provenance"
     >
-      <summary className="min-h-8 cursor-pointer px-sm py-xs text-body-sm text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action">
+      <summary className="min-h-8 cursor-pointer px-sm py-xs text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {NODE_DETAIL_COPY.linkProvenanceSummary(entries.length)}
       </summary>
       <ul className="flex flex-col gap-sm p-sm">
@@ -44,8 +44,8 @@ const LinkInlineProvenance: FC<LinkInlineProvenanceProps> = ({ entries }) => {
             className="flex flex-col gap-xs"
             data-testid="link-inline-provenance-entry"
           >
-            <p className="text-body-sm text-content">{p.fragmentText}</p>
-            <div className="flex flex-wrap items-center gap-sm text-caption text-muted">
+            <p className="text-xs text-foreground">{p.fragmentText}</p>
+            <div className="flex flex-wrap items-center gap-sm text-xs text-muted-foreground">
               {p.confidenceLabel !== null && (
                 <span>{p.confidenceLabel}</span>
               )}
@@ -84,7 +84,7 @@ const LazyLinkOrigin: FC<LazyLinkOriginProps> = ({ linkId }) => {
       data-testid="link-lazy-origin"
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="min-h-8 cursor-pointer px-sm py-xs text-body-sm text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action">
+      <summary className="min-h-8 cursor-pointer px-sm py-xs text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {NODE_DETAIL_COPY.originSummary}
       </summary>
       {open && (
@@ -129,7 +129,7 @@ export const NodeRelationshipRow: FC<NodeRelationshipRowProps> = ({ link }) => {
     >
       <div className="flex flex-wrap items-center gap-sm">
         <span
-          className="text-body-sm font-medium text-content"
+          className="text-xs font-medium text-foreground"
           aria-hidden="true"
           data-testid="node-detail-relationship-arrow"
         >
@@ -137,21 +137,21 @@ export const NodeRelationshipRow: FC<NodeRelationshipRowProps> = ({ link }) => {
         </span>
         <span className="sr-only">{directionSr}</span>
         <span
-          className="text-body-sm text-content"
+          className="text-xs text-foreground"
           data-testid="node-detail-relationship-type"
         >
           {link.directionLabel}
         </span>
-        <span className="text-body-sm text-muted">·</span>
+        <span className="text-xs text-muted-foreground">·</span>
         <span
-          className="text-body-sm text-content font-medium"
+          className="text-xs text-foreground font-medium"
           data-testid="node-detail-relationship-neighbor"
         >
           {link.neighborName}
         </span>
-        <span className="text-body-sm text-muted">·</span>
+        <span className="text-xs text-muted-foreground">·</span>
         <span
-          className="text-caption text-muted"
+          className="text-xs text-muted-foreground"
           data-testid="node-detail-relationship-confidence"
         >
           {link.confidenceLabel}
@@ -161,7 +161,7 @@ export const NodeRelationshipRow: FC<NodeRelationshipRowProps> = ({ link }) => {
         </span>
       </div>
       {(link.validFromLabel !== null || link.validToLabel !== null) && (
-        <div className="text-caption text-muted">
+        <div className="text-xs text-muted-foreground">
           {link.validFromLabel ?? "—"}
           {" → "}
           {link.validToLabel ?? "—"}

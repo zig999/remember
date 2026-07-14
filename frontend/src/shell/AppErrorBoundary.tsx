@@ -60,17 +60,17 @@ export class AppErrorBoundary extends Component<
         <div
           role="alert"
           aria-live="assertive"
-          className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-content"
+          className="flex min-h-screen flex-col items-center justify-center gap-md px-lg text-foreground"
           data-testid="app-error-fallback"
         >
-          <h1 className="text-heading">Algo deu errado.</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Algo deu errado.</h1>
           <p className="text-body text-body">
             A página não pôde ser renderizada. Recarregue para tentar novamente.
           </p>
           <button
             type="button"
             onClick={this.handleReload}
-            className="rounded-md border border-border-focus bg-action px-lg py-sm text-content-fg hover:bg-action-hover focus:outline-none focus:ring-2 focus:ring-border-focus"
+            className="rounded-md border border-border-focus bg-primary px-lg py-sm text-content-fg hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-border-focus"
           >
             Recarregar
           </button>

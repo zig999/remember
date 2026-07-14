@@ -25,7 +25,9 @@ import {
   FormMessage,
   useFormField,
 } from "../form";
-import { Input } from "../../input";
+// NB: o alias @/shared não é aplicado dentro de arquivos .spec (excluídos do
+// tsconfig, fora do escopo do vite-tsconfig-paths); caminho relativo ao kit.
+import { Input } from "../../../../../vendor/ui-kit/frontend/src/shared/components/ui/input";
 
 let container: HTMLDivElement;
 let root: Root;

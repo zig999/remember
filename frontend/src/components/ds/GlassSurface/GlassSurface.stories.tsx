@@ -25,7 +25,7 @@ import { GlassSurface } from "./GlassSurface";
 import { withAmbientBackdrop } from "../../../../.storybook/decorators/withAmbientBackdrop";
 
 const meta: Meta<typeof GlassSurface> = {
-  title: "Components/GlassSurface",
+  title: "Eternal/Components/GlassSurface",
   component: GlassSurface,
   parameters: {
     a11y: { element: "#storybook-root" },
@@ -63,8 +63,8 @@ type Story = StoryObj<typeof GlassSurface>;
 /** Common in-surface content for visual stories. */
 const SampleContent = (): ReactElement => (
   <div className="flex flex-col gap-sm">
-    <p className="text-content text-body-lg">Superfície de vidro</p>
-    <p className="text-body text-body-sm">
+    <p className="text-foreground text-base">Superfície de vidro</p>
+    <p className="text-body text-xs">
       Camada com translucidez, desfoque e borda fina sobre o fundo tratado.
     </p>
   </div>
@@ -193,7 +193,7 @@ export const MotionPanelEnter: Story = {
           <button
             type="button"
             onClick={() => setMounted((m) => !m)}
-            className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+            className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
             data-testid="panel-toggle"
           >
             {mounted ? "Desmontar painel" : "Montar painel"}
@@ -232,7 +232,7 @@ export const MotionModalEnter: Story = {
           <button
             type="button"
             onClick={() => setMounted((m) => !m)}
-            className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+            className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
             data-testid="modal-toggle"
           >
             {mounted ? "Fechar modal" : "Abrir modal"}
@@ -275,7 +275,7 @@ export const MotionReducedMotion: Story = {
 };
 /**
  * A11y/ContrastSmoke — 3 levels × content text. Renders the 3 glass levels
- * side by side, each with `text-content` placeholder text. addon-a11y
+ * side by side, each with `text-foreground` placeholder text. addon-a11y
  * verifies WCAG 2.2 AA contrast on every combination over the dark backdrop.
  */
 export const A11yContrastSmoke: Story = {
@@ -285,8 +285,8 @@ export const A11yContrastSmoke: Story = {
     <div className="grid grid-cols-1 gap-lg md:grid-cols-3">
       {(["ambient", "panel", "modal"] as const).map((lvl) => (
         <GlassSurface key={lvl} level={lvl} className="p-lg">
-          <p className="text-content text-body-lg">Texto de exemplo</p>
-          <p className="text-body text-body-sm">Camada {lvl}</p>
+          <p className="text-foreground text-base">Texto de exemplo</p>
+          <p className="text-body text-xs">Camada {lvl}</p>
         </GlassSurface>
       ))}
     </div>

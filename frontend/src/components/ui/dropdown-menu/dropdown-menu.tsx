@@ -44,8 +44,8 @@ export function DropdownMenuItem({ className, ...props }: DropdownMenuItemProps)
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        "relative flex cursor-pointer select-none items-center gap-sm rounded-sm px-md py-1.5 text-label text-content outline-none transition-colors",
-        "data-[highlighted]:bg-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex cursor-pointer select-none items-center gap-sm rounded-sm px-md py-1.5 text-xs font-medium text-foreground outline-none transition-colors",
+        "data-[highlighted]:bg-background data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
       {...props}
@@ -61,15 +61,15 @@ export function DropdownMenuCheckboxItem({
   return (
     <DropdownMenuPrimitive.CheckboxItem
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-md text-label text-content outline-none transition-colors",
-        "data-[highlighted]:bg-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-md text-xs font-medium text-foreground outline-none transition-colors",
+        "data-[highlighted]:bg-background data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
       {...props}
     >
       <span className="absolute left-2 flex items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
-          <Check className="size-4 text-action" aria-hidden="true" />
+          <Check className="size-4 text-primary" aria-hidden="true" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -80,7 +80,7 @@ export function DropdownMenuCheckboxItem({
 export function DropdownMenuLabel({ className, ...props }: DropdownMenuLabelProps) {
   return (
     <DropdownMenuPrimitive.Label
-      className={cn("px-md py-1.5 text-label font-semibold text-muted", className)}
+      className={cn("px-md py-1.5 text-xs font-medium font-semibold text-muted-foreground", className)}
       {...props}
     />
   );

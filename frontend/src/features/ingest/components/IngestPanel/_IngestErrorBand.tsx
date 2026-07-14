@@ -10,7 +10,7 @@
  */
 import type { FC } from "react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 export interface IngestErrorBandProps {
   /** Error message — displayed under the heading. Falls back to a generic
@@ -40,8 +40,8 @@ export const IngestErrorBand: FC<IngestErrorBandProps> = ({
         "bg-surface",
       )}
     >
-      <p className="text-label text-content">Erro na ingestão</p>
-      <p className="text-body-sm text-content">
+      <p className="text-xs font-medium text-foreground">Erro na ingestão</p>
+      <p className="text-xs text-foreground">
         {errorMessage ?? "Algo deu errado. Tente novamente."}
       </p>
       <div className="flex flex-wrap gap-sm">

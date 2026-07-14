@@ -30,8 +30,9 @@ beforeAll(() => {
 });
 
 describe("theme.css — Tailwind v4 entry directive (front.md §1.2)", () => {
-  it("uses the v4 `@import 'tailwindcss';` directive", () => {
-    expect(css).toMatch(/@import\s+"tailwindcss";/);
+  it("imports the shared TUI kit theme (which brings the v4 `@import 'tailwindcss'`)", () => {
+    // O contrato de tema (incl. `@import "tailwindcss"`) vem do submodule do kit.
+    expect(css).toMatch(/@import\s+"[^"]*vendor\/ui-kit[^"]*theme\.css"/);
   });
 
   it("does NOT use the v3 `@tailwind` triplet (which would break v4)", () => {
@@ -90,8 +91,7 @@ describe("theme.css — @theme block presence and shape (tokens.md §2)", () => 
   });
 
   it("declares BOTH border namespaces (color + width) — they are distinct", () => {
-    // Color namespace
-    expect(css).toMatch(/--color-border\s*:/);
+    // Color namespace (--color-border base vem do kit; aqui ficam as variantes)
     expect(css).toMatch(/--color-border-glass\s*:/);
     expect(css).toMatch(/--color-border-focus\s*:/);
     expect(css).toMatch(/--color-border-error\s*:/);

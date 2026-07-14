@@ -132,7 +132,7 @@ export const chatRoute = createRoute({
     <Suspense
       fallback={
         <div
-          className="m-auto text-body-sm text-muted"
+          className="m-auto text-xs text-muted-foreground"
           role="status"
           aria-live="polite"
         >
@@ -195,7 +195,7 @@ export const ingestRoute = createRoute({
     <Suspense
       fallback={
         <div
-          className="m-auto text-body-sm text-muted"
+          className="m-auto text-xs text-muted-foreground"
           role="status"
           aria-live="polite"
         >
@@ -234,7 +234,7 @@ export const curationRoute = createRoute({
     <Suspense
       fallback={
         <div
-          className="m-auto text-body-sm text-muted"
+          className="m-auto text-xs text-muted-foreground"
           role="status"
           aria-live="polite"
         >

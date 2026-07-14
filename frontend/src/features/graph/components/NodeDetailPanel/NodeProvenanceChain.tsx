@@ -90,7 +90,7 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
       className="flex flex-col gap-xs rounded-md border border-border bg-elevated p-sm"
       data-testid="node-provenance-chunk"
     >
-      <div className="flex flex-wrap items-center gap-sm text-caption text-muted">
+      <div className="flex flex-wrap items-center gap-sm text-xs text-muted-foreground">
         <span data-testid="node-provenance-chunk-index">
           chunk #{chunkIndex}
         </span>
@@ -98,12 +98,12 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
         <span data-testid="node-provenance-offset">{offsetRangeLabel}</span>
       </div>
       <blockquote
-        className="text-body-sm text-content border-l-2 border-border pl-sm"
+        className="text-xs text-foreground border-l-2 border-border pl-sm"
         data-testid="node-provenance-excerpt"
       >
         {excerpt}
       </blockquote>
-      <dl className="flex flex-wrap gap-x-md gap-y-xs text-caption text-muted">
+      <dl className="flex flex-wrap gap-x-md gap-y-xs text-xs text-muted-foreground">
         <div className="flex gap-xs">
           <dt className="font-medium">Tipo:</dt>
           <dd>{sourceType}</dd>
@@ -129,10 +129,10 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
       {typeof originalInput === "string" &&
         originalInput !== REDACTED_SENTINEL && (
           <details
-            className="text-body-sm text-content"
+            className="text-xs text-foreground"
             data-testid="node-provenance-original-input"
           >
-            <summary className="cursor-pointer text-muted">
+            <summary className="cursor-pointer text-muted-foreground">
               {NODE_DETAIL_COPY.originalInputSummary}
             </summary>
             <p
@@ -145,7 +145,7 @@ const ChunkDetails: FC<ChunkDetailsProps> = ({
         )}
       {originalInput === REDACTED_SENTINEL && (
         <p
-          className="text-caption text-muted italic"
+          className="text-xs text-muted-foreground italic"
           aria-label={NODE_DETAIL_COPY.originalInputRedactedAria}
           data-testid="node-provenance-original-input-redacted"
         >
@@ -189,10 +189,10 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
         data-testid="node-provenance-loading"
       >
         <Loader2
-          className="size-4 shrink-0 animate-spin text-content"
+          className="size-4 shrink-0 animate-spin text-foreground"
           aria-hidden="true"
         />
-        <span aria-live="polite" className="text-body-sm text-muted">
+        <span aria-live="polite" className="text-xs text-muted-foreground">
           {NODE_DETAIL_COPY.originLoading}
         </span>
       </div>
@@ -215,10 +215,10 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
         data-testid="node-provenance-error"
         data-variant={variant}
       >
-        <div className="flex items-center gap-xs text-body-sm text-content">
+        <div className="flex items-center gap-xs text-xs text-foreground">
           <AlertTriangle
             className={
-              variant === "deleted" ? "size-4 text-warning" : "size-4 text-danger"
+              variant === "deleted" ? "size-4 text-warning" : "size-4 text-destructive"
             }
             aria-hidden="true"
           />
@@ -229,7 +229,7 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
             type="button"
             onClick={onRetry}
             data-testid="node-provenance-retry"
-            className="min-h-8 inline-flex items-center px-md py-xs rounded-md text-body-sm text-content-inverse bg-action hover:bg-action-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action"
+            className="min-h-8 inline-flex items-center px-md py-xs rounded-md text-xs text-primary-foreground bg-primary hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             {NODE_DETAIL_COPY.originRetry}
           </button>
@@ -243,7 +243,7 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
   if (data === undefined || data.fragments.length === 0) {
     return (
       <p
-        className="p-sm text-body-sm text-muted"
+        className="p-sm text-xs text-muted-foreground"
         data-testid="node-provenance-empty"
       >
         {NODE_DETAIL_COPY.originNotFound}
@@ -262,7 +262,7 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
           className="flex flex-col gap-xs"
           data-testid="node-provenance-fragment"
         >
-          <header className="flex flex-wrap items-center gap-sm text-caption text-muted">
+          <header className="flex flex-wrap items-center gap-sm text-xs text-muted-foreground">
             <span data-testid="node-provenance-fragment-confidence">
               {frag.confidenceLabel}
             </span>
@@ -270,7 +270,7 @@ export const NodeProvenanceChain: FC<NodeProvenanceChainProps> = ({
             <span>{frag.status}</span>
           </header>
           <p
-            className="text-body-sm text-content"
+            className="text-xs text-foreground"
             data-testid="node-provenance-fragment-text"
           >
             {frag.text}

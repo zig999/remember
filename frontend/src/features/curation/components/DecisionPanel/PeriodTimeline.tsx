@@ -48,13 +48,13 @@ export const PeriodTimeline: FC<PeriodTimelineProps> = ({ sides, className }) =>
   return (
     <ol
       aria-label={description}
-      className={cn("flex flex-col gap-xs text-body-sm text-content", className)}
+      className={cn("flex flex-col gap-xs text-xs text-foreground", className)}
     >
       {sides.map((s, i) => (
         <li key={s.itemId} className="flex items-center gap-sm">
           <span
             aria-hidden="true"
-            className="inline-block h-2 w-2 rounded-pill bg-action"
+            className="inline-block h-2 w-2 rounded-pill bg-primary"
           />
           {describeSide(i, s)}
         </li>

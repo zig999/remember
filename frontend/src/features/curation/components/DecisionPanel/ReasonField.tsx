@@ -14,8 +14,8 @@
  */
 import { useImperativeHandle, useState, type FC, type Ref } from "react";
 import { cn } from "@/lib/cn";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/shared/components/ui/textarea";
+import { Label } from "@/shared/components/ui/label";
 
 export interface ReasonFieldHandle {
   readonly value: string;
@@ -95,7 +95,7 @@ export const ReasonField: FC<ReasonFieldProps> = ({
           onChange(e.currentTarget.value);
           if (error) setError(null);
         }}
-        invalid={!!error}
+        aria-invalid={!!error}
         aria-describedby={error ? errorId : undefined}
         placeholder={
           required
@@ -105,7 +105,7 @@ export const ReasonField: FC<ReasonFieldProps> = ({
         rows={2}
       />
       {error && (
-        <p id={errorId} role="alert" className="text-body-sm text-danger">
+        <p id={errorId} role="alert" className="text-xs text-destructive">
           {error}
         </p>
       )}

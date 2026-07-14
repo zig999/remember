@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import { useCommandPaletteStore } from "@/state/command-palette";
 import { HeaderConversationMenu } from "./HeaderConversationMenu";
 
@@ -69,8 +69,8 @@ export function Header({ className }: HeaderProps) {
     >
       {/* Brand */}
       <div className="flex shrink-0 items-center gap-xs">
-        <Diamond className="size-4 text-action" aria-hidden="true" />
-        <span className="font-sans text-subheading font-bold tracking-tight text-content">
+        <Diamond className="size-4 text-primary" aria-hidden="true" />
+        <span className="font-sans text-sm font-medium font-bold tracking-tight text-foreground">
           Remember
         </span>
       </div>
@@ -86,10 +86,10 @@ export function Header({ className }: HeaderProps) {
               to={item.to}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex items-center gap-xs rounded-md px-md py-1 text-body-sm font-semibold transition-colors",
+                "inline-flex items-center gap-xs rounded-md px-md py-1 text-xs font-semibold transition-colors",
                 active
-                  ? "bg-surface text-content"
-                  : "text-muted hover:text-content",
+                  ? "bg-surface text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <item.icon className="size-4" aria-hidden="true" />
@@ -115,10 +115,10 @@ export function Header({ className }: HeaderProps) {
           size="sm"
           onClick={togglePalette}
           aria-label="Abrir paleta de comandos (⌘K)"
-          className="gap-xs text-muted"
+          className="gap-xs text-muted-foreground"
         >
           <CommandIcon className="size-4" aria-hidden="true" />
-          <kbd className="text-caption">⌘K</kbd>
+          <kbd className="text-xs">⌘K</kbd>
         </Button>
       </div>
     </GlassSurface>

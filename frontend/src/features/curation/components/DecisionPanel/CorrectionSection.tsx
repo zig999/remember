@@ -11,7 +11,7 @@
  * to "Corrigir…" on cancel/submit).
  */
 import { useRef, useState, type FC } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import { CorrectionForm, type CorrectionFormDefaults } from "../CorrectionForm";
 import type { CorrectItemRequest, ItemKind } from "../../types";
 import type { DecisionPanelServerError } from "./DecisionPanel.types";

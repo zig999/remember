@@ -15,7 +15,7 @@ const NAMES = [
 ];
 
 const meta: Meta<typeof Avatar> = {
-  title: "Components/Avatar",
+  title: "Eternal/Components/Avatar",
   component: Avatar,
   parameters: { a11y: { element: "#storybook-root" } },
   args: { name: "Rodrigo Alves", size: "md" },

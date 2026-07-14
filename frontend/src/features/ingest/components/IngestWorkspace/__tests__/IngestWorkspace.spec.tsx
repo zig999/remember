@@ -237,10 +237,15 @@ function changeSelect(trigger: HTMLElement, value: string): void {
       new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }),
     );
   };
+  // The shared kit Select spreads props (incl. data-testid) onto its OUTER
+  // container <div>; the clickable trigger is the inner [role="combobox"]
+  // button, which opens on `click`. Fall back to the element itself.
+  const btn =
+    trigger.querySelector<HTMLElement>('[role="combobox"]') ?? trigger;
   act(() => {
-    fire(trigger, "pointerdown");
-    fire(trigger, "pointerup");
-    fire(trigger, "click");
+    fire(btn, "pointerdown");
+    fire(btn, "pointerup");
+    fire(btn, "click");
   });
   const label = SOURCE_TYPE_LABELS[value] ?? value;
   const option = Array.from(
@@ -251,10 +256,10 @@ function changeSelect(trigger: HTMLElement, value: string): void {
       `changeSelect: no Select option labelled "${label}" (value="${value}")`,
     );
   }
+  // The kit Select commits a choice on the option's `onMouseDown` (it
+  // preventDefaults to keep focus), not on `click`.
   act(() => {
-    fire(option, "pointerdown");
-    fire(option, "pointerup");
-    fire(option, "click");
+    fire(option, "mousedown");
   });
 }
 
@@ -685,10 +690,16 @@ describe("IngestWorkspace — reset clears form (BUG-05)", () => {
     // After reset: textarea is empty, source-type is placeholder, submit is
     // disabled, and the noop notice is gone.
     const textareaAfter = $("ingest-content") as HTMLTextAreaElement;
-    const selectAfter = $("ingest-source-type") as HTMLSelectElement;
+    const selectAfter = $("ingest-source-type");
     const submitAfter = $("ingest-submit") as HTMLButtonElement;
     expect(textareaAfter.value).toBe("");
-    expect(selectAfter.value).toBe("");
+    // The shared kit Select is a <div>; its committed value lives in the
+    // trigger's `data-value` (empty === placeholder shown).
+    expect(
+      selectAfter
+        .querySelector('[role="combobox"]')
+        ?.getAttribute("data-value"),
+    ).toBe("");
     expect(submitAfter.disabled).toBe(true);
     expect($("ingest-noop-notice")).toBeNull();
   });

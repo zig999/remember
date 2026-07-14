@@ -17,7 +17,7 @@ export function initials(name: string): string {
 }
 
 /** 3-swatch palette remapped to Remember tokens (was origin brand-ink/blue/blue-deep). */
-export const SWATCHES = ["bg-action", "bg-accent", "bg-data"] as const;
+export const SWATCHES = ["bg-primary", "bg-accent", "bg-data"] as const;
 
 /** Deterministic swatch from a stable string hash — same name always same color. */
 export function swatch(name: string): string {
@@ -28,13 +28,13 @@ export function swatch(name: string): string {
 
 export const avatarVariants = cva(
   // `transition` + hover scale gives a subtle tactile lift (front.md §9)
-  "inline-flex shrink-0 select-none items-center justify-center rounded-full font-bold uppercase tracking-tight text-content-inverse transition duration-200 ease-out hover:scale-105",
+  "inline-flex shrink-0 select-none items-center justify-center rounded-full font-bold uppercase tracking-tight text-primary-foreground transition duration-200 ease-out hover:scale-105",
   {
     variants: {
       size: {
-        sm: "size-7 text-caption",
-        md: "size-9 text-body-sm",
-        lg: "size-12 text-subheading",
+        sm: "size-7 text-xs",
+        md: "size-9 text-xs",
+        lg: "size-12 text-sm font-medium",
       },
     },
     defaultVariants: { size: "md" },

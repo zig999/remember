@@ -50,7 +50,7 @@ const archivedConversation: Conversation = {
 /* ---------- meta ------------------------------------------------------ */
 
 const meta: Meta<typeof ConversationMenu> = {
-  title: "Components/ConversationMenu",
+  title: "Eternal/Components/ConversationMenu",
   component: ConversationMenu,
   parameters: {
     a11y: { element: "#storybook-root" },

@@ -197,7 +197,7 @@ export const CurationPage: FC = () => {
               not grow; sits above the working queue. */}
           <div className="flex flex-col gap-sm">
             <header className="flex items-center justify-between gap-sm">
-              <h2 className="text-heading text-content">Curadoria</h2>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">Curadoria</h2>
               <PollingPill delta={delta} onAck={() => updateLastSeen(total)} />
             </header>
 
@@ -252,8 +252,8 @@ export const CurationPage: FC = () => {
                 className="m-auto flex flex-col items-center gap-sm text-center"
                 data-testid="curation-decision-idle"
               >
-                <Inbox aria-hidden="true" className="size-6 text-muted" />
-                <p className="text-body-sm text-muted">
+                <Inbox aria-hidden="true" className="size-6 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
                   Selecione um item da fila para começar.
                 </p>
               </div>

@@ -45,14 +45,8 @@ import {
 } from "@xyflow/react";
 import { Shuffle } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/shared/components/ui/button";
+import { Select } from "@/shared/components/ui/select";
 import type { GraphLayoutAlgorithm } from "../../state/graph-store";
 import {
   GraphNodeAdapter,
@@ -335,24 +329,16 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
               {layoutAlgorithm && onLayoutAlgorithmChange && (
                 <Select
                   value={layoutAlgorithm}
-                  onValueChange={(v) =>
+                  onChange={(v) =>
                     onLayoutAlgorithmChange(v as GraphLayoutAlgorithm)
                   }
-                >
-                  <SelectTrigger
-                    aria-label="Algoritmo de layout do grafo"
-                    className="w-auto min-w-3xs"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LAYOUT_ALGORITHM_ORDER.map((algo) => (
-                      <SelectItem key={algo} value={algo}>
-                        {LAYOUT_ALGORITHM_LABELS[algo]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={LAYOUT_ALGORITHM_ORDER.map((algo) => ({
+                    value: algo,
+                    label: LAYOUT_ALGORITHM_LABELS[algo],
+                  }))}
+                  aria-label="Algoritmo de layout do grafo"
+                  className="w-auto min-w-3xs"
+                />
               )}
               {onResetLayout && (
                 <Button

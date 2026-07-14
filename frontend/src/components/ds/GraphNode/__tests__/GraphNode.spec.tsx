@@ -56,7 +56,7 @@ describe("GraphNode", () => {
     // no state and accepted both fall through to the panel's own border (front.md §5.1)
     act(() => root.render(<GraphNode type="person" label="x" />));
     expect(container.innerHTML).toContain("border-border-glass");
-    expect(container.innerHTML).not.toContain("border-action/40");
+    expect(container.innerHTML).not.toContain("border-primary/40");
     act(() => root.render(<GraphNode type="person" label="x" state="accepted" />));
     expect(container.innerHTML).toContain("border-border-glass");
   });

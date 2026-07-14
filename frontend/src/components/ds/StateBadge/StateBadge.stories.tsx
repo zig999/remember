@@ -30,7 +30,7 @@ const ALL_STATES: ConfidenceState[] = [
 ];
 
 const meta: Meta<typeof StateBadge> = {
-  title: "Components/StateBadge",
+  title: "Eternal/Components/StateBadge",
   component: StateBadge,
   parameters: {
     a11y: { element: "#storybook-root" },
@@ -139,7 +139,7 @@ export const PromoteTransition: Story = {
           <button
             type="button"
             onClick={toggle}
-            className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+            className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
             data-testid="promote-toggle"
           >
             Alternar uncertain ↔ accepted
@@ -176,7 +176,7 @@ export const SupersedeTransition: Story = {
           <button
             type="button"
             onClick={toggle}
-            className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+            className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
             data-testid="supersede-toggle"
           >
             Alternar accepted ↔ superseded
@@ -224,7 +224,7 @@ export const MergeTransition: Story = {
           <button
             type="button"
             onClick={() => setMerging((m) => !m)}
-            className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+            className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
             data-testid="merge-toggle"
           >
             Acionar merge

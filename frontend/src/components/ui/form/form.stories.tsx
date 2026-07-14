@@ -5,8 +5,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Button } from "../button";
-import { Input } from "../input";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import {
   Form,
   FormField,
@@ -60,7 +60,7 @@ function DemoForm() {
 }
 
 const meta: Meta<typeof DemoForm> = {
-  title: "Components/Form",
+  title: "Eternal/Components/Form",
   component: DemoForm,
   parameters: { a11y: { element: "#storybook-root" } },
 };

@@ -17,8 +17,8 @@
  */
 import type { FC, MouseEvent, ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
-import type { ButtonProps } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
+import type { ButtonProps } from "@/shared/components/ui/button";
 
 export interface DecisionBarButtonProps {
   readonly id: string;
@@ -82,7 +82,7 @@ export const DecisionBar: FC<DecisionBarProps> = ({
           <Button
             key={b.id}
             type="button"
-            variant={b.variant ?? (b.destructive ? "destructive" : "default")}
+            variant={b.variant ?? (b.destructive ? "destructive" : "primary")}
             aria-disabled={!evidenceViewed || undefined}
             aria-describedby={
               !evidenceViewed && blockedHintId ? blockedHintId : undefined

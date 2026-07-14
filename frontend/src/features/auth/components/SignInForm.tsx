@@ -31,7 +31,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import {
   Form,
   FormControl,
@@ -40,7 +40,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/shared/components/ui/input";
 import { signInSchema, type SignInError, type SignInFormValues } from "../schema";
 
 /**
@@ -101,7 +101,7 @@ export function SignInForm({
           <div
             role="status"
             data-testid="session-expired-notice"
-            className="text-body-sm text-body"
+            className="text-xs text-body"
           >
             Sua sessão expirou. Faça login novamente.
           </div>
@@ -120,7 +120,7 @@ export function SignInForm({
                   autoComplete="email"
                   autoFocus
                   disabled={isSubmitting}
-                  invalid={!!fieldState.error}
+                  aria-invalid={!!fieldState.error}
                 />
               </FormControl>
               <FormMessage />
@@ -140,7 +140,7 @@ export function SignInForm({
                   type="password"
                   autoComplete="current-password"
                   disabled={isSubmitting}
-                  invalid={!!fieldState.error}
+                  aria-invalid={!!fieldState.error}
                 />
               </FormControl>
               <FormMessage />
@@ -152,7 +152,7 @@ export function SignInForm({
           <div
             role="alert"
             data-testid="sign-in-form-error"
-            className="text-body-sm text-danger"
+            className="text-xs text-destructive"
           >
             {formLevelError}
           </div>
@@ -160,7 +160,7 @@ export function SignInForm({
 
         <Button
           type="submit"
-          variant="default"
+          variant="primary"
           size="lg"
           loading={isSubmitting}
           disabled={isSubmitting}

@@ -21,7 +21,7 @@ import { withAmbientBackdrop } from "../../../../.storybook/decorators/withAmbie
 import type { ToolCallData } from "@/features/chat/types";
 
 const meta: Meta<typeof ChatBubble> = {
-  title: "Components/ChatBubble",
+  title: "Eternal/Components/ChatBubble",
   component: ChatBubble,
   parameters: {
     a11y: { element: "#storybook-root" },
@@ -165,7 +165,7 @@ export const MotionEntering: Story = {
             <button
               type="button"
               onClick={() => setMounted((m) => !m)}
-              className="rounded-md border border-border bg-surface px-md py-sm text-body-sm text-content"
+              className="rounded-md border border-border bg-surface px-md py-sm text-xs text-foreground"
               data-testid="bubble-toggle"
             >
               {mounted ? "Desmontar bolha" : "Montar bolha"}

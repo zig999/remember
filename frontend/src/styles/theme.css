@@ -10,7 +10,11 @@
    Mixing them makes borders silently disappear — always declare both halves.
    ============================================================ */
 
-@import "tailwindcss";
+/* Ordem de layers fixada no topo — estável independentemente da ordem dos @import
+   abaixo (o `@import "tailwindcss"` trazido pelo kit re-declara a mesma ordem de
+   forma idempotente). Garante que utilities (stroke-link-*) vençam a base do
+   React Flow. */
+@layer theme, base, components, utilities;
 
 /* React Flow STRUCTURAL styles (TC-FE graph). REQUIRED — without it the
    `.react-flow__edge-path` rule (notably `fill: none`) is missing, so every
@@ -25,31 +29,32 @@
    width). Must sit with the other `@import`s, before `@theme`. */
 @import "@xyflow/react/dist/base.css" layer(base);
 
+/* Contrato de tema COMPARTILHADO do TUI: traz o `@import "tailwindcss"`, o @theme
+   do kit (phosphor default + :root[data-theme="default"]), fontes mono, radius 0
+   e o overlay CRT. Fonte canônica read-only — NUNCA editar vendor/. */
+@import "../../vendor/ui-kit/frontend/src/theme.css";
+
+/* Scan the shared UI-Kit submodule so Tailwind generates the utilities used by
+   the kit's components (imported via the `@/shared/*` alias). Path is relative
+   to this file (src/styles/) -> frontend root -> vendor/ui-kit/frontend/src. */
+@source "../../vendor/ui-kit/frontend/src";
+
 @theme {
   /* ---------- Colors ---------- */
 
-  /* Application surfaces — DARK defaults                                                       */
-  --color-primary:           oklch(15% 0.012 250);   /* ≈ #0e131a — root background under glass */
-  --color-surface:           oklch(20% 0.014 250);   /* ≈ #161c25 — base workspace surface      */
-  --color-elevated:          oklch(24% 0.016 250);   /* ≈ #1c2330 — elevated panels, dropdowns  */
-  --color-input:             oklch(15% 0.012 250 / 0.55); /* translucent field — a touch darker than glass panels (inputs on glass) */
+  /* ============================================================
+     SUPLEMENTO eternal — só tokens SEM equivalente no contrato do TUI.
+     O contrato de cor (background/primary/surface/elevated/foreground/muted/
+     muted-foreground/accent/primary-foreground/destructive/warning/border/
+     border-strong/ring/hover/info/success) + fontes mono + radius 0 vêm do
+     kit importado acima. Aqui: genéricos remapeados, DOMÍNIO remapeado p/
+     accents do TUI (colisões aceitas), glass achatado e tokens FUNCIONAIS.
+     ============================================================ */
 
-  /* Text hierarchy (opacity-based — see tokens.md §5.3)                                        */
-  --color-content:           oklch(97% 0.008 250);   /* ≈ #f3f4f7 — titles, labels, primary text */
-  --color-content-inverse:   oklch(98% 0.005 250);   /* ≈ #f8f9fb — text on saturated fills (action/accent/danger) */
-  --color-body:              oklch(85% 0.010 250);   /* ≈ #d2d6dd — paragraphs, descriptions    */
-  --color-muted:             oklch(72% 0.012 250);   /* ≈ #a9adb7 — placeholders, metadata      */
-
-  /* Primary action / focus                                                                     */
-  --color-action:            oklch(68% 0.160 265);   /* ≈ #6793fa — PRIMARY (CTA, focused)       */
-  --color-action-hover:      oklch(74% 0.130 265);   /* ≈ #82a8fd */
-  --color-action-active:     oklch(60% 0.180 265);   /* ≈ #4a78ea */
-  --color-accent:            oklch(66.1% 0.259 313); /* ≈ #c84dff — ACCENT (vivid violet highlight) */
-
-  /* Generic semantic accents                                                                   */
-  --color-data:              oklch(76% 0.125 210);   /* ≈ #27c6dd — metric/data highlight       */
-  --color-warning:           oklch(78% 0.140 82);    /* ≈ #e4ad3c — attention (uncertain base)  */
-  --color-danger:            oklch(64% 0.220 20);    /* ≈ #f53a51 — error / destructive         */
+  /* ---- Genéricos remapeados p/ o contrato do TUI ---- */
+  --color-body:  var(--color-foreground);   /* parágrafos → texto padrão      */
+  --color-data:  var(--color-info);         /* métrica/destaque → info (cyan) */
+  --color-input: var(--color-background);   /* campo → fundo fundo (sunken)   */
 
   /* ---------- Confidence-state colors (5 — the centerpiece) -----------------------------------
      Spec normative source: remember-modelagem-v7.md §3.5, §6.6.
@@ -60,61 +65,64 @@
        conflict at same period -> disputed (curation queue)
        replaced by a newer version -> superseded
      -------------------------------------------------------------------------------------------- */
-  --color-state-accepted:        oklch(72% 0.160 155);  /* ≈ #35c177 — green                       */
-  --color-state-uncertain:       oklch(76% 0.150 82);   /* ≈ #e0a61e — amber                       */
-  --color-state-low-confidence:  oklch(58% 0.025 260);  /* ≈ #727b8a — neutral grey (discreet)     */
-  --color-state-disputed:        oklch(70% 0.180 45);   /* ≈ #f6722b — orange (distinct from amber)*/
-  --color-state-superseded:      oklch(46% 0.018 260);  /* ≈ #525862 — muted grey                  */
-
-  /* Same family — foreground == text on tinted background (AA over the bg token above)         */
-  --color-state-accepted-fg:        oklch(96% 0.035 155);
-  --color-state-uncertain-fg:       oklch(96% 0.035 82);
-  --color-state-low-confidence-fg:  oklch(96% 0.008 260);
-  --color-state-disputed-fg:        oklch(96% 0.020 45);
-  --color-state-superseded-fg:      oklch(96% 0.008 260);
+  /* Confidence-state (5) → accents do TUI (distinguíveis: verde/âmbar/vermelho/dim) */
+  --color-state-accepted:        var(--color-success);
+  --color-state-uncertain:       var(--color-warning);
+  --color-state-low-confidence:  var(--color-muted-foreground);
+  --color-state-disputed:        var(--color-destructive);
+  --color-state-superseded:      var(--color-muted-foreground);
+  /* fg = texto sobre fundo tingido → escuro do TUI */
+  --color-state-accepted-fg:        var(--color-primary-foreground);
+  --color-state-uncertain-fg:       var(--color-primary-foreground);
+  --color-state-low-confidence-fg:  var(--color-primary-foreground);
+  --color-state-disputed-fg:        var(--color-primary-foreground);
+  --color-state-superseded-fg:      var(--color-primary-foreground);
 
   /* ---------- NodeType colors (10 — normative catalog) ----------------------------------------
      Source: remember-modelagem-v7.md §15.1 + 0001_seed.sql (includes Document, Tier-1).
      Mapping name -> lucide-react icon is canonical (consumed by graph node component).
      -------------------------------------------------------------------------------------------- */
-  --color-node-person:        oklch(74% 0.150 300);  /* ≈ #ba93fb violet  | lucide: user           */
-  --color-node-organization:  oklch(68% 0.130 250);  /* ≈ #549de5 blue    | lucide: building-2     */
-  --color-node-project:       oklch(74% 0.120 190);  /* ≈ #2ac3bb teal    | lucide: rocket         */
-  --color-node-event:         oklch(72% 0.170 35);   /* ≈ #fc7756 coral   | lucide: calendar-clock */
-  --color-node-role:          oklch(72% 0.180 325);  /* ≈ #db78e2 magenta | lucide: id-badge       */
-  --color-node-category:      oklch(70% 0.100 130);  /* ≈ #8aab67 olive   | lucide: tag            */
-  --color-node-concept:       oklch(76% 0.130 88);   /* ≈ #d3ac41 mustard | lucide: lightbulb      */
-  --color-node-location:      oklch(72% 0.120 155);  /* ≈ #60bb83 sage    | lucide: map-pin        */
-  --color-node-document:      oklch(70% 0.040 260);  /* ≈ #909fb8 slate   | lucide: file-text      */
-  --color-node-task:          oklch(70% 0.170 22);   /* ≈ #f66c6d terracotta | lucide: square-check */
+  /* NodeType (10) → accents do TUI. Só ~5 tons distintos: colisões documentadas
+     (person/role, org/concept, project/task…); distinção reforçada por ÍCONE. */
+  --color-node-person:        var(--color-accent);
+  --color-node-organization:  var(--color-info);
+  --color-node-project:       var(--color-warning);
+  --color-node-event:         var(--color-destructive);
+  --color-node-role:          var(--color-accent);
+  --color-node-category:      var(--color-primary);
+  --color-node-concept:       var(--color-info);
+  --color-node-location:      var(--color-success);
+  --color-node-document:      var(--color-muted-foreground);
+  --color-node-task:          var(--color-destructive);
 
   /* ---------- LinkType colors (13 — normative catalog) ----------------------------------------
      Source: remember-modelagem-v7.md §15.2 + 0001_seed.sql.
      Stroke style is decided in tokens.md §7 (temporal = solid, stable = dashed).
      -------------------------------------------------------------------------------------------- */
-  --color-link-participates-in:        oklch(70% 0.14 200);   /* temporal */
-  --color-link-member-of:              oklch(68% 0.14 220);   /* temporal */
-  --color-link-holds-role:             oklch(70% 0.14 280);   /* temporal */
-  --color-link-responsible-for:        oklch(70% 0.16 25);    /* temporal */
-  --color-link-reports-to:             oklch(70% 0.14 240);   /* temporal */
-  --color-link-part-of:                oklch(65% 0.05 250);   /* stable   */
-  --color-link-located-in:             oklch(68% 0.12 145);   /* stable   */
-  --color-link-organizes:              oklch(72% 0.13 175);   /* temporal */
-  --color-link-belongs-to-category:    oklch(70% 0.10 110);   /* stable   */
-  --color-link-related-to:             oklch(60% 0.02 250);   /* stable   */
-  --color-link-concerns:               oklch(72% 0.10 95);    /* stable   */
-  --color-link-delivered-to:           oklch(72% 0.15 50);    /* temporal */
-  --color-link-sponsors:               oklch(72% 0.13 220);   /* temporal */
+  /* LinkType (13) → accents do TUI (ciclo; colisões aceitas) */
+  --color-link-participates-in:        var(--color-info);
+  --color-link-member-of:              var(--color-info);
+  --color-link-holds-role:             var(--color-accent);
+  --color-link-responsible-for:        var(--color-destructive);
+  --color-link-reports-to:             var(--color-info);
+  --color-link-part-of:                var(--color-muted-foreground);
+  --color-link-located-in:             var(--color-success);
+  --color-link-organizes:              var(--color-primary);
+  --color-link-belongs-to-category:    var(--color-primary);
+  --color-link-related-to:             var(--color-muted-foreground);
+  --color-link-concerns:               var(--color-warning);
+  --color-link-delivered-to:           var(--color-warning);
+  --color-link-sponsors:               var(--color-info);
 
   /* ---------- Border (color + width — TWO namespaces, do not mix) -----------------------------*/
-  --color-border:            oklch(35% 0.012 250);     /* default separator / card border         */
-  --color-border-glass:      oklch(95% 0.005 250 / 0.18); /* 18% white — top-edge of glass tile   */
-  --color-border-focus:      oklch(68% 0.160 265);     /* ≈ #6793fa — same hue as --color-action   */
-  --color-border-error:      oklch(64% 0.220 20);   /* mirrors --color-danger */
-  --color-border-accepted:   oklch(72% 0.160 155);  /* mirrors --color-state-accepted */
-  --color-border-uncertain:  oklch(76% 0.150 82);   /* mirrors --color-state-uncertain */
-  --color-border-disputed:   oklch(70% 0.180 45);   /* mirrors --color-state-disputed */
-  --color-border-superseded: oklch(46% 0.018 260);  /* mirrors --color-state-superseded */
+  /* --color-border vem do kit. Variantes remapeadas p/ o contrato do TUI. */
+  --color-border-glass:      var(--color-border);
+  --color-border-focus:      var(--color-ring);
+  --color-border-error:      var(--color-destructive);
+  --color-border-accepted:   var(--color-success);
+  --color-border-uncertain:  var(--color-warning);
+  --color-border-disputed:   var(--color-destructive);
+  --color-border-superseded: var(--color-muted-foreground);
 
   /* Border WIDTH namespace — distinct from color! */
   --border-thin:    1px;
@@ -148,53 +156,17 @@
   --spacing-xl:  24px;
   --spacing-2xl: 32px;
 
-  /* ---------- Typography — "Terminal Native" (base font-size = 13px on <html>) --------------
-     Two families: Space Grotesk (display + headings only) and Space Mono (body, UI, labels,
-     badges, code — the body font). Sizes are rem against the 13px base, so 1rem ≈ 13px;
-     spacing stays in absolute px (above) and is unaffected by the base. Weight + tracking are
-     baked into each text-* utility via Tailwind v4 modifiers (--text-*--font-weight /
-     --letter-spacing); family is applied by element (body = mono; h1/h2/[data-typo] = sans —
-     see the base rules at the end of this file). tokens.md §5.                                */
-  --text-display:    2.77rem;  /* ~36px */
-  --text-display--font-weight:    700;
-  --text-display--letter-spacing: -0.02em;
-  --text-heading:    1.385rem; /* ~18px */
-  --text-heading--font-weight:    600;
-  --text-heading--letter-spacing: -0.02em;
-  --text-subheading: 1.077rem; /* ~14px */
-  --text-subheading--font-weight: 500;
-  --text-body-lg:    1rem;     /* ~13px */
-  --text-body-lg--font-weight:    400;
-  --text-body-sm:    0.923rem; /* ~12px */
-  --text-body-sm--font-weight:    400;
-  --text-label:      0.923rem; /* ~12px */
-  --text-label--font-weight:      500;
-  --text-badge:      0.923rem; /* ~12px */
-  --text-badge--font-weight:      700;
-  --text-caption:    0.846rem; /* ~11px */
-  --text-caption--font-weight:    400;
-  --text-code:       0.923rem; /* ~12px */
-  --text-code--font-weight:       400;
+  /* ---------- Typography ----------
+     Escala nomeada REMOVIDA (Fase 3): o app usa os tamanhos built-in do Tailwind
+     (text-xs/sm/base/lg/4xl) + font-weight/tracking explícitos; a família mono
+     vem do kit (--font-mono). Base font-size volta ao padrão (16px). tokens.md §5. */
 
-  /* Heading tracking (also exposed as `tracking-display` / `tracking-heading` utilities)       */
-  --tracking-display: -0.02em;
-  --tracking-heading: -0.02em;
-
-  /* Font families — Space Grotesk = titles only; Space Mono = body / UI / everything else      */
-  --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Space Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-
-  /* ---------- iOS-flavored corners & elevation ---------------------------------------------*/
-  --radius-sm:    6px;
-  --radius-md:    10px;
-  --radius-lg:    14px;
-  --radius-xl:    20px;
-  --radius-pill:  9999px;
-
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.18);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.25), 0 2px 4px -2px rgba(0, 0, 0, 0.18);
-  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.35), 0 4px 8px -4px rgba(0, 0, 0, 0.22);
-  --shadow-glass: 0 8px 24px -6px rgba(0, 0, 0, 0.40), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  /* Fontes (mono) e radius (0) vêm do kit — NÃO redeclarar aqui (kit vence).
+     TUI é chapado: sem sombras. */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-glass: none;
 
   /* ---------- Glass surface — frosted material ----------------------------------------------*/
   /* Must live in the --color-* namespace so Tailwind v4 emits the bg-* utilities
@@ -204,14 +176,14 @@
      (--color-primary L=15%) the composite stays dark — just neutral-white
      "frosted" instead of blue-tinted — so the light foreground stays legible.
      Alpha climbs per tier (ambient → modal) so heavier surfaces frost more. */
-  --color-surface-glass-ambient:   oklch(98% 0.004 250 / 0.14);
-  --color-surface-glass-panel:     oklch(98% 0.004 250 / 0.20);
-  --color-surface-glass-modal:     oklch(98% 0.004 250 / 0.28);
+  --color-surface-glass-ambient:   var(--color-surface);
+  --color-surface-glass-panel:     var(--color-surface);
+  --color-surface-glass-modal:     var(--color-elevated);
   /* White frost + a touch of accent (hue pulled toward --color-accent 313):
      the assistant-side chat bubble fill (ChatBubble variant "assistant").
      "A bit of the principal color added" — still reads as glass, just tinted.
      Consumed via the GlassSurface `fill="ambient-accent"` variant. */
-  --color-surface-glass-ambient-accent:  oklch(96% 0.050 310 / 0.22);
+  --color-surface-glass-ambient-accent:  var(--color-elevated);
   /* Dark scrim laid UNDER the text of translucent SELECTABLE cards (the
      entity-match / dispute radio cards). White frost alone can't guarantee
      contrast: ~31% stacked frost over the bright regions of the dusk backdrop
@@ -219,11 +191,12 @@
      ~2:1, below WCAG 2.2 AA). The scrim keeps the composite dark so light text
      stays legible regardless of what shows through the frost. Selectable-card
      only — not the general frosted-glass material. */
-  --color-scrim-glass:  oklch(13% 0.010 250 / 0.5);
+  --color-scrim-glass:  var(--color-background);
 
-  --blur-glass-sm:  8px;
-  --blur-glass-md:  16px;
-  --blur-glass-lg:  24px;
+  /* Glass achatado no TUI — sem blur. */
+  --blur-glass-sm:  0px;
+  --blur-glass-md:  0px;
+  --blur-glass-lg:  0px;
 
   /* ---------- Ambient backdrop treatment ---------------------------------------------------*/
   --backdrop-darken:      0.55;
@@ -401,15 +374,12 @@ body,
   margin: 0;
 }
 
-/* "Terminal Native": non-standard 13px base so the rem text scale resolves
-   (1rem ≈ 13px). Spacing tokens are absolute px and are unaffected. */
-html {
-  font-size: 13px;
-}
+/* Base font-size = padrão (16px). A escala nomeada @13px foi removida (Fase 3);
+   os tamanhos built-in do Tailwind resolvem contra 16px. */
 
 body {
-  background-color: var(--color-primary);
-  color: var(--color-content);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   /* Space Mono is the body font; Space Grotesk is reserved for titles below. */
   font-family: var(--font-mono);
   letter-spacing: 0;
@@ -417,19 +387,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Titles use Space Grotesk with tight tracking. Applied automatically to
-   semantic headings (h1 = display, h2 = heading) and to any element explicitly
-   marked with data-typo. */
-h1,
-[data-typo="display"] {
-  font-family: var(--font-sans);
-  letter-spacing: var(--tracking-display);
-}
-h2,
-[data-typo="heading"] {
-  font-family: var(--font-sans);
-  letter-spacing: var(--tracking-heading);
-}
+/* Títulos usam a mesma fonte mono do TUI (via body). A distinção de heading
+   agora é por tamanho/peso nas classes (text-lg font-semibold, etc.). */
 
 /* ============================================================
    Width t-shirt sizes -> container scale (override the spacing collision).
@@ -516,8 +475,8 @@ input:-webkit-autofill:active,
 textarea:-webkit-autofill,
 textarea:-webkit-autofill:hover,
 textarea:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--color-content);
-  caret-color: var(--color-content);
+  -webkit-text-fill-color: var(--color-foreground);
+  caret-color: var(--color-foreground);
   transition:
     background-color 600000s 0s,
     color 600000s 0s;

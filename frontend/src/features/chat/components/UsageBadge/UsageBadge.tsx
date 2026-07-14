@@ -74,7 +74,7 @@ export const UsageBadge: FC<UsageBadgeProps> = ({
       aria-label={ariaLabel}
       data-testid="usage-badge"
       className={cn(
-        "inline-flex items-center gap-sm text-caption text-muted",
+        "inline-flex items-center gap-sm text-xs text-muted-foreground",
         className,
       )}
     >

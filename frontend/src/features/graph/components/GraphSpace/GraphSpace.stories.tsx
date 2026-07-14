@@ -149,7 +149,7 @@ function PaneFrame({ children }: { readonly children: ReactNode }): ReactElement
 }
 
 const meta: Meta<typeof GraphSpace> = {
-  title: "Features/Graph/GraphSpace",
+  title: "Eternal/Features/Graph/GraphSpace",
   component: GraphSpace,
   parameters: {
     a11y: { element: "#storybook-root" },

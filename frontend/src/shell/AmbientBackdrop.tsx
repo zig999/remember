@@ -14,7 +14,7 @@
  *    from counting against the LCP budget. The `<link rel="preload">` in
  *    `index.html` already warms the asset; we then swap `src` on the next
  *    `requestIdleCallback` (or `setTimeout(0)` fallback).
- *  - on `error`, src is cleared so the underlying `bg-primary` shows through
+ *  - on `error`, src is cleared so the underlying `bg-background` shows through
  *    (graceful flat-color fallback per BR-15).
  *
  * Single (dark) theme: the asset is the committed landscape photo
@@ -56,7 +56,7 @@ export function AmbientBackdrop() {
   return (
     <div
       aria-hidden="true"
-      className="fixed inset-0 z-backdrop overflow-hidden bg-primary"
+      className="fixed inset-0 z-backdrop overflow-hidden bg-background"
       data-testid="ambient-backdrop"
     >
       {src !== "" && (

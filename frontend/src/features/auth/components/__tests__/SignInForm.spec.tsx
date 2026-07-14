@@ -144,12 +144,12 @@ describe("SignInForm — UI-03 error", () => {
     expect(container.querySelector("[role='alert']")).toBeNull();
   });
 
-  it("applies the text-danger token class to the form-level error", () => {
+  it("applies the text-destructive token class to the form-level error", () => {
     render(<SignInForm onSubmit={vi.fn()} error={{ type: "credential" }} />);
     const alert = container.querySelector("[role='alert']") as HTMLElement;
     // Semantic token, not a hardcoded color — Tailwind v4 +
     // u-fe-standards "design system" rule.
-    expect(alert.className).toContain("text-danger");
+    expect(alert.className).toContain("text-destructive");
   });
 });
 

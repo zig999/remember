@@ -105,10 +105,10 @@ export const GraphNode: FC<GraphNodeProps> = ({
     >
       <Icon className={cn("size-5 shrink-0", style.color)} aria-hidden="true" />
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-label font-semibold leading-tight text-content">
+        <span className="truncate text-xs font-medium font-semibold leading-tight text-foreground">
           {label}
         </span>
-        <span className="truncate text-caption text-muted">
+        <span className="truncate text-xs text-muted-foreground">
           {subtitle ?? style.label}
         </span>
       </div>

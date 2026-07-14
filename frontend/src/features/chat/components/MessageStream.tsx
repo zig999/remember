@@ -69,7 +69,7 @@ import type { FC } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { ChatBubble } from "@/components/ds/ChatBubble";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useListMessages } from "../api/use-list-messages";
 import { useChatTurnStore } from "../state/chat-turn";
@@ -169,14 +169,14 @@ const ErrorBanner: FC<{ onRetry: () => void }> = ({ onRetry }) => (
     role="alert"
     aria-label={COPY_ERROR}
     data-testid="message-stream-error"
-    className="m-lg flex flex-col gap-sm rounded-md border border-border-glass bg-surface-glass-ambient px-lg py-md text-content"
+    className="m-lg flex flex-col gap-sm rounded-md border border-border-glass bg-surface-glass-ambient px-lg py-md text-foreground"
   >
     <div className="flex items-start gap-sm">
       <AlertTriangle
         className="size-4 shrink-0 text-state-disputed"
         aria-hidden="true"
       />
-      <p className="flex-1 text-body-sm text-content">{COPY_ERROR}</p>
+      <p className="flex-1 text-xs text-foreground">{COPY_ERROR}</p>
     </div>
     <div className="flex justify-end">
       <Button
@@ -339,10 +339,10 @@ export const MessageStream: FC<MessageStreamProps> = ({
     >
       {isEmpty ? (
         <div
-          className="flex flex-1 items-center justify-center px-lg text-content"
+          className="flex flex-1 items-center justify-center px-lg text-foreground"
           data-testid="message-stream-empty"
         >
-          <p className="text-body text-content">{COPY_EMPTY}</p>
+          <p className="text-body text-foreground">{COPY_EMPTY}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-md px-lg py-md">

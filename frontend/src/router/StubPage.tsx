@@ -25,10 +25,10 @@ export function StubPage({
 }: StubPageProps) {
   return (
     <section
-      className="flex min-h-[60vh] flex-col items-center justify-center gap-md px-lg text-content"
+      className="flex min-h-[60vh] flex-col items-center justify-center gap-md px-lg text-foreground"
       data-testid={testId ?? "stub-page"}
     >
-      <h1 className="text-heading">{title}</h1>
+      <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
       <p className="text-body text-body">{hint}</p>
     </section>
   );

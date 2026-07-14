@@ -31,7 +31,7 @@ import { useState, type FC } from "react";
 import { X, Check, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { GlassSurface } from "@/components/ds/GlassSurface";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 export type BatchKind = "entity_match" | "disputed" | "uncertain";
 
@@ -117,8 +117,8 @@ export const BatchBar: FC<BatchBarProps> = ({
       )}
     >
       {pendingReject ? (
-        <div className="flex flex-wrap items-center gap-md text-body-sm text-content">
-          <AlertTriangle aria-hidden="true" className="size-4 text-danger" />
+        <div className="flex flex-wrap items-center gap-md text-xs text-foreground">
+          <AlertTriangle aria-hidden="true" className="size-4 text-destructive" />
           <span>Você está rejeitando {count} itens. Confirmar?</span>
           <div className="flex items-center gap-sm">
             <Button
@@ -142,7 +142,7 @@ export const BatchBar: FC<BatchBarProps> = ({
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-sm text-body-sm text-content">
+          <div className="flex items-center gap-sm text-xs text-foreground">
             <span aria-live="polite">{count} selecionados</span>
             <Button
               type="button"
@@ -172,7 +172,7 @@ export const BatchBar: FC<BatchBarProps> = ({
               <Button
                 type="button"
                 size="sm"
-                variant="default"
+                variant="primary"
                 loading={submitting}
                 disabled={isDisputed}
                 aria-label={`Confirmar ${count}`}
@@ -200,7 +200,7 @@ export const BatchBar: FC<BatchBarProps> = ({
                 role="note"
                 aria-label={disputedTooltip}
                 title={disputedTooltip}
-                className="text-caption text-body"
+                className="text-xs text-body"
               >
                 {disputedTooltip}
               </span>

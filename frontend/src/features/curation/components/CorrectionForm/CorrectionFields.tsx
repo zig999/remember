@@ -8,8 +8,8 @@
  */
 import { type MutableRefObject, type FC } from "react";
 import { Controller, type Control, type FieldErrors } from "react-hook-form";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
 import type { ItemKind } from "../../types";
 import type { CorrectionFormValues } from "./correction-schema";
 
@@ -44,13 +44,13 @@ export const CorrectionFields: FC<CorrectionFieldsProps> = ({
                 field.ref(node);
                 firstFieldRef.current = node;
               }}
-              invalid={!!fieldState.error}
+              aria-invalid={!!fieldState.error}
               aria-describedby={fieldState.error ? "cf-value-err" : undefined}
             />
           )}
         />
         {errors.value && (
-          <p id="cf-value-err" role="alert" className="text-body-sm text-danger">
+          <p id="cf-value-err" role="alert" className="text-xs text-destructive">
             {errors.value.message}
           </p>
         )}
@@ -70,14 +70,14 @@ export const CorrectionFields: FC<CorrectionFieldsProps> = ({
                 field.ref(node);
                 firstFieldRef.current = node;
               }}
-              invalid={!!fieldState.error}
+              aria-invalid={!!fieldState.error}
               aria-describedby={fieldState.error ? "cf-target-err" : undefined}
               placeholder="UUID do nó destino"
             />
           )}
         />
         {errors.targetNodeId && (
-          <p id="cf-target-err" role="alert" className="text-body-sm text-danger">
+          <p id="cf-target-err" role="alert" className="text-xs text-destructive">
             {errors.targetNodeId.message}
           </p>
         )}
@@ -96,13 +96,13 @@ export const CorrectionFields: FC<CorrectionFieldsProps> = ({
               id="cf-from"
               type="date"
               value={field.value ?? ""}
-              invalid={!!fieldState.error}
+              aria-invalid={!!fieldState.error}
               aria-describedby={fieldState.error ? "cf-from-err" : undefined}
             />
           )}
         />
         {errors.validFrom && (
-          <p id="cf-from-err" role="alert" className="text-body-sm text-danger">
+          <p id="cf-from-err" role="alert" className="text-xs text-destructive">
             {errors.validFrom.message}
           </p>
         )}
@@ -118,13 +118,13 @@ export const CorrectionFields: FC<CorrectionFieldsProps> = ({
               id="cf-to"
               type="date"
               value={field.value ?? ""}
-              invalid={!!fieldState.error}
+              aria-invalid={!!fieldState.error}
               aria-describedby={fieldState.error ? "cf-to-err" : undefined}
             />
           )}
         />
         {errors.validTo && (
-          <p id="cf-to-err" role="alert" className="text-body-sm text-danger">
+          <p id="cf-to-err" role="alert" className="text-xs text-destructive">
             {errors.validTo.message}
           </p>
         )}

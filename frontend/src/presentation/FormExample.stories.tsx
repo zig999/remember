@@ -20,13 +20,6 @@ import { withRouter } from "../../.storybook/decorators/withRouter";
 import { withQueryClient, seedShellHealthy } from "../../.storybook/decorators/withQueryClient";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import {
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
-import {
   Form,
   FormField,
   FormItem,
@@ -35,17 +28,11 @@ import {
   FormDescription,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/shared/components/ui/input";
+import { Button } from "@/shared/components/ui/button";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
+import { Select } from "@/shared/components/ui/select";
 
 const schema = z.object({
   name: z.string().min(2, "Informe seu nome."),
@@ -71,17 +58,19 @@ function NewsletterForm() {
           role="region"
           aria-label="Cadastro de newsletter"
         >
-          <CardHeader>
+          <div className="flex flex-col gap-xs p-lg pb-0">
             <div className="flex items-center gap-sm">
-              <CardTitle>Receba a newsletter</CardTitle>
+              <h3 className="text-lg font-semibold tracking-tight">
+                Receba a newsletter
+              </h3>
               <Badge variant="accent">Grátis</Badge>
             </div>
-            <CardDescription>
+            <p className="text-xs text-muted-foreground">
               Um resumo do que entrou no seu segundo cérebro, sem ruído.
-            </CardDescription>
-          </CardHeader>
+            </p>
+          </div>
 
-          <CardContent className="flex flex-col gap-lg">
+          <div className="flex flex-col gap-lg p-lg">
             <FormField
               control={form.control}
               name="name"
@@ -121,18 +110,18 @@ function NewsletterForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Frequência</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="diaria">Diária</SelectItem>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="mensal">Mensal</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <Select
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="Selecione"
+                      options={[
+                        { value: "diaria", label: "Diária" },
+                        { value: "semanal", label: "Semanal" },
+                        { value: "mensal", label: "Mensal" },
+                      ]}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -146,7 +135,7 @@ function NewsletterForm() {
                   <FormControl>
                     <Checkbox
                       checked={field.value}
-                      onCheckedChange={(v) => field.onChange(v === true)}
+                      onChange={(e) => field.onChange(e.target.checked)}
                     />
                   </FormControl>
                   <div className="flex flex-col gap-xs">
@@ -158,13 +147,13 @@ function NewsletterForm() {
                 </FormItem>
               )}
             />
-          </CardContent>
+          </div>
 
-          <CardFooter>
+          <div className="p-lg pt-0">
             <Button type="submit" className="w-full">
               Inscrever-se
             </Button>
-          </CardFooter>
+          </div>
         </GlassSurface>
       </form>
     </Form>
@@ -172,7 +161,7 @@ function NewsletterForm() {
 }
 
 const meta: Meta = {
-  title: "Presentation/FormExample",
+  title: "Eternal/Presentation/FormExample",
   parameters: {
     layout: "fullscreen",
     a11y: { element: "#storybook-root" },

@@ -12,7 +12,7 @@ import { withRouter } from "../../.storybook/decorators/withRouter";
 import { withQueryClient, seedShellHealthy } from "../../.storybook/decorators/withQueryClient";
 
 const meta: Meta<typeof AppShell> = {
-  title: "Presentation/AppShell",
+  title: "Eternal/Presentation/AppShell",
   component: AppShell,
   parameters: {
     layout: "fullscreen",
@@ -28,7 +28,7 @@ export const Default: Story = {
   render: () => (
     <AppShell>
       <div className="flex min-h-screen items-center justify-center p-2xl">
-        <p className="font-sans text-heading text-content">Área de trabalho</p>
+        <p className="font-sans text-lg font-semibold tracking-tight text-foreground">Área de trabalho</p>
       </div>
     </AppShell>
   ),

@@ -155,18 +155,18 @@ describe("StateBadge — per-state rendering (§6.1–§6.5)", () => {
     });
   }
 
-  it("renders the size='sm' classes by default (text-caption p-xs gap-xs)", () => {
+  it("renders the size='sm' classes by default (text-xs p-xs gap-xs)", () => {
     render(<StateBadge state="accepted" />);
     const badge = getBadge();
-    expect(badge.classList.contains("text-caption")).toBe(true);
+    expect(badge.classList.contains("text-xs")).toBe(true);
     expect(badge.classList.contains("p-xs")).toBe(true);
     expect(badge.classList.contains("gap-xs")).toBe(true);
   });
 
-  it("renders the size='md' classes (text-body-sm p-sm gap-sm) when size='md'", () => {
+  it("renders the size='md' classes (text-xs p-sm gap-sm) when size='md'", () => {
     render(<StateBadge state="accepted" size="md" />);
     const badge = getBadge();
-    expect(badge.classList.contains("text-body-sm")).toBe(true);
+    expect(badge.classList.contains("text-xs")).toBe(true);
     expect(badge.classList.contains("p-sm")).toBe(true);
     expect(badge.classList.contains("gap-sm")).toBe(true);
   });

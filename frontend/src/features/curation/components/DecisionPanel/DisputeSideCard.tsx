@@ -68,21 +68,21 @@ export const DisputeSideCard: FC<DisputeSideCardProps> = ({
         "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-scrim-glass",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
         selected
-          ? "border-action"
+          ? "border-primary"
           : "border-border-glass hover:bg-elevated",
         className,
       )}
     >
       <span className="flex items-center justify-between gap-md">
-        <span className="font-medium text-content">
+        <span className="font-medium text-foreground">
           {label}
           {isLink && targetType && (
-            <span className="ml-sm text-caption text-muted">({targetType})</span>
+            <span className="ml-sm text-xs text-muted-foreground">({targetType})</span>
           )}
         </span>
         <StateBadge state="disputed" size="sm" />
       </span>
-      <span className="text-caption text-body">
+      <span className="text-xs text-body">
         Vigência: {fmt(side.validFrom)} – {fmt(side.validTo)} ·{" "}
         Fonte: {SOURCE_LABEL[side.validFromSource]} ·{" "}
         Confiança {(side.confidence * 100).toFixed(0)}%
