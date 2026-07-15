@@ -1002,10 +1002,18 @@ describe("useSendMessage — ingestion tools are non-graph (TC-FE-01)", () => {
 
   it("ingestion tools do not emit graph_delta and leave useGraphStore.nodes empty", async () => {
     // A non-graph tool resolving with ok=true must not — by itself — cause
-    // the graph pane to mutate. The BFF does NOT emit `graph_delta` for
-    // ingestion tools (BR-43 / spec §12 out-of-scope note: "The graph_delta
-    // frame is not emitted for ingestion tools"). This test confirms the
-    // SPA observes that invariant: nodes Map stays empty across the turn.
+    // the graph pane to mutate. This test pins the invariant for the two
+    // RETIRED v2.3 ingestion tools (`start_async_ingestion` /
+    // `get_ingestion_status`, retired in chat.spec.md v2.6) — the BFF does
+    // not emit `graph_delta` for them, so the SPA nodes Map must stay empty
+    // across the turn.
+    //
+    // NOTE (v1.5.0 revocation — spec §12 / chat.feature.spec.md v1.5.0):
+    // the earlier blanket "the `graph_delta` frame is not emitted for
+    // ingestion tools" carve-out is REVOKED for the v2.6+ write-bearing
+    // tool `ingest_directed`. It IS a graph-producing tool (UC-CG-14) — its
+    // own coverage lives in the "ingest_directed as graph-producing tool
+    // (v1.5.0)" describe block below.
     vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
       Promise.resolve(
         makeSSEResponse([
@@ -1031,6 +1039,117 @@ describe("useSendMessage — ingestion tools are non-graph (TC-FE-01)", () => {
       // ingestion turn, even though two tool chips were rendered.
       expect(useGraphStore.getState().nodes.size).toBe(0);
       expect(useChatTurnStore.getState().toolChips).toHaveLength(2);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+});
+
+/**
+ * TC-02 (EPIC-01) — `ingest_directed` as a graph-producing tool (v1.5.0).
+ *
+ * Why these tests matter (per u-fe-standards "Tests verify intent, not just
+ * behavior"):
+ *  - `chat.feature.spec.md` v1.5.0 §12 REVOKES the earlier
+ *    "the `graph_delta` frame is not emitted for ingestion tools" carve-out
+ *    for the write-bearing tool `ingest_directed`. Under v1.5.0:
+ *      1. `tool_start { tool: "ingest_directed" }` MUST flip
+ *         `useGraphStore.status` to `"loading"` (UI-12 entry — §2 UI-12).
+ *      2. A `graph_delta { source_tool: "ingest_directed", nodes, links }`
+ *         SSE frame lands after a successful `tool_result` — the SPA merges
+ *         it into `useGraphStore` identically to a read-tool result
+ *         (replaceNodes on first-of-response, then settleTurn("done") →
+ *         status `"ready"`) — §9 Scenario 6, §11 UC-CG-14.
+ *  - A regression that drops `ingest_directed` from the dispatcher's
+ *    GRAPH_TOOLS set — the exact TC-01 change these tests exist to protect
+ *    — would leave the right pane stuck in `"empty"` after a directed
+ *    ingestion. The first test below fails LOUDLY in that scenario
+ *    (setStatus("loading") count would drop to 0).
+ *
+ * Wire shape reminder (openapi.yaml v2.9.0, back-spec BR-41):
+ *  - `graph_delta.source_tool` = `"ingest_directed"`.
+ *  - Each node in `graph_delta.nodes[]` carries `node_type` and
+ *    `canonical_name` (NOT `type` / `label`) — matches `GraphNodeWire`.
+ *  - Nodes here reflect `run.affected_nodes` (all `status: "active"`).
+ */
+describe("useSendMessage — ingest_directed as graph-producing tool (v1.5.0)", () => {
+  it("ingest_directed tool_start flips GraphStatus to 'loading' (UC-CG-14, §2 UI-12)", async () => {
+    // Same spy pattern as "tool_start with graph tool flips GraphStatus to
+    // 'loading' (AC-F.8)" above — we can't easily snapshot mid-stream, so
+    // record every setStatus call and assert the sequence.
+    const setStatusCalls: Array<{ s: string; m: string | undefined }> = [];
+    const realSetStatus = useGraphStore.getState().setStatus;
+    useGraphStore.setState({
+      setStatus: (status, message) => {
+        setStatusCalls.push({ s: status, m: message });
+        realSetStatus(status, message);
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"ingest_directed","args_summary":"fragments=1 nodes=2 links=1"}\n\n',
+          'event: tool_result\ndata: {"tool":"ingest_directed","ok":true}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "crie o Event 'Alinhamento Apollo' ligado ao projeto Apollo",
+        } as never);
+      });
+      // Restore for downstream tests in the file (afterEach also clears).
+      useGraphStore.setState({ setStatus: realSetStatus });
+      // Regression pin: TC-01 added `ingest_directed` to GRAPH_TOOLS. If a
+      // future change drops it, this length becomes 0 — the assertion fails
+      // and surfaces the missed spec revocation immediately.
+      const loadingCalls = setStatusCalls.filter((c) => c.s === "loading");
+      expect(loadingCalls).toHaveLength(1);
+    } finally {
+      unmountHarness(h);
+    }
+  });
+
+  it("ingest_directed graph_delta populates graph store and settles to 'ready' (UC-CG-14)", async () => {
+    // End-to-end assertion of §11 UC-CG-14: a `tool_start(ingest_directed)`
+    // + `tool_result{ok:true}` + `graph_delta { source_tool: "ingest_directed",
+    // nodes, links }` + `done` sequence must land the projected node(s) in
+    // `useGraphStore.nodes` and flip status to `"ready"`. The wire uses the
+    // exact `GraphNodeWire` shape — `node_type` and `canonical_name`, not
+    // `type`/`label` — per openapi.yaml v2.9.0.
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        makeSSEResponse([
+          'event: tool_start\ndata: {"tool":"ingest_directed","args_summary":"fragments=1 nodes=2 links=1"}\n\n',
+          'event: tool_result\ndata: {"tool":"ingest_directed","ok":true}\n\n',
+          'event: graph_delta\ndata: {"source_tool":"ingest_directed","nodes":[{"id":"n-apollo","node_type":"project","canonical_name":"Apollo","status":"active"},{"id":"n-event","node_type":"event","canonical_name":"Alinhamento Apollo","status":"active"}],"links":[]}\n\n',
+          'event: done\ndata: {"stop_reason":"end_turn","model":"x","tokens_in":1,"tokens_out":2}\n\n',
+        ]),
+      ),
+    );
+
+    expect(useGraphStore.getState().nodes.size).toBe(0);
+    const h = mountHarness();
+    try {
+      await act(async () => {
+        await h.mutationRef.current!.mutateAsync({
+          conversationId: CONVO_ID,
+          content: "crie o Event 'Alinhamento Apollo' ligado ao projeto Apollo",
+        } as never);
+      });
+      const state = useGraphStore.getState();
+      // Nodes from `run.affected_nodes` were projected into the store by id.
+      expect(state.nodes.has("n-apollo")).toBe(true);
+      expect(state.nodes.has("n-event")).toBe(true);
+      // `done` reached settleTurn("done") after a graph delta landed this
+      // turn → GraphStatus is `"ready"` (§11 UC-CG-14 terminal effect).
+      expect(state.status).toBe("ready");
     } finally {
       unmountHarness(h);
     }
