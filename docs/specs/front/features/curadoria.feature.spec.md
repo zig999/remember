@@ -7,7 +7,7 @@
 
 > Route: `/curadoria` — protected layout route (guard via `protectedLayoutRoute`)
 > Domains: curation (primary writes) · knowledge-graph (node reads, history) · query-retrieval (provenance, fragment lookup)
-> Version: 1.0.0 | Status: draft | Layer: permanent
+> Version: 1.0.1 | Status: draft | Layer: permanent
 >
 > Design reference: `temp/curate.md` (6 iterações, consolidado).
 > Cross-references: `front.md`, `curadoria.flow.md`, `StateBadge.component.spec.md`,
@@ -121,7 +121,7 @@
 
 **Entry condition:** `listReviewQueue` resolveu com `total = 0`.
 
-- `EmptyQueue` centralizado no painel: ícone `check-circle`, "Nada pendente. A fila está limpa."
+- `EmptyQueue` centralizado no painel: ui-kit `Empty` (icon `CheckCircle`), "Nada pendente. A fila está limpa."
 - `MetricsStrip` ainda visível no topo da coluna da fila.
 - Header badge some (ou mostra 0).
 - `BatchBar` oculta.
@@ -139,14 +139,13 @@
 
 **Entry condition:** `listReviewQueue` em `isError`.
 
-- Banner inline na coluna da fila: `AlertTriangle` icon + "Não foi possível carregar a fila. Tente novamente." + botão "Tentar novamente" (`refetch()`).
-- `role="alert"` no banner.
+- `QueueErrorBanner` na coluna da fila: ui-kit `Alert variant='destructive'` — mensagem "Não foi possível carregar a fila. Tente novamente." + botão "Tentar novamente" (`refetch()`) no slot `action`. `role="alert"` provido pelo componente.
 
 ### UI-10 — item stale / concorrência detectada
 
 **Entry condition:** item foi revalidado ao focar o painel E mudou de estado; OU POST retornou 409 com `BUSINESS_REVIEW_NOT_PENDING` / `BUSINESS_ITEM_NOT_DISPUTED`.
 
-- `StaleBanner` aparece sobre o `DecisionPanel` (não bloqueia, mas avisa): ícone `refresh-cw`, "Este item mudou desde que você o abriu. [Recarregar]" (`bg-warning`).
+- `StaleBanner` aparece sobre o `DecisionPanel` (não bloqueia, mas avisa): ui-kit `Alert variant='warning'`, ícone `RefreshCw`, mensagem "Este item mudou desde que você o abriu." + botão "Recarregar" no slot `action`.
 - 409 no POST: remove o item da fila otimisticamente + toast "Já resolvido em outro lugar." + auto-avanço.
 
 ### UI-11 — CorrectionForm aberto (errata UC-10)
@@ -344,6 +343,8 @@ Aplicados em `features/curation/api/_transforms.ts`:
 | `Input` | `components/ui/input/` | `ReasonField`, `CorrectionForm` (campos de valor e data) | Direto |
 | `Textarea` | `components/ui/textarea/` | `ReasonField` (campo motivo, multi-linha) | Direto |
 | `Select` | `components/ui/select/` | `DateJustification` (fonte da data), `QueueTabs` (filtro kind em mobile) | Direto |
+| `Alert` | `components/ui/alert/` | `QueueErrorBanner` (curation-page-parts), `StaleBanner`, `DecisionPanel` (inline errors) | `variant='destructive'` para erros de servidor e erro de fila; `variant='warning'` para stale; `role="alert"` implícito |
+| `Empty` | `components/ui/empty/` | `EmptyQueue` (curation-page-parts) | Icon `CheckCircle`; estado vazio da fila (UI-07) |
 
 ### Component adapters
 
@@ -545,3 +546,4 @@ function resolveDisplayMode(item: ReviewQueueItem): "summary" | "full-diff" {
 | Version | Date | Author | Type | Description | CR |
 |---|---|---|---|---|---|
 | 1.0.0 | 2026-06-24 | Front Spec Agent | initial | Spec inicial da tela de Curadoria Manual (`/curadoria`). Cobre fila entity_match + disputed, DecisionPanel adaptativo (resumo/diff), ProvenanceTrail + lei da decisão informada, CorrectionForm (RHF+Zod, BR-06/11/12/15), UndoToast pré-commit, BatchBar, StaleBanner, MetricsStrip, CurationDrawer contextual, teclado/a11y WCAG 2.2 AA, deep-link `?item=<kind>:<id>`. Nota R1 (endpoint de métricas aditivo) e R2 (listagem de fragmentos aditiva) pendentes de confirmação. | sdd_improve_2 |
+| 1.0.1 | 2026-07-15 | Spec Reviewer | patch | Automatic corrections (§2/§7): UI-07 EmptyQueue → ui-kit Empty (CheckCircle); UI-09 QueueErrorBanner → ui-kit Alert variant='destructive' (action slot, role='alert' implícito); UI-10 StaleBanner → ui-kit Alert variant='warning' (action slot); §7 adicionadas entradas Alert e Empty. | sdd_curation-panels-tui_improve_1 |
