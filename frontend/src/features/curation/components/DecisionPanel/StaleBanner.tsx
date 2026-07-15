@@ -7,7 +7,7 @@
  */
 import type { FC } from "react";
 import { RefreshCw } from "lucide-react";
-import { cn } from "@/lib/cn";
+import { Alert } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
 
 export interface StaleBannerProps {
@@ -17,20 +17,18 @@ export interface StaleBannerProps {
 
 export const StaleBanner: FC<StaleBannerProps> = ({ onReload, className }) => {
   return (
-    <div
+    <Alert
+      variant="warning"
       role="alert"
-      className={cn(
-        "flex items-center justify-between gap-md rounded-md border border-border bg-warning p-md text-foreground",
-        className,
-      )}
+      className={className}
+      action={
+        <Button type="button" size="sm" variant="outline" onClick={onReload}>
+          <RefreshCw aria-hidden="true" className="size-4" />
+          Recarregar
+        </Button>
+      }
     >
-      <p className="flex items-center gap-sm text-xs">
-        <RefreshCw aria-hidden="true" className="size-4" />
-        Este item mudou desde que você o abriu.
-      </p>
-      <Button type="button" size="sm" variant="outline" onClick={onReload}>
-        Recarregar
-      </Button>
-    </div>
+      Este item mudou desde que você o abriu.
+    </Alert>
   );
 };

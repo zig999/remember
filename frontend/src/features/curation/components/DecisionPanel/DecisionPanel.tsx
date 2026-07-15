@@ -29,8 +29,8 @@
  *   - Other codes              -> generic inline error banner.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FC } from "react";
-import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Alert } from "@/shared/components/ui/alert";
 import { GlassSurface } from "@/components/ds/GlassSurface";
 import { StateBadge } from "@/components/ds/StateBadge";
 import { ComparePane } from "./ComparePane";
@@ -249,25 +249,18 @@ export const DecisionPanel: FC<DecisionPanelProps> = ({
           "BUSINESS_TEMPORAL_INCOHERENT",
           "BUSINESS_CORRECTION_NO_CHANGES",
         ].includes(serverError.code) && (
-          <p
-            role="alert"
-            className="mx-md flex items-start gap-sm rounded-md border border-border-error bg-surface p-md text-xs text-destructive"
-          >
-            <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+          <Alert variant="destructive" role="alert" className="mx-md">
             {serverError.message}
-          </p>
+          </Alert>
         )}
 
       {/* SELF_MERGE_FORBIDDEN inline (spec §6) — within the panel, not in
           the toast — so the user picks another candidate without losing
           context. */}
       {serverError?.code === "BUSINESS_SELF_MERGE_FORBIDDEN" && (
-        <p
-          role="alert"
-          className="mx-md rounded-md border border-border-error bg-surface p-md text-xs text-destructive"
-        >
+        <Alert variant="destructive" role="alert" className="mx-md">
           Não é possível fundir um nó com ele mesmo.
-        </p>
+        </Alert>
       )}
 
       {/* ComparePane */}
