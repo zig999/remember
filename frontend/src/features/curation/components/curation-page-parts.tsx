@@ -77,6 +77,6 @@ export const QueueErrorBanner: FC<{ readonly onRetry: () => void }> = ({
       </Button>
     }
   >
-    Não foi possível carregar a fila.
+    Não foi possível carregar a fila. Tente novamente.
   </Alert>
 );
