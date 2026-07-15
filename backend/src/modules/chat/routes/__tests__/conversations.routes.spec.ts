@@ -1123,11 +1123,18 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
   });
 
   it("BR-32: persists a chat_tool_call row for each v2.4 ingestion tool (start_async_ingestion + get_ingestion_status)", async () => {
-    // Locks BUG-01/02 from the TC-05 QA review: the two v2.4 ingestion tools
-    // flow through the SAME generic dispatch/persistence path as the read
-    // tools — each tool_result yields one chat_tool_call audit row (BR-32),
-    // and (being non-graph tools — BR-41) neither inflates the count with a
-    // graph_delta-driven row.
+    // Locks BUG-01/02 from the TC-05 QA review: the two v2.4 WITHDRAWN
+    // ingestion tools (start_async_ingestion / get_ingestion_status) flow
+    // through the SAME generic dispatch/persistence path as the read tools —
+    // each tool_result yields one chat_tool_call audit row (BR-32), and
+    // (being non-graph tools — BR-41 v2.11) neither of THESE TWO WITHDRAWN
+    // tools inflates the count with a graph_delta-driven row.
+    //
+    // Scope note: BR-41 v2.11 admits `ingest_directed` as the fifth
+    // graph-producing arm — see the AC-B.5 test below ("emits graph_delta
+    // AFTER tool_result for an `ingest_directed` tool call"). This test's
+    // "no graph_delta" assertion is a regression guard SCOPED to the
+    // withdrawn v2.4 tool names, NOT a general property of ingestion tools.
     mockExistingConversation();
     vi.mocked(chatRepo.findUserByIdempotencyKey).mockResolvedValue(null);
     vi.mocked(chatRepo.insertUserMessage).mockResolvedValue({
@@ -1223,7 +1230,10 @@ describe("POST /conversations/:id/messages — BR-29 sequencing", () => {
       .mock.calls.map((c) => (c[1] as { tool_name: string }).tool_name);
     expect(persistedNames).toEqual(["start_async_ingestion", "get_ingestion_status"]);
 
-    // BR-41: neither ingestion tool emits a graph_delta frame.
+    // BR-41 v2.11: neither WITHDRAWN v2.4 ingestion tool
+    // (start_async_ingestion / get_ingestion_status) emits a graph_delta
+    // frame. The fifth arm `ingest_directed` DOES emit — covered by the
+    // dedicated AC-B.5 test in the TC-be-002 graph_delta projection block.
     const frames = parseSse(res.body);
     expect(frames.find((f) => f.event === "graph_delta")).toBeUndefined();
 
@@ -2140,6 +2150,165 @@ describe("POST /conversations/:id/messages — TC-be-002 graph_delta SSE project
     // Two tool_result rows persisted (one per tool call); the graph_delta
     // events MUST NOT inflate the chat_tool_call insert count.
     expect(chatRepo.insertToolCall).toHaveBeenCalledTimes(2);
+
+    await app.close();
+  });
+
+  // TC-04 (EPIC-01) — BR-41 v2.11 §12 "fifth arm": `ingest_directed` is the
+  // first WRITE tool that projects to the wire — after a successful directed
+  // ingestion, the route must synthesise a graph_delta so the SPA can render
+  // the newly persisted node(s)/link(s) without a follow-up read. The
+  // envelope carries `run.affected_nodes` (canonical_name + node_type) and a
+  // `report[]` with accepted `kind: "node"` / `kind: "link"` entries — the
+  // normalizer maps those to the same GraphDeltaWire the read arms emit.
+  it("BR-41 v2.11: emits graph_delta AFTER tool_result for an `ingest_directed` tool call", async () => {
+    setupGraphTestMocks();
+
+    // Directed ingestion envelope — the shape `directedIngestion.execute`
+    // returns and the chat agent captures in `tool_result.result`. Two
+    // accepted nodes (Alice, Acme) + one accepted link (works_at) whose
+    // link_type is temporal in the test catalog, so `is_temporal: true`
+    // and `link_type_label: "trabalha em"` should flow to the wire.
+    const directedResult = {
+      outcome: "ingested" as const,
+      raw_information_id: "raw-1",
+      llm_run_id: "run-1",
+      chunk_count: 1,
+      run: {
+        // Only the fields the normalizer reads from `run.affected_nodes`
+        // are relevant — the rest of the LLMRun snapshot is intentionally
+        // omitted (the normalizer must not depend on it).
+        affected_nodes: [
+          { id: "n-alice", canonical_name: "Alice", node_type: "person" },
+          { id: "n-acme", canonical_name: "Acme", node_type: "organization" },
+        ],
+      },
+      report: [
+        // Two accepted node entries — populate the ref -> node_id map.
+        { ref: "n_alice", kind: "node", status: "accepted", node_id: "n-alice" },
+        { ref: "n_acme", kind: "node", status: "accepted", node_id: "n-acme" },
+        // One accepted link entry — compound ref uses the catalog slug
+        // `works_at` so the normalizer resolves is_temporal=true from the
+        // linkTypeByName snapshot.
+        {
+          ref: "n_alice->works_at->n_acme",
+          kind: "link",
+          status: "accepted",
+          link_id: "l-1",
+        },
+      ],
+      summary: { accepted: 3, rejected: 0 },
+    };
+
+    const events: ChatEvent[] = [
+      { type: "llm_start", iteration: 1 },
+      { type: "tool_start", tool: "ingest_directed", args_summary: "" },
+      {
+        type: "tool_result",
+        tool: "ingest_directed",
+        ok: true,
+        arguments: { items: [] },
+        result: directedResult,
+        is_error: false,
+        error_message: null,
+        duration_ms: 50,
+      },
+      {
+        type: "done",
+        stop_reason: "end_turn",
+        model: "claude-opus-4-8",
+        tokens_in: 10,
+        tokens_out: 5,
+        content: [],
+      },
+    ];
+
+    const { app } = await buildApp({ runTurnEvents: events });
+    const res = await app.inject({
+      method: "POST",
+      url: `/conversations/${CID}/messages`,
+      headers: { "idempotency-key": IDEMP },
+      payload: { content: "ingest this" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const frames = parseSse(res.body);
+    const eventOrder = frames.map((f) => f.event);
+
+    // Both frames present.
+    expect(eventOrder).toContain("tool_result");
+    expect(eventOrder).toContain("graph_delta");
+
+    // Frame ordering invariant: graph_delta MUST come AFTER its tool_result
+    // (plan §4.1 — extended by BR-41 v2.11 to the fifth arm).
+    const toolResultIdx = eventOrder.indexOf("tool_result");
+    const graphDeltaIdx = eventOrder.indexOf("graph_delta");
+    expect(graphDeltaIdx).toBeGreaterThan(toolResultIdx);
+
+    // Exactly one graph_delta for one tool_result.
+    expect(eventOrder.filter((e) => e === "graph_delta")).toHaveLength(1);
+
+    // BR-09: tool_result wire frame remains {tool, ok} — UNCHANGED for
+    // ingest_directed (write-arm parity with the four read arms).
+    const toolResultFrame = frames[toolResultIdx]!;
+    expect(toolResultFrame.data).toEqual({ tool: "ingest_directed", ok: true });
+
+    // graph_delta payload mirrors the ingest_directed normalizer output.
+    const graphDeltaFrame = frames[graphDeltaIdx]!;
+    const payload = graphDeltaFrame.data as {
+      source_tool: string;
+      nodes: Array<{
+        id: string;
+        node_type: string;
+        canonical_name: string;
+        status: string;
+      }>;
+      links: Array<{
+        id: string;
+        source_node_id: string;
+        target_node_id: string;
+        link_type: string;
+        link_type_label?: string;
+        is_temporal: boolean;
+      }>;
+    };
+
+    // source_tool identifies the projecting arm (SPA legend / debug pane).
+    expect(payload.source_tool).toBe("ingest_directed");
+
+    // Two nodes — status forced to "active" on the directed path (BR-43
+    // v2.8: directed items are stated-by-construction).
+    expect(payload.nodes).toHaveLength(2);
+    const aliceNode = payload.nodes.find((n) => n.id === "n-alice");
+    const acmeNode = payload.nodes.find((n) => n.id === "n-acme");
+    expect(aliceNode).toEqual({
+      id: "n-alice",
+      node_type: "person",
+      canonical_name: "Alice",
+      status: "active",
+    });
+    expect(acmeNode).toEqual({
+      id: "n-acme",
+      node_type: "organization",
+      canonical_name: "Acme",
+      status: "active",
+    });
+
+    // One link — endpoints resolved via the ref -> node_id map; is_temporal
+    // and link_type_label resolved from the test catalog.
+    expect(payload.links).toHaveLength(1);
+    expect(payload.links[0]).toEqual({
+      id: "l-1",
+      source_node_id: "n-alice",
+      target_node_id: "n-acme",
+      link_type: "works_at",
+      link_type_label: "trabalha em",
+      is_temporal: true,
+    });
+
+    // graph_delta does NOT produce a chat_tool_call row — only the original
+    // tool_result does (BR-32 invariant, same as the four read arms).
+    expect(chatRepo.insertToolCall).toHaveBeenCalledTimes(1);
 
     await app.close();
   });
