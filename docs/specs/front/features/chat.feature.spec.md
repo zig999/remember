@@ -6,8 +6,8 @@
 > O contrato de dados/estados (UI-01..UI-14, SSE) é inalterado. Autoridade: [`../design-system/tokens.md`](../design-system/tokens.md) §Migração.
 
 > Route: `/chat` — **primary view** (owner decision 2026-06-20; `/` redirects here)
-> Domain: chat (single domain — all 9 operationIds)
-> Version: 1.4.0 | Status: draft | Layer: permanent
+> Domain: chat + knowledge-graph + query-retrieval (13 operationIds consumed — 9 chat, 2 knowledge-graph, 2 query-retrieval)
+> Version: 1.5.0 | Status: draft | Layer: permanent
 
 > This is the feature spec for the chat conversation workspace. It documents the implemented code;
 > the source of truth is `frontend/src/features/chat/` and `frontend/src/features/graph/`.
@@ -160,7 +160,7 @@
 
 ### UI-12 — graph loading (right column, graph tool in flight)
 
-**Entry condition:** SSE `tool_start` frame for a graph-producing tool (`traverse`, `get_node`, `list_nodes`, `search`) was received; no `graph_delta` has arrived yet.
+**Entry condition:** SSE `tool_start` frame for a graph-producing tool (`traverse`, `get_node`, `list_nodes`, `search`, or — v1.5.0, when `CHAT_INGEST_ENABLED=true` — `ingest_directed`) was received; no `graph_delta` has arrived yet.
 
 - `GraphStatusOverlay` is shown above the canvas with copy "Buscando na memória…" and a soft spinner.
 - If the panel was previously in UI-13 / UI-14 (graph already populated), the existing subgraph stays visible **underneath** the overlay (no flicker, no clear).
@@ -229,7 +229,7 @@
 | From | Trigger | To | Side Effect |
 |---|---|---|---|
 | UI-11 (empty) | SSE `tool_start { tool ∈ graph-producing }` | UI-12 (loading) | `useGraphStore.setStatus("loading")` |
-| UI-12 (loading) | SSE `graph_delta { source_tool, nodes[], links[] }` | UI-13 (revealing) | `mapWireToGraphDelta(frame)` → `useGraphStore.addNodes(delta)`; new ids enqueued in `revealQueue`; `setStatus("revealing")` |
+| UI-12 (loading) | SSE `graph_delta { source_tool, nodes[], links[] }` (any `source_tool` — includes `ingest_directed` since v1.5.0) | UI-13 (revealing) | `mapWireToGraphDelta(frame)` → `useGraphStore.addNodes(delta)`; new ids enqueued in `revealQueue`; `setStatus("revealing")` |
 | UI-13 (revealing) | `revealQueue` drained AND SSE `done` received | UI-14 (ready) | `useGraphStore.settleTurn("done")` — sets `status="ready"` only if `receivedDeltaThisTurn === true`, else returns to UI-11 |
 | UI-13 (revealing) | `revealQueue` drained, `done` not yet received | UI-13 | Stays in revealing (new deltas may still arrive in same turn) |
 | UI-12 (loading) | SSE `tool_result { ok: false }` while a graph tool is in flight | UI-14-error (error overlay) | `setStatus("error", errorMessage)`; existing subgraph (if any) stays visible |
@@ -239,7 +239,7 @@
 | UI-14 (ready) | SSE `tool_start` (new turn invokes another graph tool) | UI-12 (loading) | Progressive expansion (UC-CG-02) — `setStatus("loading")`; previous subgraph stays under the overlay |
 | UI-14 (ready) | User clicks a node | UI-14 + `NodeDetailPanel` mounted | `onNodeSelect(nodeId)` → `ChatWorkspace` mounts `NodeDetailPanel`; graph status unchanged; `GraphSpace` unmounts, `NodeDetailPanel` takes its place. Closing the panel returns to UI-14. Pan/zoom/drag never alter `chatStatus`. |
 
-> **Graph-producing tools** (catalog source for `tool_start` filter — see `chat-graphspace-plan.md §B1`): `traverse`, `get_node`, `list_nodes`, `search`. Other read-only tools (`list_node_types`, `get_provenance_*`, `get_history_*`, `list_attribute_keys`, `list_link_types`) do NOT emit a `graph_delta` and do NOT transition the graph column out of its current state.
+> **Graph-producing tools** (catalog source for `tool_start` filter — see `chat-graphspace-plan.md §B1`): `traverse`, `get_node`, `list_nodes`, `search`, AND — v1.5.0, when `CHAT_INGEST_ENABLED=true` at the BFF — `ingest_directed` (the write-bearing tool that persists a directional ingestion; its `graph_delta` is projected from `run.affected_nodes` + accepted-family `report[]` links; see `openapi.yaml` `graph_delta semantics` and back-spec BR-41). Other read-only tools (`list_node_types`, `get_provenance_*`, `get_history_*`, `list_attribute_keys`, `list_link_types`) do NOT emit a `graph_delta` and do NOT transition the graph column out of its current state.
 
 ---
 
@@ -465,17 +465,26 @@ Validation is realized by `composerSchema` (Zod `z.object({ content: z.string().
 **And** `isStreaming` flips false  
 **And** the Composer returns to send mode  
 
-### Scenario 6 — Async ingestion via chat (CHAT_INGEST_ENABLED=true)
+### Scenario 6 — Directed ingestion via chat (CHAT_INGEST_ENABLED=true, v1.5.0)
+
+> Supersedes the v1.2.0 wording of Scenario 6, which referenced the RETIRED
+> v2.3 tool `start_async_ingestion` (revoked by chat.spec.md v2.6). Under
+> v2.6+ the only write-bearing chat tool is `ingest_directed`; under v2.9.0
+> its successful `tool_result` triggers a `graph_delta` frame on the same
+> turn so the right-column `GraphSpace` renders the freshly created
+> nodes/links without a follow-up query.
 
 **Given** `/chat?conversation=<uuid>` is mounted and `CHAT_INGEST_ENABLED=true` at the BFF  
-**When** the user sends a message explicitly requesting document ingestion  
-**Then** the model emits a `tool_use` block for `start_async_ingestion`  
-**And** a `tool_start { tool: "start_async_ingestion", argsSummary: "source_type=... content_len=N" }` SSE frame arrives  
-**And** a `ToolCallChip` is rendered in pending state with label `start_async_ingestion`  
-**And** a `tool_result { tool: "start_async_ingestion", ok: true }` SSE frame settles the chip to success  
-**And** no `graph_delta` frame is emitted for this tool (ingestion tools are non-graph tools)  
-**And** the model continues and emits `text_delta` frames summarising the ingestion run  
-**And** after the `done` frame, `isStreaming` flips false and the Composer returns to send mode  
+**When** the user sends a message explicitly asking to create/link/attribute an entity (e.g. "crie o Event 'Alinhamento Apollo' ligado ao projeto Apollo")  
+**Then** the model emits a `tool_use` block for `ingest_directed`  
+**And** a `tool_start { tool: "ingest_directed", argsSummary: "fragments=1 nodes=2 links=1" }` SSE frame arrives  
+**And** a `ToolCallChip` is rendered in pending state with label `ingest_directed`  
+**And** the graph column flips to UI-12 (loading) because `ingest_directed` is a graph-producing tool (v1.5.0)  
+**And** a `tool_result { tool: "ingest_directed", ok: true }` SSE frame settles the chip to success  
+**And** a `graph_delta { source_tool: "ingest_directed", nodes: [...affected nodes], links: [...accepted-family links] }` SSE frame is emitted immediately after the `tool_result` (openapi.yaml v2.9.0 / back-spec BR-41)  
+**And** the graph column transitions to UI-13 (revealing) — the just-created nodes reveal 1×1 (Framer Motion) with their catalog-derived colour/icon  
+**And** the model continues and emits `text_delta` frames summarising the per-item report (e.g. "criei 2 itens, 0 falhas")  
+**And** after the `done` frame, `isStreaming` flips false, the Composer returns to send mode, and the graph column settles into UI-14 (ready)  
 **And** the turn invalidation refetch completes normally  
 
 ---
@@ -528,6 +537,7 @@ Validation is realized by `composerSchema` (Zod `z.object({ content: z.string().
 | **UC-CG-11** | Reduced motion | `prefers-reduced-motion: reduce`. | All new nodes reveal in the same tick (opacity-only, no scale, no stagger). |
 | **UC-CG-12** | Unknown node type (fallback) | `node_type` from the wire is not one of the 10 `GraphNodeType` slugs (ontology is data-driven and extensible). | `mapNodeType` returns a neutral default (icon + color); render does not crash (robustness against future catalog additions). |
 | **UC-CG-13** | Page reload | User reloads `/chat?conversation=<uuid>`. | Graph panel returns to UI-11 (empty) — the subgraph is ephemeral per session (D4). Expected, documented; NOT a defect. |
+| **UC-CG-14** | Load subgraph from a directed ingestion (v1.5.0) | User asks the assistant to create/link/attribute an entity (e.g. "crie o Event 'Alinhamento Apollo' ligado ao projeto Apollo") and `CHAT_INGEST_ENABLED=true`. | The LLM calls `ingest_directed`; `tool_start` flips the graph column to UI-12 (`ingest_directed` is a graph-producing tool in v1.5.0); `tool_result{ok:true}` settles the chip; a `graph_delta { source_tool: "ingest_directed", nodes, links }` frame arrives — `nodes[]` are the persisted `run.affected_nodes` (each with `status: "active"`) and `links[]` are the accepted-family `report[]` link items (endpoints resolved via the accepted node entries of the same run). If it is the response's first graph result the SPA `replaceNodes(delta)`; otherwise it `addNodes(delta)` (same non-cumulative-across-responses / compose-within-response rule as read-tool projections, UC-CG-02). Nodes reveal 1×1 (UI-13) with their catalog-derived colour/icon; edges appear once both endpoints are revealed. Item-level rejections (`rejected` / `error` / `dependency_failed`) are DROPPED from `graph_delta` — the natural-language `text_delta` still reports them so the Owner sees the outcome (fail-loud in the text channel; graph stays truthful). Server-side: `chat.spec.md` BR-43 v2.6 step 9 / back-spec BR-41 own the projection contract. |
 
 ### §11 — Unidirectionality invariant (REQ-6)
 
@@ -536,6 +546,19 @@ The graph column is a **sink**: data flows chat → graph only. The structural g
 - `GraphSpace`, `GraphCanvas`, `GraphNodeAdapter`, `GraphEdgeAdapter`, `GraphStatusOverlay`, `GraphEmptyState`, `NodeDetailPanel` **never import** any action from `useChatTurnStore` or any mutation from `features/chat/api/*`. This is verifiable by lint / structural test (`import/no-restricted-paths`).
 - The only side effects of graph interaction are: change of viewport (React Flow internal), change of `selectedNode` local state in `ChatWorkspace`, fetch of `getNodeById` for the detail panel. None of these alter `useChatTurnStore`, the messages cache, or the URL chat scope.
 
+> **v1.5.0 clarification (chat.spec.md v2.9.0 / openapi.yaml v2.9.0).** The
+> "chat → graph only" flow now covers both **read tools** (`traverse`,
+> `get_node`, `list_nodes`, `search`) AND the **write-bearing directed
+> ingestion** (`ingest_directed`, gated by `CHAT_INGEST_ENABLED`). REQ-6 is
+> unchanged — it constrains the CLIENT-SIDE data flow: user interactions
+> on the graph column (pan, zoom, drag, click) still NEVER write to
+> `useChatTurnStore` and NEVER issue a new chat mutation. The server-side
+> emission of a `graph_delta` after a successful `ingest_directed`
+> `tool_result` is the same one-directional chat-turn → graph-store
+> pipeline as the read-tool projections; it does not represent a graph →
+> chat write. The earlier "no `graph_delta` for ingestion tools" carve-out
+> in §12 is REVOKED (see §12 v1.5.0 note).
+
 ---
 
 ## §12 Out of Scope
@@ -543,7 +566,7 @@ The graph column is a **sink**: data flows chat → graph only. The structural g
 The following are explicitly deferred from this wave and must NOT be inferred from the implemented code or from the API contract:
 
 - **Standalone `/graph` route extensions** — the `/graph` route is reserved in `front.md §3.1` and is a separate wave. This chat feature spec does NOT cover that route; the right-column `GraphSpace` is intentionally narrower (no global filters, no `as_of` time picker, no curation actions, no provenance drawer).
-- **Additional write/curation tools beyond the v2.3 catalog** — the v2.3 chat catalog grows to 15 tools when `CHAT_INGEST_ENABLED=true` (13 read-only `query` tools + `start_async_ingestion` + `get_ingestion_status`). The SPA renders these additional tools as generic `ToolCallChip` entries using the existing streaming path — no dedicated UI controls or display panels are added. The `graph_delta` frame is not emitted for ingestion tools. Curation tools (`propose_*`, merge, reject, correct) remain out of scope per `chat.spec.md` §8.
+- **Additional write/curation tools beyond the v2.6 catalog** — the v2.6+ chat catalog carries 13 read-only `query` tools plus, when `CHAT_INGEST_ENABLED=true`, the single write-bearing `ingest_directed` (14 total; the v2.3 pair `start_async_ingestion` + `get_ingestion_status` was RETIRED in chat.spec.md v2.6). The SPA renders `ingest_directed` as a generic `ToolCallChip` entry using the existing streaming path — no dedicated UI controls or display panels are added. **v1.5.0 revocation:** the earlier "the `graph_delta` frame is not emitted for ingestion tools" carve-out is REVOKED — `ingest_directed` DOES emit a `graph_delta` after a successful `tool_result` (openapi.yaml v2.9.0 / chat.spec.md BR-43 v2.6 step 9 / back-spec BR-41), and the SPA renders it identically to a read-tool `graph_delta` (nodes/links merged into `useGraphStore` by id; the just-created entities reveal in UI-13). Curation tools (`propose_*`, merge, reject, correct) remain out of scope per `chat.spec.md` §8.
 - **Persisting the per-turn subgraph** — the graph is ephemeral per session (D4). Page reload clears it. Re-opening a conversation does NOT restore the previous subgraph; the operator must re-ask.
 - **Click-to-traverse from a node** — clicking a node opens `NodeDetailPanel` only. It does NOT dispatch a new `traverse` tool call (that would break the unidirectionality invariant, REQ-6). A future spec change may add it, but only with an explicit decision recorded.
 - **Embeddings / semantic retrieval** — retrieval is purely lexical + graph; no vectors.
@@ -584,7 +607,7 @@ Defined in `features/chat/api/chat-stream.ts`. Not a TanStack Query hook — it 
 SSE frame discriminated union (`ChatSSEFrame`):
 - `llm_start` — iteration marker (no UI mutation)
 - `text_delta { delta }` — accumulated by `appendText`
-- `tool_start { tool, argsSummary }` — creates a pending chip; if `tool` is graph-producing (`traverse` | `get_node` | `list_nodes` | `search`), also flips `useGraphStore.status` to `loading`. When `CHAT_INGEST_ENABLED=true`, the catalog also includes `start_async_ingestion` and `get_ingestion_status` — these are treated as non-graph tools (no `graph_delta` is emitted for them; the chip dispatches to the generic pending → success/error path)
+- `tool_start { tool, argsSummary }` — creates a pending chip; if `tool` is graph-producing (`traverse` | `get_node` | `list_nodes` | `search` | — v1.5.0 — `ingest_directed`), also flips `useGraphStore.status` to `loading`. When `CHAT_INGEST_ENABLED=true`, the catalog also includes `ingest_directed` (v2.6+; the v2.3 pair `start_async_ingestion` + `get_ingestion_status` is RETIRED — `chat.spec.md` v2.6) — from v1.5.0 onwards `ingest_directed` is treated as a graph-producing tool: its `tool_start` flips the graph column to UI-12 and a `graph_delta` frame is emitted after a successful `tool_result` (nodes from `run.affected_nodes`, links from accepted-family `report[]` link items; see `openapi.yaml` v2.9.0 `graph_delta semantics` and back-spec BR-41)
 - `tool_result { ok }` — settles the last chip; if `ok === false` AND a graph tool was in flight, `useGraphStore.settleTurn("error")` is invoked
 - `graph_delta { sourceTool, nodes[], links[] }` — **(7th frame)** consumed by the SSE dispatcher in `useSendMessage` and mapped via `mapWireToGraphDelta()` (imported from `features/graph/api/mapWireToGraphDelta.ts` — the function was extracted from `features/chat/api/` to `features/graph/api/` so that `features/ingest` can share it without cross-feature imports; the import path change is transparent to callers). **Non-cumulative (owner decision 2026-06-22):** the **first** graph result of a response is applied via `useGraphStore.replaceNodes(delta)` (clears the prior response's graph and re-lays out fresh); **later** results in the **same** response use `addNodes(delta)` (compose by id). A 0-node result is skipped — the current graph is left unchanged (UC-CG-05) and the response's one-shot replace is not consumed. Wire shape is snake_case (`source_tool`, `node_type`, `canonical_name`, `is_temporal`); the front-end transform renames to camelCase. Emitted by the BFF immediately after the `tool_result` for a graph-producing tool. Within a response, re-arrival of the same node id is merged (no duplicate, no re-animation). See `temp/chat-graphspace-plan.md §4.1` for the full wire schema.
 - `done { stop_reason }` — terminal success; `useGraphStore.settleTurn("done")` decides `ready` vs. `empty` based on `receivedDeltaThisTurn`
@@ -651,4 +674,5 @@ No cache invalidation needed on chat actions — the chat is read-only and the g
 | 1.1.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | Chat ↔ GraphSpace integration documented (built under EPIC-FE-03 / TC-FE-01..TC-FE-11). §1 adds `getNodeById` (knowledge-graph). §2 adds UI-11..UI-14 (graph right-column states: empty / loading / revealing / ready / error). §3 adds the graph state-transition table driven by SSE `tool_start`/`graph_delta`/`tool_result`/`done`/`error`. §4 documents the 7th SSE frame `graph_delta` (chat-stream union) and the `useGraphStore` / `getNodeById` data layers. §10 adds the new components (`GraphSpace`, `GraphCanvas`, `GraphNodeAdapter`, `GraphEdgeAdapter`, `GraphStatusOverlay`, `GraphEmptyState`, `NodeDetailPanel`, `ChatStatusIndicator`) and records `ChatWorkspace` update. §11 adds the UC-CG-01..UC-CG-13 use-case table and the unidirectionality invariant (REQ-6). §12 (was §11) — removed "Chat ↔ Graph interaction" and "Graph explorer" rows; added new exclusions (write tools in chat, persist per-turn subgraph, click-to-traverse). Normative plan source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21. |
 | 1.2.0 | 2026-06-22 | Front Spec Agent | minor (additive) | **Async ingestion capability (chat.spec.md v2.3).** No new routes, no new components, no new REST operationIds. The v2.3 backend change adds two server-side tool dispatches (`start_async_ingestion` / `get_ingestion_status`) to the chat agentic loop behind `CHAT_INGEST_ENABLED=true`. Updates: §1 note (v2.3 annotation — these are NOT REST operationIds; they are SSE `tool_start`/`tool_result` frames only); §2 UI-04 (ToolCallChip list now can include ingestion tool chips via the same generic chip path); §4 `chat-stream.ts` note (tool_start union extended — ingestion tools are non-graph tools; no `graph_delta` emitted for them); §6 two new in-stream-not-terminal rows (`STRUCTURAL_INVALID` from layered-validation rejection of `start_async_ingestion`; `SYSTEM_SERVICE_UNAVAILABLE` ingestion-path from Postgres-down during intake); §9 Scenario 6 (async ingestion happy path via chat); §12 out-of-scope updated (v2.3 catalog is now 15 tools when flag is on; curation tools remain out). Revokes the v1.1.0 "13 read-only tools" framing in §12. Backend normative source: `chat.spec.md` v2.3 / `openapi.yaml` v2.3 (BR-43, BR-44, BR-45). | sdd_chat_async-ingestion |
 | 1.4.0 | 2026-06-27 | Front Spec Agent | minor (additive) | **Ingest wave — `mapWireToGraphDelta` extraction.** §4 `chat-stream.ts` note updated: `mapWireToGraphDelta` import path changed from `features/chat/api/` to `features/graph/api/` (extracted to be shared with `features/ingest`). §7 new note explaining the extraction and its rationale. No behavior change; no new endpoints or components. | sdd_improve_1_spec-front |
+| 1.5.0 | 2026-07-14 | Spec Writer | minor (additive, feature-flagged) | **`graph_delta` now covers `ingest_directed` — directed ingestion feeds the right-column `GraphSpace`.** Aligns with chat.spec.md v2.9.0 / openapi.yaml v2.9.0. The v1.2.0/v1.3.0 note that `ingestion tools are non-graph tools` is REVOKED: under v1.5.0, `ingest_directed` (the sole write-bearing chat tool when `CHAT_INGEST_ENABLED=true`, v2.6+) is a **graph-producing tool** — its `tool_start` flips the graph column to UI-12, and a `graph_delta { source_tool: "ingest_directed", nodes, links }` SSE frame arrives immediately after a successful `tool_result` (nodes from `run.affected_nodes` with `status: "active"`; links from accepted-family `report[]` link items whose endpoints resolve via accepted node entries of the same run). The SPA renders it identically to a read-tool `graph_delta` — first result of the response `replaceNodes`, later results `addNodes` (UC-CG-02 non-cumulative-across-responses / compose-within-response contract preserved). Item-level rejections (`rejected` / `error` / `dependency_failed`) are DROPPED from `graph_delta` and only reported through `text_delta` (fail-loud in text channel; graph stays truthful). Updates: §2 UI-12 entry condition (graph-producing set extended to include `ingest_directed`); §3 UI-12→UI-13 trigger row (widened `source_tool` set); §3 "Graph-producing tools" footnote (widened; text explains the v1.5.0 addition and gates it on `CHAT_INGEST_ENABLED`); §4 `chat-stream.ts` note (widened graph-producing set; v2.3 retired-tools framing removed; v1.5.0 wording); §9 Scenario 6 REWRITTEN — previously described the RETIRED v2.3 `start_async_ingestion` happy path; now describes the `ingest_directed` happy path INCLUDING the `graph_delta` frame; §11 UC-CG table adds UC-CG-14 (Load subgraph from a directed ingestion — full effect chain from `tool_start` to `settleTurn("done")`); §11 REQ-6 clarification block appended — REQ-6 unchanged in scope but expanded in intent (server-side ingestion feeding the graph is still one-directional chat-turn → graph-store; user local graph interactions still NEVER write to chat state); §12 out-of-scope: revokes the "no `graph_delta` for ingestion tools" carve-out and updates the framing from "v2.3 catalog (15 tools)" to "v2.6+ catalog (13+1 tools)". No new components. No new API endpoints. No new error codes. No new SSE frames (the 7-frame catalog is unchanged; only the `source_tool` enum grows). No schema change. Naturally gated by `CHAT_INGEST_ENABLED` (BR-44 v2.6) — when the flag is false, the tool is not in the catalog and no `graph_delta` for `ingest_directed` can occur. Backend normative source: `chat.spec.md` v2.9.0 / `openapi.yaml` v2.9.0 / back-spec BR-41. | sdd_render-graph-after-ingest_chat_spec-writer |
 | 1.3.0 | 2026-06-26 | Front Spec Agent | minor (additive) | **Progressive-disclosure wave (NodeDetailPanel v2.0).** No new routes. §1: note updated to reference query-retrieval domain; 3 new operationIds added (`traverseNode`, `getProvenanceByLink`, `getProvenanceByAttribute`) consumed by `NodeDetailPanel` Phase B/C. §4: `getNodeById` data-layer note expanded to document `useNodeRelationships` and `useProvenance` hooks and their enabled/staleTime contracts. | sdd_front |

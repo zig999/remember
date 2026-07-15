@@ -1,7 +1,7 @@
 openapi: "3.0.3"
 info:
   title: "Remember - Chat (stateful conversations) API"
-  version: "2.8.0"
+  version: "2.9.0"
   description: |
     Stateful conversational entry point into the knowledge graph. The Owner
     (single-owner, ADR A20) creates a `Conversation` and posts ONE user message
@@ -21,6 +21,84 @@ info:
     write path `ingest_directed` invokes the audited ingestion pipeline
     DETERMINISTICALLY — no server-side LLM — by composing the four `propose_*`
     handlers, NEVER raw SQL).
+
+    ## v2.9.0 — `graph_delta` projection now covers `ingest_directed` (additive, feature-flagged)
+
+    Revokes the v2.1.0 invariant that constrained `graph_delta` to the four
+    read-only graph-producing tools (`traverse`, `get_node`, `list_nodes`,
+    `search`). Under v2.9.0, the projection ALSO covers the write-bearing
+    tool `ingest_directed` (BR-43 v2.6) — so a directional ingestion command
+    (create person / link organization / add attribute) now feeds the
+    right-column `GraphSpace` in the same turn, without requiring the Owner
+    to issue a follow-up query. The frame remains OBSERVATIONAL — it carries
+    no instruction and no new data beyond what the `ingest_directed`
+    envelope already produced server-side.
+
+    Wire changes (additive, backwards-compatible for legacy clients):
+      1. `GraphDeltaEvent.source_tool` enum now includes a fifth literal —
+         `"ingest_directed"` — alongside the existing four. Clients written
+         against v2.1..v2.8 that do NOT enumerate the extra literal continue
+         to receive well-formed frames (they will simply see an unknown
+         `source_tool` value and MAY ignore it; the SPA is expected to
+         accept it and treat it identically to a graph-tool projection —
+         merge nodes/links by id).
+      2. Frame ordering invariant #3 is extended: when the `tool_result.tool`
+         is `ingest_directed` AND `tool_result.ok === true`, the stream MAY
+         emit exactly one `graph_delta` frame IMMEDIATELY AFTER the
+         `tool_result` (same iteration, before any subsequent `llm_start` /
+         `text_delta` / `tool_start`). Legacy graph-tool ordering (rule 3
+         for `{traverse, get_node, list_nodes, search}`) is unchanged.
+      3. NEW per-tool projection rule for `ingest_directed` (see below):
+         `nodes[]` are projected from `run.affected_nodes` (each entry
+         already carries `{id, canonical_name, node_type}`; the projector
+         defaults `status: "active"` — a directed item is a stated fact by
+         construction, forced `confidence = 1.0`, so it never lands in
+         `needs_review`/`merged`/`deleted` on creation). `links[]` are
+         projected from `report[]` items where `kind === "link"` and the
+         `outcome` is in the accepted family (`accepted` /
+         `consolidated` / `superseded_previous` / `needs_review` /
+         `uncertain` / `disputed`; `rejected` / `error` /
+         `dependency_failed` items are DROPPED — the persisted link does
+         not exist). Each surviving report entry carries `link_id`; the
+         projector composes the `GraphLinkWire` by pairing the report's
+         `link_id` with the input payload's `link_type` slug + `source_ref`/
+         `target_ref` (resolved to `source_node_id` / `target_node_id` via
+         the corresponding accepted node reports of the same run).
+         `is_temporal` is resolved via the same `CatalogSnapshot` lookup
+         as the `traverse` projection (catalog miss ->
+         `is_temporal: false`); `link_type_label` (v2.4.0 additive) is
+         projected identically from the catalog row.
+      4. NEW SSE example `graphDeltaIngestDirected` illustrates the
+         `ingest_directed` -> `tool_result` -> `graph_delta` sequence.
+
+    Backwards compatibility:
+      - Clients that already handle `graph_delta` transparently (merge by
+        id, no source-tool switch) require no change.
+      - Clients that switch on `source_tool` and enumerate the four legacy
+        literals should add `"ingest_directed"` to their handler; until
+        they do, they will treat the new frame as unknown and MAY skip it
+        (the graph will remain empty until the next graph-tool query).
+      - No REST envelope change, no new error code, no schema change on any
+        other endpoint. `Idempotency-Key`, cancellation, kill-switch, and
+        the graph-view snapshot sub-resource are unaffected.
+
+    Coupled changes:
+      - Domain business spec: `chat.spec.md` v2.9.0 changelog + BR-43 v2.6
+        annotation to note the projection coupling (chat.spec.md owns the
+        `ingest_directed` contract; BR-41 of `chat.back.md` owns the frame
+        projection).
+      - Backend spec: `chat.back.md` BR-41 v1.x -> v1.y extends the
+        `graph-normalizer.ts` / route wiring for the new source-tool arm.
+      - Frontend feature spec: `chat.feature.spec.md` §3 UI-12 trigger row,
+        §11 UC-CG-14 (NEW), §12 out-of-scope revoke of the "no graph_delta
+        for ingestion tools" exclusion, §11 REQ-6 clarification that
+        server-side ingestion feeding the graph does not violate
+        unidirectionality (the user's local graph interactions still never
+        write to chat state).
+
+    Config: v2.9.0 is naturally gated by `CHAT_INGEST_ENABLED` (BR-44 v2.6)
+    — the frame only appears when `ingest_directed` is registered in the
+    chat catalog. No new env var.
 
     ## v2.8.0 — P2.1 error-taxonomy unification (informational — no wire change on chat)
 
@@ -537,7 +615,7 @@ paths:
           - `text_delta`    -> { delta: string (>= 1 char) }
           - `tool_start`    -> { tool: string (one of the 13), args_summary: string (<= 200 chars, redacted) }
           - `tool_result`   -> { tool: string, ok: boolean }
-          - `graph_delta`   -> { source_tool: "traverse"|"get_node"|"list_nodes"|"search",
+          - `graph_delta`   -> { source_tool: "traverse"|"get_node"|"list_nodes"|"search"|"ingest_directed",
                                  nodes:  [ { id: uuid, node_type: string, canonical_name: string,
                                              status: "active"|"needs_review"|"merged"|"deleted" }, ... ],
                                  links:  [ { id: uuid, source_node_id: uuid, target_node_id: uuid,
@@ -545,7 +623,8 @@ paths:
                                              is_temporal: bool,
                                              is_in_effect?: bool, status?: string,
                                              flags?: ("uncertain"|"disputed"|"low_confidence")[] }, ... ] }
-                                 # (additive in v2.1, BR-41; `link_type_label` additive in v2.4.0
+                                 # (additive in v2.1, BR-41; `link_type_label` additive in v2.4.0;
+                                 #  `"ingest_directed"` literal additive in v2.9.0
                                  #  — see "graph_delta semantics" below)
           - `done`          -> { stop_reason: "end_turn" | "max_tokens" | "stop_sequence"
                                               | "max_iterations" | "turn_timeout"
@@ -558,19 +637,25 @@ paths:
         Frame ordering invariants:
           1. At least one `llm_start` (iteration = 1) before any `text_delta` or `tool_start`.
           2. Every `tool_start` is followed by exactly one `tool_result` for the same `tool`.
-          3. When the `tool_result.tool` is one of `{traverse, get_node, list_nodes, search}`
-             AND `tool_result.ok === true`, the stream MAY emit exactly one `graph_delta`
-             frame IMMEDIATELY AFTER the `tool_result` (same iteration, before any
-             subsequent `llm_start` / `text_delta` / `tool_start`). The `graph_delta` is
-             dropped silently when the catalog snapshot is unavailable at the BFF or when
-             the projector raises an exception (degraded mode; see BR-41 step 4).
-          4. Turns with no graph-producing tool calls emit no `graph_delta` frame.
+          3. When the `tool_result.tool` is one of `{traverse, get_node, list_nodes, search,
+             ingest_directed}` AND `tool_result.ok === true`, the stream MAY emit exactly
+             one `graph_delta` frame IMMEDIATELY AFTER the `tool_result` (same iteration,
+             before any subsequent `llm_start` / `text_delta` / `tool_start`). The
+             `ingest_directed` arm is v2.9.0 additive (BR-41 v1.y / BR-43 v2.6 coupling —
+             see "graph_delta semantics" below). The `graph_delta` is dropped silently
+             when the catalog snapshot is unavailable at the BFF or when the projector
+             raises an exception (degraded mode; see BR-41 step 4).
+          4. Turns whose tool calls are ALL outside the graph-projecting set (i.e. no
+             `traverse` / `get_node` / `list_nodes` / `search` / `ingest_directed` call
+             completed with `ok === true`) emit no `graph_delta` frame. `list_node_types`,
+             `list_link_types`, `list_attribute_keys`, `get_history_*`, `get_provenance_*`
+             remain non-graph tools; catalog / provenance / history reads do NOT project.
           5. The stream ALWAYS terminates with EITHER one `done` frame OR one
              `error` frame, then closes. There is no other final frame
              (chat.spec.md BR-24).
           6. After `error`, no further frames are emitted.
 
-        ## graph_delta semantics (v2.1, additive — BR-41)
+        ## graph_delta semantics (v2.1, additive — BR-41; v2.9.0 extends to `ingest_directed`)
 
         The `graph_delta` frame projects a normalized subgraph derived from the
         immediately preceding `tool_result`. It is OBSERVATIONAL: it carries no
@@ -598,11 +683,51 @@ paths:
             not carry these fields — registered deviation G-A; see BR-41 search
             normalization). Items of `kind in {link, fragment}` are NOT
             projected — they remain visible in the assistant text channel only.
+          - `ingest_directed` (v2.9.0, additive): nodes are projected from the
+            `run.affected_nodes` array of the ingest_directed envelope. Each
+            entry already carries `{id, canonical_name, node_type}` (see the
+            `ingestion` schema `AffectedNodeOutput` in
+            `backend/src/modules/ingestion/mcp/mcp-schemas.ts`). The projector
+            emits `status: "active"` on every node — a directed item is a
+            stated fact by construction (server forces `confidence = 1.0` and
+            `valid_from_basis: "stated"`, BR-43 v2.6), so on creation it
+            cannot land in `needs_review` / `merged` / `deleted` (those
+            statuses arise from resolution paths or compliance actions that
+            the directed path does not trigger). Links are projected from the
+            `report[]` entries whose `kind === "link"` AND whose `outcome` is
+            in the accepted family (`accepted` / `consolidated` /
+            `superseded_previous` / `needs_review` / `uncertain` / `disputed`);
+            items with `outcome` in `{rejected, error, dependency_failed}` are
+            DROPPED — the persisted link either does not exist or is not
+            surfaced (the natural-language report already carries that
+            outcome in the text channel; the graph stays truthful). Each
+            surviving report entry carries the persisted `link_id`; the
+            projector composes each `GraphLinkWire` by pairing that `link_id`
+            with the input payload's `link_type` slug and by resolving
+            `source_ref` / `target_ref` to `source_node_id` / `target_node_id`
+            via the corresponding accepted node entries of the same
+            `report[]` (`node_ref -> node_id` map built from `kind === "node"`
+            items whose `resolution` is in the accepted family). If either
+            endpoint is unresolved (e.g. one side was `rejected` while the
+            link somehow persisted upstream — a race not currently reachable
+            by the directed contract), the link is DROPPED. `is_temporal` and
+            optional `link_type_label` are resolved via the same
+            `CatalogSnapshot` lookup used by the `traverse` projection
+            (catalog miss -> `is_temporal: false`; `link_type_label`
+            OMITTED). `is_in_effect` / `status` / `flags` are OMITTED on the
+            directed path — the freshly persisted link carries no view-derived
+            `is_in_effect` yet; the SPA renders it with the neutral default,
+            and a follow-up `traverse` on a subsequent turn surfaces these
+            fields. Payload sizing: an `ingest_directed` invocation is
+            bounded by the BFF's per-call ceilings (BR-43 v2.6) — the
+            affected-nodes count is typically small (a handful per command);
+            no additional caps are introduced by the projector.
 
         The frame is NOT persisted to `chat_tool_call` (BR-32 owns audit for
         the originating tool invocation). The idempotent-replay path (BR-27,
         UC-07) does NOT re-emit `graph_delta` — clients reconstructing the
-        visual graph from a replay must re-issue the tool call.
+        visual graph from a replay (including a replayed `ingest_directed`
+        turn) must re-issue a graph-producing tool call.
 
         ## Pre-stream errors (no SSE opened yet)
 
@@ -761,6 +886,29 @@ paths:
 
                     event: tool_result
                     data: {"tool":"ingest_directed","ok":true}
+
+                    event: llm_start
+                    data: {"iteration":2}
+
+                    event: text_delta
+                    data: {"delta":"Pronto: criei o Event 'Alinhamento Apollo' e liguei ao projeto Apollo (1 item OK, 0 falhas)."}
+
+                    event: done
+                    data: {"stop_reason":"end_turn","model":"claude-opus-4-8","tokens_in":820,"tokens_out":31}
+                graphDeltaIngestDirected:
+                  summary: "v2.9.0 — Owner ingests via chat and the resulting subgraph is projected on the same turn"
+                  value: |
+                    event: llm_start
+                    data: {"iteration":1}
+
+                    event: tool_start
+                    data: {"tool":"ingest_directed","args_summary":"fragments=1 nodes=2 links=1"}
+
+                    event: tool_result
+                    data: {"tool":"ingest_directed","ok":true}
+
+                    event: graph_delta
+                    data: {"source_tool":"ingest_directed","nodes":[{"id":"66666666-6666-6666-6666-666666666666","node_type":"event","canonical_name":"Alinhamento Apollo","status":"active"},{"id":"44444444-4444-4444-4444-444444444444","node_type":"project","canonical_name":"Apollo","status":"active"}],"links":[{"id":"77777777-7777-7777-7777-777777777777","source_node_id":"66666666-6666-6666-6666-666666666666","target_node_id":"44444444-4444-4444-4444-444444444444","link_type":"aligns_with","link_type_label":"alinha-se com","is_temporal":true}]}
 
                     event: llm_start
                     data: {"iteration":2}
@@ -1820,7 +1968,12 @@ components:
         respectively. The `graph_delta` frame is ADDITIVE in v2.1 (chat.back.md
         BR-41) — clients written against v2.0 keep working: they will simply
         not parse the new frame name (SSE clients ignore unknown event names by
-        default).
+        default). In v2.9.0 the frame's `source_tool` set is extended
+        additively to include `"ingest_directed"` (nodes projected from
+        `run.affected_nodes`; links from accepted-family `report[]`
+        entries) — clients that enumerate only the four legacy literals
+        continue to receive well-formed frames and MAY skip the new
+        `source_tool` value.
 
     GraphNodeWire:
       type: object
@@ -1919,21 +2072,27 @@ components:
     GraphDeltaEvent:
       type: object
       description: |
-        Payload of the v2.1 `graph_delta` SSE frame (chat.back.md BR-41). Emitted
-        exactly once IMMEDIATELY AFTER a successful `tool_result` whose tool is
-        one of `{traverse, get_node, list_nodes, search}`. Turns with no graph
-        tool calls emit no `graph_delta`. `nodes` MAY be empty (e.g. `search`
-        with no `kind:node` items, or a `traverse` that returned no neighbors).
-        `links` MAY be empty independently of `nodes`.
+        Payload of the `graph_delta` SSE frame (chat.back.md BR-41; introduced
+        additively in v2.1, extended in v2.9.0 to cover `ingest_directed`).
+        Emitted exactly once IMMEDIATELY AFTER a successful `tool_result` whose
+        tool is one of `{traverse, get_node, list_nodes, search,
+        ingest_directed}`. Turns whose tool calls are all outside that set
+        emit no `graph_delta`. `nodes` MAY be empty (e.g. `search` with no
+        `kind:node` items, or a `traverse` that returned no neighbors). `links`
+        MAY be empty independently of `nodes`.
       required: [source_tool, nodes, links]
       properties:
         source_tool:
           type: string
-          enum: [traverse, get_node, list_nodes, search]
+          enum: [traverse, get_node, list_nodes, search, ingest_directed]
           description: |
             Identifies the originating tool. The SPA uses this to choose the
-            consolidation strategy (e.g. `traverse` carries links; the others
-            do not).
+            consolidation strategy (e.g. `traverse` and `ingest_directed`
+            carry links; the other three project nodes only). The
+            `"ingest_directed"` literal is v2.9.0 additive — clients written
+            against v2.1..v2.8 that enumerate only the first four literals
+            treat the new value as unknown and MAY ignore the frame (the
+            visual graph then only refreshes on the next graph-tool query).
           example: "traverse"
         nodes:
           type: array
@@ -1942,8 +2101,12 @@ components:
           type: array
           description: |
             Always `[]` for `source_tool in {get_node, list_nodes, search}` —
-            those tools project nodes only. Populated by `traverse` from the
-            traversal envelope.
+            those tools project nodes only. Populated by `traverse` (from the
+            traversal envelope) and by `ingest_directed` (v2.9.0 — from the
+            accepted-family `report[]` entries whose `kind === "link"`, with
+            endpoints resolved via the accepted node entries of the same
+            run; see the `graph_delta semantics` section of
+            `sendMessage` above and chat.back.md BR-41).
           items: { $ref: "#/components/schemas/GraphLinkWire" }
 
     GraphViewSnapshotBase:

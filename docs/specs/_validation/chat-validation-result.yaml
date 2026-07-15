@@ -1,17 +1,40 @@
 validation:
-  domain: chat
-  artifact_version: "2.10.1"
-  mode: final_complete
-  validated_by: u-spec-validator
-  timestamp: "2026-07-03T03:12:00Z"
-  layer: permanent
-  attempt: 3
+  domain: "chat"
+  artifact_version: "2.11.0"
+  mode: "final_complete"
+  validated_by: "u-spec-validator"
+  timestamp: "2026-07-15T01:17:00Z"
+  layer: "permanent"
 
 status: VALID
 blocking_count: 0
-warning_count: 0
+warning_count: 5
 handoff_allowed: true
 
 blocking_issues: []
 
-warnings: []
+warnings:
+  - id: "WARN-001"
+    type: "cross-ref"
+    source: "docs/specs/domains/chat/back/chat.back.md §5 ST-02 (line ~1905)"
+    description: "Known residual from incremental_back pass (ISSUE-001). The tool_running(i,t) → iteration_completed(i) row in ST-02 still says 'no graph_delta (not in the graph-tool set; the LLM may follow up with get_node...)' for ingest_directed. This contradicts BR-41 v2.11 (trigger set = 5 tools) and BR-43 v2.11 in the same document. Downgraded from blocking to warning in final_complete because (a) the normative BR-41 v2.11 is the authoritative implementation guide and is correct; (b) the v2.11 deviation note at line 28 and the detailed changelog entry both document the change correctly; (c) the front spec (chat.feature.spec.md v1.5.0) confirms the correct behavior; (d) the openapi.yaml v2.9.0 reflects the correct contract. ST-02 is derived/supplementary documentation."
+
+  - id: "WARN-002"
+    type: "cross-ref"
+    source: "docs/specs/domains/chat/back/chat.back.md §1 Testing row, item (xvi) assertion 4"
+    description: "Testing item (xvi) sub-assertion 4 says '(4) emits NO graph_delta frame (ingest_directed is not in the graph-tool set, BR-41 trigger gate)'. This is the v2.8 test wording; under v2.11 the test MUST assert that a graph_delta frame IS emitted when ok===true and catalog available. A developer writing this test literally would produce an incorrect negative assertion that fails after the correct v2.11 implementation. The normative BR-41 v2.11 step 1 and step 3 are correct guides for the actual test intent."
+
+  - id: "WARN-003"
+    type: "cross-ref"
+    source: "docs/specs/domains/chat/back/chat.back.md header, v2.1 deviation note (line ~9)"
+    description: "The v2.1 deviation note in the header still reads 'The sendMessage SSE stream now emits a 7th frame, graph_delta, ONLY after a tool_result whose tool is one of the four graph-producing query tools (traverse, get_node, list_nodes, search)'. The v2.11 deviation note at line ~28 correctly supersedes this with the 5-tool trigger set, but the v2.1 note was not updated to say 'originally four; see v2.11 for the expanded set'. Minor documentation quality issue — the v2.11 note takes precedence by position."
+
+  - id: "WARN-004"
+    type: "cross-ref"
+    source: "docs/specs/front/features/chat.feature.spec.md §6 (lines 339-340)"
+    description: "Pre-existing issue from v1.2.0, not introduced by this wave. Two error-code rows in §6 still reference start_async_ingestion (RETIRED in chat.spec.md v2.6): (a) the STRUCTURAL_INVALID row cites 'when CHAT_INGEST_ENABLED=true and start_async_ingestion fails its layered-validation check — e.g. content too large or schema invalid — chat.spec.md BR-43 step 2 / §6'; (b) the SYSTEM_SERVICE_UNAVAILABLE row cites 'when CHAT_INGEST_ENABLED=true and start_async_ingestion cannot reach Postgres during intake — chat.spec.md BR-43 step 2'. Both rows should be updated to reference ingest_directed instead, or removed since the new path surfaces the same codes through different triggers."
+
+  - id: "WARN-005"
+    type: "design-system"
+    source: "docs/specs/front/design-system/_index.md and docs/specs/front/design-system-rules.md"
+    description: "Pre-existing issue from the TUI migration wave. Both files have a version header of 2.0.0 but their changelogs only go to 1.4.0 (_index.md) and 1.3.0 (design-system-rules.md) respectively. No changelog entry documents the 2.0.0 version bump (the UI-Kit migration that changed the header). This does not affect the content correctness of either file — the migration is described in the v2.0 warning block at the top of each file."

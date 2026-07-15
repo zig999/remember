@@ -1,7 +1,7 @@
 # Flow Spec — Chat (`chat.flow.md`)
 
 > Feature: `/chat` — primary view
-> Version: 1.1.0 | Status: draft | Layer: permanent
+> Version: 1.2.0 | Status: draft | Layer: permanent
 
 ---
 
@@ -43,7 +43,7 @@
 3. SSE opened; streaming assistant bubble appears (UI-04).
 4. `text_delta` frames accumulate text; `StreamingCursor` blinks.
 5. `tool_start` / `tool_result` frames add/settle `ToolCallChip`s.
-   - **If the tool is graph-producing** (`traverse`, `get_node`, `list_nodes`, `search`): right-column transitions to UI-12 (graph loading) — see Sub-flow D.
+   - **If the tool is graph-producing** (`traverse`, `get_node`, `list_nodes`, `search`, or — v1.2.0, when `CHAT_INGEST_ENABLED=true` — `ingest_directed`): right-column transitions to UI-12 (graph loading) — see Sub-flow D.
 6. **NEW (v1.1.0): `graph_delta` frame received** (only when a graph tool ran in this turn) — see Sub-flow D, steps D2–D5. Runs in **parallel** with the text streaming on the left.
 7. `done` frame received; `isStreaming` → false; Composer returns to send mode.
 8. Cache invalidated; persisted assistant row appears in history (UI-03).
@@ -52,7 +52,7 @@
 
 > Driver: the SSE pipeline of Sub-flow C. Independent of (and parallel to) the chat-column transitions. Right-column states are UI-11..UI-14 (`chat.feature.spec.md §2`).
 
-1. **D1 — `tool_start { tool ∈ graph-producing }`:** `useSendMessage` dispatcher inspects `frame.tool`; if it is `traverse` / `get_node` / `list_nodes` / `search`, calls `useGraphStore.setStatus("loading")`. Right column transitions UI-11 → UI-12. `GraphStatusOverlay` shows "Buscando na memória…" with `aria-live="polite"`. A previously-loaded subgraph (UI-14) stays visible **underneath** the overlay (no clear).
+1. **D1 — `tool_start { tool ∈ graph-producing }`:** `useSendMessage` dispatcher inspects `frame.tool`; if it is `traverse` / `get_node` / `list_nodes` / `search` / `ingest_directed` (the last only when `CHAT_INGEST_ENABLED=true`), calls `useGraphStore.setStatus("loading")`. Right column transitions UI-11 → UI-12. `GraphStatusOverlay` shows "Buscando na memória…" with `aria-live="polite"`. A previously-loaded subgraph (UI-14) stays visible **underneath** the overlay (no clear).
 2. **D2 — `tool_result { ok: true }`:** chip settles; no graph state change yet (the data arrives in the next frame).
 3. **D3 — `graph_delta { source_tool, nodes[], links[] }`** (7th SSE frame, added in this revision): dispatcher calls `mapWireToGraphDelta(frame)` → `useGraphStore.addNodes(delta)`:
    - Merge nodes/links by `id` (re-affirmation consolidates, never duplicates).
@@ -170,7 +170,7 @@ User enters `/chat?conversation=<uuid>` directly in the browser. `__root` JWT gu
 | FL-05 | `onArchive` on the active conversation | Navigate to `/chat` (drop `?conversation` param) | — |
 | FL-06 | JWT absent / expired on `__root` beforeLoad | Redirect to `/sign-in?reason=session_expired` (global rule, `front.md §5`) | `/sign-in` page stub |
 | FL-07 | Navigation away from `/chat` while streaming | `MessageStream` unmounts; `useEffect` cleanup calls `abortController.abort()` | SSE reader resolves with AbortError cleanly; no zombie fetch |
-| FL-08 | SSE `tool_start { tool ∈ graph-producing }` received | Right column transitions UI-11 → UI-12; `useGraphStore.setStatus("loading")` | If `tool_result { ok: false }` follows → UI-14-error (overlay) |
+| FL-08 | SSE `tool_start { tool ∈ graph-producing }` received (graph-producing set: `traverse` / `get_node` / `list_nodes` / `search` / `ingest_directed` — the last only when `CHAT_INGEST_ENABLED=true`; v1.2.0) | Right column transitions UI-11 → UI-12; `useGraphStore.setStatus("loading")` | If `tool_result { ok: false }` follows → UI-14-error (overlay) |
 | FL-09 | SSE `graph_delta` frame received | `useGraphStore.addNodes(delta)` merges by id, enqueues new ids; UI-12 → UI-13 | If `nodes: []` → no state change (UI stays where it was); `done` later resolves to UI-11 if no delta arrived |
 | FL-10 | URL `?conversation=` changes | `useGraphStore.clear()` resets nodes/links/positions; right column → UI-11 | — |
 | FL-11 | User clicks a node in `GraphSpace` (UI-14) | `onNodeSelect(nodeId)` → `ChatWorkspace` mounts `<NodeDetailPanel>` in the right column (swap with `<GraphSpace>`) | Closing the detail panel re-mounts `<GraphSpace>` at UI-14 (store survives the swap); chat column unaffected |
@@ -218,4 +218,5 @@ When the user navigates away from `/chat` (or changes `?conversation`) while a t
 | Version | Date | Author | Type | Description |
 |---|---|---|---|---|
 | 1.0.0 | 2026-06-20 | Front Spec Agent | initial | Regenerated from implemented code. Root redirect FL-01, 7 navigation rules, 3 sub-flows, streaming teardown. |
+| 1.2.0 | 2026-07-14 | Front Spec Agent | minor (additive, feature-flagged) | **`ingest_directed` added to graph-producing tool set (v1.5.0 of `chat.feature.spec.md`, `chat.spec.md` v2.9.0 / `openapi.yaml` v2.9.0).** Sub-flow C step 5: graph-producing tool set extended to include `ingest_directed` (gated by `CHAT_INGEST_ENABLED=true`). Sub-flow D step D1: explicit tool enumeration extended. FL-08: graph-producing set made explicit in the rule description. Version header bumped to 1.2.0. |
 | 1.1.0 | 2026-06-21 | u-fe-developer (TC-FE-13) | minor | EPIC-FE-03 chat ↔ graph wave: Sub-flow C step 5 documents the graph-tool branch and step 6 the `graph_delta` frame; new **Sub-flow D — Graph reveal during a turn** (D1..D9: `tool_start` → loading, `graph_delta` → revealing, reveal loop, `done` → ready, plus failure/empty/abort variants); new **Sub-flow E — Click a node to show inline detail** (replace `GraphSpace` with `NodeDetailPanel` in the same slot; chat column untouched); Happy Path diagram updated with the parallel graph track (UI-11→UI-12→UI-13→UI-14); Navigation Rules expanded with FL-08..FL-11 (graph dispatch + reveal + conversation-clear + node-click); Data Persisted table adds `useGraphStore` (ephemeral per session) and `selectedNode` (local state). Normative source: `temp/chat-graphspace-plan.md` Rev. 2026-06-21 §8.1 (turn sequence), §8.2 (event/effect table), §12.3 (GraphStatus state machine). |
