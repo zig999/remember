@@ -31,6 +31,7 @@ vi.mock("../../../knowledge-graph/repository/graph.repository.js", () => ({
 import { findNodesByIds } from "../../../knowledge-graph/repository/graph.repository.js";
 import {
   normalizeGetNode,
+  normalizeIngestDirected,
   normalizeListNodes,
   normalizeSearch,
   normalizeToolResult,
@@ -542,6 +543,443 @@ describe("normalizeSearch", () => {
 });
 
 // ---------------------------------------------------------------------------
+// normalizeIngestDirected — TC-03 (BR-41 v2.11) — fifth graph-producing tool
+// ---------------------------------------------------------------------------
+//
+// Coverage against the TC-03 acceptance / validation criteria:
+//   AC-1 GRAPH_TOOL_NAMES admits ingest_directed (verified via dispatcher).
+//   AC-2 normalizeIngestDirected exported and callable with (unknown, CatalogSnapshot).
+//   AC-3 Dispatcher returns non-null delta on a valid envelope.
+//   AC-4 Empty envelope (no affected_nodes, no accepted link entries) still
+//        emits an empty non-null delta.
+//   plus: node projection with status: "active" forced; accepted-family
+//   filter (rejected/error/dependency_failed dropped); node_ref -> id map
+//   built from accepted node entries only; compound ref parsing (FIRST/LAST
+//   '->'); catalog fallback (is_temporal=false, link_type_label OMITTED);
+//   is_in_effect / status / flags OMITTED on the directed path; unresolved
+//   endpoints dropped silently; malformed envelope returns null (not empty).
+
+describe("normalizeIngestDirected (BR-41 v2.11 — fifth arm)", () => {
+  /** Build an `AffectedNode`-shaped record. */
+  function affected(
+    id: string,
+    node_type: string,
+    canonical_name: string
+  ): Record<string, unknown> {
+    return { id, canonical_name, node_type };
+  }
+
+  /** Build a `DirectedItemReport` node entry. */
+  function nodeReport(
+    ref: string,
+    node_id: string | undefined,
+    status: string
+  ): Record<string, unknown> {
+    return {
+      ref,
+      kind: "node",
+      status,
+      ...(node_id !== undefined ? { node_id } : {}),
+    };
+  }
+
+  /** Build a `DirectedItemReport` link entry with the compound `ref`. */
+  function linkReport(
+    source_ref: string,
+    link_type: string,
+    target_ref: string,
+    link_id: string | undefined,
+    status: string
+  ): Record<string, unknown> {
+    return {
+      ref: `${source_ref}->${link_type}->${target_ref}`,
+      kind: "link",
+      status,
+      ...(link_id !== undefined ? { link_id } : {}),
+    };
+  }
+
+  it("AC-2/3: projects run.affected_nodes as nodes with status forced to 'active'", () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      outcome: "ingested",
+      run: {
+        affected_nodes: [
+          affected("n-1", "person", "João"),
+          affected("n-2", "organization", "Rede Unifique"),
+        ],
+      },
+      report: [],
+    };
+
+    const delta = normalizeIngestDirected(result, catalog);
+
+    // AC-2: return a non-null delta with the ingest_directed source_tool.
+    expect(delta).not.toBeNull();
+    expect(delta?.source_tool).toBe("ingest_directed");
+    // Status is FORCED to "active" — directed items are stated-by-construction
+    // (BR-43 v2.8: confidence=1.0, valid_from_basis="stated"), so they cannot
+    // land in needs_review/merged/deleted on creation. Testing intent: if the
+    // spec ever relaxes this constraint the assertion must fail loud.
+    expect(delta?.nodes).toEqual([
+      { id: "n-1", node_type: "person", canonical_name: "João", status: "active" },
+      {
+        id: "n-2",
+        node_type: "organization",
+        canonical_name: "Rede Unifique",
+        status: "active",
+      },
+    ]);
+    expect(delta?.links).toEqual([]);
+  });
+
+  it("emits an accepted link with endpoints resolved via the node ref->id map", () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-joao", "person", "João"),
+          affected("n-unifique", "organization", "Rede Unifique"),
+        ],
+      },
+      report: [
+        nodeReport("joao", "n-joao", "accepted"),
+        nodeReport("unifique", "n-unifique", "consolidated"),
+        linkReport("joao", "reports_to", "unifique", "l-1", "accepted"),
+      ],
+    };
+
+    const delta = normalizeIngestDirected(result, catalog);
+
+    expect(delta?.links).toHaveLength(1);
+    expect(delta?.links[0]).toEqual({
+      id: "l-1",
+      source_node_id: "n-joao",
+      target_node_id: "n-unifique",
+      link_type: "reports_to",
+      link_type_label: "reports to",
+      is_temporal: true,
+      // NOTE: is_in_effect, status, flags are DELIBERATELY absent (BR-41 v2.11
+      // omission list on the directed path).
+    });
+  });
+
+  it("OMITS is_in_effect, status (assertion_status), and flags on the directed path", () => {
+    // Locks the BR-41 v2.11 omission contract: view-derived fields are NOT
+    // present on the freshly persisted link. A follow-up `traverse` surfaces
+    // them if needed. Regressing this would leak stale/undefined fields to
+    // the SPA.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: { affected_nodes: [affected("n-a", "person", "A"), affected("n-b", "organization", "B")] },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        linkReport("a", "reports_to", "b", "l-1", "accepted"),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    const link = delta?.links[0];
+    expect(link).toBeDefined();
+    expect(link && "is_in_effect" in link).toBe(false);
+    expect(link && "status" in link).toBe(false);
+    expect(link && "flags" in link).toBe(false);
+  });
+
+  it("keeps every accepted-family status: accepted, consolidated, superseded_previous, needs_review, uncertain, disputed", () => {
+    const catalog = buildTestCatalog();
+    const acceptedStatuses = [
+      "accepted",
+      "consolidated",
+      "superseded_previous",
+      "needs_review",
+      "uncertain",
+      "disputed",
+    ];
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        ...acceptedStatuses.map((s, i) =>
+          linkReport("a", "part_of", "b", `l-${i}`, s)
+        ),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links.map((l) => l.id)).toEqual(
+      acceptedStatuses.map((_, i) => `l-${i}`)
+    );
+  });
+
+  it("DROPS rejected / error / dependency_failed link entries", () => {
+    // Intent: the graph shows ONLY what was persisted. Dropped families
+    // surface to the Owner via the text channel (report[i].status), never
+    // in the graph delta. Regressing this would leak non-persistent links.
+    const catalog = buildTestCatalog();
+    const droppedStatuses = ["rejected", "error", "dependency_failed"];
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        // 1 accepted (kept), then 3 dropped.
+        linkReport("a", "reports_to", "b", "l-ok", "accepted"),
+        ...droppedStatuses.map((s, i) =>
+          linkReport("a", "reports_to", "b", `l-drop-${i}`, s)
+        ),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links.map((l) => l.id)).toEqual(["l-ok"]);
+  });
+
+  it("DROPS node entries with non-accepted status from the ref->id map (so their links unresolve)", () => {
+    // Intent: a link whose source_ref points to a REJECTED node entry must
+    // NOT resolve via the map — otherwise we'd emit an edge to a node the
+    // graph does not carry. Regressing this could dangle links.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: { affected_nodes: [affected("n-b", "organization", "B")] },
+      report: [
+        // "a" was rejected — must NOT enter the map.
+        nodeReport("a", "n-a-would-be", "rejected"),
+        nodeReport("b", "n-b", "accepted"),
+        // Link references "a" as source — source unresolved -> drop.
+        linkReport("a", "reports_to", "b", "l-orphan", "accepted"),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links).toEqual([]);
+    // The node projection still surfaces "b" from affected_nodes.
+    expect(delta?.nodes.map((n) => n.id)).toEqual(["n-b"]);
+  });
+
+  it("SILENTLY drops links whose source_ref or target_ref is absent from the node map (WARN-and-skip, no throw)", () => {
+    // Constraint 6 of the TC. Regression would either (a) crash the SSE
+    // stream via a thrown error, or (b) emit a dangling edge — both bad.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: { affected_nodes: [affected("n-a", "person", "A")] },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        // target_ref "b" was NEVER an accepted node in the run.
+        linkReport("a", "reports_to", "b", "l-orphan", "accepted"),
+      ],
+    };
+    // Must not throw:
+    expect(() => normalizeIngestDirected(result, catalog)).not.toThrow();
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links).toEqual([]);
+    expect(delta?.nodes.map((n) => n.id)).toEqual(["n-a"]);
+  });
+
+  it("parses the compound ref via FIRST '->' and LAST '->' (survives link_type slugs that contain '->')", () => {
+    // Defensive: if a future link_type slug ever contained "->", a naive
+    // split(/->/) would produce the wrong triple. FIRST/LAST parsing keeps
+    // source_ref and target_ref stable no matter how many '->' the link_type
+    // itself carries. Regression-guard for a future data quirk.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        // Simulate a pathological link_type that itself contains '->'.
+        {
+          ref: "a->weird->slug->b",
+          kind: "link",
+          status: "accepted",
+          link_id: "l-weird",
+        },
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links).toHaveLength(1);
+    expect(delta?.links[0]).toMatchObject({
+      id: "l-weird",
+      source_node_id: "n-a",
+      target_node_id: "n-b",
+      link_type: "weird->slug",
+      // Not in the catalog snapshot -> is_temporal fallback + no label.
+      is_temporal: false,
+    });
+    expect(delta?.links[0] && "link_type_label" in delta.links[0]).toBe(false);
+  });
+
+  it("falls back to is_temporal=false and OMITS link_type_label when the slug is missing from the catalog", () => {
+    // Same fallback contract as the `traverse` arm (pickLinkWire) — locked so
+    // an open-ontology link_type never crashes or fabricates a label.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        linkReport("a", "totally_unknown_slug", "b", "l-1", "accepted"),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    const link = delta?.links[0];
+    expect(link?.is_temporal).toBe(false);
+    expect(link && "link_type_label" in link).toBe(false);
+  });
+
+  it("projects link_type_label from the catalog when the slug is known (parity with traverse arm)", () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        linkReport("a", "reports_to", "b", "l-1", "accepted"),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links[0]?.link_type_label).toBe("reports to");
+  });
+
+  it("AC-4: empty envelope (no affected_nodes, no accepted link entries) still emits a NON-null empty delta", () => {
+    // BR-41 v2.11 — an empty `{nodes:[], links:[]}` delta is contractual; the
+    // route MUST emit the frame so the SPA can distinguish "empty result" from
+    // "no data emitted". `null` would suppress the frame — reserved for
+    // malformed envelopes (see next test).
+    const catalog = buildTestCatalog();
+    const delta = normalizeIngestDirected(
+      { outcome: "ingested", run: {}, report: [] },
+      catalog
+    );
+    expect(delta).toEqual({
+      source_tool: "ingest_directed",
+      nodes: [],
+      links: [],
+    });
+  });
+
+  it("returns null when the envelope is not a well-formed object (BR-41 v2.11 shape-mismatch guard)", () => {
+    // Distinct from the empty-delta case: a shape mismatch means "no graph
+    // data at all" — the route MUST NOT emit any frame. The other arms
+    // return an empty delta on this branch, but BR-41 v2.11 specifies null
+    // for ingest_directed. Regression would surface junk empty frames on
+    // envelopes we do not understand.
+    const catalog = buildTestCatalog();
+    expect(normalizeIngestDirected(null, catalog)).toBeNull();
+    expect(normalizeIngestDirected(undefined, catalog)).toBeNull();
+    expect(normalizeIngestDirected("nope", catalog)).toBeNull();
+    expect(normalizeIngestDirected(42, catalog)).toBeNull();
+    expect(normalizeIngestDirected([], catalog)).toBeNull();
+  });
+
+  it("silently drops malformed report entries (missing link_id, missing ref, mistyped fields)", () => {
+    // Defensive parity with the other arms: bad rows do not crash the stream.
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-a", "person", "A"),
+          affected("n-b", "organization", "B"),
+        ],
+      },
+      report: [
+        nodeReport("a", "n-a", "accepted"),
+        nodeReport("b", "n-b", "accepted"),
+        // Missing link_id — dropped.
+        { ref: "a->reports_to->b", kind: "link", status: "accepted" },
+        // Non-string ref — dropped.
+        { ref: 123, kind: "link", status: "accepted", link_id: "l-x" },
+        // Malformed compound (single '->' in the middle only) — dropped.
+        { ref: "a->b", kind: "link", status: "accepted", link_id: "l-y" },
+        // Empty source_ref segment — dropped.
+        { ref: "->reports_to->b", kind: "link", status: "accepted", link_id: "l-z" },
+        // Well-formed — kept.
+        linkReport("a", "reports_to", "b", "l-good", "accepted"),
+      ],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.links.map((l) => l.id)).toEqual(["l-good"]);
+  });
+
+  it("silently drops malformed affected_nodes entries (mistyped fields)", () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          affected("n-1", "person", "OK"),
+          { id: 42, canonical_name: "Bad", node_type: "person" }, // mistyped id
+          { id: "n-2", canonical_name: "Bad2", node_type: 99 }, // mistyped type
+          affected("n-3", "person", "Also OK"),
+        ],
+      },
+      report: [],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.nodes.map((n) => n.id)).toEqual(["n-1", "n-3"]);
+  });
+
+  it("treats affected_nodes absent as [] and still emits the frame", () => {
+    // Contract: absence is not an error, just an empty node list.
+    const catalog = buildTestCatalog();
+    const result = {
+      // No `run.affected_nodes` field — projection still runs.
+      run: {},
+      report: [],
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta).toEqual({
+      source_tool: "ingest_directed",
+      nodes: [],
+      links: [],
+    });
+  });
+
+  it("treats missing `run` field as an absent affected_nodes list (defensive)", () => {
+    const catalog = buildTestCatalog();
+    const result = { report: [] };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta).toEqual({
+      source_tool: "ingest_directed",
+      nodes: [],
+      links: [],
+    });
+  });
+
+  it("treats missing `report` field as an empty report list (defensive)", () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      run: { affected_nodes: [affected("n-1", "person", "A")] },
+    };
+    const delta = normalizeIngestDirected(result, catalog);
+    expect(delta?.nodes.map((n) => n.id)).toEqual(["n-1"]);
+    expect(delta?.links).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // normalizeToolResult (dispatcher) — AC-B.4 + routing
 // ---------------------------------------------------------------------------
 
@@ -649,5 +1087,67 @@ describe("normalizeToolResult (dispatcher)", () => {
     await expect(
       normalizeToolResult("search", { items: [] }, catalog)
     ).rejects.toThrow(/search requires a PoolClient/);
+  });
+
+  // BR-41 v2.11 — TC-03 validation criterion #3: the dispatcher returns a
+  // non-null delta when called with ('ingest_directed', <valid envelope>,
+  // catalog). No client needed — the arm is pure.
+  it("BR-41 v2.11: routes `ingest_directed` to normalizeIngestDirected (no client needed)", async () => {
+    const catalog = buildTestCatalog();
+    const result = {
+      run: {
+        affected_nodes: [
+          { id: "n-1", canonical_name: "João", node_type: "person" },
+          { id: "n-2", canonical_name: "Rede Unifique", node_type: "organization" },
+        ],
+      },
+      report: [
+        { ref: "joao", kind: "node", status: "accepted", node_id: "n-1" },
+        { ref: "unifique", kind: "node", status: "consolidated", node_id: "n-2" },
+        {
+          ref: "joao->reports_to->unifique",
+          kind: "link",
+          status: "accepted",
+          link_id: "l-1",
+        },
+      ],
+    };
+    const out = (await normalizeToolResult(
+      "ingest_directed",
+      result,
+      catalog
+    )) as GraphDeltaWire;
+    expect(out).not.toBeNull();
+    expect(out.source_tool).toBe("ingest_directed");
+    expect(out.nodes).toHaveLength(2);
+    expect(out.links).toHaveLength(1);
+    expect(out.links[0]?.source_node_id).toBe("n-1");
+    expect(out.links[0]?.target_node_id).toBe("n-2");
+  });
+
+  // TC-03 validation criterion #4: an empty envelope (no affected_nodes, no
+  // accepted link entries) is a NON-null empty delta — the frame still emits.
+  // Only a malformed shape produces null (regression test on the same
+  // dispatcher for the BR-41 v2.11 null vs empty-delta distinction).
+  it("BR-41 v2.11: routes `ingest_directed` — empty envelope produces a non-null empty delta", async () => {
+    const catalog = buildTestCatalog();
+    const out = await normalizeToolResult(
+      "ingest_directed",
+      { outcome: "ingested", run: {}, report: [] },
+      catalog
+    );
+    expect(out).toEqual({
+      source_tool: "ingest_directed",
+      nodes: [],
+      links: [],
+    });
+  });
+
+  it("BR-41 v2.11: routes `ingest_directed` — malformed envelope returns null (frame suppressed)", async () => {
+    const catalog = buildTestCatalog();
+    expect(await normalizeToolResult("ingest_directed", null, catalog)).toBeNull();
+    expect(
+      await normalizeToolResult("ingest_directed", "not-an-object", catalog)
+    ).toBeNull();
   });
 });
