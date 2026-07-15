@@ -105,6 +105,30 @@ const GRAPH_TOOL_NAMES = new Set<string>([
   "get_node",
   "list_nodes",
   "search",
+  // v2.11 (BR-41): `ingest_directed` becomes a fifth graph-producing tool.
+  // Its envelope carries `run.affected_nodes` + `report[]` — everything the
+  // projector needs to render the freshly persisted subgraph without a
+  // follow-up read. See `normalizeIngestDirected` below for the projection
+  // contract.
+  "ingest_directed",
+]);
+
+/**
+ * Status values from `DirectedItemReport.status` that count as "persisted
+ * to the graph" for projection purposes (BR-41 v2.11).
+ *
+ * The three dropped families (`rejected`, `error`, `dependency_failed`) never
+ * appear in the frame — the graph only shows what was actually persisted.
+ * Those items still surface to the Owner in the text channel via
+ * `report[i].status`, just not in the graph delta.
+ */
+const ACCEPTED_DIRECTED_STATUSES = new Set<string>([
+  "accepted",
+  "consolidated",
+  "superseded_previous",
+  "needs_review",
+  "uncertain",
+  "disputed",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -359,6 +383,174 @@ export async function normalizeSearch(
   return { source_tool: "search", nodes, links: [] };
 }
 
+/**
+ * Normalise an `ingest_directed` result -> `GraphDeltaWire`.
+ *
+ * BR-41 v2.11 — projection contract for the fifth graph-producing tool.
+ *
+ * Input shape (`DirectedIngestionResult` — `ingestion.back.md` BR-34 step 6):
+ *   {
+ *     outcome, raw_information_id, llm_run_id, chunk_count,
+ *     run: { …, affected_nodes: [{id, canonical_name, node_type}, …] },
+ *     report: [
+ *       { ref, kind: "node"|"attribute"|"link", status, node_id?, attribute_id?, link_id?, … },
+ *       …
+ *     ],
+ *     summary
+ *   }
+ *
+ * Projection.
+ *
+ *   1. **Nodes** — every entry of `run.affected_nodes` becomes a
+ *      `GraphNodeWire` with `status: "active"` forced. Directed items are
+ *      stated-by-construction (BR-43 v2.8: server forces `confidence = 1.0`
+ *      and `valid_from_basis: "stated"`), so on creation they cannot land
+ *      in `needs_review` / `merged` / `deleted` — those statuses arise from
+ *      resolution paths or compliance actions the directed path does not
+ *      trigger. If `run.affected_nodes` is absent, `nodes = []` and the
+ *      frame still emits (an empty `{nodes:[], links:[]}` delta is
+ *      contractual — BR-41 v2.11).
+ *
+ *   2. **Links** — a link is emitted for every `report[]` entry with
+ *      `kind === "link"` AND `ACCEPTED_DIRECTED_STATUSES.has(status)` AND
+ *      `link_id` present. The `ref` field of a link entry is the compound
+ *      string `<source_ref>-><link_type>-><target_ref>` (produced by
+ *      `refForLink()` in `directed-ingestion.service.ts:932`); we parse it
+ *      with `indexOf('->')` and `lastIndexOf('->')` — the FIRST arrow ends
+ *      the source_ref, the LAST arrow starts the target_ref, and the middle
+ *      segment is the link_type slug. Endpoints (`source_node_id`,
+ *      `target_node_id`) are resolved by looking `source_ref` and
+ *      `target_ref` up in a `node_ref -> node_id` map built inline from the
+ *      accepted `kind === "node"` entries of the same `report[]`. If either
+ *      endpoint is missing from the map the link is dropped SILENTLY —
+ *      constraint 6 asks for a WARN log but no logger is threaded through
+ *      the normalizer signature (`(result, catalog)`), so we match the
+ *      file's convention of silent defensive drops. The dispatcher-level
+ *      `projectGraphDelta` try/catch in `conversations.routes.ts` still
+ *      logs actual exceptions.
+ *
+ *   3. **Catalog fields** — `is_temporal` and optional `link_type_label`
+ *      are resolved via the SAME `CatalogSnapshot.linkTypeByName` lookup
+ *      used by `pickLinkWire` (traverse arm). Miss -> `is_temporal: false`,
+ *      `link_type_label` OMITTED — same fallback contract as `traverse`.
+ *
+ *   4. **Omitted fields** — `is_in_effect`, `status` (assertion_status),
+ *      and `flags` are OMITTED from every link on the directed path. These
+ *      are view-derived (`knowledge_link_resolved`) and the freshly
+ *      persisted link does not yet carry them here; a follow-up `traverse`
+ *      surfaces them if the Owner asks for them on a later turn (BR-41
+ *      v2.11).
+ *
+ *   5. **Envelope guard** — if `result` is not a well-formed object return
+ *      `null` (the other arms return an empty delta on this branch, but
+ *      BR-41 v2.11 says return `null` for the ingest_directed path — the
+ *      malformed envelope means "no graph data", not "empty graph data",
+ *      so the route MUST NOT emit a frame at all).
+ *
+ * Purity. Pure, synchronous — no PoolClient parameter (unlike `search`).
+ * The directed envelope already carries `canonical_name` / `node_type` on
+ * `run.affected_nodes` and `link_id` on `report[]`, so no hydration is
+ * needed. `result` is validated as `unknown` field-by-field via the
+ * existing `isRecord` guards — no runtime import from `ingestion`.
+ */
+export function normalizeIngestDirected(
+  result: unknown,
+  catalog: CatalogSnapshot
+): GraphDeltaWire | null {
+  if (!isRecord(result)) return null;
+
+  // ---- Nodes -------------------------------------------------------------
+  const nodes: GraphNodeWire[] = [];
+  const run = isRecord(result.run) ? result.run : undefined;
+  const rawAffected =
+    run !== undefined && Array.isArray(run.affected_nodes)
+      ? run.affected_nodes
+      : [];
+  for (const entry of rawAffected) {
+    if (!isRecord(entry)) continue;
+    const { id, canonical_name, node_type } = entry;
+    if (typeof id !== "string") continue;
+    if (typeof canonical_name !== "string") continue;
+    if (typeof node_type !== "string") continue;
+    nodes.push({
+      id,
+      node_type,
+      canonical_name,
+      // Forced: directed items are stated-by-construction (BR-43 v2.8).
+      status: "active",
+    });
+  }
+
+  // ---- Node ref -> id map (from accepted kind="node" entries) -----------
+  const rawReport = Array.isArray(result.report) ? result.report : [];
+  const nodeIdByRef = new Map<string, string>();
+  for (const entry of rawReport) {
+    if (!isRecord(entry)) continue;
+    if (entry.kind !== "node") continue;
+    if (typeof entry.status !== "string") continue;
+    if (!ACCEPTED_DIRECTED_STATUSES.has(entry.status)) continue;
+    if (typeof entry.ref !== "string") continue;
+    if (typeof entry.node_id !== "string") continue;
+    nodeIdByRef.set(entry.ref, entry.node_id);
+  }
+
+  // ---- Links -------------------------------------------------------------
+  const links: GraphLinkWire[] = [];
+  for (const entry of rawReport) {
+    if (!isRecord(entry)) continue;
+    if (entry.kind !== "link") continue;
+    if (typeof entry.status !== "string") continue;
+    if (!ACCEPTED_DIRECTED_STATUSES.has(entry.status)) continue;
+    if (typeof entry.link_id !== "string") continue;
+    if (typeof entry.ref !== "string") continue;
+
+    // Compound ref: "<source_ref>-><link_type>-><target_ref>". Parse via
+    // FIRST/LAST '->' to survive link_type slugs that themselves contain
+    // '->' segments (defensive — not expected today, but the parser must
+    // not fabricate a wrong split if a future link_type introduces one).
+    const first = entry.ref.indexOf("->");
+    const last = entry.ref.lastIndexOf("->");
+    if (first === -1 || last === -1 || first === last) continue;
+    const source_ref = entry.ref.slice(0, first);
+    const link_type = entry.ref.slice(first + 2, last);
+    const target_ref = entry.ref.slice(last + 2);
+    if (source_ref === "" || link_type === "" || target_ref === "") continue;
+
+    const source_node_id = nodeIdByRef.get(source_ref);
+    const target_node_id = nodeIdByRef.get(target_ref);
+    if (source_node_id === undefined || target_node_id === undefined) {
+      // Silent defensive drop (unresolved-endpoint edge case, BR-41 v2.11).
+      // Constraint 6 of the TC asks for a WARN log; the normalizer signature
+      // is fixed to `(result, catalog)` and this file has no logger seam by
+      // convention (all other arms silently drop malformed entries — see the
+      // file header). The route-level `projectGraphDelta` try/catch handles
+      // real exceptions; unresolved endpoints are a data-shape issue, not an
+      // exception. Follow-up WARN wiring tracked in tech_debt.
+      continue;
+    }
+
+    const linkTypeRow = catalog.linkTypeByName.get(link_type);
+    // Same fallback as `pickLinkWire`: miss -> `is_temporal: false`, label
+    // OMITTED. SPA humanizes the slug client-side when the label is absent.
+    const is_temporal = linkTypeRow?.is_temporal ?? false;
+
+    const out: GraphLinkWire = {
+      id: entry.link_id,
+      source_node_id,
+      target_node_id,
+      link_type,
+      ...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {}),
+      is_temporal,
+      // OMITTED on the directed path (BR-41 v2.11): is_in_effect, status,
+      // flags — view-derived and not yet materialised on the freshly
+      // persisted link.
+    };
+    links.push(out);
+  }
+
+  return { source_tool: "ingest_directed", nodes, links };
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher — the single entry point the route handler uses.
 // ---------------------------------------------------------------------------
@@ -401,6 +593,11 @@ export function normalizeToolResult(
   }
   if (toolName === "list_nodes") {
     return Promise.resolve(normalizeListNodes(result));
+  }
+  if (toolName === "ingest_directed") {
+    // v2.11 (BR-41): fifth arm — pure, no client required. Envelope carries
+    // `run.affected_nodes` + `report[]` — no hydration needed.
+    return Promise.resolve(normalizeIngestDirected(result, catalog));
   }
   // toolName === "search" — requires the read-only client.
   if (client === undefined) {
