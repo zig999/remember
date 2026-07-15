@@ -317,11 +317,16 @@ export function useSendMessage(): UseMutationResult<
 /* ---------- internal: graph-tool catalog ---------- */
 
 /**
- * The closed set of READ-ONLY graph-producing query tools (chat tool catalog,
- * plan §3.3 / `tool-catalog.ts`).
+ * The closed set of graph-producing chat tools (chat tool catalog, plan §3.3 /
+ * `tool-catalog.ts`).
  *
  * Match must be exact (no prefix/substring) — the backend forwards the
  * registered tool slug verbatim on `tool_start.tool` and `graph_delta.sourceTool`.
+ *
+ * Both READ tools (`traverse`, `get_node`, `list_nodes`, `search`) and the
+ * write-bearing `ingest_directed` produce `graph_delta` frames; both must flip
+ * the right-pane status to `loading` on `tool_start`. See
+ * `chat.feature.spec.md` v1.5.0 §2 UI-12 / §9 Scenario 6 / §11 UC-CG-14.
  *
  * Why this lives here and not in `features/graph/lib/map.ts`:
  *   The graph feature must remain UNAWARE of the chat dispatcher (REQ-6
@@ -334,6 +339,7 @@ const GRAPH_TOOLS: ReadonlySet<string> = new Set<string>([
   "get_node",
   "list_nodes",
   "search",
+  "ingest_directed",
 ]);
 
 function isGraphTool(toolName: string): boolean {
