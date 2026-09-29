@@ -1,0 +1,165 @@
+classDiagram
+    namespace ComplianceDeletionAggregate {
+        class ComplianceDeletion {
+            <<AggregateRoot>>
+            +datetime executedAt
+        }
+    }
+    namespace InformationFragmentAggregate {
+        class InformationFragment {
+            <<AggregateRoot>>
+            +string text
+            +decimal confidence
+            +FragmentStatus status
+            +datetime createdAt
+            +string llmRun
+        }
+    }
+    namespace KnowledgeLinkAggregate {
+        class KnowledgeLink {
+            <<AggregateRoot>>
+            +AssertionStatus status
+            +datetime recordedAt
+            +Provenance[] provenance
+        }
+    }
+    namespace KnowledgeNodeAggregate {
+        class KnowledgeNode {
+            <<AggregateRoot>>
+            +string canonicalName
+            +NodeStatus status
+        }
+        class NodeAlias {
+            <<Entity>>
+            +string alias
+        }
+    }
+    namespace LinkTypeAggregate {
+        class LinkType {
+            <<AggregateRoot>>
+            +string name
+        }
+    }
+    namespace NodeAttributeAggregate {
+        class NodeAttribute {
+            <<AggregateRoot>>
+            +AssertionStatus status
+            +Provenance[] provenance
+        }
+    }
+    namespace RawInformationAggregate {
+        class RawChunk {
+            <<Entity>>
+            +integer chunkIndex
+            +integer startOffset
+            +integer endOffset
+            +string excerpt
+            +string locator
+            +datetime supersededAt
+        }
+        class RawInformation {
+            <<AggregateRoot>>
+            +SourceType sourceType
+            +datetime receivedAt
+            +string title
+            +string metadata
+            +string originalInput
+        }
+    }
+    class AcceptedFragmentFilter {
+        <<ValueObject>>
+        +string llmRun
+        +Page page
+    }
+    class AssertionFlag {
+        <<Enumeration>>
+        UNCERTAIN
+        DISPUTED
+        LOW_CONFIDENCE
+    }
+    class AssertionStatus {
+        <<Enumeration>>
+        ACTIVE
+        UNCERTAIN
+        DISPUTED
+        SUPERSEDED
+        DELETED
+    }
+    class FragmentStatus {
+        <<Enumeration>>
+        PROPOSED
+        ACCEPTED
+        REJECTED
+        SUPERSEDED
+        DELETED
+    }
+    class ItemKind {
+        <<Enumeration>>
+        NODE
+        LINK
+        FRAGMENT
+    }
+    class NodeStatus {
+        <<Enumeration>>
+        ACTIVE
+        NEEDS_REVIEW
+        MERGED
+        DELETED
+    }
+    class Page {
+        <<ValueObject>>
+        +integer limit
+        +integer offset
+    }
+    class Provenance {
+        <<ValueObject>>
+        +datetime recordedAt
+    }
+    class SearchItem {
+        <<ValueObject>>
+        +ItemKind kind
+        +SearchLayer layer
+        +decimal score
+        +integer hop
+        +string summary
+        +AssertionFlag[] flags
+    }
+    class SearchLayer {
+        <<Enumeration>>
+        FRAGMENT
+        NODE
+        CHUNK
+    }
+    class SearchQuery {
+        <<ValueObject>>
+        +string text
+        +SearchLayer[] layers
+        +boolean expand
+        +integer expandDepth
+        +string[] linkTypes
+        +date asOf
+        +boolean inEffectOnly
+        +boolean includeUncertain
+        +Page page
+    }
+    class SourceType {
+        <<Enumeration>>
+        PDF
+        EMAIL
+        MEETING_MINUTES
+        CHAT
+        ARTICLE
+        TRANSCRIPT
+        OTHER
+    }
+    AcceptedFragmentFilter "0..*" --> "0..1" RawInformation
+    ComplianceDeletion "0..*" --> "1" RawInformation
+    InformationFragment "0..*" -- "1..*" RawChunk : source
+    KnowledgeLink "0..*" --> "1" KnowledgeNode : source
+    KnowledgeLink "0..*" --> "1" KnowledgeNode : target
+    KnowledgeLink "0..*" --> "1" LinkType
+    KnowledgeNode "1" *-- "1..*" NodeAlias
+    NodeAttribute "0..*" --> "1" KnowledgeNode
+    Provenance "0..*" --> "1" InformationFragment
+    RawInformation "1" *-- "1..*" RawChunk
+    SearchItem "0..*" -- "0..*" InformationFragment : provenance
