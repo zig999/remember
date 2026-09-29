@@ -1,16 +1,5 @@
 # CLAUDE.md — Remember
 
- # Siegard SDD Framework
-
-  This project uses the Siegard agent framework (version: see `.claude/siegard-manifest.json`).
-
-  - Framework-owned namespaces: `agents/**`, `skills/{u-*,orch-*,phase-*}`, `commands/u-*`,
-    `hooks/`, `lib/`, `scripts/` — full inventory in `siegard-manifest.json`
-  - These files are MANAGED: do not edit in place — edits are lost on the next update (re-copy).
-    Change requests belong in the siegard-code repository.
-  - Entry points: /u-spec, /u-dev, /u-improve, /u-reverse-spec
-  - Integrity check: `python3 .claude/scripts/verify_install.py`
-
 ## Project
 
 ### Description
@@ -53,8 +42,7 @@ rastreável e permite consultá-lo por busca textual (full-text) + travessia de 
 >    `${NEON_AUTH_URL}/.well-known/jwks.json`, EdDSA por padrão). Sem service key; modelo
 >    single-owner mantido, sem entidade `User`.
 > O **v7 (§2.2/§2.5) ainda registra Supabase** — este CLAUDE.md reflete o estado atual. As specs em
-> `docs/specs/` também ainda citam Supabase; reconciliar v7 + specs numa revisão futura (ex.: via
-> `/u-improve`).
+> `docs/specs/` também ainda citam Supabase; reconciliar v7 + specs numa revisão futura.
 
 > **Migração MCP→SDK (2026-06-15) — transportes.** Os três transportes MCP foram migrados para o
 > SDK oficial **`@modelcontextprotocol/sdk`**, sobre um kernel único
@@ -190,13 +178,6 @@ Default to surfacing uncertainty, not hiding it.
 
 ## Configuration
 
-<!-- MACHINE-PARSED — read via regex by orchestrator-dev and u-spec/u-dev. -->
-domain: fullstack
-specs_dir: docs/specs
-
-<!-- CONTEXT — read as LLM context by workers. Not parsed mechanically. -->
-
-# --- Infrastructure ---
 stack:
   frontend: React 19, TypeScript (strict), Vite 6, Tailwind CSS v4 (CSS-first via @theme),
     shadcn/ui (Radix UI), TanStack Router / Query v5 / Table, Zustand v5,
@@ -216,23 +197,12 @@ apps:
     dev: npm run dev        # rodar dentro de backend/ (tsx watch)
     build: npm run build
 
-# --- Backend config (u-be-developer, u-be-qa-docs, u-be-standards) ---
 validation_library: zod
 folder_structure: modules        # monólito modular em backend/src/modules/
-
-# --- Frontend config (u-fe-developer, u-fe-qa-docs) ---
 i18n: false                      # app single-owner, somente pt-BR — strings diretas no código
-accessibility: wcag-2.2-aa       # QA verifica conformidade WCAG 2.2 AA (labels, aria, contraste, foco)
-
-# --- QA feature flags ---
-observability_required: true   # §16 — logs estruturados (JSON) + métricas por run são requisito da spec
-
-# --- Compliance (u-spec-compliance) ---
-compliance: [lgpd]   # §11 — Imutabilidade vs. LGPD: apagamento controlado e auditado
-
-# --- Design system (u-ui-design) ---
-design_system:
-  tailwind_integration: theme   # CSS-first config via @theme em theme.css
+accessibility: wcag-2.2-aa       # labels, aria, contraste, foco
+observability_required: true     # §16 — logs estruturados (JSON) + métricas por run são requisito da spec
+compliance: [lgpd]               # §11 — Imutabilidade vs. LGPD: apagamento controlado e auditado
 
 ---
 
@@ -277,92 +247,10 @@ migrations/                       # ESTRUTURA (DDL) na raiz; SEEDS (dados/catál
     0003_event_type_taxonomy.sql  #   Extensão ADITIVA: +5 valid_values em Event.event_type
   ops/                            # Scripts DESTRUTIVOS de manutenção (truncate) — fora da sequência, on-demand + aprovação
 temp/oldspec/                     # Versões anteriores da modelagem (v1–v5) — superadas pela v6
-docs/specs/                       # Specs SDD (specs_dir)
+docs/specs/                       # Specs
   front/                          #   front.md (global), features/*.feature.spec.md,
                                   #   components/*.component.spec.md, _flows/*.flow.md, design-system/
-.claude/                          # Motor de orquestração (skills, hooks, scripts, agents, lib)
-
-.orch/                    # Orchestration engine state — NOT committed (add to .gitignore)
-  log.jsonl               #   Append-only event log — source of truth for all phase state
-  config.json             #   Optional: retry policy and circuit breaker overrides (see Orchestration Engine)
-  workflow.json           #   Optional: override default phase sequence
-  workers/{id}.json       #   Worker registry entries (written by hooks, consumed by on_subagent_stop)
-  metrics/current.json    #   Written by on_stop hook — diagnosis of last session
 ```
-
-**.gitignore rules (add to project root):**
-```
-# Orchestration engine runtime state — never commit
-.orch/
-```
-
----
-
-## Orchestration Engine
-
-<!-- This section documents how the siegard orchestration engine behaves in this project.
-     Modify .orch/config.json and .orch/workflow.json to tune behavior without touching CLAUDE.md. -->
-
-### Entry points
-
-| Command      | When to use                                              |
-|--------------|----------------------------------------------------------|
-| `/u-spec`    | New feature or domain — runs full SDD → Dev → Review     |
-| `/u-dev`     | Skip spec phase — goes directly to Dev → Review          |
-| `/u-improve` | Incremental change to an existing spec or behavior       |
-
-### Retry policy (`.orch/config.json`)
-
-The engine uses exponential backoff with per-tier defaults. Override when project needs differ:
-
-```json
-{
-  "retry_policy": {
-    "defaults_by_tier": {
-      "critical": { "max_attempts": 5, "base_delay_s": 15, "cap_s": 600 },
-      "standard": { "max_attempts": 3, "base_delay_s": 30, "cap_s": 600 },
-      "bulk":     { "max_attempts": 1, "base_delay_s": 0,  "cap_s": 0   }
-    }
-  }
-}
-```
-
-### Circuit breaker (`.orch/config.json`)
-
-Trips when failure rate exceeds threshold within the rolling window. Defaults:
-
-```json
-{
-  "circuit_breaker": {
-    "enabled": true,
-    "window_minutes": 10,
-    "failure_threshold": 50,
-    "scope": "workflow",
-    "cooldown_minutes": 30,
-    "reset_on_success_count": 5
-  }
-}
-```
-
-### Phase override (`.orch/workflow.json`)
-
-Override the default phase sequence before first `/u-spec` invocation. Once the log exists, phase sequence is derived from events — `workflow.json` is ignored.
-
-```json
-{
-  "phases": ["sdd", "dev", "review"]
-}
-```
-
-### Worker recursion limit
-
-Orchestrators refuse to spawn if `nesting_depth >= 3`. If this error appears, the call chain has a cycle — investigate the orchestrator that is re-spawning itself.
-
-### Diagnosing a stuck session
-
-1. Read `.orch/metrics/current.json` — written by `on_stop` hook after each session.
-2. Check `.orch/last_error.json` — written when an orphaned phase or stuck improve workflow is detected.
-3. Run `/orch-state` to derive the current phase and pending task list from the log.
 
 ---
 
@@ -487,7 +375,7 @@ Required protocol:
 ### Fixed stack contract
 
 - Stack: **Vite + React 19 + TypeScript (strict) + Tailwind v4 + shadcn/ui + TanStack Query/Router/Table + React Hook Form + Zod**.
-- Do not swap any item without explicit instruction. These rules are imperative defaults; "on demand" means only when the Task Contract asks for it.
+- Do not swap any item without explicit instruction. These rules are imperative defaults; "on demand" means only when explicitly requested.
 
 ### Styling — Tailwind v4
 
@@ -536,7 +424,7 @@ Every component exported from the shared UI layer:
 - Validate client-side (Zod) **and** assume server-side validation — never trust the client alone.
 - Visible loading and error states; friendly messages.
 - Accessibility: **WCAG 2.2 AA** — associated `label`; `aria-invalid` on invalid fields; error linked
-  via `aria-describedby` (see `u-fe-standards §4`).
+  via `aria-describedby`.
 
 ### Tables — TanStack Table
 
