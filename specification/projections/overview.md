@@ -7,7 +7,7 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 5 | 2 | 0 | 0 |
-| knowledge-base | core | 56 | 293 | 3 | 8 |
+| knowledge-base | core | 72 | 355 | 4 | 9 |
 
 ## Aggregates
 
@@ -32,10 +32,14 @@ None.
 ## Constraints
 
 - compliance-deletion-is-atomic (knowledge-base)
+- curation-is-atomic (knowledge-base)
+- curation-reads-are-consistent (knowledge-base)
+- curation-transports-answer-alike (knowledge-base)
 - document-content-is-data (knowledge-base)
 - extraction-acts-only-through-proposals (knowledge-base)
 - ingestion-transports-answer-alike (knowledge-base)
 - llm-toolset-omits-audit-reads (knowledge-base)
+- llm-toolset-omits-curation-metrics (knowledge-base)
 - llm-toolset-omits-fragment-listing (knowledge-base)
 - llm-toolset-omits-graph-point-reads (knowledge-base)
 - retrieval-is-lexical-only (knowledge-base)
@@ -43,4 +47,4 @@ None.
 - retrieval-requires-owner-authentication (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
 
-97 decision(s) disclosed, 2 location(s) retired in the decision log.
+107 decision(s) disclosed, 2 location(s) retired in the decision log.

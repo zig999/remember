@@ -14,6 +14,38 @@ fitness: each compliance deletion, over either transport, runs inside one databa
 
 None.
 
+=== constraints/curation-is-atomic
+---
+statement: Each curation operation's changes to knowledge nodes, aliases, entity match reviews, knowledge links, node attributes, provenance and its curation action take effect together or not at all.
+scope: knowledge-base
+fitness: each curation write operation, over either transport, runs inside one database transaction
+---
+
+## Description
+
+None.
+
+=== constraints/curation-reads-are-consistent
+---
+statement: Each review queue listing and each curation metrics read sees one consistent state of the knowledge base.
+scope: knowledge-base
+fitness: each review queue listing and each curation metrics read runs inside one read-only database transaction
+---
+
+## Description
+
+None.
+
+=== constraints/curation-transports-answer-alike
+---
+statement: The REST and MCP transports answer every curation operation they both expose with the same result on success and the same error code on refusal.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
 === constraints/document-content-is-data
 ---
 statement: An extraction presents a document's content to the language model marked apart from its instructions as data, never as instruction.
@@ -47,6 +79,16 @@ None.
 === constraints/llm-toolset-omits-audit-reads
 ---
 statement: The language model's curation tool surface exposes compliance deletion and none of the compliance-deletion or curation-action reads.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/llm-toolset-omits-curation-metrics
+---
+statement: The language model's curation tool surface exposes the review queue listing and the six curation decisions and not the curation metrics read.
 scope: knowledge-base
 ---
 
@@ -184,6 +226,212 @@ answers:
 ## Description
 
 The owner's surface for deleting a raw information for compliance and for reading the compliance deletions and curation actions on record.
+
+=== contracts/knowledge-base/curation
+---
+type: api
+direction: published
+operations:
+- list-review-queue
+- read-curation-metrics
+- resolve-entity-match
+- merge-nodes
+- resolve-dispute
+- confirm-item
+- reject-item
+- correct-item
+answers:
+- operation: list-review-queue
+  accepted: 'HTTP 200 carrying, with no envelope, `total`, the `limit` and `offset` as requested, and `items`: entity-match entries `{ kind: "entity_match", node_id, node_type, canonical_name, candidates, created_at }`, each candidate `{ candidate_node_id, canonical_name, similarity }` with similarity a number, and dispute entries `{ kind: "disputed", item_kind, scope, sides, created_at }`, the scope `{ source_node_id, target_node_id, link_type, node_id, attribute_key }` with the link type by name, the fields its kind does not use null and the target null for a link type that does not allow multiple current links, and each side `{ item_id, value, target_node_id, valid_from, valid_to, valid_from_source, confidence, status }` with a link''s value and an attribute''s target null, dates as `YYYY-MM-DD` and confidence a number; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/page-limit-bounds
+    answer: &query-format 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", HTTP 422 over REST with `details` a bare list of `{ path, message }`, and over MCP with `details: { issues: [{ path, message }] }`'
+  - rule: rules/knowledge-base/page-offset-non-negative
+    answer: *query-format
+  - when: The kind is outside the review-queue kinds, or the limit or offset is not an integer.
+    answer: *query-format
+  - &unavailable
+    when: The store is unreachable or a statement times out.
+    answer: 'error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable.", HTTP 503 over REST'
+  - &internal
+    when: The operation fails for any other cause.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause, HTTP 500 over REST'
+- operation: read-curation-metrics
+  accepted: 'HTTP 200 carrying, with no envelope, `accept_rate`, `reject_rate_by_code` as an object from error code to rate, `{}` when there is none, `needs_review_count`, `uncertain_count`, `disputed_count`, `entity_match_queue_count`, `disputed_queue_count` and `computed_at`, the ISO-8601 moment the metrics were computed, taken after they were read'
+  refusals:
+  - when: The metrics cannot be read for a cause that would otherwise answer an unavailable store or an internal failure.
+    answer: 'HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."'
+- operation: resolve-entity-match
+  accepted: 'HTTP 200 carrying, with no envelope, `{ node_id, decision, resulting_status, target_node_id, affected, action_id }`: for keep_separate, resulting status active with target and affected null; for merge_into, resulting status merged, the target node, and `affected` as `{ links_repointed, attributes_repointed, aliases_copied, path_compressed_nodes }`; over MCP, where the node identity travels as `node_id` beside the body, `{ ok: true, result }` carrying the same'
+  refusals:
+  - when: The node identity in the REST path is not a well-formed identifier.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`, answered before the body is checked'
+  - rule: rules/knowledge-base/merge-into-requires-target
+    answer: 'error code BUSINESS_TARGET_NODE_REQUIRED with message "decision=merge_into requires target_node_id" and `details: { issues: [{ path, message }] }`, HTTP 422 over REST'
+  - rule: rules/knowledge-base/curation-reason-required
+    answer: &reason-required 'error code BUSINESS_REASON_REQUIRED with message "reason is required for the requested operation" and `details: { issues }`, HTTP 422 over REST'
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: 'error code BUSINESS_REASON_REQUIRED where the decision is merge_into and VALIDATION_INVALID_FORMAT otherwise, with `details: { issues }`, HTTP 422 over REST'
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: &format 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details: { issues: [{ path, message }] }`, each path joined by ".", HTTP 422 over REST'
+  - rule: rules/knowledge-base/node-never-merged-into-itself
+    answer: 'error code BUSINESS_SELF_MERGE_FORBIDDEN naming the node, HTTP 409 over REST'
+  - &body-format
+    when: A field is missing, null where it may not be, of the wrong type, outside its closed set, or not a well-formed identifier or `YYYY-MM-DD` date.
+    answer: *format
+  - when: No knowledge node is held at the node's identity or, for merge_into, at the target's.
+    answer: 'error code RESOURCE_NOT_FOUND naming the absent node as `node_id` for keep_separate and as `missing_id` for merge_into, the target checked first, HTTP 404 over REST'
+  - rule: rules/knowledge-base/curation-refuses-deleted-node
+    answer: &deleted 'error code BUSINESS_NODE_DELETED naming the deleted node, the survivor checked first, HTTP 410 over REST'
+  - rule: rules/knowledge-base/entity-match-resolution-requires-pending-review
+    answer: 'error code BUSINESS_REVIEW_NOT_PENDING naming the node and its current status, HTTP 409 over REST'
+  - rule: rules/knowledge-base/merge-survivor-active
+    answer: &survivor 'error code BUSINESS_INVALID_TARGET_NODE naming the survivor and its current status, HTTP 422 over REST'
+  - rule: rules/knowledge-base/merge-requires-same-node-type
+    answer: &same-type 'error code BUSINESS_INVALID_TARGET_NODE with `details.reason` "node_type mismatch", HTTP 422 over REST'
+  - when: Another operation changed the node's status first.
+    answer: 'error code BUSINESS_REVIEW_NOT_PENDING for keep_separate and BUSINESS_INVALID_TARGET_NODE for merge_into, naming the node, HTTP 409 over REST'
+  - &duplicate
+    when: A uniqueness guard of the store refuses the write.
+    answer: 'error code BUSINESS_TEMPORAL_INCOHERENT with message "A duplicate-guard index rejected the resolution; another row currently occupies this scope." and no details, HTTP 422 over REST'
+  - *unavailable
+  - *internal
+- operation: merge-nodes
+  accepted: 'HTTP 200 carrying, with no envelope, `{ survivor_id, absorbed_id, affected, action_id }`, `affected` as `{ links_repointed, attributes_repointed, aliases_copied, path_compressed_nodes }`; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/node-never-merged-into-itself
+    answer: 'error code BUSINESS_SELF_MERGE_FORBIDDEN with message "survivor_id equals absorbed_id" and `details: { issues }` at path `absorbed_id`, HTTP 409 over REST'
+  - rule: rules/knowledge-base/curation-reason-required
+    answer: *format
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: *format
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: *format
+  - *body-format
+  - &absent-node
+    when: No knowledge node is held at the survivor's or the absorbed node's identity.
+    answer: 'error code RESOURCE_NOT_FOUND naming the absent node as `missing_id`, the survivor checked first, HTTP 404 over REST'
+  - rule: rules/knowledge-base/curation-refuses-deleted-node
+    answer: *deleted
+  - rule: rules/knowledge-base/merge-survivor-active
+    answer: *survivor
+  - rule: rules/knowledge-base/node-merge-absorbs-active-node
+    answer: 'error code BUSINESS_INVALID_TARGET_NODE naming the absorbed node and its status, HTTP 422 over REST'
+  - rule: rules/knowledge-base/merge-requires-same-node-type
+    answer: *same-type
+  - when: Another operation changed the absorbed node's status first.
+    answer: 'error code BUSINESS_INVALID_TARGET_NODE naming the absorbed node, HTTP 409 over REST'
+  - *duplicate
+  - *unavailable
+  - *internal
+- operation: resolve-dispute
+  accepted: 'HTTP 200 carrying, with no envelope, `{ item_kind, decision, items, action_id }`, each item `{ item_id, resulting_status, valid_from, valid_to }`, in the order of the periods for adjust_periods; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/dispute-resolution-distinct-items
+    answer: *format
+  - rule: rules/knowledge-base/curation-reason-required
+    answer: *reason-required
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: 'error code BUSINESS_REASON_REQUIRED where the decision is prefer_one and VALIDATION_INVALID_FORMAT otherwise, with `details: { issues }`, HTTP 422 over REST'
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: *format
+  - rule: rules/knowledge-base/prefer-one-requires-winner
+    answer: 'error code BUSINESS_DISPUTE_WINNER_REQUIRED with message "decision=prefer_one requires winner_id (member of item_ids)", HTTP 422 over REST'
+  - rule: rules/knowledge-base/adjust-periods-one-per-item
+    answer: 'error code BUSINESS_DISPUTE_PERIODS_REQUIRED with message "decision=adjust_periods requires periods[] (one entry per item_id)", HTTP 422 over REST'
+  - rule: rules/knowledge-base/validity-start-before-end
+    answer: 'error code BUSINESS_TEMPORAL_INCOHERENT with message "Adjusted periods violate `valid_from < valid_to` or overlap on a functional scope", HTTP 422 over REST'
+  - rule: rules/knowledge-base/adjusted-periods-single-open
+    answer: 'error code BUSINESS_TEMPORAL_INCOHERENT naming how many periods are left open, HTTP 422 over REST'
+  - *body-format
+  - when: No item of the named kind is held at one of the listed identities.
+    answer: 'error code RESOURCE_NOT_FOUND naming the first absent identity in the order listed and the item kind, HTTP 404 over REST'
+  - rule: rules/knowledge-base/dispute-resolution-requires-disputed-items
+    answer: 'error code BUSINESS_ITEM_NOT_DISPUTED naming the offending item and its current status, HTTP 409 over REST'
+  - rule: rules/knowledge-base/dispute-resolution-single-scope
+    answer: 'error code BUSINESS_ITEM_NOT_DISPUTED with `details.scope_mismatch` true, HTTP 409 over REST'
+  - when: Another operation moved one of the items out of disputed first.
+    answer: 'error code BUSINESS_ITEM_NOT_DISPUTED naming the offending item, or how many items were reached and how many were expected, HTTP 409 over REST'
+  - *duplicate
+  - *unavailable
+  - *internal
+- operation: confirm-item
+  accepted: 'HTTP 200 carrying, with no envelope, `{ item_kind, item_id, resulting_status: "active", action_id }`; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: *format
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: *format
+  - *body-format
+  - &absent-item
+    when: No item of the named kind is held at the requested identity.
+    answer: 'error code RESOURCE_NOT_FOUND naming the item and its kind, HTTP 404 over REST'
+  - rule: rules/knowledge-base/confirmation-requires-uncertain
+    answer: 'error code BUSINESS_ITEM_NOT_UNCERTAIN naming the item and its current status, HTTP 409 over REST'
+  - when: Another operation changed the item's status first.
+    answer: 'error code BUSINESS_ITEM_NOT_UNCERTAIN naming the item, HTTP 409 over REST'
+  - *duplicate
+  - *unavailable
+  - *internal
+- operation: reject-item
+  accepted: 'HTTP 200 carrying, with no envelope, `{ item_kind, item_id, resulting_status: "deleted", action_id }`; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/curation-reason-required
+    answer: *format
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: *format
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: *format
+  - *body-format
+  - *absent-item
+  - rule: rules/knowledge-base/rejection-and-correction-require-live-item
+    answer: &not-deletable 'error code BUSINESS_ITEM_NOT_DELETABLE naming the item and its current status, HTTP 409 over REST'
+  - &item-race
+    when: Another operation changed the item's status first.
+    answer: 'error code BUSINESS_ITEM_NOT_DELETABLE naming the item, HTTP 409 over REST'
+  - *duplicate
+  - *unavailable
+  - *internal
+- operation: correct-item
+  accepted: 'HTTP 200 carrying, with no envelope, `{ item_kind, predecessor_id, new_item_id, action_id }`; over MCP, `{ ok: true, result }` carrying the same'
+  refusals:
+  - rule: rules/knowledge-base/curation-reason-required
+    answer: *format
+  - rule: rules/knowledge-base/curation-reason-not-blank
+    answer: *format
+  - rule: rules/knowledge-base/curation-action-reason-length
+    answer: *format
+  - rule: rules/knowledge-base/correction-changes-something
+    answer: 'error code BUSINESS_CORRECTION_NO_CHANGES with message "corrected{} must change at least one of value, target_node_id, valid_from, valid_to", HTTP 422 over REST'
+  - rule: rules/knowledge-base/correction-fits-assertion-kind
+    answer: 'error code VALIDATION_INVALID_FORMAT with `details: { issues }` at path `corrected.value` or `corrected.target_node_id`, HTTP 422 over REST'
+  - rule: rules/knowledge-base/stated-start-requires-basis
+    answer: &unjustified 'error code BUSINESS_DATE_UNJUSTIFIED with message "valid_from change requires a justification (stated|document|received)", HTTP 422 over REST'
+  - rule: rules/knowledge-base/corrected-stated-start-cites-fragment
+    answer: *unjustified
+  - rule: rules/knowledge-base/validity-start-before-end
+    answer: 'error code BUSINESS_TEMPORAL_INCOHERENT, HTTP 422 over REST'
+  - *body-format
+  - *absent-item
+  - rule: rules/knowledge-base/rejection-and-correction-require-live-item
+    answer: *not-deletable
+  - rule: rules/knowledge-base/correction-fragment-accepted
+    answer: 'error code BUSINESS_DATE_UNJUSTIFIED naming the fragment, HTTP 422 over REST'
+  - when: The attribute being corrected has no attribute key, or its key is not in the catalog.
+    answer: 'error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the item or the key and the value, HTTP 422 over REST'
+  - rule: rules/knowledge-base/attribute-value-parses
+    answer: 'error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the value type and the value, HTTP 422 over REST'
+  - rule: rules/knowledge-base/attribute-value-in-allowed-values
+    answer: 'error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the attribute key, the value and the allowed values, an empty list where none is known, HTTP 422 over REST'
+  - *item-race
+  - *duplicate
+  - *unavailable
+  - *internal
+---
+
+## Description
+
+The owner's curation surface: the review queues, the curation metrics, and the decisions that resolve entity matches, merge nodes, resolve disputes and confirm, reject or correct assertions.
 
 === contracts/knowledge-base/ingestion
 ---
@@ -1106,6 +1354,56 @@ entries:
   unstated: The standing node says expansion never reaches a deleted knowledge node, while the material's traversal lists a deleted node it reaches as a link's end without expanding it; the two decide differently for a traversal whose link ends at a deleted node.
   decided: The standing node governs a search's expansion, and a traversal lists the deleted nodes it reaches.
   why: The standing node was read from the search's expansion, and the traversal shows each reached link together with both of its ends.
+- location: domain/knowledge-base/knowledge-link.md
+  field: relationships.llm-run.cardinality
+  unstated: The standing node gives every knowledge link exactly one run, while the material's correction records the new link with no run; the two decide differently for a link a correction records.
+  decided: 0..1
+  why: A correction is an owner's act outside any extraction run, and the material records its new link with the run left empty.
+- location: domain/knowledge-base/node-attribute.md
+  field: relationships.llm-run.cardinality
+  unstated: The standing node gives every node attribute exactly one run, while the material's correction records the new attribute with no run; the two decide differently for an attribute a correction records.
+  decided: 0..1
+  why: A correction is an owner's act outside any extraction run, and the material records its new attribute with the run left empty.
+- location: rules/knowledge-base/dispute-scope.md
+  field: statement
+  unstated: The material's review queue groups disputed links of a link type that allows a single current link by source node and link type, while its dispute resolution requires the same target node; the two decide differently for two disputed reports_to links from one node to different targets.
+  decided: Links of a link type that does not allow multiple current links share a dispute scope by source node and link type, whatever their targets.
+  why: A dispute on such a link type arises precisely between links to different targets, so requiring one target leaves every such dispute unresolvable.
+- location: rules/knowledge-base/metrics-disputed-queue-count.md
+  field: statement
+  unstated: The material counts the disputed queue for the metrics by source, target and link type whatever the link type, while its queue lists one entry per dispute scope; the two differ for a dispute between links to different targets.
+  decided: The disputed queue count is the number of entries the disputed queue holds.
+  why: The count is named after the queue, and the owner reads it as how many disputes await a decision.
+- location: rules/knowledge-base/review-queue-page-windows-entries.md
+  field: statement
+  unstated: The material applies the page's limit and offset separately to three listings and, for the entity-match queue, to node-candidate rows, so a page can hold more entries than its limit and split one node's candidates across pages.
+  decided: The page skips and returns whole entries in listing order.
+  why: The owner reads the queue as a list of entries, and a limit that does not bound the entries returned does not page it.
+- location: rules/knowledge-base/review-queue-total-before-pagination.md
+  field: statement
+  unstated: The material totals the queue as the count of needs-review nodes plus the count of disputed links and of disputed attributes, which is not the number of entries the queue lists when a dispute holds several items.
+  decided: The total counts every entry the listing holds before the page is cut.
+  why: A total over a paged list counts what the pages hold, as every other listing of this specification does.
+- location: rules/knowledge-base/dispute-entry-time.md
+  field: statement
+  unstated: The material dates a disputed queue entry by the first of its items met within the fetched page, which depends on where the page cut falls.
+  decided: The earliest recording time among its items.
+  why: The items are met in recording order, so the earliest is what the material yields whenever the whole entry is on the page.
+- location: contracts/knowledge-base/curation.md
+  field: answers
+  unstated: The standing rule limits every curation action's reason to 1000 characters, while the material's curation requests accept a reason of any length; the two decide differently for a rejection whose reason holds 1500 characters.
+  decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
+  why: The audit record carries one reason whichever operation wrote it, and a malformed field of these requests is answered that way.
+- location: domain/knowledge-base/dispute-resolution.md
+  field: attributes.item_ids.type
+  unstated: The material names the items a dispute resolution acts on by identity without saying what kind of identity that is.
+  decided: string
+  why: The items are knowledge links or node attributes by the resolution's kind, so no single element's identity fits them.
+- location: domain/knowledge-base/curation-metrics.md
+  field: attributes.reject_rate_by_code.type
+  unstated: The material gives the reject rate by code as a map from error code to rate without a shape the model can name.
+  decided: reject-rate, many
+  why: Each entry of the map pairs one code with one rate.
 ---
 
 ## Description
@@ -1303,6 +1601,27 @@ What the owner narrows an accepted-fragment listing to: an LLM run, a raw inform
 
 None.
 
+=== domain/knowledge-base/adjusted-period
+---
+type: value-object
+attributes:
+- name: item_id
+  type: string
+  required: true
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
+---
+
+## Description
+
+The validity period the owner gives one disputed assertion when the dispute is resolved by adjusting periods.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/affected-counts
 ---
 type: value-object
@@ -1368,6 +1687,32 @@ One value the catalog allows for an attribute key, with the label it is shown by
 
 It closes the values an attribute of that key may take.
 
+=== domain/knowledge-base/assertion-correction
+---
+type: value-object
+attributes:
+- name: assertion_kind
+  type: assertion-kind
+  required: true
+- name: item_id
+  type: string
+  required: true
+- name: corrected
+  type: corrected-values
+  required: true
+- name: reason
+  type: string
+  required: true
+---
+
+## Description
+
+The owner's correction of one knowledge link or node attribute, and why.
+
+## Responsibility
+
+It carries the replacement of a wrong assertion by a corrected one.
+
 === domain/knowledge-base/assertion-flag
 ---
 type: enumeration
@@ -1384,6 +1729,44 @@ A warning a search item carries about how far it can be trusted.
 ## Responsibility
 
 It keeps uncertainty visible instead of hidden.
+
+=== domain/knowledge-base/assertion-kind
+---
+type: enumeration
+values:
+- link
+- attribute
+---
+
+## Description
+
+Which kind of assertion a curation request names: a knowledge link or a node attribute.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/assertion-review
+---
+type: value-object
+attributes:
+- name: assertion_kind
+  type: assertion-kind
+  required: true
+- name: item_id
+  type: string
+  required: true
+- name: reason
+  type: string
+---
+
+## Description
+
+The owner's confirmation or rejection of one knowledge link or node attribute, and why.
+
+## Responsibility
+
+None.
 
 === domain/knowledge-base/assertion-status
 ---
@@ -1526,6 +1909,37 @@ How a requested compliance deletion ended: the raw information was deleted by it
 
 None.
 
+=== domain/knowledge-base/corrected-values
+---
+type: value-object
+attributes:
+- name: value
+  type: string
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
+- name: valid_from_basis
+  type: valid-from-basis
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: target
+- target: information-fragment
+  type: reference
+  cardinality: 0..1
+  role: errata
+---
+
+## Description
+
+The values a correction puts in place of an assertion's: its value or target node, its validity start and end, the basis of the start, and the information fragment that justifies it.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/curation-action
 ---
 type: aggregate-root
@@ -1601,6 +2015,44 @@ The kinds of action a curation action records.
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/curation-metrics
+---
+type: value-object
+attributes:
+- name: accept_rate
+  type: decimal
+  required: true
+- name: reject_rate_by_code
+  type: reject-rate
+  many: true
+- name: needs_review_count
+  type: integer
+  required: true
+- name: uncertain_count
+  type: integer
+  required: true
+- name: disputed_count
+  type: integer
+  required: true
+- name: entity_match_queue_count
+  type: integer
+  required: true
+- name: disputed_queue_count
+  type: integer
+  required: true
+- name: computed_at
+  type: datetime
+  required: true
+---
+
+## Description
+
+A snapshot of how curation stands: how often actions accept, how often they reject by error code, and how many nodes and assertions await the owner.
+
+## Responsibility
+
+It is what the owner calibrates the confidence thresholds against.
 
 === domain/knowledge-base/curation-target-kind
 ---
@@ -1704,6 +2156,90 @@ How one directed item fared.
 
 None.
 
+=== domain/knowledge-base/dispute-decision
+---
+type: enumeration
+values:
+- prefer-one
+- adjust-periods
+- keep-disputed
+---
+
+## Description
+
+What the owner decides about disputed assertions: that one of them holds, that each holds over its own validity period, or that the dispute stands.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/dispute-resolution
+---
+type: value-object
+attributes:
+- name: assertion_kind
+  type: assertion-kind
+  required: true
+- name: item_ids
+  type: string
+  required: true
+  many: true
+- name: decision
+  type: dispute-decision
+  required: true
+- name: winner_id
+  type: string
+- name: periods
+  type: adjusted-period
+  many: true
+- name: reason
+  type: string
+---
+
+## Description
+
+The owner's decision about the disputed assertions of one dispute scope, naming the one that holds or the period each holds over, and why.
+
+## Responsibility
+
+It carries the decision that closes or keeps a dispute.
+
+=== domain/knowledge-base/dispute-scope
+---
+type: value-object
+attributes:
+- name: assertion_kind
+  type: assertion-kind
+  required: true
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: source
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: target
+- target: link-type
+  type: reference
+  cardinality: 0..1
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: node
+- target: attribute-key
+  type: reference
+  cardinality: 0..1
+---
+
+## Description
+
+The ground on which disputed assertions compete.
+
+## Responsibility
+
+It is what one dispute is about, so the assertions that compete are listed and resolved together.
+
 === domain/knowledge-base/effective-status
 ---
 type: enumeration
@@ -1723,6 +2259,50 @@ The status a knowledge link or node attribute is read with on a given day: its s
 ## Responsibility
 
 It lets an ended assertion read as inactive without that state ever being stored.
+
+=== domain/knowledge-base/entity-match-decision
+---
+type: enumeration
+values:
+- merge-into
+- keep-separate
+---
+
+## Description
+
+What the owner decides about a knowledge node awaiting an entity-match decision: that it is another node and merges into it, or that it is an entity of its own.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/entity-match-resolution
+---
+type: value-object
+attributes:
+- name: decision
+  type: entity-match-decision
+  required: true
+- name: reason
+  type: string
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: '1'
+  role: node
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: target
+---
+
+## Description
+
+The owner's decision about one knowledge node awaiting an entity-match decision, naming the node it merges into when it merges, and why.
+
+## Responsibility
+
+It carries the decision that closes an entity-match review.
 
 === domain/knowledge-base/entity-match-review
 ---
@@ -1898,7 +2478,7 @@ relationships:
   cardinality: '1'
 - target: llm-run
   type: reference
-  cardinality: '1'
+  cardinality: 0..1
 - target: knowledge-link
   type: reference
   cardinality: 0..1
@@ -2066,6 +2646,32 @@ Its tool calls are the record of every proposal made within it.
 
 It is the unit every proposal is made within and accounted for.
 
+=== domain/knowledge-base/merge-counts
+---
+type: value-object
+attributes:
+- name: links_repointed
+  type: integer
+  required: true
+- name: attributes_repointed
+  type: integer
+  required: true
+- name: aliases_copied
+  type: integer
+  required: true
+- name: path_compressed_nodes
+  type: integer
+  required: true
+---
+
+## Description
+
+How many knowledge links and node attributes one merge moved to the survivor, how many aliases it copied, and how many previously merged knowledge nodes it made name the survivor.
+
+## Responsibility
+
+It records the reach of a merge.
+
 === domain/knowledge-base/node-alias
 ---
 type: entity
@@ -2127,7 +2733,7 @@ relationships:
   cardinality: '1'
 - target: llm-run
   type: reference
-  cardinality: '1'
+  cardinality: 0..1
 - target: node-attribute
   type: reference
   cardinality: 0..1
@@ -2165,6 +2771,32 @@ What a listing of knowledge nodes is narrowed to: a node type, the start of a na
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/node-merge
+---
+type: value-object
+attributes:
+- name: reason
+  type: string
+  required: true
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: '1'
+  role: survivor
+- target: knowledge-node
+  type: reference
+  cardinality: '1'
+  role: absorbed
+---
+
+## Description
+
+The owner's request that one active knowledge node be absorbed into another, found to be the same entity, and why.
+
+## Responsibility
+
+It carries the merge of two nodes the owner found to be one entity.
 
 === domain/knowledge-base/node-resolution
 ---
@@ -2420,6 +3052,60 @@ A piece of unstructured information the owner supplied, preserved as it was rece
 ## Responsibility
 
 It is the source every extracted piece of knowledge traces back to.
+
+=== domain/knowledge-base/reject-rate
+---
+type: value-object
+attributes:
+- name: code
+  type: string
+  required: true
+- name: rate
+  type: decimal
+  required: true
+---
+
+## Description
+
+The share of curation actions that are rejections carrying one error code.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/review-queue-filter
+---
+type: value-object
+attributes:
+- name: kind
+  type: review-queue-kind
+- name: page
+  type: page
+---
+
+## Description
+
+What a review queue listing is narrowed to: which queue, and the page.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/review-queue-kind
+---
+type: enumeration
+values:
+- entity-match
+- disputed
+---
+
+## Description
+
+The two review queues the owner works: knowledge nodes awaiting an entity-match decision, and disputed assertions.
+
+## Responsibility
+
+None.
 
 === domain/knowledge-base/run-status
 ---
@@ -2747,6 +3433,64 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/accept-rate
+---
+type: invariant
+statement: A curation metrics accept rate is the share of curation actions of kind resolve-entity-match, merge-nodes, resolve-dispute, confirm-item or correct-item among all curation actions, and 0 when none is recorded.
+constrains:
+- domain/knowledge-base/curation-metrics
+- domain/knowledge-base/curation-action-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/adjust-periods-one-per-item
+---
+type: invariant
+statement: A dispute resolution deciding adjust-periods MUST give exactly one period to each of its items.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/adjusted-period
+- domain/knowledge-base/dispute-decision
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/adjust-periods-outcome
+---
+type: policy
+statement: A dispute resolution deciding adjust-periods gives each item the validity start and end of its period and makes it active.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/adjusted-period
+- domain/knowledge-base/assertion-status
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/adjusted-periods-single-open
+---
+type: invariant
+statement: A dispute resolution deciding adjust-periods in a dispute scope whose link type or attribute key does not allow multiple current values MUST leave at most one period without a validity end.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/adjusted-period
+- domain/knowledge-base/dispute-scope
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/affected-nodes-follow-merges
 ---
 type: policy
@@ -2934,6 +3678,34 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/assertion-review-check-order
+---
+type: invariant
+statement: A confirmation or rejection is checked for an absent item and then for its item's status, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/assertion-review
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/assertion-review-records-curation-action
+---
+type: policy
+statement: An accepted confirmation or rejection records one curation action of kind confirm-item or reject-item respectively on its assertion kind at its item's identity, with its reason as the reason and an empty payload.
+constrains:
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+- domain/knowledge-base/assertion-kind
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/attribute-confidence-range
 ---
 type: invariant
@@ -3099,10 +3871,11 @@ None.
 === rules/knowledge-base/attribute-value-in-allowed-values
 ---
 type: invariant
-statement: An attribute proposal for a key that has allowed values MUST carry one of them exactly as written.
+statement: An attribute proposal or an attribute correction for a key that has allowed values MUST carry one of them exactly as written.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/attribute-key
+- domain/knowledge-base/corrected-values
 ---
 
 ## Description
@@ -3112,12 +3885,13 @@ None.
 === rules/knowledge-base/attribute-value-parses
 ---
 type: invariant
-statement: 'An attribute proposal''s value MUST read as its key''s value type: a real calendar date written as year-month-day for date, digits with an optional leading minus and an optional decimal part for number, exactly true or false for bool, and any text for text.'
+statement: 'An attribute proposal''s value and an attribute correction''s value MUST read as its key''s value type: a real calendar date written as year-month-day for date, digits with an optional leading minus and an optional decimal part for number, exactly true or false for bool, and any text for text.'
 expression: 'date: ^\d{4}-\d{2}-\d{2}$ naming an existing day; number: ^-?\d+(\.\d+)?$ and finite; bool: ^(true|false)$; text: any'
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/attribute-key
 - domain/knowledge-base/value-type
+- domain/knowledge-base/corrected-values
 ---
 
 ## Description
@@ -3661,6 +4435,35 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/confirmation-activates
+---
+type: policy
+statement: A confirmation makes its item active.
+constrains:
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-status
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/confirmation-requires-uncertain
+---
+type: invariant
+statement: A confirmation MUST name an uncertain item.
+constrains:
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/conflict-disputes
 ---
 type: policy
@@ -3757,6 +4560,121 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/corrected-item-provenance
+---
+type: policy
+statement: A correction's new item holds every provenance of the superseded item and, where the correction cites one, the cited information fragment.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/corrected-values
+- domain/knowledge-base/provenance
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/corrected-item-values
+---
+type: policy
+statement: A correction's new item carries each value the correction states, a null one counting as not stated, and the superseded item's value otherwise, with the superseded item's confidence and no run.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/corrected-values
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/corrected-stated-start-cites-fragment
+---
+type: invariant
+statement: A correction whose validity start has the basis stated MUST cite an information fragment.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/corrected-values
+- domain/knowledge-base/valid-from-basis
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/correction-changes-something
+---
+type: invariant
+statement: A correction MUST change at least one of the value, the target node, the validity start and the validity end.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/corrected-values
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/correction-check-order
+---
+type: invariant
+statement: A correction is checked for an absent item, then for an item already deleted or superseded, then for a cited fragment absent or not accepted, then for a corrected attribute value that does not read as its key's value type or is outside its allowed values, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/assertion-correction
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/correction-fits-assertion-kind
+---
+type: invariant
+statement: A correction MUST NOT change a link's value or an attribute's target node.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/corrected-values
+- domain/knowledge-base/assertion-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/correction-fragment-accepted
+---
+type: invariant
+statement: A correction MUST cite only an accepted information fragment.
+constrains:
+- domain/knowledge-base/corrected-values
+- domain/knowledge-base/information-fragment
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/correction-records-curation-action
+---
+type: policy
+statement: An accepted correction records one curation action of kind correct-item on its assertion kind at the corrected item's identity, with its reason as the reason and its corrected values and the new item's identity as the payload.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+- domain/knowledge-base/assertion-kind
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/correction-replaces
 ---
 type: policy
@@ -3788,6 +4706,22 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/correction-supersedes-item
+---
+type: policy
+statement: A correction supersedes its item, leaving its validity end as it was, and records a new active item of the same kind that names it as the one it supersedes.
+constrains:
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/curation-action-reason-length
 ---
 type: invariant
@@ -3806,6 +4740,85 @@ type: invariant
 statement: A curation action's creation time is the moment it was recorded.
 constrains:
 - domain/knowledge-base/curation-action
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-reason-not-blank
+---
+type: invariant
+statement: A reason a curation request states MUST hold at least one character after trimming.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-reason-required
+---
+type: invariant
+statement: A node merge, a rejection, a correction, an entity-match resolution deciding merge-into and a dispute resolution deciding prefer-one MUST state a reason.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-refuses-deleted-node
+---
+type: invariant
+statement: An entity-match resolution or a node merge MUST NOT name a deleted knowledge node.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-request-check-order
+---
+type: invariant
+statement: A curation request failing several request checks is refused for the first it fails among a merge-into without a target node, a missing reason, a node merged into itself, a prefer-one without a winner, an adjust-periods without one period per item, a validity start not before its end, a correction changing nothing and an unjustified corrected start, and is refused for a failing format only when none of these fails.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-request-checked-first
+---
+type: invariant
+statement: A curation operation checks its request before it checks any knowledge node, link, attribute or information fragment the request names.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
 ---
 
 ## Description
@@ -4114,6 +5127,112 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/dispute-entry-time
+---
+type: invariant
+statement: A disputed queue entry's creation time is the earliest recording time among its items.
+constrains:
+- domain/knowledge-base/dispute-scope
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-queue-entry
+---
+type: invariant
+statement: The disputed queue holds one entry per dispute scope holding disputed items, listing each of those items as a side.
+constrains:
+- domain/knowledge-base/dispute-scope
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-resolution-check-order
+---
+type: invariant
+statement: A dispute resolution is checked for an absent item, then for an item not disputed, then for items outside one dispute scope, then for its decision's own checks, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/dispute-resolution
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-resolution-distinct-items
+---
+type: invariant
+statement: A dispute resolution MUST name at least two items and none twice.
+constrains:
+- domain/knowledge-base/dispute-resolution
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-resolution-records-curation-action
+---
+type: policy
+statement: An accepted dispute resolution records one curation action of kind resolve-dispute on its assertion kind, at its winner's identity for prefer-one and at its first item's identity otherwise, with its reason as the reason and its decision, its items and its winner or periods as the payload.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+- domain/knowledge-base/assertion-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-resolution-requires-disputed-items
+---
+type: invariant
+statement: A dispute resolution MUST name only disputed items.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-resolution-single-scope
+---
+type: invariant
+statement: A dispute resolution MUST name items of one dispute scope.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/dispute-scope
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/dispute-scope
+---
+type: policy
+statement: Disputed items share a dispute scope when they are node attributes of one knowledge node and one attribute key, knowledge links from one source node of one link type that does not allow multiple current links, or knowledge links from one source node of one link type to one target node.
+constrains:
+- domain/knowledge-base/dispute-scope
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/document-ingestion-extracts-new-content
 ---
 type: policy
@@ -4188,6 +5307,75 @@ type: invariant
 statement: The catalog link types that require a validity end on change are exactly reports_to, part_of and located_in.
 constrains:
 - domain/knowledge-base/link-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-match-queue-entry
+---
+type: policy
+statement: The entity-match queue holds one entry per knowledge node in status needs-review, listing each of its entity match reviews as a candidate, most similar first.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/entity-match-review
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-match-resolution-check-order
+---
+type: invariant
+statement: An entity-match resolution is checked for a merge-into naming its own node first, and deciding keep-separate then for an absent node, a deleted node and a node not in needs-review, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-match-resolution-clears-reviews
+---
+type: policy
+statement: An accepted entity-match resolution removes every entity match review of its knowledge node.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/entity-match-review
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-match-resolution-records-curation-action
+---
+type: policy
+statement: An accepted entity-match resolution records one curation action of kind resolve-entity-match on target kind node at its node's identity, with its reason as the reason and its decision, and for merge-into its target node, as the payload.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/entity-match-resolution-requires-pending-review
+---
+type: invariant
+statement: An entity-match resolution MUST resolve a knowledge node in status needs-review.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
 ---
 
 ## Description
@@ -4774,6 +5962,33 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/keep-disputed-changes-nothing
+---
+type: invariant
+statement: A dispute resolution deciding keep-disputed changes none of its items.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/dispute-decision
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/keep-separate-activates-node
+---
+type: policy
+statement: An entity-match resolution deciding keep-separate returns its knowledge node to active.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/layer-weights
 ---
 type: invariant
@@ -5175,6 +6390,135 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/merge-check-order
+---
+type: invariant
+statement: A merge is checked for a node merged into itself, then for an absent survivor, an absent absorbed node, a deleted survivor, a deleted absorbed node, a survivor that is not active, an absorbed node not in the status its operation expects and nodes of different node types, and is refused at the first check it fails.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-compresses-paths
+---
+type: policy
+statement: A merge makes every knowledge node merged into the absorbed node name the survivor instead.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-copies-aliases
+---
+type: policy
+statement: A merge gives the survivor, as kind alias with its run and creation time, each alias of the absorbed node whose normalized form the survivor does not hold, and leaves the absorbed node its own aliases.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+- domain/knowledge-base/alias-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-counts-what-it-changed
+---
+type: invariant
+statement: A merge counts the knowledge links and node attributes it moved, the aliases it copied and the knowledge nodes it made name the survivor.
+constrains:
+- domain/knowledge-base/merge-counts
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-into-requires-target
+---
+type: invariant
+statement: An entity-match resolution deciding merge-into MUST name a target knowledge node.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/entity-match-decision
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-marks-absorbed-merged
+---
+type: policy
+statement: A merge marks the absorbed knowledge node merged into the survivor.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-repoints-assertions
+---
+type: policy
+statement: A merge moves to the survivor every knowledge link whose source or target is the absorbed node and every node attribute of the absorbed node, whatever their status.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-requires-same-node-type
+---
+type: invariant
+statement: A merge MUST join two knowledge nodes of one node type.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/merge-survivor-active
+---
+type: invariant
+statement: The knowledge node a merge keeps MUST be active.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/merged-node-names-survivor
 ---
 type: invariant
@@ -5195,6 +6539,45 @@ statement: A node read and an attribute-key history answer a merged knowledge no
 constrains:
 - domain/knowledge-base/knowledge-node
 - domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/metrics-assertion-counts
+---
+type: invariant
+statement: A curation metrics uncertain count and disputed count are the numbers of knowledge links and node attributes whose effective status is uncertain and disputed respectively.
+constrains:
+- domain/knowledge-base/curation-metrics
+- domain/knowledge-base/effective-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/metrics-disputed-queue-count
+---
+type: invariant
+statement: A curation metrics disputed queue count is the number of entries the disputed queue holds.
+constrains:
+- domain/knowledge-base/curation-metrics
+- domain/knowledge-base/dispute-scope
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/metrics-review-counts
+---
+type: invariant
+statement: A curation metrics needs-review count and entity-match queue count are both the number of knowledge nodes in status needs-review.
+constrains:
+- domain/knowledge-base/curation-metrics
+- domain/knowledge-base/node-status
 ---
 
 ## Description
@@ -5396,6 +6779,35 @@ statement: A node listing's total counts every matching knowledge node before th
 constrains:
 - domain/knowledge-base/node-filter
 - domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-merge-absorbs-active-node
+---
+type: invariant
+statement: A node merge MUST absorb an active knowledge node.
+constrains:
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-merge-records-curation-action
+---
+type: policy
+statement: An accepted node merge records one curation action of kind merge-nodes on target kind node at the absorbed node's identity, with its reason as the reason and the survivor's identity as the payload.
+constrains:
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
 ---
 
 ## Description
@@ -5638,9 +7050,10 @@ None.
 === rules/knowledge-base/page-defaults
 ---
 type: invariant
-statement: A search, accepted-fragment listing or node listing page that omits its limit returns 20 items and one that omits its offset starts at 0.
+statement: A search, accepted-fragment listing, node listing or review queue listing page that omits its limit returns 20 items and one that omits its offset starts at 0.
 constrains:
 - domain/knowledge-base/page
+- domain/knowledge-base/review-queue-filter
 ---
 
 ## Description
@@ -5693,6 +7106,35 @@ constrains:
 - domain/knowledge-base/knowledge-link
 - domain/knowledge-base/node-attribute
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/prefer-one-outcome
+---
+type: policy
+statement: A dispute resolution deciding prefer-one makes its winner active and marks every other item deleted with its supersession time stamped, leaving each validity as it was.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-status
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/prefer-one-requires-winner
+---
+type: invariant
+statement: A dispute resolution deciding prefer-one MUST name a winner among its items.
+constrains:
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/dispute-decision
 ---
 
 ## Description
@@ -5909,6 +7351,23 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/refused-curation-records-nothing
+---
+type: policy
+statement: A refused or failed curation operation changes nothing and records no curation action.
+constrains:
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/node-merge
+- domain/knowledge-base/dispute-resolution
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/refused-proposal-records-only-its-tool-call
 ---
 type: invariant
@@ -5916,6 +7375,50 @@ statement: A refused or failed proposal records nothing but its tool call.
 constrains:
 - domain/knowledge-base/tool-call
 - domain/knowledge-base/proposal
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/reject-rate-by-code
+---
+type: invariant
+statement: A curation metrics reject rate by code gives, for each error code a reject-item curation action's payload carries, the share of such actions among all curation actions.
+constrains:
+- domain/knowledge-base/curation-metrics
+- domain/knowledge-base/reject-rate
+- domain/knowledge-base/curation-action-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/rejection-and-correction-require-live-item
+---
+type: invariant
+statement: A rejection or a correction MUST name an item whose status is active, uncertain or disputed.
+constrains:
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-correction
+- domain/knowledge-base/assertion-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/rejection-deletes
+---
+type: policy
+statement: A rejection marks its item deleted and stamps its supersession time.
+constrains:
+- domain/knowledge-base/assertion-review
+- domain/knowledge-base/assertion-status
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
 ---
 
 ## Description
@@ -5970,6 +7473,56 @@ constrains:
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/fragment-status
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/review-queue-kinds
+---
+type: invariant
+statement: A review queue listing holds the entries of the queue its filter names, or of both queues when it names none.
+constrains:
+- domain/knowledge-base/review-queue-filter
+- domain/knowledge-base/review-queue-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/review-queue-order
+---
+type: invariant
+statement: A review queue listing orders entity-match entries before link disputes and link disputes before attribute disputes, entity-match entries by their node's creation time and then identity, and disputes by their creation time and then the identity of their earliest item.
+constrains:
+- domain/knowledge-base/review-queue-filter
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/review-queue-page-windows-entries
+---
+type: invariant
+statement: A review queue listing's page skips and returns whole entries in listing order.
+constrains:
+- domain/knowledge-base/review-queue-filter
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/review-queue-total-before-pagination
+---
+type: invariant
+statement: A review queue listing's total counts every entry it holds before the page is cut.
+constrains:
+- domain/knowledge-base/review-queue-filter
 ---
 
 ## Description
@@ -6190,10 +7743,11 @@ None.
 === rules/knowledge-base/stated-start-requires-basis
 ---
 type: invariant
-statement: A proposal that states a validity start MUST state its basis.
+statement: A proposal or a correction that states a validity start MUST state its basis.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/valid-from-basis
+- domain/knowledge-base/corrected-values
 ---
 
 ## Description
@@ -6604,12 +8158,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/unused-resolution-fields-ignored
+---
+type: invariant
+statement: An entity-match resolution deciding keep-separate ignores its target node, and a dispute resolution ignores a winner or periods its decision does not use.
+constrains:
+- domain/knowledge-base/entity-match-resolution
+- domain/knowledge-base/dispute-resolution
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/validity-start-before-end
 ---
 type: invariant
-statement: A proposal that states both a validity start and a validity end MUST state the start strictly before the end.
+statement: A proposal, an adjusted period or a correction that states both a validity start and a validity end MUST state the start strictly before the end.
 constrains:
 - domain/knowledge-base/proposal
+- domain/knowledge-base/adjusted-period
+- domain/knowledge-base/corrected-values
 ---
 
 ## Description
@@ -6652,6 +8221,29 @@ involves:
 ## Description
 
 None.
+
+=== scenarios/knowledge-base/functional-link-dispute-resolved-by-preference
+---
+subject: rules/knowledge-base/dispute-scope
+given:
+- knowledge node Ana holds two disputed reports_to links, one to Bruno and one to Carla
+- reports_to does not allow multiple current links
+when:
+- the owner resolves the dispute naming both links, deciding prefer-one with the link to Bruno as winner
+then:
+- the resolution is accepted
+- the link to Bruno is active
+- the link to Carla is deleted
+- one curation action of kind resolve-dispute is recorded at the link to Bruno
+involves:
+- rules/knowledge-base/dispute-resolution-single-scope
+- rules/knowledge-base/prefer-one-outcome
+- rules/knowledge-base/dispute-resolution-records-curation-action
+---
+
+## Description
+
+The two links compete for the same ground although their targets differ, because the link type admits a single current link.
 
 === scenarios/knowledge-base/held-content-under-another-model
 ---

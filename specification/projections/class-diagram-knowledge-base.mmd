@@ -169,6 +169,12 @@ classDiagram
         <<ValueObject>>
         +Page page
     }
+    class AdjustedPeriod {
+        <<ValueObject>>
+        +string itemId
+        +date validFrom
+        +date validTo
+    }
     class AffectedCounts {
         <<ValueObject>>
         +integer chunks
@@ -188,11 +194,29 @@ classDiagram
         +integer sortOrder
         +string description
     }
+    class AssertionCorrection {
+        <<ValueObject>>
+        +AssertionKind assertionKind
+        +string itemId
+        +CorrectedValues corrected
+        +string reason
+    }
     class AssertionFlag {
         <<Enumeration>>
         UNCERTAIN
         DISPUTED
         LOW_CONFIDENCE
+    }
+    class AssertionKind {
+        <<Enumeration>>
+        LINK
+        ATTRIBUTE
+    }
+    class AssertionReview {
+        <<ValueObject>>
+        +AssertionKind assertionKind
+        +string itemId
+        +string reason
     }
     class AssertionStatus {
         <<Enumeration>>
@@ -219,6 +243,13 @@ classDiagram
         DELETED
         NOOP_ALREADY_DELETED
     }
+    class CorrectedValues {
+        <<ValueObject>>
+        +string value
+        +date validFrom
+        +date validTo
+        +ValidFromBasis validFromBasis
+    }
     class CurationActionFilter {
         <<ValueObject>>
         +CurationActionKind action
@@ -237,6 +268,17 @@ classDiagram
         REJECT_ITEM
         CORRECT_ITEM
         COMPLIANCE_DELETE
+    }
+    class CurationMetrics {
+        <<ValueObject>>
+        +decimal acceptRate
+        +RejectRate[] rejectRateByCode
+        +integer needsReviewCount
+        +integer uncertainCount
+        +integer disputedCount
+        +integer entityMatchQueueCount
+        +integer disputedQueueCount
+        +datetime computedAt
     }
     class CurationTargetKind {
         <<Enumeration>>
@@ -276,6 +318,25 @@ classDiagram
         ERROR
         DEPENDENCY_FAILED
     }
+    class DisputeDecision {
+        <<Enumeration>>
+        PREFER_ONE
+        ADJUST_PERIODS
+        KEEP_DISPUTED
+    }
+    class DisputeResolution {
+        <<ValueObject>>
+        +AssertionKind assertionKind
+        +string[] itemIds
+        +DisputeDecision decision
+        +string winnerId
+        +AdjustedPeriod[] periods
+        +string reason
+    }
+    class DisputeScope {
+        <<ValueObject>>
+        +AssertionKind assertionKind
+    }
     class EffectiveStatus {
         <<Enumeration>>
         ACTIVE
@@ -284,6 +345,16 @@ classDiagram
         DISPUTED
         SUPERSEDED
         DELETED
+    }
+    class EntityMatchDecision {
+        <<Enumeration>>
+        MERGE_INTO
+        KEEP_SEPARATE
+    }
+    class EntityMatchResolution {
+        <<ValueObject>>
+        +EntityMatchDecision decision
+        +string reason
     }
     class FragmentStatus {
         <<Enumeration>>
@@ -316,11 +387,22 @@ classDiagram
         LINK
         FRAGMENT
     }
+    class MergeCounts {
+        <<ValueObject>>
+        +integer linksRepointed
+        +integer attributesRepointed
+        +integer aliasesCopied
+        +integer pathCompressedNodes
+    }
     class NodeFilter {
         <<ValueObject>>
         +string namePrefix
         +NodeStatus status
         +Page page
+    }
+    class NodeMerge {
+        <<ValueObject>>
+        +string reason
     }
     class NodeResolution {
         <<Enumeration>>
@@ -365,6 +447,21 @@ classDiagram
     class Provenance {
         <<ValueObject>>
         +datetime recordedAt
+    }
+    class RejectRate {
+        <<ValueObject>>
+        +string code
+        +decimal rate
+    }
+    class ReviewQueueFilter {
+        <<ValueObject>>
+        +ReviewQueueKind kind
+        +Page page
+    }
+    class ReviewQueueKind {
+        <<Enumeration>>
+        ENTITY_MATCH
+        DISPUTED
     }
     class RunStatus {
         <<Enumeration>>
@@ -464,6 +561,15 @@ classDiagram
     AttributeKey "0..*" --> "1" NodeType
     ComplianceDeletion "0..*" --> "1" RawInformation
     ComplianceDeletionFilter "0..*" --> "0..1" RawInformation
+    CorrectedValues "0..*" --> "0..1" KnowledgeNode : target
+    CorrectedValues "0..*" --> "0..1" InformationFragment : errata
+    DisputeScope "0..*" --> "0..1" KnowledgeNode : source
+    DisputeScope "0..*" --> "0..1" KnowledgeNode : target
+    DisputeScope "0..*" --> "0..1" LinkType
+    DisputeScope "0..*" --> "0..1" KnowledgeNode : node
+    DisputeScope "0..*" --> "0..1" AttributeKey
+    EntityMatchResolution "0..*" --> "1" KnowledgeNode : node
+    EntityMatchResolution "0..*" --> "0..1" KnowledgeNode : target
     EntityMatchReview "0..*" --> "1" KnowledgeNode : node
     EntityMatchReview "0..*" --> "1" KnowledgeNode : candidate
     InformationFragment "0..*" -- "1..*" RawChunk : source
@@ -471,7 +577,7 @@ classDiagram
     KnowledgeLink "0..*" --> "1" KnowledgeNode : source
     KnowledgeLink "0..*" --> "1" KnowledgeNode : target
     KnowledgeLink "0..*" --> "1" LinkType
-    KnowledgeLink "0..*" --> "1" LLMRun
+    KnowledgeLink "0..*" --> "0..1" LLMRun
     KnowledgeLink "0..*" --> "0..1" KnowledgeLink : supersedes
     KnowledgeNode "1" *-- "1..*" NodeAlias
     KnowledgeNode "0..*" --> "0..1" KnowledgeNode : mergedInto
@@ -484,9 +590,11 @@ classDiagram
     NodeAlias "0..*" --> "0..1" LLMRun
     NodeAttribute "0..*" --> "1" KnowledgeNode
     NodeAttribute "0..*" --> "1" AttributeKey
-    NodeAttribute "0..*" --> "1" LLMRun
+    NodeAttribute "0..*" --> "0..1" LLMRun
     NodeAttribute "0..*" --> "0..1" NodeAttribute : supersedes
     NodeFilter "0..*" --> "0..1" NodeType
+    NodeMerge "0..*" --> "1" KnowledgeNode : survivor
+    NodeMerge "0..*" --> "1" KnowledgeNode : absorbed
     Proposal "0..*" --> "1" LLMRun
     Proposal "0..*" -- "0..*" InformationFragment : evidence
     Proposal "0..*" -- "0..*" RawChunk : source

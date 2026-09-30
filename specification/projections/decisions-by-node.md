@@ -13,6 +13,11 @@ this groups its entries by the file each one located.
   unstated: The standing node had MCP answer in the REST envelope, while the documentation has MCP answer in its own content and error framing with the same payload and the same error codes; the two decide differently for the shape of an MCP success.
   why: The documentation states repeatedly that the envelope is REST-only and that only the payload and the codes must match.
 
+## contracts/knowledge-base/curation.md
+- answers — decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
+  unstated: The standing rule limits every curation action's reason to 1000 characters, while the material's curation requests accept a reason of any length; the two decide differently for a rejection whose reason holds 1500 characters.
+  why: The audit record carries one reason whichever operation wrote it, and a malformed field of these requests is answered that way.
+
 ## contracts/knowledge-base/ingestion.md
 - answers — decided: Held content answers HTTP 200 with outcome noop_existing and the run the held raw information already has, whatever model or prompt version the request names.
   unstated: The material has re-ingesting held content under another model or prompt version look for a run by the new idempotency key and fail with an internal error when none exists.
@@ -99,10 +104,20 @@ this groups its entries by the file each one located.
   unstated: The material closes the target kind a curation-action listing filters by to five kinds, while the recorded target kind and the value written take any text; the two decide differently for a curation action recorded on a target kind outside the five.
   why: An action recorded on a target kind no listing can filter for is one the audit trail cannot find by what it acted on.
 
+## domain/knowledge-base/curation-metrics.md
+- attributes.reject_rate_by_code.type — decided: reject-rate, many
+  unstated: The material gives the reject rate by code as a map from error code to rate without a shape the model can name.
+  why: Each entry of the map pairs one code with one rate.
+
 ## domain/knowledge-base/directed-ingestion.md
 - type — decided: value-object
   unstated: The material describes a directed ingestion's request and report without saying whether it has an identity of its own.
   why: It is recorded only through the raw information and LLM run it produces.
+
+## domain/knowledge-base/dispute-resolution.md
+- attributes.item_ids.type — decided: string
+  unstated: The material names the items a dispute resolution acts on by identity without saying what kind of identity that is.
+  why: The items are knowledge links or node attributes by the resolution's kind, so no single element's identity fits them.
 
 ## domain/knowledge-base/entity-match-review.md
 - type — decided: aggregate-root
@@ -132,6 +147,9 @@ this groups its entries by the file each one located.
 - attributes.valid_to.type — decided: date
   unstated: The material compares a link's validity end with a date without naming its type.
   why: The as-of date it is compared with is a calendar date.
+- relationships.llm-run.cardinality — decided: 0..1
+  unstated: The standing node gives every knowledge link exactly one run, while the material's correction records the new link with no run; the two decide differently for a link a correction records.
+  why: A correction is an owner's act outside any extraction run, and the material records its new link with the run left empty.
 
 ## domain/knowledge-base/knowledge-node.md
 - type — decided: aggregate-root in the same knowledge-base context, as every other record the retrieval reads
@@ -150,6 +168,11 @@ this groups its entries by the file each one located.
 - type — decided: aggregate-root in the knowledge-base context
   unstated: The material does not say whether LLM runs and their tool calls belong to the knowledge base's context or to a context of their own.
   why: Ingestion writes the raw informations, fragments, nodes, links and attributes the retrieval reads under the same names and meanings, so no translation marks a boundary between them.
+
+## domain/knowledge-base/node-attribute.md
+- relationships.llm-run.cardinality — decided: 0..1
+  unstated: The standing node gives every node attribute exactly one run, while the material's correction records the new attribute with no run; the two decide differently for an attribute a correction records.
+  why: A correction is an owner's act outside any extraction run, and the material records its new attribute with the run left empty.
 
 ## domain/knowledge-base/proposal.md
 - type — decided: value-object, carrying the kind, confidence, change hint, validity dates and basis, the LLM run and what it cites
@@ -269,6 +292,16 @@ this groups its entries by the file each one located.
   unstated: The material's directed service accepts a change hint and a validity end for attributes and links, while the directed tool's own schema declares neither, so they never arrive.
   why: The directed tool is the only way a directed ingestion is made, and it carries no change hint.
 
+## rules/knowledge-base/dispute-entry-time.md
+- statement — decided: The earliest recording time among its items.
+  unstated: The material dates a disputed queue entry by the first of its items met within the fetched page, which depends on where the page cut falls.
+  why: The items are met in recording order, so the earliest is what the material yields whenever the whole entry is on the page.
+
+## rules/knowledge-base/dispute-scope.md
+- statement — decided: Links of a link type that does not allow multiple current links share a dispute scope by source node and link type, whatever their targets.
+  unstated: The material's review queue groups disputed links of a link type that allows a single current link by source node and link type, while its dispute resolution requires the same target node; the two decide differently for two disputed reports_to links from one node to different targets.
+  why: A dispute on such a link type arises precisely between links to different targets, so requiring one target leaves every such dispute unresolvable.
+
 ## rules/knowledge-base/document-ingestion-extracts-new-content.md
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
@@ -323,6 +356,11 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this read holds across the separate records it combines.
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+
+## rules/knowledge-base/metrics-disputed-queue-count.md
+- statement — decided: The disputed queue count is the number of entries the disputed queue holds.
+  unstated: The material counts the disputed queue for the metrics by source, target and link type whatever the link type, while its queue lists one entry per dispute scope; the two differ for a dispute between links to different targets.
+  why: The count is named after the queue, and the owner reads it as how many disputes await a decision.
 
 ## rules/knowledge-base/name-normalization.md
 - statement — decided: Lower-casing, removing accents, trimming and collapsing inner whitespace.
@@ -411,6 +449,16 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+
+## rules/knowledge-base/review-queue-page-windows-entries.md
+- statement — decided: The page skips and returns whole entries in listing order.
+  unstated: The material applies the page's limit and offset separately to three listings and, for the entity-match queue, to node-candidate rows, so a page can hold more entries than its limit and split one node's candidates across pages.
+  why: The owner reads the queue as a list of entries, and a limit that does not bound the entries returned does not page it.
+
+## rules/knowledge-base/review-queue-total-before-pagination.md
+- statement — decided: The total counts every entry the listing holds before the page is cut.
+  unstated: The material totals the queue as the count of needs-review nodes plus the count of disputed links and of disputed attributes, which is not the number of entries the queue lists when a dispute holds several items.
+  why: A total over a paged list counts what the pages hold, as every other listing of this specification does.
 
 ## rules/knowledge-base/search-excludes-compliance-deleted-sources.md
 - consistency — decided: eventual

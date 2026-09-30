@@ -31,7 +31,7 @@ relationships:
   cardinality: '1'
 - target: llm-run
   type: reference
-  cardinality: '1'
+  cardinality: 0..1
 - target: node-attribute
   type: reference
   cardinality: 0..1

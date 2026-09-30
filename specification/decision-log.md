@@ -491,6 +491,56 @@ entries:
   unstated: The standing node says expansion never reaches a deleted knowledge node, while the material's traversal lists a deleted node it reaches as a link's end without expanding it; the two decide differently for a traversal whose link ends at a deleted node.
   decided: The standing node governs a search's expansion, and a traversal lists the deleted nodes it reaches.
   why: The standing node was read from the search's expansion, and the traversal shows each reached link together with both of its ends.
+- location: domain/knowledge-base/knowledge-link.md
+  field: relationships.llm-run.cardinality
+  unstated: The standing node gives every knowledge link exactly one run, while the material's correction records the new link with no run; the two decide differently for a link a correction records.
+  decided: 0..1
+  why: A correction is an owner's act outside any extraction run, and the material records its new link with the run left empty.
+- location: domain/knowledge-base/node-attribute.md
+  field: relationships.llm-run.cardinality
+  unstated: The standing node gives every node attribute exactly one run, while the material's correction records the new attribute with no run; the two decide differently for an attribute a correction records.
+  decided: 0..1
+  why: A correction is an owner's act outside any extraction run, and the material records its new attribute with the run left empty.
+- location: rules/knowledge-base/dispute-scope.md
+  field: statement
+  unstated: The material's review queue groups disputed links of a link type that allows a single current link by source node and link type, while its dispute resolution requires the same target node; the two decide differently for two disputed reports_to links from one node to different targets.
+  decided: Links of a link type that does not allow multiple current links share a dispute scope by source node and link type, whatever their targets.
+  why: A dispute on such a link type arises precisely between links to different targets, so requiring one target leaves every such dispute unresolvable.
+- location: rules/knowledge-base/metrics-disputed-queue-count.md
+  field: statement
+  unstated: The material counts the disputed queue for the metrics by source, target and link type whatever the link type, while its queue lists one entry per dispute scope; the two differ for a dispute between links to different targets.
+  decided: The disputed queue count is the number of entries the disputed queue holds.
+  why: The count is named after the queue, and the owner reads it as how many disputes await a decision.
+- location: rules/knowledge-base/review-queue-page-windows-entries.md
+  field: statement
+  unstated: The material applies the page's limit and offset separately to three listings and, for the entity-match queue, to node-candidate rows, so a page can hold more entries than its limit and split one node's candidates across pages.
+  decided: The page skips and returns whole entries in listing order.
+  why: The owner reads the queue as a list of entries, and a limit that does not bound the entries returned does not page it.
+- location: rules/knowledge-base/review-queue-total-before-pagination.md
+  field: statement
+  unstated: The material totals the queue as the count of needs-review nodes plus the count of disputed links and of disputed attributes, which is not the number of entries the queue lists when a dispute holds several items.
+  decided: The total counts every entry the listing holds before the page is cut.
+  why: A total over a paged list counts what the pages hold, as every other listing of this specification does.
+- location: rules/knowledge-base/dispute-entry-time.md
+  field: statement
+  unstated: The material dates a disputed queue entry by the first of its items met within the fetched page, which depends on where the page cut falls.
+  decided: The earliest recording time among its items.
+  why: The items are met in recording order, so the earliest is what the material yields whenever the whole entry is on the page.
+- location: contracts/knowledge-base/curation.md
+  field: answers
+  unstated: The standing rule limits every curation action's reason to 1000 characters, while the material's curation requests accept a reason of any length; the two decide differently for a rejection whose reason holds 1500 characters.
+  decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
+  why: The audit record carries one reason whichever operation wrote it, and a malformed field of these requests is answered that way.
+- location: domain/knowledge-base/dispute-resolution.md
+  field: attributes.item_ids.type
+  unstated: The material names the items a dispute resolution acts on by identity without saying what kind of identity that is.
+  decided: string
+  why: The items are knowledge links or node attributes by the resolution's kind, so no single element's identity fits them.
+- location: domain/knowledge-base/curation-metrics.md
+  field: attributes.reject_rate_by_code.type
+  unstated: The material gives the reject rate by code as a map from error code to rate without a shape the model can name.
+  decided: reject-rate, many
+  why: Each entry of the map pairs one code with one rate.
 ---
 
 ## Description
