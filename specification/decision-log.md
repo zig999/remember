@@ -621,6 +621,11 @@ entries:
   unstated: The specification held owner authentication only for retrieval, while the material authenticates the owner the same way before every operation.
   decided: One system constraint for every operation; constraints/retrieval-requires-owner-authentication is removed, as it held no binding and no log entry.
   why: The same gate over every operation is one fact, and two constraints stating it for overlapping scopes would be two homes.
+- location: domain/knowledge-base/corrected-values.md
+  field: attributes.valid_from_source.name
+  unstated: The owner named the attribute valid_from_source on a knowledge link and a node attribute, and did not say whether the values a correction puts in place of an assertion's carry the same name.
+  decided: valid_from_source, the same name as the assertion attribute it replaces; a proposal keeps valid_from_basis.
+  why: A correction writes the basis straight onto the assertion, and the curation surface already carries valid_from_source.
 ---
 
 ## Description

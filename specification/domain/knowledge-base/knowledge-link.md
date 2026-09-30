@@ -13,7 +13,7 @@ attributes:
 - name: provenance
   type: provenance
   many: true
-- name: valid_from_basis
+- name: valid_from_source
   type: valid-from-basis
 - name: confidence
   type: decimal

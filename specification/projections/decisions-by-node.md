@@ -122,6 +122,11 @@ this groups its entries by the file each one located.
   why: Nothing in the material reads inside it, so it is carried whole as text.
 - attributes.affected.type — retired: The material now states what a compliance deletion affected as four counts, held by domain/knowledge-base/affected-counts, which compliance-deletion's affected attribute is typed by.
 
+## domain/knowledge-base/corrected-values.md
+- attributes.valid_from_source.name — decided: valid_from_source, the same name as the assertion attribute it replaces; a proposal keeps valid_from_basis.
+  unstated: The owner named the attribute valid_from_source on a knowledge link and a node attribute, and did not say whether the values a correction puts in place of an assertion's carry the same name.
+  why: A correction writes the basis straight onto the assertion, and the curation surface already carries valid_from_source.
+
 ## domain/knowledge-base/curation-action.md
 - attributes.payload.type — decided: string
   unstated: The material holds a curation action's payload as a structured document without giving its shape.

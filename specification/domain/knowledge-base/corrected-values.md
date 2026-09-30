@@ -7,7 +7,7 @@ attributes:
   type: date
 - name: valid_to
   type: date
-- name: valid_from_basis
+- name: valid_from_source
   type: valid-from-basis
 relationships:
 - target: knowledge-node
