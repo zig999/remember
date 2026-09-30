@@ -9,7 +9,7 @@ attributes:
   type: string
   required: true
 - name: stop_reason
-  type: string
+  type: assistant-stop-reason
 - name: idempotency_key
   type: string
 - name: model
@@ -20,6 +20,9 @@ attributes:
   type: integer
 - name: latency_ms
   type: integer
+- name: created_at
+  type: datetime
+  required: true
 ---
 
 ## Description

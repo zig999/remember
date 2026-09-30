@@ -541,6 +541,51 @@ entries:
   unstated: The material gives the reject rate by code as a map from error code to rate without a shape the model can name.
   decided: reject-rate, many
   why: Each entry of the map pairs one code with one rate.
+- location: domain/chat/turn.md
+  field: type
+  unstated: The material does not say whether a turn has an identity of its own or is a value carried by the messages it records.
+  decided: value-object
+  why: 'A turn is never stored or read as itself: what persists of it is its messages and tool calls.'
+- location: rules/chat/send-message-check-order.md
+  field: statement
+  unstated: The material checks a disabled chat first on every conversation operation except sending a message, where the idempotency key, conversation identity and content are checked first; the two decide differently for a malformed message sent while the chat is disabled.
+  decided: A sent message is checked for a disabled chat first, as every other conversation operation is.
+  why: A disabled surface answers that it is disabled whatever the request holds.
+- location: contracts/chat/conversations.md
+  field: answers
+  unstated: The material answers an update naming neither a title nor an archiving time with VALIDATION_REQUIRED_FIELD when the body is empty and with VALIDATION_INVALID_FORMAT when the body holds only other keys.
+  decided: Every update naming neither field answers HTTP 422 VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present".
+  why: One condition gets one answer, and unknown keys are ignored everywhere else on this surface.
+- location: contracts/chat/conversations.md
+  field: answers
+  unstated: The material answers a conversation cursor with the right shape but a creation time that is not a timestamp or an identity that is not an identifier with an internal error, and any other malformed cursor with VALIDATION_INVALID_FORMAT.
+  decided: 'Every cursor that does not decode to a creation time and a well-formed identity answers HTTP 422 VALIDATION_INVALID_FORMAT with `details: { param: "cursor" }`.'
+  why: A malformed cursor is the caller's error, never the system's.
+- location: rules/chat/replay-reports-failure.md
+  field: statement
+  unstated: The material replays a turn recorded as provider-error or internal-error as a done event with stop reason end_turn, while the live turn ended in an error event.
+  decided: A replay of a failed turn ends in the error event the live turn ended in, never in done.
+  why: A failure answer is an answer, and a replay exists to say again what the turn said.
+- location: rules/chat/message-listing-pages-backwards.md
+  field: statement
+  unstated: The material answers a message page with the oldest messages and a next-page moment that selects messages older than that page, so following it from the first page finds nothing.
+  decided: A page holds the most recent messages before its moment, answered oldest first, and the next page ends before the oldest of them.
+  why: Paging backwards from the newest message is the only reading in which following the next-page moment reaches every message.
+- location: rules/chat/graph-delta-unreadable-result.md
+  field: statement
+  unstated: The material answers a tool result the graph delta cannot read with an empty graph delta for the traversal, the node read, the node listing and search, and with no graph delta for directed ingestion.
+  decided: An unreadable result yields a graph delta with no nodes and no links, whatever the tool.
+  why: One condition gets one answer, and four of the five tools already give it.
+- location: rules/chat/archived-conversation-takes-no-turn.md
+  field: statement
+  unstated: The material refuses a turn and its cancellation on an archived conversation but lets its title, archiving time and graph view change and lets it be deleted, without saying which of these archiving is meant to stop.
+  decided: Archiving stops turns only; an archived conversation can still be renamed, un-archived, deleted and have its graph view saved.
+  why: Archiving ends the conversation going on, not the owner's keeping of it.
+- location: rules/chat/conversation-usage-counts.md
+  field: statement
+  unstated: The material counts every message of a conversation in its usage, the assistant's tool requests and the tool results included, while its message listing shows only the owner's messages and the answers that ended turns.
+  decided: Usage counts every message the conversation holds.
+  why: Usage measures what the conversation consumed, and the model read every one of those messages.
 ---
 
 ## Description

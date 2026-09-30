@@ -6,7 +6,7 @@ Derived by spec.py from the specification files; never edited.
 
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
-| chat | supporting | 5 | 2 | 0 | 0 |
+| chat | supporting | 17 | 78 | 1 | 0 |
 | knowledge-base | core | 72 | 355 | 4 | 9 |
 
 ## Aggregates
@@ -31,6 +31,9 @@ None.
 
 ## Constraints
 
+- chat-content-is-data (chat)
+- chat-reads-are-consistent (chat)
+- chat-toolset (chat)
 - compliance-deletion-is-atomic (knowledge-base)
 - curation-is-atomic (knowledge-base)
 - curation-reads-are-consistent (knowledge-base)
@@ -47,4 +50,4 @@ None.
 - retrieval-requires-owner-authentication (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
 
-107 decision(s) disclosed, 2 location(s) retired in the decision log.
+116 decision(s) disclosed, 2 location(s) retired in the decision log.

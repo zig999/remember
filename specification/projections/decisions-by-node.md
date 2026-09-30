@@ -13,6 +13,14 @@ this groups its entries by the file each one located.
   unstated: The standing node had MCP answer in the REST envelope, while the documentation has MCP answer in its own content and error framing with the same payload and the same error codes; the two decide differently for the shape of an MCP success.
   why: The documentation states repeatedly that the envelope is REST-only and that only the payload and the codes must match.
 
+## contracts/chat/conversations.md
+- answers — decided: Every update naming neither field answers HTTP 422 VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present".
+  unstated: The material answers an update naming neither a title nor an archiving time with VALIDATION_REQUIRED_FIELD when the body is empty and with VALIDATION_INVALID_FORMAT when the body holds only other keys.
+  why: One condition gets one answer, and unknown keys are ignored everywhere else on this surface.
+- answers — decided: Every cursor that does not decode to a creation time and a well-formed identity answers HTTP 422 VALIDATION_INVALID_FORMAT with `details: { param: "cursor" }`.
+  unstated: The material answers a conversation cursor with the right shape but a creation time that is not a timestamp or an identity that is not an identifier with an internal error, and any other malformed cursor with VALIDATION_INVALID_FORMAT.
+  why: A malformed cursor is the caller's error, never the system's.
+
 ## contracts/knowledge-base/curation.md
 - answers — decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
   unstated: The standing rule limits every curation action's reason to 1000 characters, while the material's curation requests accept a reason of any length; the two decide differently for a rejection whose reason holds 1500 characters.
@@ -70,6 +78,11 @@ this groups its entries by the file each one located.
 - attributes.result.type — decided: string
   unstated: The material holds a chat tool call's result as a structured document without giving its shape.
   why: Nothing in the material reads inside it, so it is carried whole as text.
+
+## domain/chat/turn.md
+- type — decided: value-object
+  unstated: The material does not say whether a turn has an identity of its own or is a value carried by the messages it records.
+  why: A turn is never stored or read as itself: what persists of it is its messages and tool calls.
 
 ## domain/knowledge-base/_context.md
 - strategic — decided: core
@@ -202,6 +215,36 @@ this groups its entries by the file each one located.
 - attributes.result.type — decided: string
   unstated: The material records a tool call's result as a free-form object without giving it a shape.
   why: Nothing in the material reads inside the result except the outcome, which the validation outcome already holds.
+
+## rules/chat/archived-conversation-takes-no-turn.md
+- statement — decided: Archiving stops turns only; an archived conversation can still be renamed, un-archived, deleted and have its graph view saved.
+  unstated: The material refuses a turn and its cancellation on an archived conversation but lets its title, archiving time and graph view change and lets it be deleted, without saying which of these archiving is meant to stop.
+  why: Archiving ends the conversation going on, not the owner's keeping of it.
+
+## rules/chat/conversation-usage-counts.md
+- statement — decided: Usage counts every message the conversation holds.
+  unstated: The material counts every message of a conversation in its usage, the assistant's tool requests and the tool results included, while its message listing shows only the owner's messages and the answers that ended turns.
+  why: Usage measures what the conversation consumed, and the model read every one of those messages.
+
+## rules/chat/graph-delta-unreadable-result.md
+- statement — decided: An unreadable result yields a graph delta with no nodes and no links, whatever the tool.
+  unstated: The material answers a tool result the graph delta cannot read with an empty graph delta for the traversal, the node read, the node listing and search, and with no graph delta for directed ingestion.
+  why: One condition gets one answer, and four of the five tools already give it.
+
+## rules/chat/message-listing-pages-backwards.md
+- statement — decided: A page holds the most recent messages before its moment, answered oldest first, and the next page ends before the oldest of them.
+  unstated: The material answers a message page with the oldest messages and a next-page moment that selects messages older than that page, so following it from the first page finds nothing.
+  why: Paging backwards from the newest message is the only reading in which following the next-page moment reaches every message.
+
+## rules/chat/replay-reports-failure.md
+- statement — decided: A replay of a failed turn ends in the error event the live turn ended in, never in done.
+  unstated: The material replays a turn recorded as provider-error or internal-error as a done event with stop reason end_turn, while the live turn ended in an error event.
+  why: A failure answer is an answer, and a replay exists to say again what the turn said.
+
+## rules/chat/send-message-check-order.md
+- statement — decided: A sent message is checked for a disabled chat first, as every other conversation operation is.
+  unstated: The material checks a disabled chat first on every conversation operation except sending a message, where the idempotency key, conversation identity and content are checked first; the two decide differently for a malformed message sent while the chat is disabled.
+  why: A disabled surface answers that it is disabled whatever the request holds.
 
 ## rules/knowledge-base/affected-nodes-follow-merges.md
 - consistency — decided: eventual

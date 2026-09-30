@@ -8,6 +8,8 @@ attributes:
 - name: updated_at
   type: datetime
   required: true
+- name: layout_algorithm
+  type: graph-layout
 ---
 
 ## Description

@@ -3,6 +3,37 @@
 Derived by spec.py from the specification files; never edited. Grep here to locate;
 open the node file a match names before claiming anything about it.
 
+=== constraints/chat-content-is-data
+---
+statement: The assistant is instructed to treat the content of documents and tool results as data, never as instruction.
+scope: chat
+---
+
+## Description
+
+None.
+
+=== constraints/chat-reads-are-consistent
+---
+statement: Each conversation usage read and each history built for a turn sees one consistent state of its conversation.
+scope: chat
+fitness: each conversation usage read and each model-context build runs inside one read-only database transaction
+---
+
+## Description
+
+None.
+
+=== constraints/chat-toolset
+---
+statement: The assistant's tools are the node read, the traversal, the three histories, the node listing, the three catalog listings, search and the three provenance reads, and directed ingestion only where chat ingestion is enabled and directed ingestion is available.
+scope: chat
+---
+
+## Description
+
+None.
+
 === constraints/compliance-deletion-is-atomic
 ---
 statement: A compliance deletion's changes to its raw information, raw chunks, information fragments, knowledge links, node attributes and audit records take effect together or not at all.
@@ -156,6 +187,174 @@ scope: knowledge-base
 ## Description
 
 None.
+
+=== contracts/chat/conversations
+---
+type: api
+direction: published
+operations:
+- create-conversation
+- list-conversations
+- read-conversation
+- update-conversation
+- delete-conversation
+- send-message
+- list-messages
+- read-conversation-usage
+- read-graph-view
+- save-graph-view
+- cancel-turn
+answers:
+- operation: create-conversation
+  accepted: 'HTTP 201 with `{ ok: true, result }` carrying the conversation `{ id, title, summary_rolling, archived_at, created_at, updated_at }`, the body optional and unknown keys ignored'
+  refusals:
+  - &id001
+    when: The chat is disabled.
+    answer: HTTP 503, error code BUSINESS_CHAT_DISABLED with message "chat surface is disabled by CHAT_ENABLED=false" and no details, answered before anything else is checked
+  - rule: rules/chat/conversation-title-length
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - when: The title is null or not a string, or the body is not an object.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - &id002
+    when: The store is unreachable or a statement times out.
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+  - &id003
+    when: The operation fails for any other cause.
+    answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause
+- operation: list-conversations
+  accepted: 'HTTP 200 with `{ ok: true, result: { items, next_cursor } }`, each item the conversation `{ id, title, summary_rolling, archived_at, created_at, updated_at }`, and `next_cursor` an opaque cursor after the last item when more conversations follow and null otherwise'
+  refusals:
+  - *id001
+  - rule: rules/chat/conversation-listing-limit
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - when: '`include_archived` is neither a boolean nor "true" or "false".'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - when: The cursor does not decode to a creation time and a well-formed conversation identity.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with a message naming why the cursor is invalid and `details: { param: "cursor" }`'
+  - *id002
+  - *id003
+- operation: read-conversation
+  accepted: 'HTTP 200 with `{ ok: true, result }` carrying the conversation `{ id, title, summary_rolling, archived_at, created_at, updated_at }`, archived or not'
+  refusals:
+  - *id001
+  - &id004
+    when: The conversation identity is not a well-formed identifier.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - &id005
+    when: No conversation is held at the identity.
+    answer: 'HTTP 404, error code RESOURCE_NOT_FOUND with message "conversation not found" and `details: { id }`'
+  - *id002
+  - *id003
+- operation: update-conversation
+  accepted: 'HTTP 200 with `{ ok: true, result }` carrying the conversation `{ id, title, summary_rolling, archived_at, created_at, updated_at }` as updated'
+  refusals:
+  - *id001
+  - *id004
+  - rule: rules/chat/conversation-update-names-a-field
+    answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present" and `details: { body: "PATCH /conversations/:id" }`'
+  - rule: rules/chat/conversation-title-length
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - when: The archiving time is neither an ISO-8601 datetime nor null.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - *id005
+  - *id002
+  - *id003
+- operation: delete-conversation
+  accepted: HTTP 204 with no body, the conversation removed with its messages, tool calls and graph view
+  refusals:
+  - *id001
+  - *id004
+  - *id005
+  - *id002
+  - *id003
+- operation: send-message
+  accepted: 'HTTP 200 as a server-sent event stream (`text/event-stream; charset=utf-8`), each frame `event: <name>` then `data: <json>`: `llm_start { iteration }`, `text_delta { delta }`, `tool_start { tool, args_summary }`, `tool_result { tool, ok }`, `graph_delta { source_tool, nodes, links }` with each node `{ id, node_type, canonical_name, status }` and each link `{ id, source_node_id, target_node_id, link_type, is_temporal }` plus `link_type_label`, `is_in_effect`, `status` and `flags` where known, and exactly one closing `done { stop_reason, model, tokens_in, tokens_out }` or `error { code, message }`, the stop reason as `end_turn`, `max_tokens`, `stop_sequence`, `max_iterations`, `turn_timeout` or `cancelled`, tool arguments, tool results and content blocks never sent; a replay streams `llm_start { iteration: 1 }`, the recorded text as one `text_delta` when it is not empty, and `done` with the recorded stop reason, model (`""` when none) and tokens (0 when none), or, for a turn recorded as provider-error or internal-error, the `error` frame that turn closed with'
+  refusals:
+  - *id001
+  - when: The Idempotency-Key header is missing or empty.
+    answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "Idempotency-Key header is required" and `details: { header: "Idempotency-Key" }`'
+  - when: The Idempotency-Key header is not a well-formed identifier.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Idempotency-Key must be a valid UUID" and `details: { header: "Idempotency-Key", received }`'
+  - *id004
+  - when: The content is empty or longer than the configured maximum, or the model is empty.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`, the messages "content must be a non-empty string" and "content must be at most N characters"
+  - *id005
+  - &id006
+    rule: rules/chat/archived-conversation-takes-no-turn
+    answer: 'HTTP 409, error code BUSINESS_CONVERSATION_ARCHIVED with message "conversation is archived; un-archive via PATCH /conversations/:id { archived_at: null }" and no details'
+  - rule: rules/chat/one-turn-in-flight
+    answer: HTTP 409, error code BUSINESS_TURN_IN_PROGRESS with message "another turn is currently in progress on this conversation" and no details, also when a concurrent request under the same key recorded the message first and its turn has not ended
+  - rule: rules/chat/idempotency-match
+    answer: HTTP 409, error code BUSINESS_IDEMPOTENCY_MISMATCH with message "Idempotency-Key matches an existing request with different content or model" and no details
+  - rule: rules/chat/chat-toolset-requires-every-query-tool
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND with message "chat surface is not available on this deployment" and no details
+  - when: The model provider cannot be reached when the turn starts.
+    answer: HTTP 503, error code BUSINESS_CHAT_PROVIDER_UNAVAILABLE with message "chat provider is temporarily unavailable" and no details
+  - when: The model provider fails while the turn streams.
+    answer: 'an `error` frame `{ code: "BUSINESS_CHAT_PROVIDER_UNAVAILABLE", message: "chat provider is temporarily unavailable" }` in the HTTP 200 stream'
+  - when: The model stream ends with no final message.
+    answer: 'an `error` frame `{ code: "SYSTEM_INTERNAL_ERROR", message: "chat stream produced no final message" }` in the HTTP 200 stream'
+  - when: The turn fails for any other cause after streaming started.
+    answer: 'an `error` frame `{ code: "SYSTEM_INTERNAL_ERROR", message: "chat encountered an internal error" }` in the HTTP 200 stream'
+  - *id002
+  - *id003
+- operation: list-messages
+  accepted: 'HTTP 200 with `{ ok: true, result: { items, next_before } }`, each item `{ id, conversation_id, role, content, stop_reason, idempotency_key, model, tokens_in, tokens_out, latency_ms, created_at }` with `content` a list of content blocks, and `next_before` the creation time of the oldest item when older messages remain and null otherwise'
+  refusals:
+  - *id001
+  - *id004
+  - rule: rules/chat/message-listing-limit
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - when: '`before` is not an ISO-8601 datetime.'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
+  - *id005
+  - *id002
+  - *id003
+- operation: read-conversation-usage
+  accepted: 'HTTP 200 with `{ ok: true, result: { messages, tokens_in, tokens_out, tool_calls } }`, zeros for a conversation with no messages'
+  refusals:
+  - *id001
+  - *id004
+  - *id005
+  - *id002
+  - *id003
+- operation: read-graph-view
+  accepted: 'HTTP 200 with `{ ok: true, result }` carrying the saved snapshot, or null when none was saved'
+  refusals:
+  - *id001
+  - *id004
+  - *id005
+  - *id002
+  - *id003
+- operation: save-graph-view
+  accepted: 'HTTP 200 with `{ ok: true, result: { updated_at } }`; the snapshot is `{ version, nodes, links, positions, user_pinned }`, version 1 or 2, `nodes` and `links` lists of objects each with a string `id` and kept whole, `positions` an object from node identity to `{ x, y }`, `user_pinned` a list of strings, and for version 2 `layout_algorithm` one of `force`, `tree` or `radial`, unknown top-level keys dropped'
+  refusals:
+  - *id001
+  - *id004
+  - rule: rules/chat/graph-view-snapshot-bounds
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "invalid graph view snapshot" and `details` the flattened validation issues
+  - when: The snapshot names an unknown version, or its positions, pinned nodes or version-2 layout are malformed.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "invalid graph view snapshot" and `details` the flattened validation issues, answered before the conversation is looked up
+  - *id005
+  - *id002
+  - *id003
+- operation: cancel-turn
+  accepted: 'HTTP 202 with `{ ok: true, result: { cancelled: true } }`'
+  refusals:
+  - *id001
+  - *id004
+  - *id005
+  - *id006
+  - rule: rules/chat/cancel-requires-turn-in-flight
+    answer: 'HTTP 404, error code RESOURCE_NOT_FOUND with message "no in-flight turn for this conversation" and `details: { id }`'
+  - *id002
+  - *id003
+---
+
+## Description
+
+The owner's conversation surface: creating, listing, reading, updating and deleting conversations, sending a message and streaming the assistant's answer, listing messages, reading usage, reading and saving the graph view, and cancelling a turn.
+It is carried by REST alone.
 
 === contracts/knowledge-base/compliance-audit
 ---
@@ -1404,6 +1603,51 @@ entries:
   unstated: The material gives the reject rate by code as a map from error code to rate without a shape the model can name.
   decided: reject-rate, many
   why: Each entry of the map pairs one code with one rate.
+- location: domain/chat/turn.md
+  field: type
+  unstated: The material does not say whether a turn has an identity of its own or is a value carried by the messages it records.
+  decided: value-object
+  why: 'A turn is never stored or read as itself: what persists of it is its messages and tool calls.'
+- location: rules/chat/send-message-check-order.md
+  field: statement
+  unstated: The material checks a disabled chat first on every conversation operation except sending a message, where the idempotency key, conversation identity and content are checked first; the two decide differently for a malformed message sent while the chat is disabled.
+  decided: A sent message is checked for a disabled chat first, as every other conversation operation is.
+  why: A disabled surface answers that it is disabled whatever the request holds.
+- location: contracts/chat/conversations.md
+  field: answers
+  unstated: The material answers an update naming neither a title nor an archiving time with VALIDATION_REQUIRED_FIELD when the body is empty and with VALIDATION_INVALID_FORMAT when the body holds only other keys.
+  decided: Every update naming neither field answers HTTP 422 VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present".
+  why: One condition gets one answer, and unknown keys are ignored everywhere else on this surface.
+- location: contracts/chat/conversations.md
+  field: answers
+  unstated: The material answers a conversation cursor with the right shape but a creation time that is not a timestamp or an identity that is not an identifier with an internal error, and any other malformed cursor with VALIDATION_INVALID_FORMAT.
+  decided: 'Every cursor that does not decode to a creation time and a well-formed identity answers HTTP 422 VALIDATION_INVALID_FORMAT with `details: { param: "cursor" }`.'
+  why: A malformed cursor is the caller's error, never the system's.
+- location: rules/chat/replay-reports-failure.md
+  field: statement
+  unstated: The material replays a turn recorded as provider-error or internal-error as a done event with stop reason end_turn, while the live turn ended in an error event.
+  decided: A replay of a failed turn ends in the error event the live turn ended in, never in done.
+  why: A failure answer is an answer, and a replay exists to say again what the turn said.
+- location: rules/chat/message-listing-pages-backwards.md
+  field: statement
+  unstated: The material answers a message page with the oldest messages and a next-page moment that selects messages older than that page, so following it from the first page finds nothing.
+  decided: A page holds the most recent messages before its moment, answered oldest first, and the next page ends before the oldest of them.
+  why: Paging backwards from the newest message is the only reading in which following the next-page moment reaches every message.
+- location: rules/chat/graph-delta-unreadable-result.md
+  field: statement
+  unstated: The material answers a tool result the graph delta cannot read with an empty graph delta for the traversal, the node read, the node listing and search, and with no graph delta for directed ingestion.
+  decided: An unreadable result yields a graph delta with no nodes and no links, whatever the tool.
+  why: One condition gets one answer, and four of the five tools already give it.
+- location: rules/chat/archived-conversation-takes-no-turn.md
+  field: statement
+  unstated: The material refuses a turn and its cancellation on an archived conversation but lets its title, archiving time and graph view change and lets it be deleted, without saying which of these archiving is meant to stop.
+  decided: Archiving stops turns only; an archived conversation can still be renamed, un-archived, deleted and have its graph view saved.
+  why: Archiving ends the conversation going on, not the owner's keeping of it.
+- location: rules/chat/conversation-usage-counts.md
+  field: statement
+  unstated: The material counts every message of a conversation in its usage, the assistant's tool requests and the tool results included, while its message listing shows only the owner's messages and the answers that ended turns.
+  decided: Usage counts every message the conversation holds.
+  why: Usage measures what the conversation consumed, and the model read every one of those messages.
 ---
 
 ## Description
@@ -1422,6 +1666,46 @@ The chat holds the conversations the owner has with the assistant: their message
 ## Responsibility
 
 It keeps each conversation with the assistant so the owner can return to it.
+
+=== domain/chat/assistant-stop-reason
+---
+type: enumeration
+values:
+- end-turn
+- max-tokens
+- stop-sequence
+- max-iterations
+- turn-timeout
+- cancelled
+- provider-error
+- internal-error
+---
+
+## Description
+
+How a turn ended: as the model ended it (end-turn, max-tokens, stop-sequence), at the model-call limit, past the turn time limit, cancelled by the owner, or failed at the model provider or inside the system.
+
+## Responsibility
+
+None.
+
+=== domain/chat/chat-prompt-version
+---
+type: enumeration
+values:
+- v1
+- v2
+- v3
+- v4
+---
+
+## Description
+
+The versions of the instructions the assistant answers under.
+
+## Responsibility
+
+None.
 
 === domain/chat/conversation
 ---
@@ -1459,6 +1743,160 @@ One conversation the owner holds with the assistant, with an optional title and 
 
 It is the unit a conversation's messages, tool calls and graph view live and are removed with.
 
+=== domain/chat/conversation-listing
+---
+type: value-object
+attributes:
+- name: limit
+  type: integer
+- name: cursor
+  type: string
+- name: include_archived
+  type: boolean
+---
+
+## Description
+
+What a conversation listing asks for: how many conversations, where the previous page ended, and whether archived conversations are included.
+
+## Responsibility
+
+None.
+
+=== domain/chat/conversation-usage
+---
+type: value-object
+attributes:
+- name: messages
+  type: integer
+  required: true
+- name: tokens_in
+  type: integer
+  required: true
+- name: tokens_out
+  type: integer
+  required: true
+- name: tool_calls
+  type: integer
+  required: true
+---
+
+## Description
+
+How much one conversation has used: its messages, the model tokens its answers consumed and produced, and its tool calls.
+
+## Responsibility
+
+None.
+
+=== domain/chat/graph-delta
+---
+type: value-object
+attributes:
+- name: source_tool
+  type: string
+  required: true
+- name: nodes
+  type: graph-delta-node
+  many: true
+- name: links
+  type: graph-delta-link
+  many: true
+---
+
+## Description
+
+The part of the knowledge graph one successful tool call of a turn showed, streamed to the owner so the graph view can draw it.
+
+## Responsibility
+
+It lets the owner see, as the assistant works, the knowledge its answer rests on.
+
+=== domain/chat/graph-delta-link
+---
+type: value-object
+attributes:
+- name: link_type
+  type: string
+  required: true
+- name: link_type_label
+  type: string
+- name: is_temporal
+  type: boolean
+  required: true
+- name: is_in_effect
+  type: boolean
+- name: status
+  type: string
+- name: flags
+  type: domain/knowledge-base/assertion-flag
+  many: true
+relationships:
+- target: domain/knowledge-base/knowledge-link
+  type: reference
+  cardinality: '1'
+- target: domain/knowledge-base/knowledge-node
+  type: reference
+  cardinality: '1'
+  role: source
+- target: domain/knowledge-base/knowledge-node
+  type: reference
+  cardinality: '1'
+  role: target
+---
+
+## Description
+
+One knowledge link a tool call showed, as the graph view draws it.
+
+## Responsibility
+
+None.
+
+=== domain/chat/graph-delta-node
+---
+type: value-object
+attributes:
+- name: node_type
+  type: string
+  required: true
+- name: canonical_name
+  type: string
+  required: true
+- name: status
+  type: domain/knowledge-base/node-status
+  required: true
+relationships:
+- target: domain/knowledge-base/knowledge-node
+  type: reference
+  cardinality: '1'
+---
+
+## Description
+
+One knowledge node a tool call showed, as the graph view draws it.
+
+## Responsibility
+
+None.
+
+=== domain/chat/graph-layout
+---
+type: enumeration
+values:
+- force
+- tree
+- radial
+---
+
+## Description
+
+How a graph view arranges the knowledge graph it shows.
+
+## Responsibility
+
+None.
+
 === domain/chat/graph-view
 ---
 type: entity
@@ -1470,6 +1908,8 @@ attributes:
 - name: updated_at
   type: datetime
   required: true
+- name: layout_algorithm
+  type: graph-layout
 ---
 
 ## Description
@@ -1492,7 +1932,7 @@ attributes:
   type: string
   required: true
 - name: stop_reason
-  type: string
+  type: assistant-stop-reason
 - name: idempotency_key
   type: string
 - name: model
@@ -1503,6 +1943,9 @@ attributes:
   type: integer
 - name: latency_ms
   type: integer
+- name: created_at
+  type: datetime
+  required: true
 ---
 
 ## Description
@@ -1512,6 +1955,24 @@ One turn of a conversation, spoken by the owner or by the assistant.
 ## Responsibility
 
 It holds what was said in a conversation, in the words it was said.
+
+=== domain/chat/message-listing
+---
+type: value-object
+attributes:
+- name: limit
+  type: integer
+- name: before
+  type: datetime
+---
+
+## Description
+
+What a message listing asks for: how many messages, and the moment the page ends before.
+
+## Responsibility
+
+None.
 
 === domain/chat/message-role
 ---
@@ -1528,6 +1989,22 @@ Who spoke a message: the owner, as user, or the assistant.
 ## Responsibility
 
 It tells the owner's turns from the assistant's.
+
+=== domain/chat/summary-prompt-version
+---
+type: enumeration
+values:
+- v1
+- v2
+---
+
+## Description
+
+The versions of the instructions a conversation's rolling summary is refolded under.
+
+## Responsibility
+
+None.
 
 === domain/chat/tool-call
 ---
@@ -1563,6 +2040,60 @@ One call the assistant made to a tool while answering in a conversation, with wh
 ## Responsibility
 
 It shows the owner which tools an answer rested on.
+
+=== domain/chat/turn
+---
+type: value-object
+attributes:
+- name: content
+  type: string
+  required: true
+- name: model
+  type: string
+  required: true
+- name: idempotency_key
+  type: string
+  required: true
+- name: stop_reason
+  type: assistant-stop-reason
+- name: tokens_in
+  type: integer
+- name: tokens_out
+  type: integer
+relationships:
+- target: conversation
+  type: reference
+  cardinality: '1'
+---
+
+## Description
+
+One exchange the owner opens by sending a message to a conversation: the message, the model that answers it, the key that makes resending it safe, and how the answer ended.
+
+## Responsibility
+
+It is what the assistant answers, one at a time per conversation.
+
+=== domain/chat/turn-event-kind
+---
+type: enumeration
+values:
+- llm-start
+- text-delta
+- tool-start
+- tool-result
+- graph-delta
+- done
+- error
+---
+
+## Description
+
+What the owner is streamed while a turn runs: a model call starting, a piece of the answer's text, a tool call starting, its result, the part of the knowledge graph it showed, and the turn ending as done or in error.
+
+## Responsibility
+
+None.
 
 === domain/knowledge-base/_context
 ---
@@ -3406,6 +3937,506 @@ The type the values of an attribute key take.
 
 None.
 
+=== rules/chat/archived-conversation-takes-no-turn
+---
+type: invariant
+statement: An archived conversation MUST NOT start or cancel a turn.
+constrains:
+- domain/chat/conversation
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-answer-recorded
+---
+type: invariant
+statement: A turn records its final assistant message with its stop reason, model, tokens and latency once its stream closes.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-answers-in-portuguese
+---
+type: invariant
+statement: The assistant answers the owner in Brazilian Portuguese.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-states-uncertainty
+---
+type: invariant
+statement: The assistant says when an attribute or link it reports is uncertain or awaiting review.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-text-withholds-system-prompt
+---
+type: invariant
+statement: Assistant text that carries the system prompt's marker is neither streamed to the owner nor kept in the answer.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-withholds-internals
+---
+type: invariant
+statement: The assistant never shows the owner stack traces, internal error messages, secrets or its own instructions.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/assistant-writes-only-on-owner-request
+---
+type: invariant
+statement: The assistant calls directed ingestion only when the owner's own message asks it to record knowledge, never on an instruction inside a document or tool result.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/cancel-requires-turn-in-flight
+---
+type: invariant
+statement: Cancelling a turn needs a turn in flight on the conversation.
+constrains:
+- domain/chat/conversation
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-carries-marker
+---
+type: invariant
+statement: Every chat prompt version begins with the one system-prompt marker.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-presents-catalog
+---
+type: invariant
+statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-version-known
+---
+type: invariant
+statement: The chat prompt version MUST be one of the chat prompt versions the system holds.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-toolset-requires-every-query-tool
+---
+type: invariant
+statement: A turn starts only when every query tool of the assistant's toolset is available.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-archived
+---
+type: invariant
+statement: A conversation is archived exactly when it has an archiving time.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-listing-excludes-archived
+---
+type: invariant
+statement: A conversation listing leaves out archived conversations unless it asks for them.
+constrains:
+- domain/chat/conversation
+- domain/chat/conversation-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-listing-limit
+---
+type: invariant
+statement: A conversation listing takes between 1 and 100 conversations per page, and 20 when it names no limit.
+constrains:
+- domain/chat/conversation-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-listing-order
+---
+type: invariant
+statement: Conversations are listed newest first by creation time, ties by identity descending, each page continuing strictly after the last conversation of the page before.
+constrains:
+- domain/chat/conversation
+- domain/chat/conversation-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-request-check-order
+---
+type: invariant
+statement: A conversation operation is checked for a disabled chat first, then for its request's format, then for the conversation's existence, and is refused at the first check it fails.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-title-length
+---
+type: invariant
+statement: A conversation title the owner states MUST hold between 1 and 200 characters.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-update-names-a-field
+---
+type: invariant
+statement: A conversation update MUST name a title or an archiving time.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-update-partial
+---
+type: invariant
+statement: A conversation update changes only the fields it names, a field named empty is cleared, and a named archiving time is stamped as given.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/conversation-usage-counts
+---
+type: invariant
+statement: A conversation's usage counts every message it holds, sums the tokens of its assistant messages, and counts its tool calls.
+constrains:
+- domain/chat/conversation
+- domain/chat/conversation-usage
+---
+
+## Description
+
+None.
+
+=== rules/chat/default-chat-prompt-version
+---
+type: invariant
+statement: A chat that names no prompt version answers under v4.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/default-summary-prompt-version
+---
+type: invariant
+statement: A chat that names no summary prompt version refolds rolling summaries under v2.
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/distillation-failure-changes-nothing
+---
+type: invariant
+statement: A refold or title distillation that fails, or whose result fails its length, leaves the conversation as it was and fails nothing the owner asked for.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/distillation-follows-live-turn
+---
+type: policy
+statement: Title distillation and rolling summary refresh follow a live turn and never a replay.
+constrains:
+- domain/chat/turn
+- domain/chat/conversation
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/chat/distilled-title-length
+---
+type: invariant
+statement: A distilled title MUST hold at least one and at most 80 characters once trimmed.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/distilled-title-never-overwrites
+---
+type: invariant
+statement: A distilled title is written only while the conversation has no title.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-content
+---
+type: invariant
+statement: A graph delta holds the traversal's nodes and links, the node read's node, the node listing's nodes, the nodes search found in search order, or the nodes directed ingestion affected and the links it recorded.
+constrains:
+- domain/chat/graph-delta
+- domain/chat/graph-delta-node
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-directed-links
+---
+type: invariant
+statement: A directed ingestion's graph delta holds only the links whose item status is a taken outcome and whose two ends are nodes the same ingestion resolved.
+constrains:
+- domain/chat/graph-delta
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-directed-nodes-active
+---
+type: invariant
+statement: A node directed ingestion affected enters its graph delta as active.
+constrains:
+- domain/chat/graph-delta-node
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-drops-incomplete
+---
+type: invariant
+statement: A graph delta leaves out a node or link lacking a field it requires, and a node whose status is not a node status.
+constrains:
+- domain/chat/graph-delta
+- domain/chat/graph-delta-node
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-follows-tool-result
+---
+type: invariant
+statement: A successful tool result of the traversal, the node read, the node listing, search or directed ingestion is followed by a graph delta.
+constrains:
+- domain/chat/turn
+- domain/chat/graph-delta
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-link-temporal
+---
+type: invariant
+statement: A graph delta link is temporal as its link type states, and not temporal when the catalog does not hold its link type.
+constrains:
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-unreadable-result
+---
+type: invariant
+statement: A tool result a graph delta cannot read yields a graph delta with no nodes and no links.
+constrains:
+- domain/chat/graph-delta
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-view-replaced-on-save
+---
+type: invariant
+statement: Saving a conversation's graph view replaces the one it held and stamps the moment of saving.
+constrains:
+- domain/chat/conversation
+- domain/chat/graph-view
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-view-snapshot-bounds
+---
+type: invariant
+statement: A graph view snapshot holds at most 2000 nodes and at most 2000 links, each with an identity.
+constrains:
+- domain/chat/graph-view
+---
+
+## Description
+
+None.
+
+=== rules/chat/idempotency-match
+---
+type: invariant
+statement: A resent message matches the message recorded under its idempotency key only when its text and model equal the recorded ones.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/idempotent-recovery
+---
+type: invariant
+statement: A message resent under an idempotency key whose turn neither ended nor is in flight runs the turn again on the recorded message without recording a second one.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/idempotent-replay
+---
+type: invariant
+statement: A message resent under an idempotency key whose turn has ended streams the recorded answer again without calling the model or recording anything.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/iteration-recorded
+---
+type: invariant
+statement: Each model call that used a tool records the assistant's tool request and the tool results as two messages, the request first.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
 === rules/chat/message-idempotency-key-unique
 ---
 type: invariant
@@ -3413,6 +4444,251 @@ statement: A conversation holds at most one message with one idempotency key.
 constrains:
 - domain/chat/conversation
 - domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/message-listing-limit
+---
+type: invariant
+statement: A message listing takes between 1 and 200 messages per page, and 50 when it names no limit.
+constrains:
+- domain/chat/message-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/message-listing-pages-backwards
+---
+type: invariant
+statement: A message listing's page is the most recent messages created before its given moment, and the next page ends before the oldest of them.
+constrains:
+- domain/chat/message
+- domain/chat/message-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/message-listing-shows-exchanges
+---
+type: invariant
+statement: A message listing shows only owner-written messages and the assistant messages that ended turns, oldest first, ties by identity.
+constrains:
+- domain/chat/message
+- domain/chat/message-listing
+---
+
+## Description
+
+None.
+
+=== rules/chat/model-context-owner-time
+---
+type: invariant
+statement: The assistant is given the owner's current date and time in the owner's time zone, as an ISO-8601 time with its offset, with every turn.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/model-context-rolling-summary
+---
+type: invariant
+statement: Where the conversation has a rolling summary, the assistant is given it, marked as the synthesized earlier conversation, before the recent window.
+constrains:
+- domain/chat/turn
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/model-context-well-formed
+---
+type: invariant
+statement: The history given to the assistant leaves out messages without content, leading assistant messages and tool results, and trailing tool requests, and keeps every other message unchanged and in order.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/model-context-window
+---
+type: invariant
+statement: The assistant is given every message of the conversation from its K-th most recent owner-written message on, K the configured recent window.
+constrains:
+- domain/chat/turn
+- domain/chat/conversation
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/one-turn-in-flight
+---
+type: invariant
+statement: A conversation has at most one turn in flight.
+constrains:
+- domain/chat/conversation
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/owner-message-recorded-first
+---
+type: invariant
+statement: A turn records the owner's message verbatim, with its idempotency key and model, before the assistant answers, and keeps it when the provider then refuses.
+constrains:
+- domain/chat/turn
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/owner-written-message
+---
+type: invariant
+statement: A user message carries an idempotency key exactly when the owner wrote it.
+constrains:
+- domain/chat/message
+- domain/chat/message-role
+---
+
+## Description
+
+None.
+
+=== rules/chat/recording-failure-keeps-stream
+---
+type: invariant
+statement: A failure to record a tool call or message of a turn leaves what the owner is streamed unchanged.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/replay-reports-failure
+---
+type: invariant
+statement: A replay of a turn that ended as provider-error or internal-error ends in an error event as the live turn did, never in done.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/rolling-summary-folds
+---
+type: invariant
+statement: A refold keeps the previous rolling summary's salient facts and folds in those of the older messages.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/rolling-summary-length
+---
+type: invariant
+statement: A rolling summary MUST hold at least one and at most 2000 characters once trimmed.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/rolling-summary-overlap
+---
+type: invariant
+statement: The older messages a refold reads are at most the configured overlap of messages just before the recent window, starting at an owner-written message.
+constrains:
+- domain/chat/conversation
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/rolling-summary-refresh
+---
+type: policy
+statement: When rolling summaries are enabled and a conversation has owner-written messages older than the recent window, a live turn refolds its rolling summary from the previous summary and the older messages.
+constrains:
+- domain/chat/conversation
+- domain/chat/summary-prompt-version
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/chat/send-message-check-order
+---
+type: invariant
+statement: A sent message is checked for a disabled chat, then its idempotency key, conversation identity and content, then an absent conversation, an archived conversation, a turn in flight, a reused idempotency key and an unavailable toolset, and is refused at the first check it fails.
+constrains:
+- domain/chat/turn
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/summary-prompt-version-known
+---
+type: invariant
+statement: The summary prompt version MUST be one of the summary prompt versions the system holds.
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/title-distillation
+---
+type: policy
+statement: When title distillation is enabled, a live turn gives a conversation without a title one distilled from its first owner-written message and the first answer that ended a turn.
+constrains:
+- domain/chat/conversation
+- domain/chat/message
+consistency: eventual
 ---
 
 ## Description
@@ -3427,6 +4703,221 @@ constrains:
 - domain/chat/conversation
 - domain/chat/tool-call
 - domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-call-recorded
+---
+type: invariant
+statement: Every tool result of a turn is recorded as a tool call of its conversation naming the assistant message of its model call.
+constrains:
+- domain/chat/turn
+- domain/chat/tool-call
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-failure-continues-turn
+---
+type: invariant
+statement: A tool call that fails, names a tool outside the assistant's toolset or runs past the configured tool time hands its failure to the assistant, and the turn continues.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-invocation-carries-turn
+---
+type: invariant
+statement: Every tool the assistant calls in a turn receives the owner's message of that turn verbatim and the conversation and message it came from.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-result-truncated
+---
+type: invariant
+statement: A tool result longer than the configured limit reaches the assistant cut to that many characters and marked with its full length.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-summary-bounded
+---
+type: invariant
+statement: A tool-start event summarizes the tool's arguments in at most 200 characters and never carries the content an ingestion was given.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-cancel
+---
+type: invariant
+statement: A turn the owner cancels, or whose owner's connection closes, ends as cancelled.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-ending-message
+---
+type: invariant
+statement: An assistant message carries a stop reason exactly when it ends a turn.
+constrains:
+- domain/chat/message
+- domain/chat/message-role
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-ends-once
+---
+type: invariant
+statement: Every turn ends with exactly one done or error event.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-failure-stop-reason
+---
+type: invariant
+statement: A turn that fails ends as provider-error when the model provider failed and as internal-error for any other cause, including a turn that ends with neither done nor error.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-limit-before-cancel
+---
+type: invariant
+statement: A turn at its model-call limit ends as max-iterations even when it was also cancelled.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-model-call-limit
+---
+type: invariant
+statement: A turn calls the model at most the configured number of times and ends as max-iterations when it would call it once more.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-model-default
+---
+type: invariant
+statement: A turn that names no model is answered by the configured chat model.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-model-stop-reason
+---
+type: invariant
+statement: A turn the model ends ends as end-turn, max-tokens or stop-sequence as the model stated, and as end-turn for any other reason the model gives.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-one-tool-at-a-time
+---
+type: invariant
+statement: The assistant calls at most one tool per model call.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-reports-last-model
+---
+type: invariant
+statement: A turn reports the model its last model response named, and the requested model before any response.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-time-limit
+---
+type: invariant
+statement: A turn still running when the configured turn time has passed ends as turn-timeout.
+constrains:
+- domain/chat/turn
+- domain/chat/assistant-stop-reason
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-tokens-summed
+---
+type: invariant
+statement: A turn's input and output tokens are the sums over every model call it made.
+constrains:
+- domain/chat/turn
 ---
 
 ## Description

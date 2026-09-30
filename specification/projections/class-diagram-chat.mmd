@@ -12,17 +12,19 @@ classDiagram
             <<Entity>>
             +string snapshot
             +datetime updatedAt
+            +GraphLayout layoutAlgorithm
         }
         class Message {
             <<Entity>>
             +MessageRole role
             +string content
-            +string stopReason
+            +AssistantStopReason stopReason
             +string idempotencyKey
             +string model
             +integer tokensIn
             +integer tokensOut
             +integer latencyMs
+            +datetime createdAt
         }
         class ToolCall {
             <<Entity>>
@@ -34,12 +36,116 @@ classDiagram
             +integer durationMs
         }
     }
+    class AssistantStopReason {
+        <<Enumeration>>
+        END_TURN
+        MAX_TOKENS
+        STOP_SEQUENCE
+        MAX_ITERATIONS
+        TURN_TIMEOUT
+        CANCELLED
+        PROVIDER_ERROR
+        INTERNAL_ERROR
+    }
+    class ChatPromptVersion {
+        <<Enumeration>>
+        V1
+        V2
+        V3
+        V4
+    }
+    class ConversationListing {
+        <<ValueObject>>
+        +integer limit
+        +string cursor
+        +boolean includeArchived
+    }
+    class ConversationUsage {
+        <<ValueObject>>
+        +integer messages
+        +integer tokensIn
+        +integer tokensOut
+        +integer toolCalls
+    }
+    class GraphDelta {
+        <<ValueObject>>
+        +string sourceTool
+        +GraphDeltaNode[] nodes
+        +GraphDeltaLink[] links
+    }
+    class GraphDeltaLink {
+        <<ValueObject>>
+        +string linkType
+        +string linkTypeLabel
+        +boolean isTemporal
+        +boolean isInEffect
+        +string status
+        +AssertionFlag[] flags
+    }
+    class GraphDeltaNode {
+        <<ValueObject>>
+        +string nodeType
+        +string canonicalName
+        +NodeStatus status
+    }
+    class GraphLayout {
+        <<Enumeration>>
+        FORCE
+        TREE
+        RADIAL
+    }
+    class MessageListing {
+        <<ValueObject>>
+        +integer limit
+        +datetime before
+    }
     class MessageRole {
         <<Enumeration>>
         USER
         ASSISTANT
     }
+    class SummaryPromptVersion {
+        <<Enumeration>>
+        V1
+        V2
+    }
+    class Turn {
+        <<ValueObject>>
+        +string content
+        +string model
+        +string idempotencyKey
+        +AssistantStopReason stopReason
+        +integer tokensIn
+        +integer tokensOut
+    }
+    class TurnEventKind {
+        <<Enumeration>>
+        LLM_START
+        TEXT_DELTA
+        TOOL_START
+        TOOL_RESULT
+        GRAPH_DELTA
+        DONE
+        ERROR
+    }
+    class AssertionFlag {
+        <<external: knowledge-base>>
+    }
+    class KnowledgeLink {
+        <<external: knowledge-base>>
+    }
+    class KnowledgeNode {
+        <<external: knowledge-base>>
+    }
+    class NodeStatus {
+        <<external: knowledge-base>>
+    }
     Conversation "1" *-- "0..*" Message
     Conversation "1" *-- "0..*" ToolCall
     Conversation "1" *-- "0..1" GraphView
+    GraphDeltaLink "0..*" --> "1" KnowledgeLink
+    GraphDeltaLink "0..*" --> "1" KnowledgeNode : source
+    GraphDeltaLink "0..*" --> "1" KnowledgeNode : target
+    GraphDeltaNode "0..*" --> "1" KnowledgeNode
     ToolCall "0..*" -- "0..1" Message
+    Turn "0..*" --> "1" Conversation
