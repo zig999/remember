@@ -1,0 +1,26 @@
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file declares no shape for the filter. It parses the query with the imported
+      `ListAcceptedFragmentsQuerySchema` and forwards an object literal, `{ llm_run_id:
+      query.llm_run_id, raw_information_id: query.raw_information_id, limit: query.limit,
+      offset: query.offset }`, to `listAcceptedFragmentsService`. The shape is declared in
+      `backend/src/modules/query-retrieval/dto/fragment.dto.ts`, where `llm_run_id` and
+      `raw_information_id` are `z.string().uuid().optional()`.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      `isMappableSearchError` and `handleSearchError` (lines 200-221). The `GET /search` catch block
+      turns the refusal into a response. The throw itself is in
+      `backend/src/modules/query-retrieval/service/search.service.ts` line 453, not in this file.
+    evidence: >-
+      `err instanceof UnknownLinkTypeError` inside `isMappableSearchError`, and then
+      `const { statusCode, envelope } = mapErrorToHttpResponse(err); return
+      reply.status(statusCode).send(envelope);`. The shared mapper in `error-envelope.ts` turns
+      `UnknownLinkTypeError` into a 422 with `details: { link_type: err.linkType, ...extraDetails }`.
+
+looked_past: >-
+  The header and section comments (the BR-24 paragraph, "Tombstoned sources are silently omitted", and
+  the endpoint list) are prose. They are not findings here because no node in this set holds them and
+  the code carries the behavior.

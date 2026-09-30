@@ -1,0 +1,40 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      the docstring above ListAcceptedFragmentsQuerySchema, lines 27-28 (the last bullet)
+    evidence: >-
+      " * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+      *   mirrors `SearchQuerySchema`."
+    cost: >-
+      The page defaults (20 and 0) are written a second time as prose beside the schema that enforces them, so a
+      later reader can take the comment for where the default is decided. If the default moves in the node, the
+      comment is not reached by `--check` and keeps saying the old number.
+    kind: restates
+    correction: >-
+      Remove the prose. The code already holds the fact in this file: `.default(20)` on `limit` and `.default(0)`
+      on `offset`.
+    node: rules/knowledge-base/page-defaults
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      ListAcceptedFragmentsQuerySchema (lines 29-45). The zod object declares the filter's shape: `llm_run_id` and
+      `raw_information_id`, each an optional uuid, plus the page fields `limit` and `offset`.
+    evidence: >-
+      llm_run_id: z.string().uuid().optional(),
+      raw_information_id: z.string().uuid().optional(),
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      the `.default(20)` on `limit` and the `.default(0)` on `offset` in ListAcceptedFragmentsQuerySchema (lines
+      33-36)
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+        .optional()
+        .default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+looked_past: >-
+  The 1..100 limit bound and the at-least-one-filter refine (with its `requires_one_of` detail and message) are
+  held by nodes outside this set, rules/knowledge-base/page-limit-bounds and
+  rules/knowledge-base/listing-requires-a-filter, so they are not unstated. The docstring's prose restating them,
+  and its citations of "openapi v1.3.0" and "BR-04", belong to the comment route.

@@ -1,0 +1,33 @@
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      finalise(), lines 75-92: the tombstone lookup over the chain's raw informations, and the refusal it throws before the empty-chain check.
+    evidence: |-
+      const tombstone = await findTombstone(client, rawIds);
+        if (tombstone !== null) {
+          ...
+          throw new RawInformationDeletedError(
+            tombstone.raw_information_id,
+            tombstone.performed_at
+          );
+        }
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      getProvenanceByLinkService(), lines 27-37: the existence check on the link, then the chain read for that link.
+    evidence: |-
+      const exists = await linkExists(client, linkId);
+        if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);
+
+        const rows = await chainByLink(client, linkId);
+        return finalise(client, rows, "link", linkId, logger);
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      getProvenanceByAttributeService(), lines 39-49: the existence check on the attribute, then the chain read for that attribute.
+    evidence: |-
+      const exists = await attributeExists(client, attributeId);
+        if (!exists) throw new ResourceNotFoundError("NodeAttribute", attributeId);
+
+        const rows = await chainByAttribute(client, attributeId);
+        return finalise(client, rows, "attribute", attributeId, logger);
+looked_past: >-
+  The file's provenance-read refusals (fragment not accepted, compliance-deleted source, empty chain) and their ordering are governed by rules nodes outside this set (provenance-requires-accepted-fragment, provenance-refused-after-compliance-deletion, compliance-refusal-takes-precedence, empty-provenance-chain-refused) and match them, and the log lines and error texts are emitted behavior stating no divergent fact.

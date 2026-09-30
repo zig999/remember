@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchLayerError, the `allowed` field declaration (line 28)
+    evidence: >-
+      public readonly allowed = ["fragment", "node", "chunk"] as const;
+    cost: >-
+      The search-layer vocabulary is declared a second time here. The first declaration is ALLOWED_LAYERS in backend/src/modules/query-retrieval/dto/search.dto.ts (line 101), which search.service.ts reads to decide what to refuse. The specification holds the vocabulary once, as the enumeration domain/knowledge-base/search-layer with values fragment, node and chunk. If a layer is added or removed, the refusal will keep telling the caller the old list unless someone finds this file. The node does not reach this file, so `--check` will not flag it. Nothing here reads the validating list, so the two can disagree without anyone deciding which one is right.
+    kind: contradicts
+    correction: >-
+      The refusal should take its allowed layers from the one declaration the validation reads (ALLOWED_LAYERS in dto/search.dto.ts). That declaration is where the fact is held, so it is the file that domain/knowledge-base/search-layer should be bound to. Code cannot read the specification, so the bind is what closes it.
+    node: domain/knowledge-base/search-layer
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The five error classes: InvalidSearchQueryError (422, BUSINESS_INVALID_SEARCH_QUERY), InvalidSearchLayerError (422, BUSINESS_INVALID_SEARCH_LAYER, carrying the allowed layers), FragmentNotAcceptedError (404, BUSINESS_FRAGMENT_NOT_ACCEPTED), RawInformationDeletedError (410, BUSINESS_RAW_INFORMATION_DELETED, carrying the raw information id and deletion time) and EmptyProvenanceError (500, SYSTEM_INTERNAL_ERROR). Each status/code pair matches the contract's refusal answers. The one departure is the layer vocabulary, reported in the finding above.
+    evidence: >-
+      public readonly statusCode = 422; public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const; public readonly code = "BUSINESS_INVALID_SEARCH_LAYER" as const; public readonly statusCode = 404; public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const; public readonly statusCode = 410; public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const; public readonly statusCode = 500; public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+looked_past: >-
+  The emitted messages "query parsed by websearch_to_tsquery is empty" and "(legacy-data inconsistency)" name implementation details, and the "query exceeds 1000 characters" message restates a value that rules/knowledge-base/search-query-length holds. The 1000 in that message agrees with the rule, and the other two state no domain fact the nodes govern, so none of the three is a conformance finding.
+candidates_opened:
+  - domain/knowledge-base/search-layer
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/empty-provenance-chain-refused
+  - rules/knowledge-base/provenance-requires-accepted-fragment

@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/query-retrieval/repository/accepted-fragments.repository.ts
+    where: >-
+      header comment, lines 8-11 (the "Filter" list, LLM run and raw information predicates)
+    evidence: >-
+      //   - `($1::uuid IS NULL OR f.llm_run_id = $1)`
+      //   - `($2::uuid IS NULL OR r.id = $2)`
+    cost: >-
+      The narrowing to an LLM run, a raw information or both is described in prose and applied in
+      FILTER_WHERE. A reader who finds the comment will treat it as a second statement of the filter.
+      If the filter changes, the code moves and the comment is left saying the old thing.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the code in this file (FILTER_WHERE and the $1/$2
+      parameters) and by the node.
+    node: domain/knowledge-base/accepted-fragment-filter
+  - file: src/modules/query-retrieval/repository/accepted-fragments.repository.ts
+    where: >-
+      header comment, lines 12-13 (the tombstone short-circuit bullet)
+    evidence: >-
+      //   - `NOT EXISTS (SELECT 1 FROM compliance_deletion cd
+      //                  WHERE cd.raw_information_id = r.id)` — tombstone short-circuit.
+    cost: >-
+      The exclusion of compliance-deleted sources is narrated in a comment that cites back-spec
+      BR-14 as its authority. The running code holds the exclusion in FILTER_WHERE, so the comment
+      is a second home for the fact.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the NOT EXISTS clause in FILTER_WHERE in this file.
+    node: domain/knowledge-base/compliance-deletion
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      the FILTER_WHERE constant (the llm_run_id and r.id predicates on $1 and $2), plus LIMIT $3 /
+      OFFSET $4 in selectAcceptedFragments
+    evidence: >-
+      AND ($1::uuid IS NULL OR f.llm_run_id = $1::uuid)
+      AND ($2::uuid IS NULL OR r.id = $2::uuid)
+      ...
+      LIMIT $3
+      OFFSET $4
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the NOT EXISTS subselect inside FILTER_WHERE, shared by the count and the page query
+    evidence: >-
+      AND NOT EXISTS (
+               SELECT 1 FROM compliance_deletion cd
+                WHERE cd.raw_information_id = r.id
+             )
+looked_past: >-
+  The code also applies the accepted-only status filter, one-entry-per-fragment at the lowest chunk index, the listing order and the pre-pagination total. Rules nodes held outside this file's set (listing-holds-accepted-only, listing-one-entry-per-fragment, listing-order, listing-total-before-pagination) already hold these, so they are not unstated. The docstrings and the openapi/TC-be-002 citation restating them are another judgment's comment route.

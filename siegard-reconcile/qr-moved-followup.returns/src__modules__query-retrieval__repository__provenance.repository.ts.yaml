@@ -1,0 +1,45 @@
+findings:
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: >-
+      the comment inside findTombstone(), lines 202-204
+    evidence: >-
+      // The physical column is `executed_at` (compliance_deletion is owned by the
+      // compliance-audit domain — its schema is authoritative). The alias keeps
+      // the `performed_at` name this domain's spec uses for the 410 mapping.
+    cost: >-
+      The comment states the compliance deletion's execution-time attribute (`executed_at`) as prose.
+      The SQL on line 206 holds that attribute itself, so the prose is a second home outside behavior.
+      It also says the spec "uses" the name `performed_at`. A search of the specification's full text
+      finds no `performed_at`, so a reader following the comment looks in the specification for a name
+      it does not hold.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the node already holds `executed_at`. After the
+      removal, re-read the file with /reconcile.
+    node: domain/knowledge-base/compliance-deletion
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      findTombstone() together with the partial row shape TombstoneRow (lines 192-214). It selects
+      `executed_at` from `compliance_deletion`, bound to `raw_information_id`, and returns the earliest row.
+    evidence: |-
+      `SELECT raw_information_id, executed_at AS performed_at
+             FROM compliance_deletion
+            WHERE raw_information_id = ANY($1::uuid[])
+            ORDER BY executed_at ASC
+            LIMIT 1`
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere. The file declares no shape for the element. It only checks that a row exists (linkExists)
+      and anchors the chain on `p.link_id`. Its `status`, `provenance` and temporal attributes are not read here.
+    evidence: |-
+      `SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere. The file declares no shape for the element. It only checks that a row exists
+      (attributeExists) and anchors the chain on `p.attribute_id`.
+    evidence: |-
+      `SELECT EXISTS(SELECT 1 FROM node_attribute WHERE id = $1) AS exists`
+looked_past: >-
+  The file's other comments cite back-spec rules (BR-11, BR-16, BR-17, BR-18, A22). The comment on `original_input` says it becomes `'[REDACTED]'` after compliance_delete, which is a fact only that comment states in this file. The fragment status union, the `source_type` and `original_input` columns, and the 404/410 precedence belong to nodes outside this set. The `performed_at` alias on TombstoneRow names the node's `executed_at` differently, an internal naming matter for another judgment.
+candidates_opened: []
