@@ -1,12 +1,3 @@
-// Provenance walk service — BR-16 / BR-17 / BR-18 / BR-19.
-//
-// Precedence:
-//   1. anchor row missing             -> RESOURCE_NOT_FOUND (404)
-//   2. fragment anchor with status != 'accepted' -> BUSINESS_FRAGMENT_NOT_ACCEPTED (404)
-//   3. chain reaches a tombstoned raw -> BUSINESS_RAW_INFORMATION_DELETED (410)
-//   4. chain assembled but empty      -> SYSTEM_INTERNAL_ERROR (500) + WARN log
-//   5. else                           -> 200 ProvenanceResponse
-
 import type { PoolClient } from "pg";
 import type { Logger } from "pino";
 
@@ -74,10 +65,6 @@ export async function getProvenanceByFragmentService(
   return finalise(client, rows, "fragment", fragmentId, logger);
 }
 
-/**
- * Shared post-processing: tombstone check (BR-17), empty-chain alarm
- * (BR-19), and grouping into the OpenAPI response shape (BR-18).
- */
 async function finalise(
   client: PoolClient,
   rows: readonly ProvenanceChainRow[],
@@ -85,7 +72,6 @@ async function finalise(
   anchorId: string,
   logger: Logger
 ): Promise<ProvenanceResponse> {
-  // (a) Tombstone short-circuit — BR-17.
   const rawIds = Array.from(new Set(rows.map((r) => r.raw_information_id)));
   const tombstone = await findTombstone(client, rawIds);
   if (tombstone !== null) {
@@ -105,10 +91,6 @@ async function finalise(
     );
   }
 
-  // (b) Empty-chain alarm — BR-19. The anchor exists (step 1 already
-  //     established that); zero chain rows means we have a legacy data
-  //     inconsistency. The OpenAPI contract requires `fragments[] minItems: 1`,
-  //     so we surface a 500 with a structured WARN — never an empty array.
   if (rows.length === 0) {
     logger.warn(
       {
@@ -122,7 +104,6 @@ async function finalise(
     throw new EmptyProvenanceError(anchorKind, anchorId);
   }
 
-  // (c) Group rows into ProvenanceFragment[] -> ProvenanceChunk[].
   const fragments = groupChain(rows);
 
   logger.info(
@@ -140,10 +121,6 @@ async function finalise(
   return { fragments };
 }
 
-/**
- * Group flat chain rows into the nested `fragments[] -> chunks[]` shape.
- * Rows arrive grouped by fragment from the SQL (ORDER BY fragment_id ...).
- */
 function groupChain(rows: readonly ProvenanceChainRow[]): ProvenanceFragment[] {
   const byFragment = new Map<
     string,
@@ -155,7 +132,6 @@ function groupChain(rows: readonly ProvenanceChainRow[]): ProvenanceFragment[] {
     if (entry === undefined) {
       byFragment.set(row.fragment_id, { fragment: row, chunks: [row] });
     } else {
-      // Avoid duplicate chunks (same fragment + same chunk_id).
       const already = entry.chunks.some(
         (c) => c.raw_chunk_id === row.raw_chunk_id
       );

@@ -1,17 +1,3 @@
-// `listAcceptedFragments` service (TC-be-002 / openapi v1.3.0).
-//
-// Read-only, single transaction (the route wraps the call in
-// `withReadOnly`). The service:
-//   1. Runs the count query (pre-pagination total).
-//   2. Runs the page query (deduped per fragment_id, ordered by
-//      `r.received_at DESC NULLS LAST, f.created_at DESC, f.id ASC`).
-//   3. Maps each row into the `AcceptedFragmentItem` wire shape.
-//
-// Filter validation (at-least-one-of, UUID syntax, limit/offset range) lives
-// at the route DTO; this service receives an already-typed input. Tombstone
-// short-circuit is in the repository SQL (`NOT EXISTS compliance_deletion`),
-// per back-spec BR-14: tombstoned RawInformation rows are silently omitted.
-
 import type { PoolClient } from "pg";
 import type { Logger } from "pino";
 
@@ -43,9 +29,6 @@ export async function listAcceptedFragmentsService(
 
   const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
 
-  // Short-circuit: total = 0 -> skip the page query, return an empty list.
-  // Both the count and select share the same WHERE — they are consistent
-  // within the same READ-ONLY snapshot — but the early return saves a roundtrip.
   let rows: readonly AcceptedFragmentRow[] = [];
   if (total > 0) {
     rows = await selectAcceptedFragments(
