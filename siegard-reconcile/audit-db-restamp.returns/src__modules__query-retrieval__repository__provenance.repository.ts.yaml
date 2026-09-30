@@ -1,0 +1,75 @@
+findings:
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: >-
+      the `status` union of FragmentStatusRow (line 42) and the `fragment_status` union of ProvenanceChainRow (line 65)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The file declares its own copy of the fragment status vocabulary and leaves out `superseded`, which fragment-status lists. A fragment in that state is typed as impossible here. The node is not in this file's set, so a change to the enumeration will not reach this file through `--check`.
+    kind: contradicts
+    correction: >-
+      Bind the file to domain/knowledge-base/fragment-status, or type the field so it does not carry a second copy of the vocabulary.
+    node: domain/knowledge-base/fragment-status
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: >-
+      the comment on `original_input` in ProvenanceChainRow (lines 76-80)
+    evidence: >-
+      `'[REDACTED]'` after `compliance_delete` (BR-18 of
+      compliance-audit). NOT part of the content_hash; NOT indexed by
+      full-text — surface-only field.
+    cost: >-
+      The comment states that compliance deletion leaves the literal value '[REDACTED]' in raw_information.original_input. No node holds that value; a search of the specification root for REDACT finds nothing. The next reader looks in the specification, finds nothing, and treats the comment as the decision. Code in this file does not produce or check the value.
+    kind: unstated
+    correction: >-
+      Analysis should give the redaction of the original input on compliance deletion a home, most likely in or beside domain/knowledge-base/compliance-deletion or domain/knowledge-base/raw-information.
+    node: domain/knowledge-base/compliance-deletion
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      TombstoneRow and findTombstone (lines 192-214), which read the compliance_deletion row's raw_information_id and executed_at
+    evidence: >-
+      SELECT raw_information_id, executed_at AS performed_at
+             FROM compliance_deletion
+            WHERE raw_information_id = ANY($1::uuid[])
+            ORDER BY executed_at ASC
+            LIMIT 1
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      ProvenanceChainRow (lines 61-82), which carries the fragment's text, confidence and status, and the SELECT of `f.text`, `f.confidence` and `f.status::text` from information_fragment
+    evidence: >-
+      readonly fragment_text: string;
+        readonly fragment_confidence: string | number;
+        readonly fragment_status: "accepted" | "proposed" | "rejected" | "deleted";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only checks existence, `SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists`, and uses `p.link_id` as an anchor column. It declares no shape for the link.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only checks existence, `SELECT EXISTS(SELECT 1 FROM node_attribute WHERE id = $1) AS exists`, and uses `p.attribute_id` as an anchor column. It declares no shape for the attribute.
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file joins `FROM provenance p JOIN information_fragment f ON f.id = p.fragment_id` and orders by `p.created_at`. It declares no shape for provenance.
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `ri.source_type::text AS source_type` and `readonly source_type: string;`. The file passes the value along and declares no enumeration.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: >-
+      the excerpt slice in runChainSql, in both SQL variants (lines 141-142 and 165-166), which takes the stored 0-based start-inclusive, end-exclusive offsets as a 1-based substring
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                            FOR rc.offset_end - rc.offset_start) AS excerpt
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: >-
+      the ORDER BY of the provenance-anchored branch of runChainSql (line 179)
+    evidence: >-
+      ORDER BY p.created_at ASC, f.id, rc.chunk_index ASC, rc.id ASC
+looked_past: >-
+  I saw that the comments cite back-spec rule numbers (BR-11, BR-16, BR-17, BR-18) and that `executed_at` is aliased to `performed_at`. Both are naming and prose conventions, not domain facts, so I did not report them.

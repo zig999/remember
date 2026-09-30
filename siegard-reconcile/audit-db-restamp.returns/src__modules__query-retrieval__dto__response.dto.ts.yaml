@@ -1,0 +1,121 @@
+findings:
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      ProvenanceFragment.status, line 102
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The node's attribute `status` has type fragment-status, whose values are proposed, accepted,
+      rejected, superseded and deleted. This file declares its own four-value union and leaves out
+      `superseded`. A superseded fragment reaching the provenance walk cannot be typed on the wire.
+      The vocabulary is also declared a second time in a file the enumeration node is not bound to.
+      When fragment-status moves, nothing reaches this union.
+    kind: contradicts
+    correction: >-
+      The wire type for a fragment's status has to carry exactly the values fragment-status holds.
+      Either the union gains `superseded`, or the node states that the provenance walk excludes it.
+    node: domain/knowledge-base/fragment-status
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: >-
+      the comment on ProvenanceRawInformation.original_input, lines 81-84
+    evidence: >-
+      `null` (or omitted) for non-chat sources and for rows that predate the
+      feature; `'[REDACTED]'` after compliance_delete (BR-18 of
+      compliance-audit). NOT part of the content_hash; NOT searchable.
+    cost: >-
+      The comment states that `original_input` becomes the literal `[REDACTED]` after a compliance
+      deletion, and that null is kept for non-chat rows. No node in the specification holds that
+      literal or that redaction. `domain/knowledge-base/raw-information` declares `original_input`
+      as a plain string. The code that writes the literal is in
+      `backend/src/modules/compliance-audit/repository/compliance-audit.repository.ts`. So the
+      redaction value is a business decision that lives only in code and a back-spec citation. The
+      next reader looks in the specification and does not find it. The comment also sits beside
+      `rules/knowledge-base/provenance-refused-after-compliance-deletion`, which says a provenance
+      read reaching a deleted raw information is refused with HTTP 410. The specification does not
+      say that such a read returns `[REDACTED]`.
+    kind: unstated
+    correction: >-
+      The analysis should decide whether `original_input` is redacted to a fixed literal on
+      compliance deletion, and which node holds it. The natural home is raw-information or a
+      compliance-deletion rule.
+    node: domain/knowledge-base/raw-information
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      ProvenanceFragment, lines 98-104. It declares id, text, confidence, status and chunks, so the
+      node's text, confidence and status are held in part. `created_at`, `superseded_at` and the llm-run
+      reference are not declared here.
+    evidence: >-
+      export interface ProvenanceFragment {
+        readonly id: string;
+        readonly text: string;
+        readonly confidence: number;
+        readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+        readonly chunks: readonly ProvenanceChunk[];
+      }
+  - node: domain/knowledge-base/item-kind
+    held_at: >-
+      the SearchKind type, line 10. Its three values are the node's values, under a different name.
+    evidence: >-
+      export type SearchKind = "node" | "link" | "fragment";
+  - node: domain/knowledge-base/page
+    held_at: >-
+      SearchResponse.limit and SearchResponse.offset, lines 67-68. This is the page window echoed
+      on the response.
+    evidence: >-
+      readonly limit: number;
+        readonly offset: number;
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      SearchProvenanceEntry, lines 43-51, in part only. The entry references the supporting fragment
+      by `fragment_id`. The node's `recorded_at` is not declared in this file.
+    evidence: >-
+      export interface SearchProvenanceEntry {
+        readonly fragment_id: string;
+        readonly fragment_text: string;
+        readonly confidence: number;
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the SearchItem interface, lines 53-62. It declares kind, layer, score, hop, summary, flags
+      and provenance, plus an `id` the node does not list.
+    evidence: >-
+      export interface SearchItem {
+        readonly kind: SearchKind;
+        readonly layer: SearchLayer;
+        readonly id: string;
+        readonly score: number;
+        readonly hop: number;
+        readonly summary: string;
+        readonly flags: readonly AssertionFlag[];
+        readonly provenance: readonly SearchProvenanceEntry[];
+      }
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      the SearchLayer type, line 11. Its three values are the node's values.
+    evidence: >-
+      export type SearchLayer = "fragment" | "node" | "chunk";
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      the SourceType union, lines 13-20, and the SOURCE_TYPES set, lines 22-30. The four values that
+      differ from the node's names are the material's own words, which the node's description
+      records as `ata`, `artigo`, `transcricao` and `outro`.
+    evidence: >-
+      export type SourceType =
+        | "pdf"
+        | "email"
+        | "ata"
+        | "chat"
+        | "artigo"
+        | "transcricao"
+        | "outro";
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file only declares the field, `readonly total: number;` on SearchResponse. No construct in
+      it counts items or cuts a page, so the rule is held by the code that computes the total, not
+      here.
+looked_past: >-
+  Kept to the file: SearchItem's `layer`, `hop` and `summary` are required here and optional in the node, and ProvenanceRawInformation.metadata is a Record where raw-information types it as a string. I did not open the openapi.yaml the header comment cites, so I could not tell whether either difference is the wire contract's own.
+candidates_opened:
+  - domain/knowledge-base/fragment-status
+  - domain/knowledge-base/raw-information

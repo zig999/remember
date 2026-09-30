@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the header comment, lines 8-10 ("1. Structural ...")
+    evidence: >-
+      //      non-empty chunk_ids at the boundary; here we cross-check that every
+      //      chunk_id exists and belongs to the run's `input_raw_information_id`.
+    cost: >-
+      The rule that a cited chunk must belong to the run's raw information is written a second time as prose in a file the node's fact does not need. When the node moves, this sentence stays and reads as a current decision. The code that holds the fact is `countChunksInSource(client, { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })` in this file, with the query itself in `../repository/llm-run.repository.js`.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the node and by the `countChunksInSource` call.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the header comment, lines 8-10 ("1. Structural ...")
+    evidence: >-
+      //      non-empty chunk_ids at the boundary; here we cross-check that every
+      //      chunk_id exists and belongs to the run's `input_raw_information_id`.
+    cost: >-
+      The existence rule is stated a second time as prose. The code that holds it is the `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])` query followed by the `RESOURCE_NOT_FOUND` throw. The comment can drift from the node without anything failing.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by the existence query and throw below.
+    node: rules/knowledge-base/fragment-chunks-exist
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment inside the `matched !== args.chunk_ids.length` branch, lines 50-55
+    evidence: >-
+      // We can't tell from a single COUNT whether the miss is "not found" vs
+      // "wrong source". ...
+      // Disambiguate with a follow-up count of existence-only.
+    cost: >-
+      The order in which a fragment proposal is checked (existence first, then run source) is narrated in prose. The behavior is held by the code: the existence count and its throw come before the `VALIDATION_INVALID_FORMAT` throw. A reader can take the comment for the authority on the order.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by the node and by the sequence of the two throws.
+    node: rules/knowledge-base/fragment-missing-chunk-first
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the fragment. It forwards `text` and `confidence` to `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })` and returns `{ fragment_id: fragment.id, status: "proposed" }`. The shape is declared elsewhere.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      the existence query and the RESOURCE_NOT_FOUND throw, lines 56-67
+    evidence: >-
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])` ... `if (exists !== args.chunk_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", ...`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      the `countChunksInSource` call, lines 45-49, and the `VALIDATION_INVALID_FORMAT` throw, lines 68-75
+    evidence: >-
+      `countChunksInSource(client, { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })` ... `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", ...`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      the order of the two throws inside the `matched !== args.chunk_ids.length` branch, lines 49-75
+    evidence: >-
+      the `RESOURCE_NOT_FOUND` throw under `if (exists !== args.chunk_ids.length)` comes before the `VALIDATION_INVALID_FORMAT` throw for chunks outside the run's source
+looked_past: >-
+  The header and inline comments also narrate BR-13, BR-19, BR-23, UC-08 and the layer numbering. Those belong to other nodes or other documents outside this set, so I did not file them. The emitted error messages and the `status: "proposed"` result value agree with scenario and rule nodes outside this set, and I did not report them.

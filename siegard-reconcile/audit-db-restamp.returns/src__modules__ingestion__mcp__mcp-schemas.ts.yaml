@@ -1,0 +1,143 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the JSDoc above ListRecentIngestionsMcpInputSchema, line 251
+    evidence: >-
+      /** `list_recent_ingestions` — optional page size (1..50, default 10). */
+    cost: >-
+      The bound 1..50 is written a second time in prose beside the `.min(1).max(50)` that enforces it. If the node's bound moves, this line keeps saying the old one and a reader may take it for the decision.
+    kind: restates
+    correction: >-
+      Remove the JSDoc. The fact is held by `.min(1).max(50)` in this file, line 257 and line 258, so the prose owes only its removal. The `.describe(...)` text beside it is emitted to clients and stays.
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the same JSDoc above ListRecentIngestionsMcpInputSchema, line 251
+    evidence: >-
+      /** `list_recent_ingestions` — optional page size (1..50, default 10). */
+    cost: >-
+      The default of 10 is stated in prose as well as in `.default(10)`. The two can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the JSDoc. The default is held by `.default(10)`, line 258.
+    node: rules/knowledge-base/recent-ingestions-limit-default
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the BR-34 header comment, line 276, and the docblock above IngestDirectedRefSchema, line 307
+    evidence: >-
+      //   - `ref` strings are local to the call (1..120 chars, must be non-empty).
+      /** Local ref string scoped to one call. 1..120 chars; never persisted, never returned. */
+    cost: >-
+      The 1..120 bound on a directed reference is written twice in prose, next to `z.string().min(1).max(120)`. A change to the node's bound has two comments to go stale in a file where the fact already lives.
+    kind: restates
+    correction: >-
+      Remove both comments. The bound is held by `IngestDirectedRefSchema = z.string().min(1).max(120)`, line 308.
+    node: rules/knowledge-base/directed-reference-length
+read:
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      IngestDirectedMcpInputSchema, lines 422-455, which declares `source_label` and the item lists `fragments`, `nodes`, `attributes` and `links`.
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional()
+      fragments: z.array(IngestDirectedFragmentItemSchema).min(1)
+      nodes: z.array(IngestDirectedNodeItemSchema).min(1)
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      In part, at IngestDirectedFragmentItemSchema (lines 313-324), which declares the fragment's `text`. `confidence` is deliberately absent from the directed items.
+    evidence: >-
+      text: z.string().min(1).max(1000)
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      INGEST_TOOL_NAMES, lines 63-68.
+    evidence: >-
+      export const INGEST_TOOL_NAMES = ["propose_fragment", "propose_node", "propose_link", "propose_attribute"] as const;
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      In part, at GetIngestionStatusOutputSchema, lines 234-246, which declares the run's model, prompt_version, status, attempts, started_at, finished_at, idempotency_key and summary. The schema also carries `id`, `input_raw_information_id` and `affected_nodes`.
+    evidence: >-
+      model: z.string(),
+      prompt_version: z.string(),
+      status: z.enum(["running", "completed", "failed"]),
+      attempts: z.number().int().positive(),
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+      summary: GetIngestionStatusSummarySchema,
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      In part, at the `aliases` field of IngestDirectedNodeItemSchema, line 350. The alias kind and the run reference are not declared here.
+    evidence: >-
+      aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      In part. The four Propose*McpInputSchema extend the business DTOs with `llm_run_id` (lines 41-55). IngestDirectedAttributeItemSchema and IngestDirectedLinkItemSchema declare `valid_from` and `valid_from_basis`. IngestDirectedNodeItemSchema declares the node name and aliases.
+    evidence: >-
+      export const ProposeFragmentMcpInputSchema = ProposeFragmentInputSchema.extend(LlmRunIdField);
+      valid_from_basis: IngestDirectedValidFromBasisSchema.optional()
+      const IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      In part, at IngestDocumentMcpInputSchema and StartAsyncIngestionMcpInputSchema (lines 89-157), which declare the `content`, `source_type` and `metadata` a caller supplies.
+    evidence: >-
+      content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+      source_type: SourceTypeSchema.describe(
+      metadata: z.record(z.string(), z.unknown()).optional()
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      The `status` enum of GetIngestionStatusOutputSchema, line 240.
+    evidence: >-
+      status: z.enum(["running", "completed", "failed"]),
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      GetIngestionStatusSummarySchema, lines 215-225, with all nine counters.
+    evidence: >-
+      accepted: z.number().int().nonnegative(), consolidated: ..., superseded_previous: ..., needs_review: ..., uncertain: ..., disputed: ..., rejected: ..., error: ..., orphaned_fragments: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      The `content` field of IngestDocumentMcpInputSchema (lines 126-129) and of StartAsyncIngestionMcpInputSchema (lines 90-93).
+    evidence: >-
+      .min(1, "content must not be empty")
+      .max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      IngestDirectedAttributeValueSchema, lines 358-362.
+    evidence: >-
+      z.union([z.string().min(1).max(2000), z.number().finite(), z.boolean()])
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      IngestDirectedRefSchema, line 308, used by every `ref`, `node_ref`, `source_ref`, `target_ref` and `evidence_ref`.
+    evidence: >-
+      const IngestDirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      The `fragments` and `nodes` arrays of IngestDirectedMcpInputSchema, lines 423-434.
+    evidence: >-
+      fragments: z.array(IngestDirectedFragmentItemSchema).min(1)
+      nodes: z.array(IngestDirectedNodeItemSchema).min(1)
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      The `source_label` field of IngestDirectedMcpInputSchema, lines 447-451.
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional()
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      The `text` field of IngestDirectedFragmentItemSchema, lines 317-323.
+    evidence: >-
+      text: z.string().min(1).max(1000)
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      The `name` and `aliases` fields of IngestDirectedNodeItemSchema, lines 336-342 and 350-352.
+    evidence: >-
+      name: z.string().min(1).max(500)
+      aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      The `limit` field of ListRecentIngestionsMcpInputSchema, lines 253-259.
+    evidence: >-
+      limit: z.number().int().min(1).max(50).default(10)
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      The `.default(10)` on the `limit` field of ListRecentIngestionsMcpInputSchema, line 258.
+    evidence: >-
+      .max(50)
+      .default(10)
+looked_past: >-
+  Facts held by nodes outside this set were left to their own judgments: the 64-hex idempotency key regex (rules/knowledge-base/idempotency-key), directed-full-confidence, directed-ingestion-run and caller-never-states-received (all in specification/rules/knowledge-base), and the pinned-node rejection wording, which the comment at lines 284-287 (STRUCTURAL_INVALID) and the `node_id` description (VALIDATE_INVALID_FORMAT) give differently from each other. The ISO `YYYY-MM-DD` date regex at lines 300-305 was also left, since I found no node that states it.

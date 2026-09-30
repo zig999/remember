@@ -1,0 +1,76 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getProvenanceByLinkService, getProvenanceByAttributeService and getProvenanceByFragmentService (lines 27-66), plus finalise (lines 68-122), for the three provenance reads. The file holds no search or list-accepted-fragments operation, so those are other files' facts.
+    evidence: |-
+      if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);
+      if (!exists) throw new ResourceNotFoundError("NodeAttribute", attributeId);
+      throw new ResourceNotFoundError("InformationFragment", fragmentId);
+      throw new RawInformationDeletedError(tombstone.raw_information_id, tombstone.performed_at);
+      throw new EmptyProvenanceError(anchorKind, anchorId);
+      return { fragments };
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      This file declares no shape for the compliance deletion. It reads the tombstone returned by findTombstone (`tombstone.raw_information_id`, `tombstone.performed_at`) and passes it to RawInformationDeletedError. The shape lives in the repository and the migrations.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration. It compares against one literal, `fragment.status !== "accepted"`, and forwards `status: fragment.fragment_status`. The value set is declared elsewhere.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares no fragment shape. It maps chain rows to the imported ProvenanceFragment type: `text: fragment.fragment_text, confidence: Number(fragment.fragment_confidence), status: fragment.fragment_status`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file declares no link shape. It only checks that a link exists (`await linkExists(client, linkId)`) and reads its chain (`chainByLink`).
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute shape. It only checks that an attribute exists (`await attributeExists(client, attributeId)`) and reads its chain (`chainByAttribute`).
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      The file declares no provenance shape. It groups the repository's chain rows into the imported ProvenanceFragment and ProvenanceChunk types in groupChain and returns `{ fragments }`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no chunk shape. It maps rows to the imported ProvenanceChunk type: `chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end, excerpt: c.excerpt, locator: c.locator`.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no raw-information shape. It builds the nested response object `raw_information: { id: c.raw_information_id, source_type: toSourceType(c.source_type), received_at: c.received_at.toISOString(), metadata: c.metadata, original_input: c.original_input ?? null }`.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration. It delegates the conversion to the imported helper: `source_type: toSourceType(c.source_type)`.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: >-
+      The order of checks in getProvenanceByFragmentService and finalise. Fragment existence and acceptance are checked first, and the tombstone check comes before the empty-chain check. For link and attribute reads, existence is checked first, then the tombstone, then emptiness.
+    evidence: |-
+      if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(fragmentId, fragment.status); }
+      const tombstone = await findTombstone(client, rawIds);
+      if (tombstone !== null) { ... throw new RawInformationDeletedError(
+      if (rows.length === 0) { ... throw new EmptyProvenanceError(anchorKind, anchorId);
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: the `rows.length === 0` branch of finalise (lines 94-105)
+    evidence: |-
+      if (rows.length === 0) {
+        ...
+        throw new EmptyProvenanceError(anchorKind, anchorId);
+      }
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: the `tombstone !== null` branch of finalise (lines 75-92), which checks every raw information id in the chain
+    evidence: |-
+      const rawIds = Array.from(new Set(rows.map((r) => r.raw_information_id)));
+      const tombstone = await findTombstone(client, rawIds);
+      if (tombstone !== null) {
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: the status guard in getProvenanceByFragmentService (lines 56-62)
+    evidence: |-
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+looked_past: >-
+  The log messages, the `route` strings inside them, and the per-fragment chunk de-duplication in groupChain are operational or structural choices that state no domain fact, so they belong to a code review and not to this pass.

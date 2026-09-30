@@ -1,0 +1,85 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      SearchQuerySchema, lines 57-74 (keys `query`, `expand_link_types`, `limit`, `offset`)
+    evidence: >-
+      query: QueryString,
+      expand_link_types: ExpandLinkTypesArray.optional(),
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+    cost: >-
+      The node names the text attribute `text` and the link-type filter `link_types`, and nests limit and offset under `page`. This file declares the request shape with the names `query` and `expand_link_types` and with limit and offset flat. No node holds these names. A reader who searches the specification for `expand_link_types` finds nothing, and a change to the search-query attributes does not reach the wire names declared here.
+    kind: contradicts
+    correction: >-
+      Either align the declared attribute names and nesting with the search-query and page nodes, or have the specification state the wire names and the flattening of `page` as the decided request shape.
+    node: domain/knowledge-base/search-query
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the docblock above QueryString, lines 37-47
+    evidence: >-
+      `query` validation per BR-04 of the back spec:
+        - min 1 char (raw)
+        - max 1000 chars (raw)
+        - btrim non-empty after transform (rejects whitespace-only input)
+    cost: >-
+      The comment states the not-blank and length rules a second time as prose. The code below it holds both, so the pair conforms. The comment is a second home that will go stale when the node moves, and `--check` never reaches it.
+    kind: restates
+    correction: >-
+      Remove the docblock. The behavior is held by `.min(1)`, `.max(1000)` and `.refine((s) => s.length > 0)` in this file.
+    node: rules/knowledge-base/search-query-not-blank
+
+read:
+  - node: domain/knowledge-base/page
+    held_at: >-
+      nowhere. Limit and offset are declared flat on SearchQuerySchema, lines 69-72, and no page shape is declared in this file.
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      ALLOWED_LAYERS and the SearchLayer type, lines 101-102
+    evidence: >-
+      export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      SearchQuerySchema, lines 57-74, with the attribute names and nesting differing as filed in the finding
+    evidence: >-
+      export const SearchQuerySchema = z.object({ query: QueryString, layers: LayersArray.optional(), as_of: IsoDateOnly.optional(), in_effect_only: ..., include_uncertain: ..., expand: ..., expand_depth: ..., expand_link_types: ..., limit: ..., offset: ... }).strict();
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      the expand_depth field of SearchQuerySchema, line 65
+    evidence: >-
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      the limit and offset defaults of SearchQuerySchema, lines 69-72
+    evidence: >-
+      .optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the limit field of SearchQuerySchema, line 69
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the offset field of SearchQuerySchema, line 72
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      the defaults on SearchQuerySchema, lines 62-66. A missing `layers` is left undefined here, so the every-layer default is not held in this file.
+    evidence: >-
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+      expand: BooleanQuery.optional().default(true),
+      expand_depth: ... .optional().default(1),
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: >-
+      QueryString, lines 48-55
+    evidence: >-
+      .transform((s) => s.trim())
+        .refine((s) => s.length > 0, {
+
+looked_past: >-
+  The 1000-character cap on `query` (`.max(1000, ...)`) is held by rules/knowledge-base/search-query-length, which is outside this node set. It is a fact a node holds, not a departure, so I filed no finding for it, and the path-param schemas are not bound to any node in this set.

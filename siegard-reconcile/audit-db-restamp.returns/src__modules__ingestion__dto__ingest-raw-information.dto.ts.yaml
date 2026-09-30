@@ -1,0 +1,91 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the header comment and the `IngestRawInformationRequestSchema` doc comment, lines 1-24 (the `content` bullet, lines 16-18)
+    evidence: >-
+      `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+       in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+       coarser pre-filter; this Zod check is the precise contract from A5.
+    cost: >-
+      This prose restates the content-length bound. It also gives the unit as "code points", where the node says UTF-16 code units. A reader who trusts the comment takes the wrong unit for a 10 MiB boundary. The comment is a second home for the bound, outside behavior. Code holds the bound: `.min(1, ...)` and `.max(10 * 1024 * 1024, ...)` in this same file. Zod `string().max` counts UTF-16 code units, so the code agrees with the node and the comment does not.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule stays in the node and in the `.min`/`.max` calls.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the doc comment on `original_input`, lines 35-39
+    evidence: >-
+      Omitted (or explicit `null`) on every non-chat path. Never
+      factored into `content_hash`. Capped at 10 MiB to match `content`.
+    cost: >-
+      The cap is restated in prose beside the code that enforces it (`.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")`). The prose is a second home for the cap that no check reaches when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The cap is held by the node and by the `.max` call.
+    node: rules/knowledge-base/original-input-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      `ChunkRefSchema`, lines 56-61
+    evidence: >-
+      offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+    cost: >-
+      The raw-chunk node names these attributes `start_offset` and `end_offset`. No node holds `offset_start` or `offset_end`; a search of `projections/full-text.md` finds `start_offset` only. The wire vocabulary for a chunk's offsets is therefore decided in this file, and someone looking in the specification for the field a client receives will find a different name.
+    kind: contradicts
+    correction: >-
+      Either the DTO uses the node's attribute names, or the specification gives the wire names a home (the accepted-response contract at full-text.md line 108 says only "offsets").
+    node: domain/knowledge-base/raw-chunk
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      `IngestRawInformationResponseSchema` (`llm_run_id`, `idempotency_key`) and the `model` and `prompt_version` fields of `IngestRawInformationRequestSchema`. The DTO declares only part of the LLMRun shape.
+    evidence: >-
+      llm_run_id: z.string().uuid(),
+        idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+      and model: z.string().min(1, "model is required"),
+        prompt_version: z.string().min(1, "prompt_version is required"),
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      `ChunkRefSchema`, lines 56-61. It declares `chunk_index` and the offsets, the latter under names that differ from the node (see finding).
+    evidence: >-
+      chunk_index: z.number().int().nonnegative(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      `IngestRawInformationRequestSchema`, lines 25-45. It declares `source_type`, `content`, `storage_ref`, `metadata` and `original_input`. `content_hash` appears in the response schema.
+    evidence: >-
+      source_type: SourceTypeSchema,
+        content: z
+          .string()
+          .min(1, "content must not be empty")
+      and content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      `IngestRawInformationResponseSchema.content_hash`, line 68. The DTO holds the output format only (64 lowercase hex characters); it does not compute the digest.
+    evidence: >-
+      content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      the `content` field of `IngestRawInformationRequestSchema`, lines 27-30
+    evidence: >-
+      .string()
+          .min(1, "content must not be empty")
+          .max(10 * 1024 * 1024, "content must not exceed 10 MiB"),
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      `IngestRawInformationResponseSchema.idempotency_key`, line 72. The DTO holds the output format only (64 lowercase hex characters); it does not compute the key.
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      the `original_input` field of `IngestRawInformationRequestSchema`, lines 40-44
+    evidence: >-
+      original_input: z
+          .string()
+          .max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")
+          .nullable()
+          .optional(),
+looked_past: >-
+  Whether the comment claims ("Never factored into `content_hash`", the 11 MiB Fastify `bodyLimit`, `storage_ref` "must be `null` in v1.0.0") are held by code or nodes elsewhere is outside this one-file set. The outcome enum `created`/`noop_existing` is held by a contract node outside this pack, and the comments that cite BR and A identifiers are not findings here.

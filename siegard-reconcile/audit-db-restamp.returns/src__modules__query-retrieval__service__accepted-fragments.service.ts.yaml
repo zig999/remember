@@ -1,0 +1,89 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The list-accepted-fragments accepted answer is held at the object returned by listAcceptedFragmentsService, and at the items mapping above it. The refusals (auth, the filter requirement, malformed identifiers, limit and offset bounds) are not in this file.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+          fragment_id: row.fragment_id,
+          text: row.fragment_text,
+          confidence: Number(row.fragment_confidence),
+          llm_run_id: row.fragment_llm_run_id,
+          created_at: row.fragment_created_at.toISOString(),
+          source: {
+            raw_information_id: row.raw_information_id,
+            chunk_index: row.chunk_index,
+            source_type: toSourceType(row.source_type),
+            received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+          },
+        }));
+      ...
+      return {
+          total,
+          limit: input.limit,
+          offset: input.offset,
+          items,
+        };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      The ListAcceptedFragmentsInput interface declares the filter, an optional LLM run, an optional raw information, and the page fields limit and offset.
+    evidence: |-
+      export interface ListAcceptedFragmentsInput {
+        readonly llm_run_id?: string;
+        readonly raw_information_id?: string;
+        readonly limit: number;
+        readonly offset: number;
+      }
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere. The file only passes fragment values along. It reads text, confidence, creation time and LLM run from the row. The shape is declared in the imported dto and repository types.
+    evidence: |-
+      text: row.fragment_text,
+          confidence: Number(row.fragment_confidence),
+          llm_run_id: row.fragment_llm_run_id,
+          created_at: row.fragment_created_at.toISOString(),
+  - node: domain/knowledge-base/page
+    held_at: >-
+      The limit and offset fields of ListAcceptedFragmentsInput, which declare the page in part. The same two values are carried unchanged into the returned object.
+    evidence: |-
+      readonly limit: number;
+        readonly offset: number;
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere. The file reads one field, chunk_index, of a shape declared elsewhere.
+    evidence: |-
+      chunk_index: row.chunk_index,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere. The file only passes along the raw information's identity, reception time and title. The shape is declared elsewhere.
+    evidence: |-
+      raw_information_id: row.raw_information_id,
+            received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      nowhere. The enumeration is declared in the dto module that exports toSourceType. This file only calls it.
+    evidence: |-
+      source_type: toSourceType(row.source_type),
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: >-
+      The service takes total from countAcceptedFragments, which does not receive limit or offset. The page is applied only in selectAcceptedFragments. The total is returned next to the page.
+    evidence: |-
+      const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
+      ...
+        rows = await selectAcceptedFragments(
+            client,
+            llmRunId,
+            rawInformationId,
+            input.limit,
+            input.offset
+          );
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: >-
+      The total > 0 guard and the empty default for rows. When the count is 0, no entry is listed and the total 0 is returned.
+    evidence: |-
+      let rows: readonly AcceptedFragmentRow[] = [];
+        if (total > 0) {
+          rows = await selectAcceptedFragments(
+looked_past: >-
+  The log line carrying the route string and the "query_retrieval_list_accepted_fragments_ok" event name is operational telemetry and states no domain fact. The count-then-select structure is an implementation choice and is not judged here.

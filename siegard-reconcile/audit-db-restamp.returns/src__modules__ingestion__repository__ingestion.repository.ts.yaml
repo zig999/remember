@@ -1,0 +1,45 @@
+findings:
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the doc comment above insertRawChunks (lines 153-154) and the doc comment above findChunksByRawInformationId (lines 182-183)
+    evidence: >-
+      "Returns the inserted rows ordered by `chunk_index` ascending. That ordering
+       is the contract of the calling route (the response chunk array is sorted)."
+      and "Find every `raw_chunk` of the given `raw_information_id`, ordered by
+       `chunk_index` ascending. Used by GET .../chunks."
+    cost: >-
+      The listing order is written in prose a second time. The code that holds it is `ORDER BY chunk_index ASC` in findChunksByRawInformationId and the `.sort((a, b) => a.chunk_index - b.chunk_index)` in insertRawChunks. If the node moves, these comments still assert the old order and nothing flags them.
+    kind: restates
+    correction: >-
+      Remove the ordering sentences from both comments. The fact is held by the node and by the ORDER BY and the sort in this file.
+    node: rules/knowledge-base/chunk-listing-order
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the LlmRunRow interface (lines 66-76), and the insertLlmRun and findLlmRunByIdempotencyKey statements
+    evidence: >-
+      readonly model: string; readonly prompt_version: string; readonly started_at: Date; readonly finished_at: Date | null; readonly status: "running" | "completed" | "failed"; readonly attempts: number; readonly input_raw_information_id: string; readonly idempotency_key: string;
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkRow interface (lines 54-63) and the chunk SELECT and INSERT statements
+    evidence: >-
+      readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly offset_end: number; readonly locator: ChunkLocator; readonly chunking_version: string;
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      the RawInformationRow interface (lines 36-51) and the raw_information INSERT and SELECT statements
+    evidence: >-
+      readonly source_type: SourceType; readonly content: string; readonly storage_ref: string | null; readonly content_hash: string; readonly received_at: Date; readonly metadata: Record<string, unknown>; readonly original_input: string | null;
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the `status` member of LlmRunRow, line 72, an inline union of the enumeration's three values
+    evidence: >-
+      readonly status: "running" | "completed" | "failed";
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      the query in findChunksByRawInformationId, line 194, and the sort at the end of insertRawChunks, line 178
+    evidence: >-
+      WHERE raw_information_id = $1
+            ORDER BY chunk_index ASC
+      and return result.rows.sort((a, b) => a.chunk_index - b.chunk_index);
+looked_past: >-
+  The row types use physical column names (`text`, `offset_start`, `offset_end`) where the raw-chunk node names `excerpt`, `start_offset` and `end_offset`, the row types omit status, superseded_at and document_date, and comments mention DB defaults and cite TC-01/BR-34. These are column mapping and database-layer matters, not something this pass judges.

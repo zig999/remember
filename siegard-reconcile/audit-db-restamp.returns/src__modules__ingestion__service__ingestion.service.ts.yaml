@@ -1,0 +1,109 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, step 1 (line 80)
+    evidence: >-
+      * 1. Compute `content_hash = sha256(content)`.
+    cost: >-
+      The hash rule is written a second time in prose. The running code that holds it is `sha256Hex`, imported from `../hash.js`. If the node moves, this comment stays behind and a reader may take it for where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/content-hash-is-sha256 and implemented by `sha256Hex` in `../hash.js`.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, step 2 (line 81)
+    evidence: >-
+      * 2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+    cost: >-
+      The key's composition and its order are restated in prose. The code that holds them is `composeIdempotencyKey` in `../hash.js`. If either the node or that code moves, the comment disagrees silently.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/idempotency-key and implemented by `composeIdempotencyKey` in `../hash.js`.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      noopExisting, the `findLlmRunByIdempotencyKey` lookup and its InvariantError (lines 215-222). The key it receives is built in ingestRawInformation from the request's prompt_version and model (lines 104-109).
+    evidence: >-
+      const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);
+      if (run === null) {
+        throw new InvariantError(
+          `noopExisting: raw_information ${existing.id} exists for content_hash ${contentHash} ` +
+            `but no llm_run row matches idempotency_key ${idempotencyKey}. ` +
+            `Database is inconsistent — BR-09 invariant violated.`
+    cost: >-
+      The contract says held content answers "HTTP 200 with outcome noop_existing ... and the run that raw information already has, whatever model or prompt version the request names". The code looks the run up by the key computed from the request's own model and prompt version. Re-ingesting held content under a different model or prompt version therefore finds no run and fails as an internal error, where the contract promises a 200. A request that records nothing has nothing to fail on.
+    kind: contradicts
+    correction: >-
+      Find the run through the held raw information, not through the request's idempotency key. Do not treat a missing match on the request's key as database inconsistency.
+    node: contracts/knowledge-base/ingestion
+
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file only calls `insertLlmRun(client, { model: input.model, prompt_version: input.prompt_version, input_raw_information_id: rawInformationRow.id, idempotency_key: idempotencyKey })` and reads `run.id` and `run.idempotency_key`. The LLMRun shape is declared in the repository and schema, not here.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps `chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))`. It reads fields of a shape declared elsewhere.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes values to `insertRawInformation(client, { source_type, content, content_hash, metadata, original_input })` and reads `rawInformationRow.id` and `rawInformationRow.content_hash`. The RawInformation shape is declared in the repository and schema, not here.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      the call `const contentHash = sha256Hex(input.content);` (line 103). The digest and its encoding are implemented in `../hash.js`, which is outside this file set and unread.
+    evidence: >-
+      const contentHash = sha256Hex(input.content);
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      the catch branch on the content_hash unique violation, lines 127-131. The constraint itself is in the database.
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {
+        return await noopExisting(client, contentHash, idempotencyKey);
+      }
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the pass-through of `original_input` into insertRawInformation, line 125. Which turn excerpt a directed ingestion supplies is decided by the caller, not in this file.
+    evidence: >-
+      original_input: input.original_input ?? null,
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      the INSERT-first order plus the early return in the catch branch (lines 117-130). On a unique violation, chunking and `insertRawChunks` and `insertLlmRun` are never reached. The run-lookup failure in noopExisting contradicts the contract, not this rule (see findings).
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {
+        return await noopExisting(client, contentHash, idempotencyKey);
+      }
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      the call at lines 104-109, which supplies the four components to `composeIdempotencyKey`. The digest and the joining order are implemented in `../hash.js`, outside this file set and unread.
+    evidence: >-
+      const idempotencyKey = composeIdempotencyKey({
+        content_hash: contentHash,
+        prompt_version: input.prompt_version,
+        model: input.model,
+        chunking_version: CHUNKING_VERSION,
+      });
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      the catch branch on the llm_run idempotency_key unique violation, lines 168-173. The constraint itself is in the database.
+    evidence: >-
+      if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) {
+        throw new InvariantError(
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      the sequence insertRawInformation, then insertRawChunks, then insertLlmRun, lines 117-175. The status `running` is not stated in this file. Only a comment says the insert uses DEFAULTs.
+    evidence: >-
+      const chunkRows = await insertRawChunks(
+        client,
+        rawInformationRow.id,
+        chunkInputs
+      );
+      llmRunRow = await insertLlmRun(client, {
+
+looked_past: >-
+  The defensive InvariantError guards, the pg unique-violation type guard, the prose citing back-spec BR numbers, and the per-call countChunks query are implementation matters and cite no domain fact.

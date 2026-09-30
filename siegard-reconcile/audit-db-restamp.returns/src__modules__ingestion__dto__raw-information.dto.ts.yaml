@@ -1,0 +1,66 @@
+findings:
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      ChunkLocatorSchema, lines 11-20
+    evidence: >-
+      export const ChunkLocatorSchema = z
+        .object({
+          page: z.number().int().nullable().optional(),
+          line: z.number().int().nullable().optional(),
+          speaker: z.string().nullable().optional(),
+          ts: z.string().nullable().optional(),
+        })
+        .nullable();
+    cost: >-
+      The four locator keys and their types are a vocabulary the code declares and no node holds. The node types `locator` as a bare `string`, and the decision log records that the shape was left out ("The material names a chunk's locator without giving its shape"). The next reader will look in raw-chunk for what a locator contains and will not find it. The only other pointer is a comment citing "A23".
+    kind: unstated
+    correction: >-
+      The analysis would have to give raw-chunk (or a node it owns) the locator's shape: which anchors exist and their types. The node's `locator` would then describe that shape instead of `string`.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      RawChunkResponseSchema offset fields, lines 42-43
+    evidence: >-
+      offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+    cost: >-
+      The bounds (start at least 0, end strictly greater than 0) are a rule the schema applies to chunk offsets. The node gives `start_offset` and `end_offset` only as `integer`, with no bound. The bound lives only in this DTO, where the next reader will not look for it.
+    kind: unstated
+    correction: >-
+      A node would have to state the offset bounds if they are a business rule. If they are only a wire-shape restriction, the specification would have to say so.
+    node: domain/knowledge-base/raw-chunk
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkResponseSchema, lines 37-46. This is a partial declaration of the shape: chunk_index, locator and chunking_version are there. The offsets and excerpt sit under the names offset_start, offset_end and text.
+    evidence: >-
+      export const RawChunkResponseSchema = z.object({
+        id: z.string().uuid(),
+        raw_information_id: z.string().uuid(),
+        chunk_index: z.number().int().nonnegative(),
+        text: z.string(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+        locator: ChunkLocatorSchema,
+        chunking_version: z.string(),
+      });
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationResponseSchema, lines 23-31. This is a partial declaration of the shape: source_type, content, storage_ref, content_hash, received_at and metadata are there.
+    evidence: >-
+      export const RawInformationResponseSchema = z.object({
+        id: z.string().uuid(),
+        source_type: SourceTypeSchema,
+        content: z.string(),
+        storage_ref: z.string().nullable(),
+        content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+        received_at: z.string().datetime({ offset: true }),
+        metadata: z.record(z.string(), z.unknown()),
+      });
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      The `content_hash` field of RawInformationResponseSchema, line 28. It holds only the format half of the invariant, 64 lowercase hexadecimal characters. Computing the digest from the content is not done in this file.
+    evidence: >-
+      content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+looked_past: >-
+  Wire names that differ from the node attributes (`text` for excerpt, `offset_start` and `offset_end` for start_offset and end_offset, `metadata` as an object where the node says string) follow the openapi contract the file cites, so they are another judgment's. The comments pointing to openapi.yaml and A23 are prose, not findings I file here.

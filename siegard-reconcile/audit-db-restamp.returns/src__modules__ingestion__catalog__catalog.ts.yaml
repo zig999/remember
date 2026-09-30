@@ -1,0 +1,60 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      the docstring on LinkTypeRuleRow, lines 47-51
+    evidence: >-
+      the temporal
+       * filter (`valid_to IS NULL OR valid_to > current_date`) is applied at
+       * lookup time so a rule that expires between reloads is honoured.
+    cost: >-
+      The in-effect rule is written a second time in prose, and in different terms from the node. The prose says `current_date`. The node says day is the UTC calendar date. If the node moves, `--check` never reaches this comment, and the next reader may take it as the rule that was decided.
+    kind: restates
+    correction: >-
+      Remove the sentence. isLinkRuleActive in this same file holds the fact in code, in the `if (from !== null && today.getTime() < from.getTime()) continue;` and `if (to !== null && today.getTime() >= to.getTime()) continue;` branches, using stripTime, which works in UTC.
+    node: rules/knowledge-base/link-type-rule-in-effect
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      the docstring on isLinkRuleActive, lines 265-270
+    evidence: >-
+      Returns `true` iff at least one rule covers the triple AND its
+       * validity window includes today (semi-open `[valid_from, valid_to)`; nulls
+       * mean unbounded — §5.1).
+    cost: >-
+      The window semantics (semi-open, null means unbounded) are restated in prose next to the code that enforces them. A second statement of the rule sits outside the specification, so the node and the comment can drift apart without anything catching it.
+    kind: restates
+    correction: >-
+      Remove the prose. The same function holds the fact in code, with the `from`/`to` null checks and the `<` and `>=` comparisons.
+    node: rules/knowledge-base/link-type-rule-in-effect
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      interface AttributeKeyRow (lines 61-69), which declares part of the shape. The closed allowed values are held in interface AttributeValidValueRow (lines 79-82) and in CatalogSnapshot.attributeValidValuesByKeyId.
+    evidence: >-
+      export interface AttributeKeyRow { readonly id: string; readonly node_type_id: string; readonly key: string; readonly value_type: "date" | "number" | "text" | "bool"; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; }
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      interface LinkTypeRow (lines 38-45), which declares part of the shape.
+    evidence: >-
+      export interface LinkTypeRow { readonly id: string; readonly name: string; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; readonly requires_valid_to_on_change: boolean; }
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      interface LinkTypeRuleRow (lines 52-58).
+    evidence: >-
+      export interface LinkTypeRuleRow { readonly link_type_id: string; readonly source_node_type_id: string; readonly target_node_type_id: string; readonly valid_from: Date | null; readonly valid_to: Date | null; }
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      interface NodeTypeRow (lines 26-35).
+    evidence: >-
+      export interface NodeTypeRow { readonly id: string; readonly name: string; readonly description?: string; }
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      function isLinkRuleActive (lines 271-296). It returns true only when a rule matches the link type, the source node type and the target node type, and the rule is in effect today.
+    evidence: >-
+      if (r.link_type_id !== args.link_type_id || r.source_node_type_id !== args.source_node_type_id || r.target_node_type_id !== args.target_node_type_id) { continue; }
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      function isLinkRuleActive lines 280-293, with stripTime (lines 298-300) producing the UTC calendar date.
+    evidence: >-
+      if (from !== null && today.getTime() < from.getTime()) continue; if (to !== null && today.getTime() >= to.getTime()) continue; return true; // stripTime: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+looked_past: >-
+  The closed-domain versus open-domain semantics (an empty set means open, in domainOf), the boot-only snapshot and the comment-heavy style are not attribute-key's nodes or another judgment's concern. I also did not judge the caching design or the many BR-xx comments, apart from the two restatements filed above.

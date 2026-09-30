@@ -1,0 +1,121 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      TRIGRAM_CANDIDATE_LIMIT constant (line 47) and its use as LIMIT in the step 2 candidate query (line 165)
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10;
+      ... ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}
+    cost: >-
+      Only the ten most similar nodes are ever weighed. No node states this cap, so the next reader looks in the specification and finds nothing. The cap also changes outcomes. The strong-candidate rule says "when no other active knowledge node of that type reaches 0.55", and the review rule says to pair the new node with each such node. With more than ten nodes at or above 0.55, the eleventh and later are never seen and never get an entity match review row.
+    kind: unstated
+    correction: >-
+      Give the candidate limit a node, or decide that every node at or above 0.55 is weighed and reviewed. The natural home is rules/knowledge-base/candidate-similarity, or a rule beside strong-candidate-resolves.
+    node: rules/knowledge-base/candidate-similarity
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      docblock of decideFromCandidates (lines 249-262). Code holds the same decision in decideFromCandidates itself, lines 266-281.
+    evidence: >-
+      Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no
+      other candidate has `sim >= MATCH_FLOOR`.
+    cost: >-
+      The strong-candidate threshold and its uniqueness condition are written a second time in prose. If the node moves, the comment keeps claiming the old rule beside code that may have been updated.
+    kind: restates
+    correction: >-
+      Remove the docblock text. The fact is held by the strong_unique branch in decideFromCandidates in this same file and by the MATCH_STRONG and MATCH_FLOOR constants. This is the prose-only route.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      docblocks of MATCH_STRONG and MATCH_FLOOR (lines 26-41). Code holds the values in the constants at lines 32 and 41.
+    evidence: >-
+      Trigram-similarity floor below which a candidate is ignored entirely.
+      Candidates with `sim < MATCH_FLOOR` do not feed the decision and do not
+      produce `entity_match_review` rows.
+    cost: >-
+      The 0.55 floor and what it means are stated again in prose. A reader may take the comment, rather than the node, as the authority for how a low-similarity candidate is treated.
+    kind: restates
+    correction: >-
+      Remove the constants' docblocks. The values are held by the `MATCH_STRONG` and `MATCH_FLOOR` constants in this same file.
+    node: rules/knowledge-base/no-candidate-creates-active-node
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      step 2 of the resolveOrCreateNode docblock (lines 90-91) and the inline comment before the first attachAliases call (lines 145-146). Code holds the same rule in the step 1 query and in attachAliases, which is called without the canonical name.
+    evidence: >-
+      Canonical name not re-inserted on match (already present by virtue of
+      alias_norm hit). LLM-supplied aliases still attempt insert.
+    cost: >-
+      The rule that a matched node gains only the proposed aliases, never the proposed name, is carried a second time in prose. The exact-alias resolution rule is also restated in the function docblock.
+    kind: restates
+    correction: >-
+      Remove the comments. Code holds both facts in the step 1 query, which returns `matched_existing`, and in the matched branches, which call `attachAliases` with no canonical insert.
+    node: rules/knowledge-base/matched-node-gains-only-aliases
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      docblock of attachCanonicalAndAliases (lines 284-288) and step 5 of the resolveOrCreateNode docblock (lines 102-104). Code holds the same rule in attachCanonicalAndAliases and attachAliases.
+    evidence: >-
+      Attach the canonical name as the first alias (`kind = 'canonical'`) plus
+      any LLM-supplied aliases (`kind = 'alias'`) to a newly created node.
+    cost: >-
+      The alias-kind assignment for a new node is restated in prose beside the code that performs it.
+    kind: restates
+    correction: >-
+      Remove the docblock text. The two INSERT statements in attachCanonicalAndAliases and attachAliases hold the fact.
+    node: rules/knowledge-base/new-node-aliases
+read:
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file only passes the values along as SQL literals, in `VALUES ($1, $2, 'canonical', $3)` and `VALUES ($1, $2, 'alias', $3)`. It declares no enumeration.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file only inserts rows, with `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)`. The shape is declared in the database migration, not here.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file only inserts rows, with `INSERT INTO knowledge_node (node_type_id, canonical_name, status)`. It declares no shape for the node.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file only inserts rows, with `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id)`. It declares no shape for the alias.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file imports `ProposeNodeResolution` from "../dto/propose-node.dto.js" and only returns its literal values, such as `resolution: "matched_existing"`. The union is declared elsewhere.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      the step 2 candidate query in resolveOrCreateNode, lines 156-167
+    evidence: >-
+      SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim ... GROUP BY na.node_id
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      the step 1 exact-alias query and its return in resolveOrCreateNode, lines 131-151
+    evidence: >-
+      WHERE na.alias_norm = norm($1::text) AND kn.node_type_id = $2 AND kn.status = 'active' ... return { node_id: nodeId, resolution: "matched_existing" };
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      the two matched branches, lines 143-150 and 178-183, and attachAliases, lines 315-332
+    evidence: >-
+      await attachAliases(client, { nodeId, aliases: args.aliases, runId: args.llmRunId });
+      The matched branches never call attachCanonicalAndAliases or insert `args.name`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file only invokes the database function, in `WHERE na.alias_norm = norm($1::text)`. The lower-casing, accent removal, trimming and whitespace collapsing are defined outside this file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases, lines 289-309, which inserts the canonical alias and then calls attachAliases
+    evidence: >-
+      VALUES ($1, $2, 'canonical', $3) ... await attachAliases(client, { nodeId: args.nodeId, aliases: args.aliases, runId: args.runId });
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      the novel branch of resolveOrCreateNode, lines 219-233, reached through decideFromCandidates, lines 269-271, with MATCH_FLOOR at line 41
+    evidence: >-
+      export const MATCH_FLOOR = 0.55; ... if (aboveFloor.length === 0) { return { kind: "novel" }; } ... VALUES ($1, $2, 'active') ... resolution: "created_new"
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates, lines 263-282, and the strong_unique branch, lines 176-184, with MATCH_STRONG at line 32
+    evidence: >-
+      export const MATCH_STRONG = 0.85; ... if (strong.length === 1 && aboveFloor.length === 1) { return { kind: "strong_unique", nodeId: strong[0]!.node_id }; }
+looked_past: >-
+  The ambiguous branch, which creates a needs_review node and one entity_match_review row per candidate at or above 0.55, is held by rules/knowledge-base/ambiguous-candidates-need-review, a node outside this set, so I filed no finding. The advisory lock, the `LIMIT 1` with no ORDER BY in the exact-alias query, and the file's comment density are implementation or style judgments, not domain facts.

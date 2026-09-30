@@ -1,0 +1,80 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      ListAcceptedFragmentsQuerySchema, the `limit` field (line 33), and the docstring bullet above it (line 26)
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+    cost: >-
+      The 1..100 bound is held in code here, but no node in this file's set states it. The node that does is rules/knowledge-base/page-limit-bounds, which constrains domain/knowledge-base/page. A change to that node reaches this file only if the bind is added. Until then a reader of this file's nodes finds the default of 20 and no bounds.
+    kind: unstated
+    correction: >-
+      Bind rules/knowledge-base/page-limit-bounds to this file. No new node is needed, because the bound is already held there.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      Docstring of ListAcceptedFragmentsQuerySchema, lines 20-24 (at least one filter MUST be supplied)
+    evidence: >-
+      `llm_run_id` / `raw_information_id` are independently optional but at
+       * least one MUST be supplied; otherwise the `.refine` raises a
+    cost: >-
+      The docstring states the rule a second time, in prose that no system emits. The `.refine` on lines 39-45 already holds it in this file. The docstring is a second home that can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the prose. The `.refine` stays as the holder of the rule.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      Docstring of ListAcceptedFragmentsQuerySchema, lines 26-27 (defaults 20 and 0)
+    evidence: >-
+      `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+       *   mirrors `SearchQuerySchema`.
+    cost: >-
+      The docstring restates the page defaults in prose. `.default(20)` and `.default(0)` on lines 35-36 already hold them in this file. A change to the node would leave the docstring stating the old value.
+    kind: restates
+    correction: >-
+      Remove the prose. The `.default(...)` calls stay as the holder.
+    node: rules/knowledge-base/page-defaults
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      Docstring of ListAcceptedFragmentsQuerySchema, line 26 (`offset >= 0`)
+    evidence: >-
+      `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+    cost: >-
+      The docstring restates the non-negative offset rule in prose. `z.number().int().min(0)` on line 36 already holds it in this file.
+    kind: restates
+    correction: >-
+      Remove the prose. The `min(0)` stays as the holder.
+    node: rules/knowledge-base/page-offset-non-negative
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      ListAcceptedFragmentsQuerySchema (lines 29-45), plus the inferred type ListAcceptedFragmentsQuery
+    evidence: >-
+      z.object({ llm_run_id: z.string().uuid().optional(), raw_information_id: z.string().uuid().optional(), limit: ..., offset: ... }).strict()
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      The AcceptedFragmentItem interface (lines 63-70). It declares the listing's projection of the fragment (text, confidence, llm_run_id, created_at). It does not carry status or superseded_at.
+    evidence: >-
+      export interface AcceptedFragmentItem { readonly fragment_id: string; readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; readonly source: AcceptedFragmentSourceRef; }
+  - node: domain/knowledge-base/page
+    held_at: >-
+      The `limit` and `offset` fields of ListAcceptedFragmentsQuerySchema (lines 33-36). The AcceptedFragmentList response interface (lines 72-77) also carries `limit` and `offset`.
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20), offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0)
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: >-
+      The `.refine` on the schema, lines 39-45
+    evidence: >-
+      (v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      `.default(20)` on `limit` (line 35) and `.default(0)` on `offset` (line 36)
+    evidence: >-
+      .optional() .default(20), offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0)
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      The `offset` field of the schema, line 36
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0)
+looked_past: >-
+  The header comment says every validation failure surfaces as `VALIDATION_INVALID_FORMAT` through the global error handler in another file, but contracts/knowledge-base/retrieval.md answers an out-of-range limit or offset with `VALIDATION_OUT_OF_RANGE`. That mapping lives outside this file set, so I did not judge it.

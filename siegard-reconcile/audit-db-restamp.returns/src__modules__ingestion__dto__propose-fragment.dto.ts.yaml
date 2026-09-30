@@ -1,0 +1,50 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the `.describe(...)` on `confidence` in ProposeFragmentInputSchema, lines 22-24
+    evidence: >-
+      "Confidence 0–1 that this claim is correctly extracted. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped."
+    cost: >-
+      This text is emitted as the tool's input schema, so it tells the calling model what happens to a fragment by confidence band. The specification says a fragment proposal is recorded in status proposed whatever its confidence. The 0.75 and 0.40 bands belong to link and attribute proposals, not fragments. A model reading this is told a low-confidence fragment is dropped and a high-confidence one is stored active, and neither is what the system does.
+    kind: contradicts
+    correction: >-
+      The description should state only what the fragment node holds: confidence is between 0 and 1. It should not apply the link and attribute confidence bands to a fragment.
+    node: rules/knowledge-base/fragment-recorded-proposed
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      header comment, lines 3-6
+    evidence: >-
+      "The DB CHECK on
+      // `information_fragment.text` (≤ 1000 chars) is mirrored here so the failure
+      // surfaces as a typed `VALIDATION_INVALID_FORMAT` instead of a SQLSTATE
+      // error from pg."
+    cost: >-
+      The 1000-character bound is written a second time as prose beside the `.max(1000)` that enforces it. The next reader may take the comment, not the node, as where the limit was decided. If the node moves, the comment stays behind.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by `.min(1).max(1000)` in this file, and the node holds the fact.
+    node: rules/knowledge-base/fragment-text-length
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file declares the input of a fragment proposal (`ProposeFragmentInputSchema`) and a result carrying `readonly status: "proposed"`. It does not declare the information-fragment shape (text, confidence, status, created_at, superseded_at). It only passes text and confidence along toward that shape.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeFragmentInputSchema, lines 10-31: the fragment proposal's `confidence` and `chunk_ids` (the cited raw chunks)
+    evidence: >-
+      confidence: z.number().min(0).max(1)
+      chunk_ids: z.array(z.string().uuid()).min(1)
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      the `text` field of ProposeFragmentInputSchema, lines 11-14
+    evidence: >-
+      text: z.string().min(1).max(1000)
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      the `confidence` field of ProposeFragmentInputSchema, lines 18-21
+    evidence: >-
+      confidence: z.number().min(0).max(1)
+looked_past: >-
+  The `chunk_ids` description says the server injects the current chunk so the caller need not send it, while the schema declares `.min(1)` with no default; this is emitted text about ingestion-run behavior that no node in this set holds, and it belongs to another judgment.

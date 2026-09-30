@@ -1,0 +1,79 @@
+findings:
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the comment block above the /fragments/accepted route, lines 158-163 ("at least one required")
+    evidence: >-
+      // Lists `information_fragment` rows with `status = 'accepted'`
+      // filtered by `llm_run_id` and/or `raw_information_id` (at least
+      // one required). Tombstoned sources are silently omitted.
+    cost: >-
+      The at-least-one-filter rule is written as prose in a route file. A reader who changes the rule may edit this comment and miss the `.refine` in fragment.dto.ts, which enforces it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in src/modules/query-retrieval/dto/fragment.dto.ts: `(v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined`.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the same comment block, lines 160-161 ("status = 'accepted'")
+    evidence: >-
+      // Lists `information_fragment` rows with `status = 'accepted'`
+    cost: >-
+      The accepted-only rule is restated in a route comment. The running filter lives in the repository's SQL.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in src/modules/query-retrieval/repository/accepted-fragments.repository.ts, in `FILTER_WHERE`: `f.status = 'accepted'`.
+    node: rules/knowledge-base/listing-holds-accepted-only
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the same comment block, line 162 ("Tombstoned sources are silently omitted")
+    evidence: >-
+      // one required). Tombstoned sources are silently omitted.
+    cost: >-
+      The compliance-deletion exclusion is restated in a route comment. The running exclusion lives in the repository's SQL.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in src/modules/query-retrieval/repository/accepted-fragments.repository.ts, in `FILTER_WHERE`: `NOT EXISTS (SELECT 1 FROM compliance_deletion cd WHERE cd.raw_information_id = r.id)`.
+    node: rules/knowledge-base/listing-excludes-compliance-deleted
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the comment block above the error mappers, lines 189-197 (BR-24)
+    evidence: >-
+      // BR-24 (knowledge-graph.back.md / query-retrieval.back.md): both REST and MCP
+      // transports surface IDENTICAL error codes / messages for any thrown service
+      // error. The classification core lives in
+      // `backend/src/modules/knowledge-graph/mcp/error-envelope.ts`;
+    cost: >-
+      The same-answer-on-both-transports rule is stated in prose here. A reader who looks for where it is decided finds a comment, not the shared mapper that enforces it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file, where `handleSearchError` and `handleProvenanceError` both delegate to `mapErrorToHttpResponse` from knowledge-graph/mcp/error-envelope.ts.
+    node: constraints/retrieval-transports-answer-alike
+read:
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      every route handler opens its transaction through `withReadOnly` (lines 62, 95, 117, 141, 169)
+    evidence: >-
+      return await withReadOnly(deps.pool, async (client) => {
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      `handleSearchError` and `handleProvenanceError` (lines 217-236), which map known business errors through the shared `mapErrorToHttpResponse` that the MCP transport also uses
+    evidence: >-
+      const { statusCode, envelope } = mapErrorToHttpResponse(err);
+      return reply.status(statusCode).send(envelope);
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in dto/fragment.dto.ts as `ListAcceptedFragmentsQuerySchema`. This file only forwards its fields: `llm_run_id: query.llm_run_id, raw_information_id: query.raw_information_id, limit: query.limit, offset: query.offset`.
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in dto/search.dto.ts as `SearchQuerySchema`. This file only reads its fields and forwards them: `query: query.query, layers: query.layers, asOf: query.as_of, inEffectOnly: query.in_effect_only, includeUncertain: query.include_uncertain, expand: query.expand, expandDepth: query.expand_depth, expandLinkTypes: query.expand_link_types`.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file does not decide the refusal. It only recognises the error the service throws and maps it: `err instanceof UnknownLinkTypeError` in `isMappableSearchError`, then `mapErrorToHttpResponse(err)`.
+looked_past: >-
+  The file reads the search link-type field as `expand_link_types`, while the search-query node names the attribute `link_types`. That name is declared in dto/search.dto.ts, which is outside this file set, so it is not judged here.

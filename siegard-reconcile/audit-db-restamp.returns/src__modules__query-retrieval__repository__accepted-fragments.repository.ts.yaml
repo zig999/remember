@@ -1,0 +1,98 @@
+findings:
+  - file: src/modules/query-retrieval/repository/accepted-fragments.repository.ts
+    where: >-
+      header comment, lines 1-26 (the "Filter" list), and the `FILTER_WHERE` constant that holds the same predicate
+    evidence: >-
+      // Filter (back-spec BR-14 tombstone short-circuit + task spec):
+      //   - `f.status = 'accepted'`
+    cost: >-
+      The accepted-only rule is written in prose as well as in `FILTER_WHERE`. If the node moves, the comment keeps the old rule, and a reader who trusts it will think it describes the behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by code in this file, in `FILTER_WHERE` (`f.status = 'accepted'`).
+    node: rules/knowledge-base/listing-holds-accepted-only
+  - file: src/modules/query-retrieval/repository/accepted-fragments.repository.ts
+    where: >-
+      header comment lines 15-20 ("Deduplication"), and the doc comment above `selectAcceptedFragments`
+    evidence: >-
+      // listing contract returns each fragment exactly once and surfaces the FIRST
+      // supporting chunk by `chunk_index ASC`. We compute that join inline using
+      // `DISTINCT ON (f.id) ... ORDER BY f.id, rc.chunk_index ASC`.
+    cost: >-
+      The one-entry-per-fragment rule and its lowest-index attribution are stated in comments as well as in the SQL. A change to the node would leave the comment describing the old rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by code in this file, in the `DISTINCT ON (f.id)` statement ordered by `rc.chunk_index ASC`.
+    node: rules/knowledge-base/listing-one-entry-per-fragment
+  - file: src/modules/query-retrieval/repository/accepted-fragments.repository.ts
+    where: >-
+      header comment lines 3-6 and the doc comment above `countAcceptedFragments`
+    evidence: >-
+      //   - `countAcceptedFragments`: total BEFORE pagination
+      * Count distinct accepted fragments matching the filter (pre-pagination total).
+    cost: >-
+      The invariant that the total is counted before the page is cut is restated in prose. The count query and the page query are separate statements, so the comment can drift from the behavior without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by code in this file, in `countAcceptedFragments`: its query has no LIMIT or OFFSET.
+    node: rules/knowledge-base/listing-total-before-pagination
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      the `llmRunId`/`rawInformationId` parameters and the `$1`/`$2` predicates of `FILTER_WHERE`, with `limit`/`offset` bound to `$3`/`$4` in `selectAcceptedFragments`
+    evidence: >-
+      AND ($1::uuid IS NULL OR f.llm_run_id = $1::uuid)
+         AND ($2::uuid IS NULL OR r.id = $2::uuid)
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the `NOT EXISTS` clause in `FILTER_WHERE`. The file reads the `compliance_deletion` table and does not declare its shape.
+    evidence: >-
+      AND NOT EXISTS (
+               SELECT 1 FROM compliance_deletion cd
+                WHERE cd.raw_information_id = r.id
+             )
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the `AcceptedFragmentRow` interface, which declares the fragment's text, confidence, llm run and created_at. The `status` attribute is only filtered on in `FILTER_WHERE`.
+    evidence: >-
+      readonly fragment_text: string;
+        readonly fragment_confidence: string | number;
+        readonly fragment_llm_run_id: string;
+        readonly fragment_created_at: Date;
+  - node: domain/knowledge-base/page
+    held_at: >-
+      `LIMIT $3 OFFSET $4` in `selectAcceptedFragments`, fed by the `limit` and `offset` parameters. The file declares no page type and holds no default.
+    evidence: >-
+      LIMIT $3
+           OFFSET $4
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      nowhere. The file only passes `source_type` through as a string and declares none of the enumeration's values.
+    evidence: >-
+      readonly source_type: string;
+      r.source_type::text AS source_type,
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: >-
+      the first predicate of `FILTER_WHERE`, shared by the count and page statements
+    evidence: >-
+      f.status = 'accepted'
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: >-
+      the `deduped` CTE of `selectAcceptedFragments` and the `COUNT(DISTINCT f.id)` of `countAcceptedFragments`
+    evidence: >-
+      SELECT DISTINCT ON (f.id)
+      ORDER BY f.id, rc.chunk_index ASC, rc.id ASC
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: >-
+      `countAcceptedFragments`, which applies the same `FILTER_WHERE` and has no LIMIT or OFFSET
+    evidence: >-
+      SELECT COUNT(DISTINCT f.id)::bigint AS total
+            FROM information_fragment f
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: >-
+      the two statements together. An unknown run or raw information matches no row, so the page is empty, and `countAcceptedFragments` falls back to 0 when it has no row.
+    evidence: >-
+      const raw = res.rows[0]?.total ?? 0;
+      return typeof raw === "number" ? raw : Number(raw);
+looked_past: >-
+  The file also holds two listing facts whose nodes are outside this pack, both in the source and both restated in its header comment. The compliance-deleted exclusion (`NOT EXISTS (... compliance_deletion ...)`) is held by rules/knowledge-base/listing-excludes-compliance-deleted. The ordering `received_at DESC NULLS LAST, fragment_created_at DESC, fragment_id ASC` is held by rules/knowledge-base/listing-order. I did not review either node, since the file is not bound to them in this set.

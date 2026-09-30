@@ -1,0 +1,188 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the constant PER_LAYER_FETCH_LIMIT (line 56) and its three uses in the layer fan-out (lines 128-148)
+    evidence: >-
+      const PER_LAYER_FETCH_LIMIT = 200;   and   fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+    cost: >-
+      The cap of 200 candidates per layer is a value the source decided and no node holds. It also sits upstream of the total, so `total = filtered.length` counts at most what the three capped layers returned. The reader who trusts the specification's "counts every search item" finds no cap there, and a query with more than 200 matching fragments reports a smaller total than the knowledge base holds.
+    kind: unstated
+    correction: >-
+      Give the per-layer candidate cap a node, or state in search-total-before-pagination that the total counts items within that cap.
+    node: rules/knowledge-base/search-total-before-pagination
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment above the node-hit provenance guard, lines 241-243
+    evidence: >-
+      // BR-13 of back spec / OpenAPI: `provenance` minItems: 1. A node hit without ANY accepted-fragment trace is dropped — we never surface a node without a provenance chain.
+    cost: >-
+      The comment states, in prose, the rule that a node surfaces only with an accepted mention. The same fact also lives in the node and in the `if (provenance.length === 0) continue;` guard, so the next reader has a third place to check when the rule moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the guard `if (provenance.length === 0) continue;` in this file and by the node.
+    node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the comment above the link provenance guard, lines 331-332
+    evidence: >-
+      // BR-13 / OpenAPI: links without provenance are an alarm but we MUST NOT emit a `provenance: []` row. Log warn and drop.
+    cost: >-
+      The comment restates the rule that an expanded link surfaces only when it holds provenance. The guard `if (provenance.length === 0)` already holds it, so the prose is a second home that has to be kept in step with the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The log line `query_retrieval_search_empty_link_provenance` is emitted text and stays.
+    node: rules/knowledge-base/expanded-link-requires-provenance
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      resolveLayers, the empty-list branch (line 431)
+    evidence: >-
+      if (layers === undefined || layers.length === 0) { return new Set(ALLOWED_LAYERS); }
+    cost: >-
+      The node gives the default of every search layer to a query that omits the option. The code also treats a present but empty `layers` list as omitted. That is a rule no node holds, so a caller who sends an empty list gets all three layers searched. The decision now lives only in this function.
+    kind: unstated
+    correction: >-
+      State in search-option-defaults whether an empty layer list takes the default, or refuse it.
+    node: rules/knowledge-base/search-option-defaults
+read:
+  - node: constraints/retrieval-is-lexical-only
+    held_at: >-
+      the three layer queries in the fan-out (lines 128-148), all over the tsquery parsed at line 113. Nothing in the file computes or compares embeddings or similarity.
+    evidence: >-
+      const parsed = await parseTsQuery(client, input.query);   and   chunkHits = await searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT);
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere. The shape is not declared in this file, which only reads FragmentHitRow fields (`text`, `confidence`, `created_at`).
+    evidence: >-
+      summary: f.text,   and   const confidence = Number(f.confidence);
+  - node: domain/knowledge-base/item-kind
+    held_at: >-
+      the `kind` union on IntermediateItem (line 75)
+    evidence: >-
+      readonly kind: "node" | "link" | "fragment";
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of SearchServiceInput (lines 69-70) and the page cut at line 392
+    evidence: >-
+      readonly limit: number; readonly offset: number;   and   const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      nowhere. The entry shape SearchProvenanceEntry is imported from the DTO. toProvenanceEntry (lines 474-484) only maps repository rows into it.
+    evidence: >-
+      function toProvenanceEntry(row: SearchProvenanceRow): SearchProvenanceEntry { return { fragment_id: row.fragment_id, ...
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      IntermediateItem (lines 73-88) and toSearchItem (lines 504-515), which name kind, layer, score, hop, summary, flags and provenance
+    evidence: >-
+      return { kind: it.kind, layer: it.layer, id: it.id, score: it.score, hop: it.hop, summary: it.summary, flags: it.flags, provenance: it.provenance, };
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      nowhere. SearchLayer and ALLOWED_LAYERS are imported from ../dto/search.dto.js, and this file only tests membership with `layers.has("fragment")` and similar.
+    evidence: >-
+      import { ALLOWED_LAYERS, type SearchLayer } from "../dto/search.dto.js";
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      SearchServiceInput (lines 60-71)
+    evidence: >-
+      readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[];
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: >-
+      partially. The chunk hits anchored by fragment hits are identified (`findChunkFragmentLinks`, lines 157-164) and then only counted. The fragment item's excerpt comes from the provenance rows' `excerpt` field (line 482), produced in the repository. This file never copies a chunk hit's text into a fragment item. I could not check in this pass whether the repository's excerpt is the matched chunk's.
+    evidence: >-
+      for (const link of dedupLinks) { if (!chunksById.has(link.raw_chunk_id)) continue; dedupCollapsedCount += 1; }   and   excerpt: row.excerpt,
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: >-
+      the guard in the link loop of the expansion (lines 330-342)
+    evidence: >-
+      if (provenance.length === 0) { ... continue; }
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      the traverseNodes call (lines 280-291), which forwards the query's as-of date. The link-validity filter runs inside traverseNodes, in another file. This file holds no validity comparison of its own.
+    evidence: >-
+      asOf: input.asOf,
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: >-
+      the traverseNodes call (line 284)
+    evidence: >-
+      direction: "both",
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      the traverseNodes call (lines 287-288), which forwards the switch. The exclusion of links that start after the as-of date runs inside traverseNodes, in another file.
+    evidence: >-
+      asOf: input.asOf, inEffectOnly: input.inEffectOnly,
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      resolveLinkTypeIds (lines 444-458), its result passed as `linkTypeIds` to traverseNodes (line 285)
+    evidence: >-
+      const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined;   and   linkTypeIds,
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: >-
+      the expansion block (lines 271-291), whose starting ids are the matched node hits that surfaced
+    evidence: >-
+      if (input.expand && nodeHits.length > 0) { const startingIds = nodeHits.filter((n) => items.some((it) => it.kind === "node" && it.id === n.node_id)).map((n) => n.node_id);
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: >-
+      the fragment item construction (line 219)
+    evidence: >-
+      summary: f.text,
+  - node: rules/knowledge-base/item-flags
+    held_at: >-
+      computeFlags (lines 486-502)
+    evidence: >-
+      if (args.status === "uncertain") flags.push("uncertain"); if (args.status === "disputed") flags.push("disputed"); if (args.kind === "fragment" && args.status === "accepted" && args.confidence < LOW_CONFIDENCE_THRESHOLD) { flags.push("low_confidence"); }   with const LOW_CONFIDENCE_THRESHOLD = 0.4;
+  - node: rules/knowledge-base/link-item-summary
+    held_at: >-
+      the link item's summary template (line 344)
+    evidence: >-
+      const summary = `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`;
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: >-
+      the conditional that resolves link types only when expanding (lines 106-108)
+    evidence: >-
+      const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined;
+  - node: rules/knowledge-base/node-item-summary
+    held_at: >-
+      the node item construction (line 259)
+    evidence: >-
+      summary: n.canonical_name,
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: >-
+      the guard in the node-hit loop (line 244), over provenance rows from listProvenanceForNodes. Whether those rows are limited to accepted fragments is decided in the repository, not here.
+    evidence: >-
+      if (provenance.length === 0) continue;
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      partially. resolveLayers gives the all-layers default (lines 428-433). The expansion, depth, uncertain-inclusion and in-effect defaults are not applied here, because SearchServiceInput declares them required.
+    evidence: >-
+      return new Set(ALLOWED_LAYERS);   and   readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number;
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      lines 391-392, where the total is taken from the filtered list before the slice. It is bounded by PER_LAYER_FETCH_LIMIT, per the first finding.
+    evidence: >-
+      const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: >-
+      `asOf` and `inEffectOnly` are passed only to traverseNodes (lines 287-288). The fragment, node and chunk layer calls receive only the query text and the fetch limit.
+    evidence: >-
+      searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT)   and   asOf: input.asOf, inEffectOnly: input.inEffectOnly,
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: >-
+      the filter at lines 377-379, and the earlier link-level check at line 352
+    evidence: >-
+      const filtered = input.includeUncertain ? items : items.filter((it) => it.status !== "uncertain");
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds (lines 451-454), reached only when `expand` is true
+    evidence: >-
+      const row = catalog.linkTypeByName.get(name); if (row === undefined) { throw new UnknownLinkTypeError(name); }
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: >-
+      the empty-parse refusal (lines 113-119), before any layer is queried
+    evidence: >-
+      if (parsed === "") { throw new InvalidSearchQueryError("empty_after_parse", {
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: >-
+      the lexical layer queries (lines 128-148). With no lexical hit there are no node hits, so nothing expands, and `total = filtered.length` is 0 over an empty list.
+    evidence: >-
+      let fragmentHits: readonly FragmentHitRow[] = []; let nodeHits: readonly NodeAliasHitRow[] = []; let chunkHits: readonly ChunkHitRow[] = [];
+looked_past: >-
+  Several other file-wide comments restate rules that other nodes hold (BR-15 ranking, expansion decay, layer refusal). The file-header comment describes the same rules as BR-numbered steps. The repository-side behaviors the file delegates to (accepted-only provenance, chunk excerpts, link-validity filtering) sit in other files outside this set, so I did not review them.

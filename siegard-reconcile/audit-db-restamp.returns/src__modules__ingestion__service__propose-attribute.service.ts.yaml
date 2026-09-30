@@ -1,0 +1,130 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the comment block above the closed-domain gate, lines 85-92
+    evidence: >-
+      // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The exact-match rule for allowed values is stated in prose here as well as in the node. The code that enforces it is the call to assertValueInDomain, imported from ../validation/structural.js. If the rule moves, this comment keeps saying the old one, and a reader who trusts it over the node gets the wrong rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The node rules/knowledge-base/attribute-value-in-allowed-values holds the fact, and assertValueInDomain in ../validation/structural.js implements it. That implementation was not opened in this pass.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the comment block at the start of Layer 3, lines 130-134
+    evidence: >-
+      // `received_at` is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14) and is consumed by `validateTemporal` as the fallback for `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The fallback order of stated, then document, then received is written again as prose in this file. The code that applies it is validateTemporal, which this file only calls and which was not read in this pass. If the order changes, this comment goes stale without anything failing.
+    kind: restates
+    correction: >-
+      Remove the comment. The node rules/knowledge-base/required-start-available holds the requirement that a start is stated or comes from a document date or a reception date. The order is applied in validateTemporal, in ../validation/temporal.js.
+    node: rules/knowledge-base/required-start-available
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      The catalog lookup and the use of the resolved key's fields, lines 60-69 and 151, 192-193. The file does not declare the shape; it reads node_type_id, value_type, requires_valid_from and id from a key declared elsewhere (CatalogSnapshot).
+    evidence: >-
+      const attrKey = deps.catalog.attributeKeyByNodeTypeAndKey.get(
+          attributeKeyCacheKey(nodeTypeId!, args.key)
+        );
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      The scoped lookup and assertKnownType call at lines 61-69, plus the explicit node_type_id guard at lines 74-80.
+    evidence: >-
+      assertKnownType({
+          kind: "attribute_key",
+          name: args.key,
+          found: attrKey !== undefined,
+        });
+      ...
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+        throw new ValidationFailure(
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      The sequence of statements in proposeAttributeService, lines 53-183. It runs node existence, key for node type, value parse, allowed values, fragment existence, fragment run ownership, temporal, confidence, then anchoring, and each failure throws or returns before the next check.
+    evidence: >-
+      assertFound({ entity: "knowledge_node", ... }); ... assertKnownType({ kind: "attribute_key", ... }); parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type }); assertValueInDomain(args.value, domain); ... RESOURCE_NOT_FOUND ... "fragment_id does not belong to this run." ... validateTemporal({ ... }); const route = routeConfidence(args.confidence); ... countFragmentsAnchoredToSource(client, {
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      The closed-domain gate, lines 93-96. The set-membership check itself is in assertValueInDomain, which is imported and was not opened.
+    evidence: >-
+      const domain = domainOf(deps.catalog, resolvedKey.id);
+      if (domain !== null) {
+        assertValueInDomain(args.value, domain);
+      }
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      The below_floor branch, lines 159-167. It returns before consolidateAttribute is reached, with attribute_id null. The 0.40 threshold lives in routeConfidence, which was not opened.
+    evidence: >-
+      if (route.kind === "below_floor") {
+          const result: ProposeAttributeResult = {
+            attribute_id: null,
+            outcome: "rejected",
+            reason: "BELOW_CONFIDENCE_FLOOR",
+          };
+          return { ok: true, result };
+        }
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      The anchoring comparison at lines 169-183. The count query is in countFragmentsAnchoredToSource, imported and not opened.
+    evidence: >-
+      const anchored = await countFragmentsAnchoredToSource(client, {
+          fragment_ids: args.fragment_ids,
+          expected_raw_information_id: runCtx.rawInformationId,
+        });
+        if (anchored !== args.fragment_ids.length) {
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      The fragment lookup and length comparison, lines 99-114.
+    evidence: >-
+      if (fragRes.rows.length !== args.fragment_ids.length) {
+          throw new ValidationFailure(
+            "RESOURCE_NOT_FOUND",
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      The per-fragment llm_run_id comparison, lines 115-123.
+    evidence: >-
+      if (f.llm_run_id !== runCtx.llmRunId) {
+          throw new ValidationFailure(
+            "VALIDATION_INVALID_FORMAT",
+            "fragment_id does not belong to this run.",
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere. The file collects the cited fragment texts and passes them, with change_hint, to validateTemporal. It holds no errata-term check of its own.
+    evidence: >-
+      const fragmentTexts = fragRes.rows.map((r) => r.text);
+      ...
+      change_hint: args.change_hint,
+          fragment_texts: fragmentTexts,
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      The mapping from the routed confidence kind to the status of the new row, lines 186-187. The thresholds 0.75 and 0.40 are not in this file; they are in routeConfidence.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" =
+          route.kind === "active" ? "active" : "uncertain";
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere. The file loads document_date and received_at from the run's source and passes them to validateTemporal with requires_valid_from, which decides whether a start is available. It holds no such check itself.
+    evidence: >-
+      requires_valid_from: resolvedKey.requires_valid_from,
+          change_hint: args.change_hint,
+          fragment_texts: fragmentTexts,
+          document_date: documentDate,
+          received_at: receivedAt,
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere. The file passes valid_from and valid_from_basis to validateTemporal and holds no basis check itself.
+    evidence: >-
+      valid_from: args.valid_from ?? null,
+          valid_to: args.valid_to ?? null,
+          valid_from_basis: args.valid_from_basis ?? null,
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere. The file passes valid_from and valid_to to validateTemporal and compares nothing itself.
+    evidence: >-
+      valid_from: args.valid_from ?? null,
+          valid_to: args.valid_to ?? null,
+looked_past: >-
+  The defensive node_type_id re-check, the "Layer N" labelling and the delegation to consolidateAttribute are implementation structure, not domain facts, so they are another judgment's.
