@@ -1,0 +1,879 @@
+findings:
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the header comment block, lines 1-30
+    evidence: >-
+      "the deterministic, NO-LLM sibling of `ingest_document`" and "the audit `tool_call` rows live INSIDE the dispatched `propose_*` calls the service makes (one per dispatched item) — this handler writes none of its own."
+    cost: >-
+      This is prose no running system emits. It says that a directed ingestion calls no language model and that each dispatched item is audited, and both facts are held by nodes. A second reader-facing home for them sits in a file that does not enforce them, so it can drift from the nodes without any check reaching it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in `src/modules/ingestion/service/directed-ingestion.service.ts`, which declares `DIRECTED_MODEL = "directed"` and `DIRECTED_PROMPT_VERSION = "directed-v1"`. The bind to the node is the link between them.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the `IngestDirectedInvocationContext` docblock (lines 85-105) and the comment at lines 174-176
+    evidence: >-
+      "The chat agent dispatch supplies `source_excerpt` (the operator's verbatim turn) here so the orchestrator can persist it as `original_input` on the `RawInformation` row."
+    cost: >-
+      The rule that a chat turn's excerpt is recorded as the raw information's original input is restated in prose here. It is held by a node and by the code that persists it. A reader can take this comment for the place the rule lives.
+    kind: restates
+    correction: >-
+      Remove the prose. The code that records it is `original_input: deps.sourceExcerpt ?? null` in `src/modules/ingestion/service/directed-ingestion.service.ts` (line 366).
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the `metadataPointer` spread, lines 184-193
+    evidence: >-
+      ...(invocationContext?.pointer !== undefined &&
+      typeof invocationContext.pointer.conversation_id === "string" &&
+      typeof invocationContext.pointer.message_id === "string"
+        ? { metadataPointer: { conversation_id: invocationContext.pointer.conversation_id, message_id: invocationContext.pointer.message_id } }
+        : {}),
+    cost: >-
+      No node says that a directed ingestion from a chat turn records a conversation and message pointer in its raw information's metadata. No node says that a pointer with only one of the two ids is silently dropped. The handler applies the drop and the service merges the ids into metadata (`intakeMetadata.conversation_id = deps.metadataPointer.conversation_id`). The next reader will look for this in the specification, find nothing, and read the code as the decision.
+    kind: unstated
+    correction: >-
+      The analysis should give the chat-turn pointer and its all-or-nothing rule a node. The natural place is beside the rule for the turn's excerpt or in the raw information's metadata.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the catch branch of the delegation, lines 211-226
+    evidence: >-
+      return { ok: false, error: { code: "SYSTEM_INTERNAL_ERROR", message: "Unexpected error during directed ingestion." } };
+    cost: >-
+      The ingest-directed operation lists only validation refusals. The handler emits a system-error refusal, with a fixed code and message, for any unexpected throw. That is what the owner is told when the orchestrator fails, and the specification never states it.
+    kind: unstated
+    correction: >-
+      The contract's ingest-directed operation should state the refusal for an unexpected failure, with its error code. The message text is emitted, so the node should decide it.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler presents no content to a language model. It parses and delegates: `const envelope = await directed(parsed.data, serviceDeps);`
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      No language model is involved in this file. It hands the payload to the service: `const envelope = await directed(parsed.data, serviceDeps);`
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the MCP entry of an operation the contract gives MCP alone, so no second transport answers in it. It forwards the service envelope: `return envelope as McpEnvelopeJson;`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the ingest-directed operation only. Step 1 (lines 129-144) is the validation refusal and lines 209-210 forward the service envelope. The catch branch (lines 211-226) is an unstated refusal, reported as a finding.
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT", details: { issues: parsed.error.issues.map((i) => ({ path: i.path.map((seg) => String(seg)).join("."), message: i.message })) }
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No accepted-fragment listing appears in the file. It only parses and delegates a directed ingestion.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias kind is named in the file. It only parses and delegates a directed ingestion.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute key is named in the file. It only parses and delegates a directed ingestion.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      No change hint is named in the file. It only parses and delegates a directed ingestion.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape of the batch is declared by `IngestDirectedMcpInputSchema` in mcp-schemas.ts, which this file imports and applies: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The item shape lives in `IngestDirectedMcpInputSchema`, which the file only applies through `safeParse(rawInput)`. The report entries are the service's.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no item kind. It only applies the imported schema and forwards the service result.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no item status. It only forwards the service result: `return envelope as McpEnvelopeJson;`
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity match review is named in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No information fragment is recorded here. The fragment proposal seam is only forwarded: `...(deps.proposeFragment !== undefined ? { proposeFragment: deps.proposeFragment } : {})`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no tool-name enumeration. It appears only in the log field `tool: "ingest_directed"`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is recorded here. The seam is only forwarded: `...(deps.proposeLink !== undefined ? { proposeLink: deps.proposeLink } : {})`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is recorded here. The seam is only forwarded: `...(deps.proposeNode !== undefined ? { proposeNode: deps.proposeNode } : {})`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type is named in the file. The catalog is only passed through: `catalog: deps.catalog`
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule is applied in the file. The catalog is only passed through: `catalog: deps.catalog`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run is opened by the service. The handler only forwards: `const envelope = await directed(parsed.data, serviceDeps);`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias is handled in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is recorded here. The seam is only forwarded: `...(deps.proposeAttribute !== undefined ? { proposeAttribute: deps.proposeAttribute } : {})`
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node. It only forwards the `proposeNode` seam.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node type is named in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version is named in the file.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no proposal. The four proposal seams are forwarded to the service and nothing else is done with them.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is cut or read in the file. The intake seam is only forwarded: `...(deps.ingestRaw !== undefined ? { ingestRaw: deps.ingestRaw } : {})`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw information is recorded by the service. The handler only forwards `sourceExcerpt` and `metadataPointer`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status is named in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is built here. The result is forwarded whole: `return envelope as McpEnvelopeJson;`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler records no tool call. Its header prose says so, and the code in the file contains no tool-call write.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No basis is named in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validation outcome is named in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value type is named in the file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes. The service result is forwarded whole: `return envelope as McpEnvelopeJson;`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes. The service result is forwarded whole: `return envelope as McpEnvelopeJson;`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes. The service result is forwarded whole: `return envelope as McpEnvelopeJson;`
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution happens in the file. Only the `proposeNode` seam is forwarded.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The check is not in this file. The `proposeAttribute` seam is only forwarded.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check attribute proposals. The `proposeAttribute` seam is only forwarded.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check attribute values. The `proposeAttribute` seam is only forwarded.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not parse attribute values. The `proposeAttribute` seam is only forwarded.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no confidence threshold.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The refusal is declared by the imported schema, not in this file. The file only applies it: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity is computed in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is built in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is built in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is listed in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no citations. The proposal seams are only forwarded.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no citations. The proposal seams are only forwarded.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no citations. The proposal seams are only forwarded.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler closes no run. The `now` seam is only forwarded: `...(deps.now !== undefined ? { now: deps.now } : {})`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash is computed in the file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No raw information is recorded in the file.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no content limit.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no errata evidence.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no currency.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version and does no document ingestion.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not convert attribute values. The parsed payload is passed as it is: `const envelope = await directed(parsed.data, serviceDeps);`
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared by the imported `IngestDirectedMcpInputSchema`, not in this file. The file only applies it: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no defaults to attributes or links. The parsed payload is passed as it is: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no item references. The parsed payload is passed as it is: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file dispatches no items. The dispatch is the service's: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment. The dispatch is the service's: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no confidence. The dispatch is the service's: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names neither the model nor the prompt version, and the run is opened by the service. The header prose "the deterministic, NO-LLM sibling of `ingest_document`" is reported as a `restates` finding.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file assigns no item status. The service result is forwarded whole: `return envelope as McpEnvelopeJson;`
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no reference. The parsed payload is passed as it is: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards the `verifyNodePin` seam: `...(deps.verifyNodePin !== undefined ? { verifyNodePin: deps.verifyNodePin } : {})`
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The limit is declared by the imported schema, not in this file. The file only applies it: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The rule is declared by the imported schema, not in this file. The file only applies it: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler closes no run. The service does it: `directed(parsed.data, serviceDeps)`
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file composes no content. The raw information is recorded by the service.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The limit is declared by the imported schema, not in this file. The file only applies it: `IngestDirectedMcpInputSchema.safeParse(rawInput)`
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      lines 177-179. The chat turn's excerpt is forwarded to the service under a name the service records as original input. The recording itself is in directed-ingestion.service.ts.
+    evidence: >-
+      ...(invocationContext?.source_excerpt !== undefined
+        ? { sourceExcerpt: invocationContext.source_excerpt }
+        : {}),
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no document ingestion and no extraction. It parses a directed ingestion and delegates it.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler records no tool call. Its header prose says the audit rows are written by the dispatched proposals, and the file contains no code that writes them.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution happens in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no extraction.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no extraction.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no extraction.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no extraction.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no extraction.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no fragment chunks. The `proposeFragment` seam is only forwarded.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no fragment chunks. The `proposeFragment` seam is only forwarded.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no fragment chunks. The `proposeFragment` seam is only forwarded.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no fragment. The `proposeFragment` seam is only forwarded.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no fragment limit.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. The `ingestRaw` seam is only forwarded.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no key.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no run.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. The `ingestRaw` seam is only forwarded.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no link rules. The `proposeLink` seam is only forwarded.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no link proposals. The `proposeLink` seam is only forwarded.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no link types. The catalog is only passed through: `catalog: deps.catalog`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file evaluates no rule window.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file moves no run through any transition.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is matched in the file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No language model is called in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name is normalised in the file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no confidence threshold.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no node name limit.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no node types. The catalog is only passed through: `catalog: deps.catalog`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no link.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no link.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no limit on the excerpt. It forwards it as it is: `{ sourceExcerpt: invocationContext.source_excerpt }`
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no orphan state.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file paginates nothing.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no confidence.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no run status.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no proposals.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance and changes no fragment status.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestions.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestions.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestions.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestions.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sets no reception time. The `now` seam is only forwarded.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records nothing on refusal. Its validation refusal returns before any call: `return { ok: false, error: { code: "VALIDATION_INVALID_FORMAT", ...`
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no validity start.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no validity start.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no validity start.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution happens in the file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no assertion.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no assertion.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no assertion.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no fragment text.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call outcome.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. The `ingestRaw` seam is only forwarded.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file parses no attribute value.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+looked_past: >-
+  The local `McpEnvelopeJson` type duplicates the envelope shape used by other ingest handlers, and the `envelope as McpEnvelopeJson` cast bridges the service result type; both are design matters for a code review, not domain facts.

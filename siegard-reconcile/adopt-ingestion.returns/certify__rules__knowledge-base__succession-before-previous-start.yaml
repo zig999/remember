@@ -1,0 +1,40 @@
+certified:
+  - node: rules/knowledge-base/succession-before-previous-start
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: "intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)"
+    why: >-
+      The named test exercises one part of the fact: a knowledge_link succession
+      whose closing date equals the start of the assertion it closes (both
+      2026-06-01). Even there, the "without giving it a validity end" half is
+      checked only as text. The client is mocked and never runs the SQL, and the
+      test only checks that the close statement contains the substrings "CASE",
+      "valid_from >=", "THEN valid_to", "superseded_at" and "THEN now()", plus
+      that $2 is bound to the closing date. That catches a return to a plain
+      `valid_to = $2`. It is still an assertion on how the internal statement is
+      written, not on the stored result. A guard written the other way round
+      (`$2 <= valid_from`) would fail the test while behaving correctly. A
+      statement that keeps these substrings but sets valid_to wrongly could pass.
+      The test also does not check the "supersedes" half on the closed row: it
+      checks outcome=superseded_previous and a single UPDATE, but not the
+      'superseded' status on the close or the supersedes_link_id chain on the
+      new row. Three parts of the fact go unexercised. First, a closing date
+      strictly before the closed assertion's validity start: every other
+      succession test closes after the start. Second, the whole fact for
+      node_attribute, which the node also constrains: the only attribute
+      succession test ("superseded_previous — different value on a functional
+      key with succession signal") closes 2026-06-10 against a start of
+      2026-01-10, so it is the ordinary case, and it only checks that the SQL
+      contains "valid_to". Third, the persisted state of the closed row in any
+      case, meaning status superseded with valid_to still null.
+    remainder: testable
+    remainder_why: >-
+      Close it with one test per constrained kind (knowledge_link and
+      node_attribute) and per boundary (closing date equal to the start, and
+      closing date strictly before it). Each takes a vigent functional assertion
+      whose validity starts at D and a succession proposal closing at or before
+      D. Each runs against a store that actually evaluates the close. Each
+      expects the closed assertion to be superseded with valid_to still null,
+      and the new assertion to be chained to it through supersedes_link_id or
+      supersedes_attribute_id.

@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/chunk-index-follows-content
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`pdf`: splits on form-feed (U+000C)"
+    why: >-
+      The fact is only exercised at the chunker, in one test and one case.
+      That test takes a three-page pdf content. It checks that the chunks come
+      out as "página 1", "página 2", "página 3", in that array order, and that
+      their chunk_index values are [0, 1, 2]. Together these tie the index to
+      the order of the content, so that case would fail if the indexing did
+      not start at 0 or did not follow the content. The index check is a side
+      assertion in a test about form-feed splitting, and neither the test's
+      name nor its purpose says it matters.
+
+      Three parts of the fact are never checked. No test looks at chunk_index
+      when one block is over CHUNK_HARD_MAX and is split into sentence-level
+      chunks by the oversize fallback. No test looks at it for content with
+      several hard-boundary blocks where one of them is split that way. No
+      test looks at it for the email, chat or transcricao boundaries, even
+      though those tests produce several chunks. So restarting the numbering
+      per block, leaving gaps, or skipping numbers on those paths would all
+      pass.
+
+      Nothing in the offered proof reads a raw information's persisted
+      chunks. The fact constrains the raw chunk as stored, and whether
+      ingestion keeps the chunker's index when it writes the chunks is not
+      exercised.
+    remainder: testable
+    remainder_why: >-
+      One input would close it: content that has several hard-boundary blocks
+      where at least one is over CHUNK_HARD_MAX. The expected result is that
+      the chunks, taken in order of offset_start, carry chunk_index 0, 1, …,
+      n-1 with no gaps. The same check is needed on the raw chunks read back
+      after ingesting that content.

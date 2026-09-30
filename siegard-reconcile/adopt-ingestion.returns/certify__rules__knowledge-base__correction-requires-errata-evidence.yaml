@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: requires errata signal when change_hint = 'correction'
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: accepts change_hint='correction' when fragment text contains 'errata'
+    why: >-
+      The refusal half is exercised. A correction whose only fragment text ("O CNPJ é
+      00.000.000/0001-91") has none of the words is refused with BUSINESS_TEMPORAL_INCOHERENT.
+      The acceptance half is exercised for one word only, lowercase "errata", in a single
+      fragment. The set never submits a correction whose fragment carries errado, correção,
+      corrigir, correction or correcao, so five of the six words the fact names go
+      unexercised. Nothing submits a word in upper or mixed case ("ERRATA", "Correção"), so
+      "in any letter case" goes unexercised. Nothing submits several fragments where only one
+      carries the word, so "at least one" goes unexercised. Nothing submits a correction with
+      no fragments at all. An implementation that matched only a lowercase "errata" would pass
+      both tests. The tests also call validateTemporal directly with fragment_texts. So whether
+      those texts are the ones from the fragments the proposal actually cites is decided
+      outside this proof and goes unexercised here.
+    remainder: testable
+    remainder_why: >-
+      Each case is one input against one result. A correction whose one cited fragment contains
+      a given word should be accepted, and this should be checked for each of errado, correção,
+      corrigir, correction and correcao. Upper-case and mixed-case forms of at least one word
+      (for example "ERRATA", "Correção") should be accepted. A correction citing several
+      fragments, where exactly one carries a word, should be accepted. A correction citing no
+      fragment should be refused. Each case can be checked at the proposal entry point, so the
+      texts checked are the cited fragments' texts.

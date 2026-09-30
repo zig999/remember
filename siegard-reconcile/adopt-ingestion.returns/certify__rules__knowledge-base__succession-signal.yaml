@@ -1,0 +1,33 @@
+certified:
+  - node: rules/knowledge-base/succession-signal
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: detects 'deixou de' / 'passou a' / 'novo' / 'replaced' / 'substituiu'
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: is case-insensitive
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: superseded_previous — different value on a functional key with succession signal
+    why: >-
+      Each of "deixou de", "replaced" and "substituiu" is tested alone in a fragment
+      and must signal. Case-insensitivity is tested only for "deixou de" and
+      "replaced". "passou a" and "novo" never appear apart from each other. The
+      heuristic test puts both in "passou a ser o novo líder", and the attribute
+      succession test puts both in "novo prazo: passou a 2026-07-15". If either
+      marker stopped signalling, the other would still match and no test would
+      fail. Nothing in the set submits "nova", "substituido", "substituido por" or
+      "succeeded", so those four markers are never exercised. The three
+      consolidation tests exercise the signal only in passing, on the way to
+      asserting the superseded_previous branch, and every fragment they use
+      contains "deixou de" or the "novo"/"passou a" pair.
+    remainder: testable
+    remainder_why: >-
+      For each unpinned marker, one fragment holding that marker and no other
+      ("nova", "substituido", "substituido por", "succeeded", "passou a" without
+      "novo", "novo" without "passou a"), expected to signal succession. Add the
+      same fragments in a changed letter case for the markers not yet tested that
+      way, each also expected to signal.

@@ -1,0 +1,47 @@
+certified:
+  - node: rules/knowledge-base/idempotency-key
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > matches a reference sha256 of the concatenated UTF-8 inputs
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > is exactly 64 hex chars, lowercase
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > bumping prompt_version changes the key (BR-08, §8)
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > bumping model changes the key
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > bumping chunking_version changes the key (BR-03 invariant)
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: composeIdempotencyKey (BR-08) > operand order matters — swapping model ↔ prompt_version flips the key
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: composeIdempotencyKey (BR-08) > returns 64 lowercase hex characters
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: composeIdempotencyKey (BR-08) > concatenates operands without a separator (spec BR-08)
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: composeIdempotencyKey (BR-08) > yields a different key when any single operand changes
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: composeIdempotencyKey (BR-08) > is deterministic across calls
+    why: >-
+      The SHA-256 digest, the 64-lowercase-hex form, the absence of a separator, and each
+      of the four inputs contributing to the key are all exercised against a reference
+      digest. The order the fact states is not fully pinned. Every reference-vector test
+      gives prompt version and chunking version the same value, "v1". So a composition
+      that puts chunking version before prompt version still passes both reference tests,
+      the single-operand-change tests, and the order test. The order test only checks that
+      swapping model and prompt version gives a different key, and never compares against
+      a reference. The tests also exercise only the composition function in isolation.
+      Nothing in the offered proof creates an LLM run and reads back the key it carries.
+      So the fact that a run's own idempotency key is this digest over its own raw
+      information's content hash, prompt version, model and chunking version is
+      unexercised: the tests would still pass if the run were keyed some other way.
+      The sha256Hex tests in hash.spec.ts cover how the content hash is computed, not
+      the idempotency key, so they are not cited.
+    remainder: testable
+    remainder_why: >-
+      Two assertions would close it. First, a reference-vector assertion with four
+      pairwise-distinct inputs (for example content hash H, prompt version "P", model "M",
+      chunking version "C"), checking that the key is exactly the SHA-256 lowercase hex of
+      H+"P"+"M"+"C" and not of any other ordering. Second, an assertion that an LLM run
+      created over a raw information with known content hash, prompt version, model and
+      chunking version carries exactly that digest as its idempotency key.

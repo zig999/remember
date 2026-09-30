@@ -1,0 +1,876 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 57-66: the rule for resolving relative dates
+      against document_date and then against received_at
+    evidence: >-
+      "- When you encounter a relative date in the chunk text (`\"hoje\"`, `\"ontem\"`,",
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+    cost: >-
+      This states which date a relative expression counts from: the document date first, then
+      the reception date. No node holds it. required-start-fallback covers only a proposal
+      that states no start at all, not one where the model resolves a "hoje" or "ontem"
+      itself. A later reader who wants to know how "ontem" is dated will look in the
+      specification, find nothing, and have no reason to look in this prompt.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the relative-date anchoring rule a node, next to
+      rules/knowledge-base/required-start-fallback, or decide that the model does not resolve
+      relative dates at all.
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 60-64: the instruction to use basis "received" when
+      document_date is unknown
+    evidence: >-
+      "`\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`.",
+      "- This supersedes v3's rule of \"omit the date when `document_date` is unknown\":",
+      "  with `received_at` always present, you now HAVE an anchor — use it.",
+    cost: >-
+      The prompt sent to the model tells it to state the basis received. The node says
+      "A proposal MUST NOT state the basis received", and the contract refuses that with
+      VALIDATION_INVALID_FORMAT. Under v4, a model that follows the directive on a document
+      without a document date has its link or attribute proposals refused. The received basis
+      is meant to be recorded by the backend through required-start-fallback. v3 said to omit
+      the date so the backend could record received, and v4 explicitly overrides that.
+    kind: contradicts
+    correction: >-
+      The emitted directive would have to stop telling the model to state basis received, or
+      the node would have to change through analysis. Either way the prompt and the rule have
+      to say the same thing.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards the builder: `export { MAX_TOKENS, user };`. It states no
+      data-versus-instruction envelope itself, and the wrapping lives in extraction.v1.ts,
+      which is outside this file set.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing in the file restricts the model to the four proposal tools. The directive is
+      `RECEIVED_AT_ANCHOR_DIRECTIVE = [ "", "## Relative dates — `received_at` is the fallback anchor", ...`.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds only prompt text and `export function system(catalog: CatalogSnapshot): string`, with no transport concern.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a prompt module and exposes no ingestion operation: `export const PROMPT_VERSION = "v4" as const;`.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment filter appears. The file has only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias kind is declared. The file holds `export const PROMPT_VERSION = "v4" as const;` and the directive.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute key is declared. The catalog is only passed through: `system(catalog: CatalogSnapshot)`.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive does not mention a change hint. The file holds only `RECEIVED_AT_ANCHOR_DIRECTIVE`.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the LLM extraction prompt and has nothing about directed ingestion: `export function system(catalog: CatalogSnapshot): string`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item is declared. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item kind is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item status is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity match review appears in the file, which holds `export const PROMPT_VERSION = "v4" as const;`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment shape is declared. The file holds only `export function system(catalog: CatalogSnapshot): string`.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not enumerate the four proposal tools. The directive text is "## Relative dates — `received_at` is the fallback anchor".
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no link entity. It holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no node entity. It holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Link types are not declared here. The catalog is only forwarded: `systemV3(catalog)`.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule appears. The file returns `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no run. It only names the version a run is stamped with: `export const PROMPT_VERSION = "v4" as const;`.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute entity is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no resolution outcomes. It holds only `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system()`.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Node types are not declared here. The catalog is only forwarded: `systemV3(catalog)`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      line 37, the PROMPT_VERSION constant
+    evidence: >-
+      export const PROMPT_VERSION = "v4" as const;
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no proposal shape. It only advises the model on dates: `RECEIVED_AT_ANCHOR_DIRECTIVE`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk shape is declared. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive names `document_date` and `received_at` in prompt text, but the file declares no raw information shape: `"  `received_at` (the ISO-8601 timestamp the system received the document at"`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run summary is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool call is declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no enumeration. The directive only mentions values in prompt text: "(basis", "`\"document\"`)" and "use basis `\"received\"`.", and the stated value is named in "Absolute dates stated in the chunk text remain `\"stated\"`".
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validation outcomes are declared. The file holds only the directive and `system()`.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value types are declared. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about affected nodes appears. The file holds only `export const PROMPT_VERSION = "v4" as const;` and `system()`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about affected nodes appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about affected nodes or run completion appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity threshold or entity resolution appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute key check is made in the file, which holds `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system()`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validation order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No allowed-values check is made in the file, which holds `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system()`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value parsing is done. The directive mentions only the `YYYY-MM-DD` prefix of a timestamp, as advice to the model.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence floor appears in the file, which holds only the directive and `system()`.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no such prohibition and its emitted directive says the opposite: "  use basis `\"received\"`.". A finding is filed for this.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity computation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk excerpt logic appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk indexing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk listing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking version appears. The file holds only `export const PROMPT_VERSION = "v4" as const;` and the directive.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking logic appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      No anchoring check is made in the file, which holds `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system()`.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment existence check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run membership check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run closing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No dispute handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance recording appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hashing appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content hash handling appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content length limit appears. The file exports `MAX_TOKENS` from v1, which is a token budget rather than a content length.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking logic appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      No correction handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No errata evidence check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No currency derivation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date check order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names its own version but sets no default: `export const PROMPT_VERSION = "v4" as const;`. A default would sit in the registry, which the comment locates in `./index.ts`, outside this file set.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed values appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed values appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed defaults appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed dependencies appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed dispatch appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed fragments appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed confidence appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about a directed run appears. The file's version is `export const PROMPT_VERSION = "v4" as const;`, not directed-v1.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed item statuses appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed references appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed nodes appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed references appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed ingestion appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about a directed run appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed source content appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about directed labels appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      Nothing about chat turns appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion flow appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email parsing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email parsing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      No auditing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias resolution appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No anchoring appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run closing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      No error counting appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards the user prompt builder: `export { MAX_TOKENS, user };`. The chunk loop and the metadata block are not in this file, and the directive only refers to the block: "The USER prompt's `## Document metadata` block surfaces TWO temporal".
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk existence check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk membership check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment check order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment recording appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment length bound appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No held-content handling appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only mention is in the header comment: "`idempotency_key` (hash.ts) includes prompt_version". No code in this file computes the key.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No uniqueness handling appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion recording appears. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link rule check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link check order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog membership check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No rule effectiveness computation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      No state machine appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No refusal handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name normalization appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion recording appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence thresholds appear. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias creation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node creation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name length bound appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog membership check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No uniqueness guard appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No uniqueness guard appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No original input bound appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No orphan derivation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No pdf handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only its own identifier: `export const PROMPT_VERSION = "v4" as const;`. The registry that would check versions is named in a comment as `./index.ts`, outside this file set.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence range check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion matching appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No check order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment status transition appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No re-affirmation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing limit appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing default appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing order appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive describes `received_at` as "the ISO-8601 timestamp the system received the document at", but only as prompt text. The file records nothing.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recording of refusals appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      No availability check appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not apply the fallback. It has the model resolve relative dates itself with basis received: "  use basis `\"received\"`.". The backend that would apply the rule is not in this file.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No speaker line parsing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No basis check appears. The directive only advises: "Absolute dates stated in the chunk text remain `\"stated\"`".
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No candidate threshold appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession handling appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No signal words appear. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary counting appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary counting appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No outcome derivation appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears. The file holds only the directive and `system()`.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date ordering check appears. The file holds only the directive and `system()`.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns email chunking, which is absent. The file holds only the directive and `system()`.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns pdf chunking, which is absent. The file holds only the directive and `system()`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns ingestion idempotency, which is absent. The file holds only `PROMPT_VERSION`, the re-exports and `system()`.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns value parsing, which is absent. The file holds only the directive and `system()`.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns consolidation, which is absent. The file holds only the directive and `system()`.
+looked_past: >-
+  The header comment claims that `idempotency_key` (hash.ts) includes prompt_version, so a re-ingest under v4 yields a distinct run, and that ingestion.back.md BR-26 names received_at the canonical anchor. I did not confirm the first against hash.ts, which is outside the file set, and I did not judge the comment prose against the comment rule.

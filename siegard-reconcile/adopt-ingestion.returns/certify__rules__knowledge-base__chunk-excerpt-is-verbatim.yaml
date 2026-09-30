@@ -1,0 +1,33 @@
+certified:
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: text field is the verbatim slice between offset_start and offset_end
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: counts emoji as one position (Unicode code points, not UTF-16 units)
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: returns one chunk for content of length 1
+    why: >-
+      Only one test checks every chunk's excerpt against the code-point slice of the content
+      between that chunk's offsets, and it does so for the `pdf` form-feed split alone. Two
+      single-chunk tests (the emoji input and the one-character input) check it only
+      incidentally, by pinning offsets 0..N and text equal to the whole content. The other ways
+      of cutting content leave the fact unchecked. For `email` the test only checks that
+      header and body chunks contain certain text (toContain), for `chat` that each chunk
+      starts with a speaker (startsWith), and for `transcricao` it counts chunks. The BR-07
+      oversize fallback test only checks that chunk lengths add up to the total. None of these
+      compare an excerpt with its offset slice, so a chunker that trimmed or rewrote text on
+      those paths while keeping the offsets would pass. The `ata`/`artigo`/`outro` test checks
+      that text equals the content but never reads the offsets. The node constrains the raw
+      chunk, and the set exercises only the in-memory output of `chunkV1`. Nothing reads a
+      stored raw chunk back and compares its excerpt with the slice of its raw content, so a
+      change between chunking and storage goes unexercised. The first-listed test also holds a
+      dead `reconstruct` helper that is never called. Its assertion loop is real and can fail.
+    remainder: testable
+    remainder_why: >-
+      Feed inputs that take the `email` header/body split, the `chat` speaker split, the
+      `transcricao` turn split and the BR-07 sentence fallback on an oversize block. For every
+      emitted chunk, the expected result is text exactly equal to the code points of the
+      original between offset_start and offset_end. Then store such content as a raw chunk and
+      read it back: the stored excerpt should equal the same slice of the raw content.

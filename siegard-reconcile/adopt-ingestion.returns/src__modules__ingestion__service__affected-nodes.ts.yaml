@@ -1,0 +1,894 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      header comment, lines 19-25 (the CONTRACT block)
+    evidence: >-
+      // CONTRACT (mirrors BR-33 — additive, optional):
+      //   `affected_nodes` is attached to a `LlmRunResponse` ONLY when the run's
+      //   status === 'completed'.
+    cost: >-
+      The comment presents the completed-only rule as this module's contract, but nothing in this file checks a run's status. A reader who follows the comment looks for the gate here and does not find it. The rule is held by the callers and by the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by code outside this file: `if (row.status === "completed") {` in src/modules/ingestion/service/llm-run.service.ts (line 104) and `if (row.status === "completed" && affectedNodes !== undefined) {` in src/modules/ingestion/service/extraction.service.ts (line 941).
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      header comment, lines 27-30, and the comment inside isContributingOutcome, lines 79-86
+    evidence: >-
+      // `rejected` and `error` validation outcomes do NOT contribute (they did not
+      // touch the graph). De-dup is by `node_id`; first-write-wins on the entry.
+      // Iteration order on the final list is insertion order (deterministic by
+      // per-chunk tool-use order).
+    cost: >-
+      The comments restate which nodes count as affected, and their order and de-duplication, in prose. This file's code also holds that (`isContributingOutcome`, `affectedIdsFromEnvelope` and the insertion-ordered `seen` Map). If the node moves, the comments go stale without any check reaching them.
+    kind: restates
+    correction: >-
+      Remove the comments. The fact is held in this file by `affectedIdsFromEnvelope`, `isContributingOutcome` and `createAffectedNodeCollector`.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      resolveAffectedNodes, the merge check at lines 271-276 and 309, and the SQL selecting `kn.status` at line 255
+    evidence: >-
+      row.status === "merged_into" &&
+      row.merged_into_node_id !== null &&
+      ...
+      if (row.status === "merged_into" && row.merged_into_node_id !== null) {
+    cost: >-
+      The node status enumeration holds `merged`, not `merged_into`: the specification's node-status lists active, needs-review, merged and deleted, and migrations/0001_init.sql declares `CREATE TYPE node_status AS ENUM ('active', 'needs_review', 'merged', 'deleted')`. The comparison never matches a stored row. A merged node is therefore listed under its own identity and name, not as the node it was merged into, and the survivor lookup never runs. That is the opposite of what the merge-following rule states, and the comments in the file claim the behaviour works.
+    kind: contradicts
+    correction: >-
+      The merged check has to compare against the status value the enumeration actually holds (`merged`).
+    node: rules/knowledge-base/affected-nodes-follow-merges
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      resolveAffectedNodes, Step 3, lines 306-313, with the comment at lines 229-231
+    evidence: >-
+      let row = byId.get(id);
+      if (row === undefined) continue;
+      ...
+      if (survivor === undefined) continue;
+    cost: >-
+      The code drops an affected id that no longer resolves to a node row, and the comment calls this "skipped silently". The affected-nodes node says nothing about an affected node that cannot be found, so the omission is a rule that exists only in this file. The next reader looks in the specification for what a run's affected nodes exclude and finds no such exclusion.
+    kind: unstated
+    correction: >-
+      Analysis would need to give affected-nodes-of-a-run (or a sibling node) the rule for an affected id that no longer resolves.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's exports are createAffectedNodeCollector, getCachedAffectedNodes, setCachedAffectedNodes, resolveAffectedNodes and deriveAffectedNodes. None presents document content to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      `record(toolName: string, envelope: McpEnvelope<Record<string, unknown>>): void;` only observes envelopes and takes no action on the knowledge base.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file frames no transport answer. It exports `resolveAffectedNodes(client: PoolClient, ids: readonly string[])`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only builds the `AffectedNode` list (`{ id, canonical_name, node_type }`) that the run-read answers carry. It declares no operation, acceptance or refusal.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment listings. It exports `deriveAffectedNodes(client, llmRunId)`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never touches aliases. The SELECT reads `kn.id, kn.canonical_name, nt.name AS node_type, kn.status, kn.merged_into_node_id`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not touch attribute keys. It reads `node_id` from the propose_attribute result only.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns change hints.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is called by the directed service but declares no directed behavior. It exports `resolveAffectedNodes`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed items.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed item kinds.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed item statuses.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity match reviews.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not read fragments. It reads only `tool_name, result, validation_outcome` from tool_call.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      the tool-name comparison in affectedIdsFromEnvelope, which uses three of the four values
+    evidence: >-
+      toolName !== "propose_node" &&
+      toolName !== "propose_link" &&
+      toolName !== "propose_attribute"
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `source_node_id` and `target_node_id` from a propose_link result and never touches the link entity.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads knowledge_node rows: `FROM knowledge_node kn JOIN node_type nt ON nt.id = kn.node_type_id`. It does not declare the entity.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link types.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link type rules.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file keys its cache and its tool_call query by run identity (`WHERE llm_run_id = $1`) and never declares or transitions a run.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node aliases.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never touches attribute assertions. It reads `node_id` from a propose_attribute result.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      the switch in isContributingOutcome, which consumes the resolution values
+    evidence: >-
+      case "created_new":
+      case "matched_existing":
+      case "needs_review":
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only joins node_type for its name: `JOIN node_type nt ON nt.id = kn.node_type_id`. It does not declare the entity.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns prompt versions.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only observes proposal results: `const outcome = (result as { outcome?: unknown }).outcome;`. It does not state proposal attributes.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns raw chunks.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns raw informations.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads or writes a run status. Its only mention is a comment: `status === 'completed'`.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns the run summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads tool_call rows in deriveAffectedNodes: `SELECT tool_name, result, validation_outcome FROM tool_call`. It does not declare the entity.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity bases.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      the switch in isContributingOutcome, which consumes four of the outcome values
+    evidence: >-
+      case "accepted":
+      case "consolidated":
+      case "superseded_previous":
+      case "disputed":
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns value types.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The merge check compares against a status the enumeration does not hold, so it never fires: `row.status === "merged_into" && row.merged_into_node_id !== null`. The stored value is `merged` (migrations/0001_init.sql, `CREATE TYPE node_status AS ENUM ('active', 'needs_review', 'merged', 'deleted')`).
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      affectedIdsFromEnvelope, isContributingOutcome and createAffectedNodeCollector; the ids are resolved by resolveAffectedNodes
+    evidence: >-
+      if (toolName === "propose_node") { const nodeId = (result as { node_id?: unknown }).node_id; ... }
+      if (!isContributingOutcome(outcome)) return [];
+      if (toolName === "propose_link") { ... ids.push(source); ... ids.push(target); ...}
+      if (!seen.has(id)) { seen.set(id, true); }
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only appearance of the rule in this file is the comment `ONLY when the run's status === 'completed'`. The code that checks the status is in llm-run.service.ts and extraction.service.ts.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity resolution thresholds.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no attribute validation.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no attribute validation.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no attribute value parsing.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence threshold.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no chunks.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never closes a run.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no hash.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not touch raw information.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no content.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not derive currency.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no date checks.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior. The pinned-node recording is in directed-ingestion.service.ts.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no directed behavior.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not ingest.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads tool_call rows and records none: `SELECT tool_name, result, validation_outcome FROM tool_call`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no fragments.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no fragment text.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not ingest.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no idempotency key.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not touch idempotency keys.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not ingest.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no link validation.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no link validation.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no link validation.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file moves no run between statuses.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not extract.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no names.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence threshold.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no nodes.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no nodes.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no node names.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node type validation.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not derive orphaned fragments.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no paging.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no prompt version.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no confidence.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no proposal validation.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not list ingestions.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not list ingestions.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not list ingestions.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not list ingestions.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not record raw informations.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records nothing. It only reads.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no date checks.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no date derivation.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not retry runs.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not retry runs.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not parse content.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no date checks.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no fragment text.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no run summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no run summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls to a caller. Its query orders rows `ORDER BY created_at ASC, id ASC` only to rebuild the affected-node list in the order first reached.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no paging.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no paging.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the recorded outcome (`SELECT tool_name, result, validation_outcome`). It never assigns it.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no date checks.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not chunk content.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not ingest.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no attribute value parsing.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions.
+looked_past: >-
+  I saw and did not report the process-scoped LRU cache (`const CACHE_CAPACITY = 256 as const;`), the union allow-list that also admits `created_new`, `matched_existing` and `needs_review` for link and attribute results, and the duplicated LRU touch logic in `touch` and `getCachedAffectedNodes`; these are engineering choices and code-review matters, not domain facts a node holds or denies.

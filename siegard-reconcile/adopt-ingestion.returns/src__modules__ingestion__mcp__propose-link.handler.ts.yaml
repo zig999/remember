@@ -1,0 +1,685 @@
+findings:
+  - file: src/modules/ingestion/mcp/propose-link.handler.ts
+    where: >-
+      the header comment, lines 1-9
+    evidence: >-
+      // Thin transport adapter. Business logic — including the full 5-layer
+      // validation pipeline (BR-13) — lives in `service/propose-link.service.ts`.
+    cost: >-
+      The comment gives the link-proposal validation as a five-layer pipeline. The node holds it as seven checks in a fixed order (known link type, existing nodes, cited fragments, permitting rule, dates, confidence, anchoring). The next reader who wants to know how a link proposal is checked finds a layer count that matches neither the node nor the service's actual checks, and no running system reads it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/link-proposal-check-order, and the file's code delegates the checks to the service it imports and calls, `proposeLinkService`. I did not open the service, which is outside the file set. Remove by the comment route, then reconcile this file.
+    node: rules/knowledge-base/link-proposal-check-order
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file handles the proposal call only and never presents document content to a model: `const parsed = ProposeLinkInputSchema.safeParse(raw);`
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: nowhere
+    evidence: >-
+      The file is one proposal entry and restricts nothing about the model's other actions: `export function buildProposeLinkHandler(args: {`
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      the call to the shared `proposeLinkService` in proposeLinkHandler's `run`, whose envelope is returned as the MCP result
+    evidence: >-
+      const envelope = await proposeLinkService(client, input, { llmRunId: deps.llm_run_id, rawInformationId: run.input_raw_information_id }, { catalog: deps.catalog, now: deps.now });
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      buildProposeLinkHandler (Zod-parse refusal as VALIDATION_INVALID_FORMAT with path and message per issue) and proposeLinkHandler (run-running check, service call, outcome and result recorded)
+    evidence: >-
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "Input failed Zod parse.", { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); and `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or filter: `return await proposeLinkHandler(parsed.data, { ...args, now });`
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file mentions no alias: `import { proposeLinkService } from "../service/propose-link.service.js";`
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file mentions no attribute key: `tool_name: "propose_link",`
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      The change hint sits in the imported DTO, not here: `ProposeLinkInputSchema,`
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `export async function proposeLinkHandler(`
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      The file has no directed item: `export async function proposeLinkHandler(`
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      The file has no directed item: `tool_name: "propose_link",`
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      The file has no directed item: `validation_outcome: deriveValidationOutcome(envelope),`
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution: `import type { CatalogSnapshot } from "../catalog/catalog.js";`
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file does not touch fragments; citing them is left to the service: `input,`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      the `tool_name: "propose_link"` argument in both runIngestHandler calls
+    evidence: >-
+      tool_name: "propose_link",
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The link is recorded by the service; the file only forwards its result: `result: envelope.result,`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file mentions no knowledge node: `import type { Pool } from "pg";`
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The catalog is passed through and never read: `{ catalog: deps.catalog, now: deps.now }`
+  - node: domain/knowledge-base/link-type-rule
+    held_at: nowhere
+    evidence: >-
+      The catalog is passed through and never read: `{ catalog: deps.catalog, now: deps.now }`
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file only reads a run through `assertRunIsRunning`; it declares nothing of the run: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file mentions no alias: `tool_name: "propose_link",`
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file mentions no attribute: `tool_name: "propose_link",`
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      A link proposal resolves no node here: `const envelope = await proposeLinkService(`
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      The file mentions no node type: `catalog: CatalogSnapshot;`
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file mentions no prompt version: `llm_run_id: string;`
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The proposal's shape is declared in the imported DTO, not in this file: `import { ProposeLinkInputSchema, type ProposeLinkInput, type ProposeLinkResult } from "../dto/propose-link.dto.js";`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file mentions no chunk: `rawInformationId: run.input_raw_information_id`
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the run's raw information identity: `rawInformationId: run.input_raw_information_id`
+  - node: domain/knowledge-base/run-status
+    held_at: nowhere
+    evidence: >-
+      The running status is tested inside `assertRunIsRunning`, which is imported from handler-base: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      The file counts nothing: `validation_outcome: deriveValidationOutcome(envelope),`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      the record handed to runIngestHandler: tool_name, input, tool_call_result and validation_outcome
+    evidence: >-
+      return { result: envelope.result, validation_outcome: deriveValidationOutcome(envelope), tool_call_result: { ...(envelope.result as unknown as Record<string, unknown>) }, };
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      The file mentions no validity basis: `input,`
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      the `validation_outcome: "rejected"` literal on a refused envelope and `deriveValidationOutcome(envelope)` on a taken one
+    evidence: >-
+      validation_outcome: "rejected",
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file mentions no value type: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: nowhere
+    evidence: >-
+      The file lists no affected nodes: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file lists no affected nodes: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: nowhere
+    evidence: >-
+      The file lists no affected nodes: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      Node resolution is not part of a link proposal: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file states no confidence threshold and forwards the service's result: `result: envelope.result,`
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file states no basis rule: `const parsed = ProposeLinkInputSchema.safeParse(raw);`
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: nowhere
+    evidence: >-
+      The file has no similarity: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: nowhere
+    evidence: >-
+      The file lists no chunks: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/chunking-version
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: nowhere
+    evidence: >-
+      The anchoring check is left to the service, which receives the run's raw information: `{ llmRunId: deps.llm_run_id, rawInformationId: run.input_raw_information_id }`
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: nowhere
+    evidence: >-
+      The file checks no fragment: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: nowhere
+    evidence: >-
+      The file checks no fragment; it passes the run identity on: `llmRunId: deps.llm_run_id`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: nowhere
+    evidence: >-
+      The file closes no run: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: nowhere
+    evidence: >-
+      Disputes are decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: nowhere
+    evidence: >-
+      Consolidation is decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: nowhere
+    evidence: >-
+      Provenance is recorded in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: nowhere
+    evidence: >-
+      The file has no content hash: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: nowhere
+    evidence: >-
+      The file has no content hash: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/content-length
+    held_at: nowhere
+    evidence: >-
+      The file has no content intake: `const parsed = ProposeLinkInputSchema.safeParse(raw);`
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/correction-replaces
+    held_at: nowhere
+    evidence: >-
+      Corrections are decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      The errata check is left to the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file tests no currency: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/date-check-order
+    held_at: nowhere
+    evidence: >-
+      The file checks no dates: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file has no document ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-source-content
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: nowhere
+    evidence: >-
+      The file has no document ingestion: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/email-header-block
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      the runIngestHandler wrapper, on the Zod-failure path and on the service path, given tool_name, input, tool_call_result and validation_outcome
+    evidence: >-
+      return await runIngestHandler({ deps, tool_name: "propose_link", input, run: async (client) => {
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction loop: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction loop: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction loop: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction loop: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no intake: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/idempotency-key
+    held_at: nowhere
+    evidence: >-
+      The file has no run creation: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      The file has no run creation: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: nowhere
+    evidence: >-
+      The file has no intake: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: nowhere
+    evidence: >-
+      The type-rule check is left to the service, which receives the catalog: `{ catalog: deps.catalog, now: deps.now }`
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      The check order is not in this file; the only mention is the header comment, which claims a "5-layer validation pipeline" living in the service, and the file delegates with `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The catalog check is left to the service: `{ catalog: deps.catalog, now: deps.now }`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: nowhere
+    evidence: >-
+      The file states no rule date test, though it does pass the clock to the service: `{ catalog: deps.catalog, now: deps.now }`
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: nowhere
+    evidence: >-
+      The file makes no transition: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction loop: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file has no name comparison: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/new-assertion
+    held_at: nowhere
+    evidence: >-
+      A new assertion is recorded in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: nowhere
+    evidence: >-
+      The file states no confidence threshold: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no node creation: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/node-name-length
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute succession: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute succession: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: nowhere
+    evidence: >-
+      Functional succession is left to the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: nowhere
+    evidence: >-
+      Functional succession is left to the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/original-input-length
+    held_at: nowhere
+    evidence: >-
+      The file has no intake: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: nowhere
+    evidence: >-
+      The file counts no fragments: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: nowhere
+    evidence: >-
+      The range is left to the DTO schema, which this file only calls: `const parsed = ProposeLinkInputSchema.safeParse(raw);`
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file does not decide which assertion a proposal meets: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      the `assertRunIsRunning` call at the top of proposeLinkHandler's `run`
+    evidence: >-
+      const run = await assertRunIsRunning(client, deps.llm_run_id);
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      the order in proposeLinkHandler: the Zod parse in the builder first, then `assertRunIsRunning`, before the service call
+    evidence: >-
+      const parsed = ProposeLinkInputSchema.safeParse(raw); ... const run = await assertRunIsRunning(client, deps.llm_run_id); const envelope = await proposeLinkService(
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: nowhere
+    evidence: >-
+      The file changes no fragment status: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Re-affirmation is decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: nowhere
+    evidence: >-
+      The file hands a refusal back as a tool-call record, `return { result: envelope as unknown as ProposeLinkResult, validation_outcome: "rejected", tool_call_result: envelope as unknown as Record<string, unknown>, };`, but nothing in it shows that no other write remains. That is left to runIngestHandler and the service.
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      The file states no date rule, though it passes the run's raw information to the service: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file states no date fallback: `rawInformationId: run.input_raw_information_id`
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: nowhere
+    evidence: >-
+      The file has no retry: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      The file has no retry: `const run = await assertRunIsRunning(client, deps.llm_run_id);`
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      The file states no date rule: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: nowhere
+    evidence: >-
+      Succession is decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: nowhere
+    evidence: >-
+      Succession is decided in the service: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: nowhere
+    evidence: >-
+      The file passes the clock on, `now: deps.now`, but decides no closing date.
+  - node: rules/knowledge-base/succession-signal
+    held_at: nowhere
+    evidence: >-
+      The file holds no signal vocabulary: `const envelope = await proposeLinkService(`
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      The file counts nothing: `validation_outcome: deriveValidationOutcome(envelope),`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: nowhere
+    evidence: >-
+      The file counts nothing: `validation_outcome: deriveValidationOutcome(envelope),`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: nowhere
+    evidence: >-
+      The file has no listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no listing: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      the two returns of proposeLinkHandler's `run`: `"rejected"` for a refused envelope and `deriveValidationOutcome(envelope)` for a taken one
+    evidence: >-
+      if (!envelope.ok) { return { result: envelope as unknown as ProposeLinkResult, validation_outcome: "rejected", ... } } return { result: envelope.result, validation_outcome: deriveValidationOutcome(envelope), ...
+  - node: rules/knowledge-base/turn-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/undivided-sources
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file checks no dates: `const envelope = await proposeLinkService(`
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking: `tool_name: "propose_link",`
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: nowhere
+    evidence: >-
+      The file has no intake: `tool_name: "propose_link",`
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      This file handles link proposals only: `tool_name: "propose_link",`
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: nowhere
+    evidence: >-
+      Succession and dispute are decided in the service: `const envelope = await proposeLinkService(`
+looked_past: >-
+  Whether an envelope from the service can carry a SYSTEM_* code that this file's `!envelope.ok` branch records as "rejected" rather than "error" (tool-call-validation-outcome) is settled in the service and handler-base, which are outside the file set, so I did not judge it.

@@ -1,0 +1,919 @@
+findings:
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.propose_node, lines 124-128
+    evidence: >-
+      "Propose every entity freely: the backend matches it to an existing entity or " +
+      "creates a new one and never duplicates. Returns a node_id to cite from " +
+    cost: >-
+      This text goes to the model on every connection. It says a proposal either matches
+      an existing entity or creates a new one, "never duplicates". The node says a
+      proposal with a candidate at similarity 0.55 or more, and no exact alias or single
+      strong candidate, creates a second node in status needs-review beside the similar
+      one, with an entity match review. The model is told duplicates cannot arise, and
+      the owner meets a queue the description denied.
+    kind: contradicts
+    correction: >-
+      The description should name the third resolution, a node created for the owner's
+      review when the name resembles an existing one, instead of "never duplicates".
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.propose_link and propose_attribute, lines 129-140
+    evidence: >-
+      "(e.g. a Person responsible_for a Project). Both nodes must exist first, and you " +
+      "must cite at least one fragment_id as evidence." and
+      "literal as its own node. The node must exist; cite at least one fragment_id. "
+    cost: >-
+      This states a minimum of one cited fragment for link and attribute proposals. No
+      node holds that minimum. The proposal node gives its evidence association as
+      0..*, and the only "at least one fragment" rule is the errata rule for
+      corrections. The threshold is stated only in text sent to the model. Whoever
+      reads the specification will not find it, and the specification's 0..* says
+      zero is allowed.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a link or attribute proposal must cite at least one
+      fragment, and give that rule a node. The description then follows it.
+    node: domain/knowledge-base/proposal
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.ingest_document, lines 148-149
+    evidence: >-
+      "If your client times out before this returns, the server keeps extracting — do NOT " +
+      "re-send; use `list_recent_ingestions` to find the run, then `get_ingestion_status`."
+    cost: >-
+      This promises that extraction continues after the caller disconnects, and tells the
+      caller how to recover. No node holds either. The ingestion contract's
+      ingest-document answers describe only the completed answers and refusals. The
+      recovery behaviour exists only in text sent to the model.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether extraction outlives the caller's connection, and
+      record it in the ingestion contract if so.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.health, lines 150-153
+    evidence: >-
+      "Check that the BFF is running and its database is reachable. Returns service " +
+      "status, database connectivity, and a timestamp. Call this first to confirm the " +
+    cost: >-
+      This is a callable capability, with the fields it returns, that no node holds. A
+      search of the specification root for health finds nothing. The tool is offered
+      to the model and described only here.
+    kind: unstated
+    correction: >-
+      Analysis should give the health check a node, or record that it is outside the
+      specification.
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.start_async_ingestion, lines 165-173
+    evidence: >-
+      "Ingest a whole document and IMMEDIATELY return the run id while extraction " +
+      "continues in the background. Use this instead of `ingest_document` when you " +
+    cost: >-
+      This is a whole ingestion operation, asynchronous and returning the run id at once,
+      that the ingestion contract does not list among its operations. The contract lists
+      ingest-document and ingest-directed only. A search of the specification root finds
+      no asynchronous ingestion, so the behaviour and the promise that "Arguments and
+      defaults match `ingest_document` exactly" live only in the source.
+    kind: unstated
+    correction: >-
+      Analysis should add the operation and its answers to the ingestion contract, or
+      remove the tool.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the re-exports and `export const IngestToolDescriptions = {`; neither marks document content apart from instructions
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolInputJsonSchemas = {` and the descriptions; they register the proposal tools but state no limit on what the extracting model may do
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the docstring "Consumed by BOTH transports so the LLM sees the same contract" concerns descriptions, not the answers to operations, and is prose
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds tool descriptions and derived input schemas, no operation's accepted answer or refusal; it states operations the contract lacks (see findings)
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no accepted-fragment listing appears
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no alias kind appears
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      only "key must be a catalog AttributeKey for that node type" is stated; the key's shape is not declared here
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the re-exports and descriptions; no change hint value is named
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      the ingest_directed description, line 175
+    evidence: >-
+      "Ingest a fully-structured payload of fragments + nodes (+ optional attributes / " +
+      "links) you already know — the server runs NO LLM and persists every item "
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      the ingest_directed description, line 180
+    evidence: >-
+      "round-trip. Items reference each other through caller-chosen local `ref` strings "
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      the ingest_directed description, line 175
+    evidence: >-
+      "Ingest a fully-structured payload of fragments + nodes (+ optional attributes / " +
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the description says "Returns a per-item report inline" but names none of the statuses
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_node description; it does not mention an entity match review (see the propose_node finding)
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      only "Record one atomic factual claim quoted verbatim from the current chunk" is stated; the fragment's attributes are declared in other files
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      the keys of IngestToolInputJsonSchemas, lines 95-100
+    evidence: >-
+      propose_fragment: ProposeFragmentInputJsonSchema,
+      propose_node: ProposeNodeInputJsonSchema,
+      propose_link: ProposeLinkInputJsonSchema,
+      propose_attribute: ProposeAttributeInputJsonSchema,
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_link description names a link but does not declare the link's attributes
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_node description names an entity but does not declare a node's attributes
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      only "link_type must be a catalog LinkType" is stated; the type's attributes are not declared here
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      "allowed for the two node types" is stated in prose; the rule's shape is not declared here
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the descriptions name a run and its id, but the run's attributes are not declared here
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no alias appears
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_attribute description names a literal value but the attribute's shape is not declared here
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_node description names two outcomes, "matches it to an existing entity or creates a new one", and omits needs-review (see finding)
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      only "node_type must be one of the catalog NodeTypes" is stated; the type's shape is not declared here
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no prompt version value is named
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file re-exports `ProposeAttributeInputSchema`, `ProposeFragmentInputSchema`, `ProposeLinkInputSchema` and `ProposeNodeInputSchema` and derives JSON Schemas with z.toJSONSchema; the proposal's fields are declared in the dto files it imports, and the description states a citation minimum the node lacks (see findings)
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" is the only mention; no chunk attribute is declared
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      "the server stores the raw text" is the only mention; no attribute is declared
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the get_ingestion_status description, line 156
+    evidence: >-
+      "Returns the run status (running | completed | failed), per-outcome counts "
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      "per-outcome counts (accepted, consolidated, rejected, …)" is elided and omits the orphaned-fragment count
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no tool call record is described
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no basis value is named
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no validation outcome value is named
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      "value must match the key's value type" names the type but not its four values
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      the ingest_directed description mentions `run.affected_nodes` but not merges
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      "plus `run.affected_nodes` for direct navigation" names the list but not how it is composed
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      "plus `run.affected_nodes` for direct navigation" does not say when the list is present
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_node description says "creates a new one and never duplicates" and does not state the needs-review path (see finding)
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      the propose_attribute description, line 139
+    evidence: >-
+      "key must be a catalog AttributeKey for that node type, and value must match the "
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_attribute description; it gives no order of checks
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_attribute description mentions the value type only, not allowed values
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      the propose_attribute description, lines 139-140
+    evidence: >-
+      "key must be a catalog AttributeKey for that node type, and value must match the " +
+      "key's value type."
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no confidence floor is stated
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no validity basis is mentioned
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_node description; no similarity is mentioned
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states nothing about excerpts
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states nothing about indexes
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no chunk listing appears
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no chunking version appears
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states nothing about blocks
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      the link and attribute descriptions ask for a cited fragment_id but say nothing of anchoring
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      "cite the fragment_id returned here as their evidence" names the citation but states no existence check
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the descriptions state no run membership for cited fragments
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      "and timestamps" in get_ingestion_status says nothing of how the finish time is set
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no dispute is mentioned
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no consolidation is mentioned
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no provenance recording is mentioned
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no hash appears
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Re-sending the same content is a no-op" states the effect, not uniqueness of the hash
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the ingest_document description states no length bound
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states nothing about contentless blocks
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no correction is mentioned
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no correction is mentioned
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no currency of an assertion is described
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no dates are mentioned
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Arguments and defaults match `ingest_document` exactly" names no default prompt version
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; it states nothing of value text forms
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; it states nothing of value shape
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; it names no default change hint or basis
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      "(`evidence_ref` on attributes/links must cite a fragment ref; `node_ref` / `source_ref` / `target_ref` must cite a node ref)" states what refs must cite, not the dependency-failed reporting
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Returns a per-item report inline (per caller order)" gives no dispatch order of fragments, nodes, attributes, links
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; it states no anchoring
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      the ingest_directed description, line 185
+    evidence: >-
+      "navigation; the server forces `confidence = 1.0` on every dispatched item. " +
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      the ingest_directed description, line 175
+    evidence: >-
+      "links) you already know — the server runs NO LLM and persists every item "
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Returns a per-item report inline" names no statuses
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Items reference each other through caller-chosen local `ref` strings" does not say which item a shared reference names
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      the ingest_directed description, line 183
+    evidence: >-
+      "to PIN against a known existing node (skips entity resolution). Returns a "
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      "caller-chosen local `ref` strings" states no length bound
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      the ingest_directed description, line 175
+    evidence: >-
+      "Ingest a fully-structured payload of fragments + nodes (+ optional attributes / " +
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; it states nothing of the run's closing
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Re-sending the same payload always creates a new run" is stated, not the recorded content
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; no label is mentioned
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_directed description; no chat turn is mentioned
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      the ingest_document description, lines 141-147
+    evidence: >-
+      "the server stores " + "the raw text, splits it into chunks, and runs structured extraction (entities, " and "Re-sending the same content is a no-op (returns the existing run)."
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no email block appears
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no email block appears
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no tool call recording is described
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      "the backend matches it to an existing entity" names matching but no exact alias rule
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "quoted verbatim from the current chunk" is guidance to the model, not the anchoring rule
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the ingest_document description; it states no closing rule
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no failure rule is stated
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no chunk reading order is stated
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no run status requirement is stated
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_fragment description states no check on cited chunks
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_fragment description states no check on cited chunks
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_fragment description; no check order is stated
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Record one atomic factual claim" states no status
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      the propose_fragment description, line 121
+    evidence: >-
+      "(max 1000 chars). Call this FIRST — propose_link and propose_attribute must " +
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      the ingest_document description, line 147
+    evidence: >-
+      "long documents. Re-sending the same content is a no-op (returns the existing run). " +
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no idempotency key appears
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no idempotency key appears
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      "the server stores the raw text, splits it into chunks" names no run opened in status running
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      the propose_link description, lines 133-134
+    evidence: >-
+      "explicitly states the relation. link_type must be a catalog LinkType allowed " +
+      "for the two node types."
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Both nodes must exist first" is guidance on ordering the model's calls, not the order of checks
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      the propose_link description, line 133
+    evidence: >-
+      "explicitly states the relation. link_type must be a catalog LinkType allowed " +
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_link description; no effective dates are mentioned
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      "(running | completed | failed)" names statuses, not transitions
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states no chunk sizes
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states no chunk sizes
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      "matches it to an existing entity" states nothing about aliases
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no refusal is mentioned
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_node description; no normalization is stated
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no assertion recording rule is stated
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no confidence thresholds are stated
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_node description; no aliases are stated
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      "creates a new one" states no similarity threshold
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the propose_node description states no name length bound
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      the propose_node description, line 128
+    evidence: >-
+      "propose_link / propose_attribute. node_type must be one of the catalog NodeTypes."
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_attribute description; no currency limit is stated
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_attribute description; no currency limit is stated
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_link description; no currency limit is stated
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_link description; no currency limit is stated
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no original input appears
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the propose_fragment description; no orphaning is mentioned
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no search or accepted-fragment listing appears
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no pdf blocks appear
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no prompt version is named
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no confidence range is stated except `confidence = 1.0` for directed items
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no current assertion is mentioned
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no run status requirement is stated
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no check order is stated
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no fragment acceptance is mentioned
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no re-affirmation is mentioned
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      "with run status, source type, timestamps and a short content preview" does not say which run is shown
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      the list_recent_ingestions description, line 164
+    evidence: >-
+      "`ingest_document` call timed out on your client (the server keeps extracting): " and "match your document by preview/source_type, then read its run_status here or via " and "`get_ingestion_status`. `limit` 1..50 (default 10). Read-only."
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      the list_recent_ingestions description, line 164
+    evidence: >-
+      "`get_ingestion_status`. `limit` 1..50 (default 10). Read-only."
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      the list_recent_ingestions description, line 160
+    evidence: >-
+      "List the most recent ingestions (newest first) with run status, source type, " +
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      "timestamps" in the descriptions names no reception time rule
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the descriptions; no refusal recording is mentioned
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no validity start is mentioned
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no validity start is mentioned
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no retry appears
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no retry appears
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "splits it into chunks" states no chunk sizes
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no speaker line appears
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no validity start or basis is mentioned
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      "the backend matches it to an existing entity" states no similarity threshold
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no succession is mentioned
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no succession is mentioned
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no succession is mentioned
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no succession is mentioned
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      "per-outcome counts (accepted, consolidated, rejected, …)" omits orphaned fragments
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      "per-outcome counts (accepted, consolidated, rejected, …)" is elided and states no zero-count rule
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no tool call listing appears
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no tool call listing appears
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no tool call listing appears
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no tool call outcome appears
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no turn blocks appear
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no source blocks appear
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link and attribute descriptions; no validity dates are mentioned
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no email appears
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at `export const IngestToolDescriptions = {`; no pdf appears
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Re-sending the same content is a no-op (returns the existing run)" states the general effect but not the scenario of another model
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      "value must match the key's value type" states no calendar check
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      looked at the link description; no succession or dispute is mentioned
+looked_past: >-
+  The header and docstring comments citing BR-24, tc-009 and TC-12 as rationale, and the prompt-craft wording in the descriptions ("quoted verbatim", "Use only when the chunk explicitly states the relation"), belong to the comment rule and to prompt design and are not reported here.

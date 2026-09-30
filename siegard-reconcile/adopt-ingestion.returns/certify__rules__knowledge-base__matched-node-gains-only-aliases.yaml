@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 1: exact alias match -> matched_existing (no trigram query, no node insert)"
+    why: >-
+      The test covers only a proposal matched by exact alias. It proposes "Ada Lovelace" with one
+      alias, "Augusta Ada King", and asserts that the node_alias writes are exactly that one alias
+      on the matched node, with no row carrying the proposed name. The stub records every
+      node_alias INSERT, including ones that ON CONFLICT DO NOTHING would skip. So on this path the
+      test would fail if the name were written or the alias left out. Two parts of the fact go
+      unexercised. First, the trigram strong-unique match: here the proposed name differs from
+      every existing alias, so writing it would add a genuinely new alias. The test for that
+      branch ("branch 2: trigram strong-unique -> matched_existing (no node insert, no review
+      rows)") proposes no aliases and asserts nothing about node_alias writes. It would pass if
+      the proposed name were added to the matched node. Second, "each" is exercised with a single
+      alias only. Code that added just the first proposed alias to a matched node would pass every
+      offered test. The delegation test "matched_existing (exact) resolution propagates as ok:true
+      with resolution='matched_existing'" also asserts nothing about aliases.
+    remainder: testable
+    remainder_why: >-
+      One input: a proposal resolved by trigram strong-unique match to an existing node. Its name
+      should appear in no existing alias, and it should carry two or more aliases. Expected result:
+      the node_alias writes are exactly those aliases, each written against the matched node's id,
+      and none carries the proposed name.

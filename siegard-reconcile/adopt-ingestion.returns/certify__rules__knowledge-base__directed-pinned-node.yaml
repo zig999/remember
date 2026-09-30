@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/directed-pinned-node
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (valid): bypasses propose_node; resolution=matched_existing"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (invalid): unknown UUID → RESOURCE_NOT_FOUND; dependent items cascade"
+    why: >-
+      The tests exercise only the plainest case of the resolution: a directed
+      node carrying node_id comes back with that node_id and
+      resolution=matched_existing. Three parts of the fact go unexercised.
+      First, "whatever node type, name or aliases it states": the pinned item
+      states node_type Person and name Alice, and nothing records the pinned
+      node as any other type or name. No alias is stated anywhere. So nothing
+      shows the pin winning over a stated type, name or alias that disagrees
+      with the node it names, or over a stated type the catalog does not hold.
+      Second, "without entity resolution": this rests on
+      `expect(proposeNode).not.toHaveBeenCalled()`, which checks an internal
+      call. Only the returned node_id being the pinned id shows anything
+      observable. Third, "provided the node exists and is active": both
+      proviso checks are stubbed through the injected verifyNodePin seam. The
+      valid test gets `{kind:"ok"}` whatever the node is. The invalid test
+      gets a canned `not_found` rejection, so it only shows that the
+      orchestrator relays a rejection it was handed. The verifier's own
+      decision is never run. Nothing submits a node_id naming a real inactive
+      node (merged or deleted), so that refusal is unexercised, and a
+      nonexistent node_id never reaches the actual existence check.
+    remainder: testable
+    remainder_why: >-
+      Three assertions against the real pin verifier would close it. First, a
+      directed node whose node_id names an existing active node, but whose
+      node_type, name and aliases differ from that node's, should come back as
+      exactly that node_id, with no new node or alias created. Second, a
+      node_id naming a merged or deleted node should come back rejected with
+      no resolution. Third, a node_id naming no row at all should come back
+      rejected.

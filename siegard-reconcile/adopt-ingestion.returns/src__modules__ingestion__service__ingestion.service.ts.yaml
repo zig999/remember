@@ -1,0 +1,878 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      noopExisting, the lookup `findLlmRunByIdempotencyKey(client, idempotencyKey)` and the InvariantError thrown when it returns null (lines 215-222). The key comes from ingestRawInformation, lines 104-109.
+    evidence: >-
+      const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);
+      if (run === null) {
+        throw new InvariantError(
+          `noopExisting: raw_information ${existing.id} exists for content_hash ${contentHash} ` +
+            `but no llm_run row matches idempotency_key ${idempotencyKey}. ` +
+            `Database is inconsistent — BR-09 invariant violated.`
+    cost: >-
+      The idempotency key is built from the request's own model and prompt version. Re-ingesting held content while naming a different model or prompt version therefore finds no run and ends in an InvariantError. The contract answers HTTP 200 noop_existing with the run the raw information already has, "whatever model or prompt version the request names". The next reader trusts the node and does not expect a server error there. The comment at lines 89-92 treats a missing run as database corruption, which is not the business rule.
+    kind: contradicts
+    correction: >-
+      Resolve the held raw information's existing run by its raw information, not by the idempotency key derived from the request's model and prompt version.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      noopExisting, the same key-based run lookup (lines 215-222).
+    evidence: >-
+      const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);
+    cost: >-
+      The scenario has content ingested with one model and then ingested again naming another model. It expects no new records and an answer that names the held raw information and the run it already has. The key includes the new model, so the lookup misses and the request fails with a 500, not that answer.
+    kind: contradicts
+    correction: >-
+      Same correction as for the contract: find the held run by raw information.
+    node: scenarios/knowledge-base/held-content-under-another-model
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      Doc comment above ingestRawInformation, step 1 (line 80).
+    evidence: >-
+      1. Compute `content_hash = sha256(content)`.
+    cost: >-
+      A second statement of the content hash rule sits in prose. The code holds it at `sha256Hex(input.content)` in this file, and the digest itself is computed in ../hash.js. If the node moves, this comment says nothing new and keeps stating the old rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by sha256Hex (imported from ../hash.js) at the call in this file.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      Doc comment above ingestRawInformation, step 2 (line 81).
+    evidence: >-
+      2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+    cost: >-
+      The key formula is written out a second time in prose. The code holds it at the composeIdempotencyKey call in this file, and the composition is in ../hash.js. A reader may take the comment for the authority and not look at the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by composeIdempotencyKey (imported from ../hash.js).
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export async function ingestRawInformation(client: PoolClient, input: IngestRawInformationRequest)`. The file has no extraction prompt construct.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export async function ingestRawInformation(client: PoolClient, input: IngestRawInformationRequest)`. The file never calls a language model.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface IngestRawInformationResult { readonly status: 201 | 200; ... }`. The file is transport-agnostic and exposes no REST or MCP parity construct.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly. The created and noop_existing bodies in ingestRawInformation and noopExisting, ResourceNotFoundError with code RESOURCE_NOT_FOUND and status 404 in getRawInformationById and listChunksByRawInformationId. The noop run lookup departs, see the finding.
+    evidence: >-
+      outcome: "noop_existing", ... chunks: [], llm_run_id: run.id; public readonly statusCode = 404; public readonly code = "RESOURCE_NOT_FOUND" as const; return { total: rows.length, items: rows.map(toRawChunkResponse) };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment listing construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute key construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no change hint construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only directed-path trace is the pass-through `original_input: input.original_input ?? null`. The file has no directed ingestion construct.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item kind construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item status construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no entity match construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal tool construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no knowledge link construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no knowledge node construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link type construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link type rule construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      The insertLlmRun call in ingestRawInformation (lines 156-161), which supplies model, prompt version, raw information and idempotency key. Status, attempts and start time are not set in this file.
+    evidence: >-
+      llmRunRow = await insertLlmRun(client, { model: input.model, prompt_version: input.prompt_version, input_raw_information_id: rawInformationRow.id, idempotency_key: idempotencyKey, });
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node alias construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node attribute construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node type construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `prompt_version: input.prompt_version`. It holds no v1 to v4 set.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      The chunk persistence and response mapping in ingestRawInformation (lines 139-151, 184-189) and listChunksByRawInformationId. The chunk fields themselves are defined outside this file.
+    evidence: >-
+      chunks: chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end, }))
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      The insertRawInformation call in ingestRawInformation (lines 117-126), which supplies source type, content, hash, metadata and original input.
+    evidence: >-
+      rawInformationRow = await insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null, });
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never names a run status. The only mention is the comment "Insert with DEFAULTs for status/attempts/started_at".
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run summary construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no validity basis construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no validation outcome construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no value type construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected nodes construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected nodes construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected nodes construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no entity resolution construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal confidence construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal basis construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The cutting and the excerpts are produced in the chunker, not in this file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The indexing is done by the chunker, not in this file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      const rows = await findChunksByRawInformationId(client, rawInformationId); The ordering is not stated in this file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      chunking_version: CHUNKING_VERSION. The value only feeds the idempotency key here. The file does not record or state a version on chunks.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The block cutting is done by the chunker.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment citation construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment citation construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment citation construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not close runs. It only calls insertLlmRun.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no provenance construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      The call at line 103. The digest and encoding are in sha256Hex, imported from ../hash.js.
+    evidence: >-
+      const contentHash = sha256Hex(input.content);
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      The unique-violation branch in ingestRawInformation (lines 127-132). The uniqueness itself is a constraint named by RAW_INFORMATION_CONTENT_HASH_CONSTRAINT.
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) { return await noopExisting(client, contentHash, idempotencyKey); }
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no length bound. Only a comment refers to it: "content (Zod min(1) guarantees that)".
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this. The file only guards `chunkInputs.length === 0`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: input.prompt_version` is forwarded as given. The file applies no default.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed run construct. It opens the run with `model: input.model, prompt_version: input.prompt_version`.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      The pass-through at line 125 only. Deriving the turn's excerpt is not in this file.
+    evidence: >-
+      original_input: input.original_input ?? null,
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      ingestRawInformation only records and opens the run. It has no extraction call, so the extract part of the rule sits outside this file.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call or proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no entity resolution construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      The unique-violation branch and noopExisting, which insert no raw information, chunk or run. The 500 path for a missing run departs from the answer the rule requires, see the finding.
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) { return await noopExisting(client, contentHash, idempotencyKey); } ... chunks: [],
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      The composeIdempotencyKey call at lines 104-109. The order, separator and digest are in ../hash.js.
+    evidence: >-
+      const idempotencyKey = composeIdempotencyKey({ content_hash: contentHash, prompt_version: input.prompt_version, model: input.model, chunking_version: CHUNKING_VERSION, });
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      The collision guard at lines 168-173. The uniqueness is a constraint named by LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT.
+    evidence: >-
+      if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) { throw new InvariantError(
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      ingestRawInformation, lines 117-175. It inserts the raw information, then the chunks, then one run. The status running is not set in this file.
+    evidence: >-
+      rawInformationRow = await insertRawInformation(...); const chunkRows = await insertRawChunks(client, rawInformationRow.id, chunkInputs); llmRunRow = await insertLlmRun(client, {
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link type rule construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run transition construct. It only opens a run through insertLlmRun.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no normalization construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `original_input: input.original_input ?? null,` is a pass-through. The file states no length bound.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no paging construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: input.prompt_version` is forwarded unchecked. The file holds no set of known prompt versions.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no provenance construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent ingestions construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent ingestions construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent ingestions construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent ingestions construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The insertRawInformation call passes no reception time (`source_type, content, content_hash, metadata, original_input`). The file does not state it.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retry construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retry construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no entity resolution construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment text construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run summary construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run summary construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal date construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type); The chunker decides this. The file only guards `chunkInputs.length === 0`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The first half holds: the unique-violation branch records nothing new. The second half departs: the run lookup `findLlmRunByIdempotencyKey(client, idempotencyKey)` uses a key built from the request's own model, so a run held under another model is not found.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute value construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. Its exports are ingestRawInformation, getRawInformationById, listChunksByRawInformationId and isUniqueViolation.
+looked_past: >-
+  The 500 InvariantError paths and their messages, the pg unique-violation detection in isUniqueViolation, and the layering comments (route opens the transaction, BR-19, compliance_delete) are code-structure or other-file matters, not nodes of this set.

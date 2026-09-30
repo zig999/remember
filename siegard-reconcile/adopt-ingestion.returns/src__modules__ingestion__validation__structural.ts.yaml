@@ -1,0 +1,904 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the header comment (line 7, "Type-catalog membership ... node_type, link_type, attribute_key all live in the seeded catalog") and the docstring of assertKnownType (lines 146-149)
+    evidence: >-
+      "Assert a catalog membership; raise the kind-specific `BUSINESS_UNKNOWN_*`
+       code on miss (BR-14 P2.1 namespaced taxonomy)."
+    cost: >-
+      The catalog-membership rule for a node type is restated in prose. Code holds it in assertKnownType, so the prose is a second home outside behavior. The next reader may take the comment, or its "BR-14 P2.1" citation, for the authority.
+    kind: restates
+    correction: >-
+      Remove the header line and the docstring by the comment route. The fact is held by the node, and assertKnownType already implements it.
+    node: rules/knowledge-base/node-type-in-catalog
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the header comment (line 7) and the docstring of assertKnownType (lines 146-149), for the link_type kind
+    evidence: >-
+      "Type-catalog membership (BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}):
+       node_type, link_type, attribute_key all live in the seeded catalog."
+    cost: >-
+      The rule that a link proposal names a link type the catalog holds is restated in prose, with the code names of the refusal. Code holds it in assertKnownType, so the prose is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the header line and the docstring by the comment route. assertKnownType already raises BUSINESS_UNKNOWN_LINK_TYPE.
+    node: rules/knowledge-base/link-type-in-catalog
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of parseAttributeValue (lines 22-26) and the inline comments "Strict ISO YYYY-MM-DD; not free-form." (line 37) and "Strict: must be a finite numeric literal (no NaN, no Infinity)." (line 57)
+    evidence: >-
+      "Parse a `value` string against its declared `value_type`. ... Rejects "tomorrow" for `date`, "abc" for `number`, etc."
+    cost: >-
+      The value-parses rule is restated in comments. The regexes and finite check in the same function hold it, so the prose is a second home. It can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the docstring and the inline comments by the comment route. The regexes and checks in parseAttributeValue hold the fact.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the date branch of parseAttributeValue, lines 45-53
+    evidence: >-
+      "// Validate it's a real calendar date by parsing.
+      const ts = Date.parse(`${v}T00:00:00Z`);
+      if (Number.isNaN(ts)) {"
+    cost: >-
+      The node requires a date value to name an existing day, and its scenario refuses 2024-02-30. The code refuses only a value for which Date.parse returns NaN. As I understand V8, Date.parse checks an ISO day only against 1-31 and not against the month's length. So 2024-02-30 would parse as 2024-03-01 and pass. I did not run it. An impossible calendar date would then be accepted as an attribute value and stored as written.
+    kind: contradicts
+    correction: >-
+      Refuse when the parsed date, written back as YYYY-MM-DD, differs from the value, so that only an existing day passes.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the date branch of parseAttributeValue, lines 45-53, against the scenario
+    evidence: >-
+      "const ts = Date.parse(`${v}T00:00:00Z`);
+      if (Number.isNaN(ts)) {
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "value is not a calendar-valid date.","
+    cost: >-
+      The scenario has an attribute proposal carrying 2024-02-30 refused with no node attribute recorded. The only guard against a nonexistent day is the NaN test on Date.parse. I understand that test to let 2024-02-30 through, so the scenario's outcome is not guaranteed by this file.
+    kind: contradicts
+    correction: >-
+      Same correction as for the rule: compare the round-tripped date with the value.
+    node: scenarios/knowledge-base/impossible-calendar-date-refused
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of assertValueInDomain (lines 88-108) and the inline comment on the sort (lines 116-118)
+    evidence: >-
+      "exact-match string equality,
+       no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30)."
+    cost: >-
+      The allowed-values rule (exact match, sorted values in the refusal) is restated in prose and attributed to BR-30. The comment also calls the sort "locale-default lexicographic". A default sort() orders by UTF-16 code units, so the prose is wrong as well as a second home. Code holds the rule in the same function.
+    kind: restates
+    correction: >-
+      Remove the docstring and the inline comment by the comment route. The `domain.has(value)` check and the `[...domain].sort()` refusal hold the fact.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read `parseAttributeValue`, `assertValueInDomain`, `assertFound` and `assertKnownType`. None concerns how a document is presented to a language model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read the four exports (`parseAttributeValue`, `assertValueInDomain`, `assertFound`, `assertKnownType`). None restricts what an extraction may act through.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no transport code. It throws `new ValidationFailure(code, message, details)` with no REST or MCP distinction.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly. assertKnownType, assertFound, parseAttributeValue and assertValueInDomain hold the propose-node, propose-link and propose-attribute refusals that name BUSINESS_UNKNOWN_*, RESOURCE_NOT_FOUND and VALIDATION_INVALID_FORMAT. The other operations and their accepted answers are not in this file.
+    evidence: >-
+      `code = args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : args.kind === "link_type" ? "BUSINESS_UNKNOWN_LINK_TYPE" : "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"` and `throw new ValidationFailure("RESOURCE_NOT_FOUND", `${args.entity} ${args.id} not found.`, ...)`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. None concerns an accepted-fragment listing or its filter.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No alias kind (`canonical`, `alias`) is mentioned in code.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `kind: "node_type" | "link_type" | "attribute_key"` names the attribute key only as a catalog-kind label. No attribute-key entity or its fields are declared.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No change hint (`none`, `succession`, `correction`) appears.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No directed item is handled.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No directed item kind appears.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No directed item status appears.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No entity match review or similarity is handled.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment entity is declared. `assertFound` takes a free `entity: string` and knows nothing of fragments.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The tool names propose_fragment, propose_node, propose_link and propose_attribute appear only in comments. No code enumerates them.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No knowledge link is declared or handled.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No knowledge node entity is declared.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `"link_type"` appears only as a member of the `kind` union of `assertKnownType`. The link-type entity and its flags are not declared.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Link type rules are not touched.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. LLM runs are not handled.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No alias is handled.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. `parseAttributeValue` validates a bare `value` string and declares no node-attribute entity.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No node resolution values appear.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `"node_type"` appears only as a member of the `kind` union of `assertKnownType`. The node-type entity is not declared.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No prompt version appears.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal type is declared. The functions take bare `value`, `domain`, `entity`/`id` and `kind`/`name` arguments.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      "chunk_id" appears only in comments. No raw chunk entity is declared.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Raw information is not touched.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run status appears.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run summary appears.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No tool call is recorded.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity basis appears.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. The file throws `ValidationFailure` and names no validation outcome.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the `value_type` parameter of parseAttributeValue, line 29, and the four cases of its switch
+    evidence: >-
+      `value_type: "date" | "number" | "text" | "bool";` with `case "text":`, `case "date":`, `case "number":` and `case "bool":`
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Affected nodes and merges are not touched.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Affected nodes are not computed.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Run completion is not handled.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No entity resolution or similarity appears.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `assertKnownType` raises BUSINESS_UNKNOWN_ATTRIBUTE_KEY for `kind: "attribute_key"` only when the caller passes `found: false`. Nothing here compares the key with the node's node type. The comment "key.node_type_id == node.node_type_id" is prose only.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The four exports are independent helpers with no ordering of checks among them. The order lives in the caller, which is not in this file.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain, lines 109-125
+    evidence: >-
+      `if (domain.has(value)) { return; } const allowed_values = [...domain].sort(); throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "attribute value not in closed domain", { value, allowed_values });`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      parseAttributeValue, lines 27-86. The date, number, bool and text branches are held, but the date branch does not reliably refuse a nonexistent day (see the findings).
+    evidence: >-
+      `/^\d{4}-\d{2}-\d{2}$/.test(v)`, `/^-?\d+(?:\.\d+)?$/.test(v)`, `Number.isFinite(n)`, `v !== "true" && v !== "false"`
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No confidence value is handled.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity basis is checked.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No similarity is computed.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunks are built.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunks are built.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunk listing exists.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunking version appears.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No blocks or chunks are cut.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The header comment says anchoring "lives in its own module" (Layer 5). Nothing in this file checks anchoring.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `assertFound(args: { entity: string; id: string; found: boolean })` is generic. It names no fragment, and the caller supplies `found`. "fragment_id" appears only in prose.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing compares a fragment with a run.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run is closed.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No assertion is recorded.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No consolidation is performed.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No provenance is recorded.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No hashing occurs.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing touches content hashes.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only length remark, "Empty already rejected by Zod min(1)", concerns an attribute value and is a comment.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunking occurs.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No correction is handled.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No errata keywords or correction hints appear.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No assertion currency is derived.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Proposal dates are not checked. The date branch validates an attribute value's format, which is a different fact.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No prompt version appears.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Directed ingestion is not touched.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Document ingestion is not touched.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No email parsing occurs.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No email parsing occurs.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing is recorded. The helpers only throw.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No alias resolution occurs.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No extraction occurs.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No extraction occurs.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No extraction occurs.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No extraction occurs.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No extraction occurs.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `assertFound` is generic (`entity: string`). It names no chunk, and the caller supplies `found`. "chunk_id" appears only in prose.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The header comment lists "`propose_fragment`: every chunk_id belongs to the run's source" as covered here. No code in this file compares a chunk with a run's source.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No ordering of fragment checks exists here.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No fragment is recorded.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No fragment text length is checked.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing is recorded.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No key is computed.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing touches idempotency keys.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. Nothing is recorded.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No link type rule is consulted.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The four exports are independent helpers with no ordering of checks. The order lives in the caller.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      assertKnownType, lines 150-168, for kind "link_type"
+    evidence: >-
+      `args.kind === "link_type" ? "BUSINESS_UNKNOWN_LINK_TYPE"` under `if (!args.found) {`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No rule validity span is evaluated.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run transitions occur.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunking occurs.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunking occurs.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No aliases are handled.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No model is called.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The comment "no normalisation, no case-folding, no trim" describes exact matching of an attribute value. No name normalization is implemented.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No assertion is recorded.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No confidence value is used.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No node is created.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No node is created.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No name length is checked.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      assertKnownType, lines 150-168, for kind "node_type"
+    evidence: >-
+      `args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE"` under `if (!args.found) {`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No current assertions are held or counted.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No current assertions are held or counted.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No current assertions are held or counted.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No current assertions are held or counted.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No original input is handled.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No fragment status is evaluated.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No paging occurs.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No content is split.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No prompt version appears.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The header comment attributes range checks to Zod. No confidence range is checked in this file.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No current assertion is looked up.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run status is checked.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No ordering of run checks exists here.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No provenance is recorded.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No re-affirmation is handled.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No recent ingestions are listed.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No listing limit is checked.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No listing limit is defaulted.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No listing order exists.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No reception time is set.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The helpers only `throw new ValidationFailure(...)`. What is recorded on refusal is not decided in this file.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity start is checked.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity start fallback exists.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No retry occurs.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No retry occurs.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No chunking occurs.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No speaker lines are recognised.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity basis is checked.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No entity resolution occurs.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No succession is handled.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No succession is handled.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No succession is handled.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No fragment text is scanned for keywords.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run summary is built.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No run summary is built.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No tool calls are listed.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No paging occurs.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No paging occurs.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validation outcome is assigned to a tool call.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No content is split.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No content is split.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No validity dates of a proposal are compared. The date branch checks an attribute value's format only.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No email parsing occurs.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No pdf chunking occurs.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No ingestion occurs.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      the date branch of parseAttributeValue, lines 36-55. It refuses only a value for which Date.parse returns NaN, so the scenario's refusal of 2024-02-30 is not reliably held (see the findings).
+    evidence: >-
+      `const ts = Date.parse(`${v}T00:00:00Z`); if (Number.isNaN(ts)) {`
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Read all four exports. No assertion consolidation occurs.
+looked_past: >-
+  The header comment (lines 7-13) claims this layer maps "key.node_type_id == node.node_type_id" and "every chunk_id belongs to the run's source" to VALIDATION_INVALID_FORMAT, but no code here does either and the contract names BUSINESS_UNKNOWN_ATTRIBUTE_KEY for the first. I did not open other files to see where or whether the code holds them, so I filed nothing.

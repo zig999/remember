@@ -1,0 +1,885 @@
+findings:
+  - file: src/modules/ingestion/validation/errors.ts
+    where: >-
+      the header comment, lines 3-8 (BR-13 paragraph)
+    evidence: >-
+      // BR-13 of `ingestion.back.md`: rejection is a business RESULT, not a
+      // programmer exception. Each layer throws a `ValidationFailure` with the
+      // matching MCP envelope code; the handler catches it, persists the
+      // `tool_call` row with `validation_outcome = 'rejected'`, and returns the
+      // MCP error envelope.
+    cost: >-
+      The refused-proposal outcome is described a second time in prose that no running system emits. The behavior is held in code in handler-base.ts (`isValidationFailure(err)` at line 162, then `safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "rejected")` at line 181). A reader who trusts this comment has a second account of the rule that does not move when the node moves.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The fact is held by the tool-call-validation-outcome node and by the handler in src/modules/ingestion/mcp/handler-base.ts.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/validation/errors.ts
+    where: >-
+      the header comment, lines 27-29 (`BUSINESS_RUN_NOT_RUNNING` paragraph)
+    evidence: >-
+      // The extra `BUSINESS_RUN_NOT_RUNNING` code is emitted by the MCP handler
+      // guard when the ambient `llm_run_id` points to a row whose `status` is not
+      // `'running'` (BR-21 / catalog Ingestion section).
+    cost: >-
+      The rule that a proposal is taken only within a running run is restated in prose. Code holds it in another file (src/modules/ingestion/mcp/handler-base.ts, line 117 raises "BUSINESS_RUN_NOT_RUNNING"), so the comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The rule sits in the proposal-requires-running-run node, and the refusal in the ingestion contract.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/validation/errors.ts
+    where: >-
+      the `VALIDATION_REQUIRED_FIELD` member of `McpEnvelopeErrorCode`, line 33 (mapped at comment line 15)
+    evidence: >-
+      | "VALIDATION_REQUIRED_FIELD"
+      ...
+      //   STRUCTURAL_INVALID       -> VALIDATION_REQUIRED_FIELD  (Zod missing)
+    cost: >-
+      The file declares that ingestion validation may refuse with a code for a missing field. The ingestion contract names only VALIDATION_INVALID_FORMAT for "The proposal is missing a required field or holds one of the wrong shape", and no node in the specification names VALIDATION_REQUIRED_FIELD. The code becomes the only place this refusal code lives, and the two transports could answer a missing field differently.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the ingestion contract a refusal for a missing field that names this code, or the member leaves the union.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/validation/errors.ts
+    where: >-
+      the `VALIDATION_OUT_OF_RANGE` member of `McpEnvelopeErrorCode`, line 35 (mapped at comment line 17)
+    evidence: >-
+      | "VALIDATION_OUT_OF_RANGE"
+      ...
+      //                            -> VALIDATION_OUT_OF_RANGE    (numeric bound)
+    cost: >-
+      The ingestion pipeline declares a numeric-bound refusal code that no ingestion operation in the contract uses. The ingestion contract answers an out-of-range confidence (proposal-confidence-range) and the page limit and offset of the tool-call listing with VALIDATION_INVALID_FORMAT. The retrieval contract uses VALIDATION_OUT_OF_RANGE for its own page bounds only. The code lives here as an ingestion decision that a reader would look for in the specification and not find.
+    kind: unstated
+    correction: >-
+      Either the analysis records where in ingestion a numeric bound answers VALIDATION_OUT_OF_RANGE, or the member leaves the union.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the McpEnvelopeErrorCode union and the ValidationFailure class; no construct presents document content to a model
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the McpEnvelopeErrorCode union and the ValidationFailure class; nothing constrains what the extracting model acts through
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares one error-code union shared by callers, but no construct makes the REST and MCP transports answer alike: `export class ValidationFailure extends Error { public readonly code: McpEnvelopeErrorCode;`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the `McpEnvelopeErrorCode` union (lines 31-47) and the `ValidationFailure` carrier (lines 50-64), which hold the proposal refusal codes the contract names. Two members, VALIDATION_REQUIRED_FIELD and VALIDATION_OUT_OF_RANGE, are reported as findings.
+    evidence: >-
+      | "VALIDATION_INVALID_FORMAT" | "RESOURCE_NOT_FOUND" | "BUSINESS_UNKNOWN_NODE_TYPE" | "BUSINESS_UNKNOWN_LINK_TYPE" | "BUSINESS_UNKNOWN_ATTRIBUTE_KEY" | "BUSINESS_LINK_RULE_VIOLATION" | "BUSINESS_TEMPORAL_INCOHERENT" | "BUSINESS_DATE_UNJUSTIFIED" | "BUSINESS_RUN_NOT_RUNNING" | "SYSTEM_INTERNAL_ERROR"
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no accepted-fragment filter appears
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no alias kind appears
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "BUSINESS_UNKNOWN_ATTRIBUTE_KEY" appears; no attribute key is modelled in the file
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no change hint appears
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed ingestion appears
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed item appears
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed item kind appears
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed item status appears
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no entity match review appears
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no fragment is modelled
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no tool name enumeration appears
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no link is modelled
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no node is modelled
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "BUSINESS_UNKNOWN_LINK_TYPE" appears; no link type is modelled
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "BUSINESS_LINK_RULE_VIOLATION" appears; no link type rule is modelled
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "BUSINESS_RUN_NOT_RUNNING" appears; no run is modelled
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no alias is modelled
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no attribute is modelled
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no resolution appears
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "BUSINESS_UNKNOWN_NODE_TYPE" appears; no node type is modelled
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no prompt version appears
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names refusal codes for proposals but models no proposal: `export class ValidationFailure extends Error`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunk appears
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no raw information appears
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names "BUSINESS_RUN_NOT_RUNNING" but declares no run status values
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no run summary appears
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no tool call is modelled. A comment mentions the `tool_call` row, which is prose.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no basis values appear
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no validation outcome values; 'rejected' appears only in a comment
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no value types appear
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no affected-node logic
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no affected-node logic
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no affected-node logic
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no entity resolution
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds only the refusal's code name (`| "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"`), not the rule that decides it; the code name is the contract's fact
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no check ordering. A comment mentions 5 layers, which is prose.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no allowed-values check
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no value parsing
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no confidence logic
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no basis check
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no similarity logic
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no listing
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking version
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no anchoring check
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "RESOURCE_NOT_FOUND"`); no existence check is in the file
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no run-membership check
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no run closing
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no consolidation logic
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no consolidation logic
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no provenance logic
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no hashing
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no uniqueness logic
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no length check
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no correction logic
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_TEMPORAL_INCOHERENT"`); no errata check is in the file
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no currency logic
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no date checks
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no prompt version default
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no directed logic
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no ingestion flow
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; auditing is done by the handler in another file, and a comment here that mentions it is prose
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no entity resolution
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no extraction
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no extraction
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the code name "SYSTEM_INTERNAL_ERROR" appears; no repeated-failure logic
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no extraction
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; the extraction guard is not here
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "RESOURCE_NOT_FOUND"`); no existence check is in the file
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunk membership check
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no check ordering
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no fragment recording
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no length check
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no intake logic
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no key derivation
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no uniqueness logic
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no intake logic
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_LINK_RULE_VIOLATION"`); no permission check is in the file
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no check ordering
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_UNKNOWN_LINK_TYPE"`); no catalog check is in the file
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no effect window logic
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no run transitions
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no alias logic
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no extraction
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no normalization
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no assertion logic
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no confidence thresholds
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no alias logic
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no entity resolution
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no length check
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_UNKNOWN_NODE_TYPE"`); no catalog check is in the file
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no length check
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no orphan logic
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no paging
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no prompt version check
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no range check. The comment that maps a numeric bound to VALIDATION_OUT_OF_RANGE is reported as a finding.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no assertion matching
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      the `"BUSINESS_RUN_NOT_RUNNING"` member of `McpEnvelopeErrorCode` (line 45), which holds the code of the refusal. The status check itself is in another file.
+    evidence: >-
+      | "BUSINESS_RUN_NOT_RUNNING"
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no check ordering
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no provenance logic
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no consolidation logic
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no listing
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no limit bounds
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no limit default
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no listing
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no reception time
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; the recording is done by the handler in another file, and a comment here that mentions it is prose
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_DATE_UNJUSTIFIED"`); no availability check is in the file
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no date fallback
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no retry logic
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no retry logic
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no speaker line detection
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_DATE_UNJUSTIFIED"`); no basis check is in the file
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no entity resolution
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no signal detection
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no summary
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no summary
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no listing
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no paging
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no listing
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; the outcome is decided by the handler in another file, and the comment here that mentions 'rejected' is prose
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      only the refusal's code name appears (`| "BUSINESS_TEMPORAL_INCOHERENT"`); no date ordering check is in the file
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no block cutting
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no chunking
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no intake logic
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no value parsing
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the error-code union and the ValidationFailure class; no succession logic
+looked_past: >-
+  The comment block at lines 9-25 maps seven retired short codes to their namespaced replacements; it is history of a rename, a change-log concern rather than a node fact, and I did not report it.
+candidates_opened:
+  - contracts/knowledge-base/retrieval

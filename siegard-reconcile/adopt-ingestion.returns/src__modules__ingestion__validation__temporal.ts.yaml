@@ -1,0 +1,909 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment, lines 4-5, and the comment at line 107 above the interval check
+    evidence: >-
+      "//   - semi-open invariant: `valid_from < valid_to` when both are provided
+      //     (BR-16 / §13.3 / §5.2)." and "// Semi-open interval invariant."
+    cost: >-
+      The start-before-end rule is written twice in this file as prose next to the branch that enforces it. When the node moves, the comment keeps saying the old rule and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove both comments. The rule is held by the `input.valid_from >= input.valid_to` branch in this file and by the node.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment, lines 6-10, and the comment block at lines 128-135
+    evidence: >-
+      "//   - date justification chain (A14 / §6.5): when `requires_valid_from = true`
+      //     for the link_type or attribute_key, AND `valid_from` is supplied, the
+      //     caller must declare a non-null `valid_from_basis`."
+    cost: >-
+      The comment ties the basis rule to `requires_valid_from = true`. The code and the node refuse a stated start without a basis whatever the type requires. A reader who trusts the comment gets the condition wrong.
+    kind: restates
+    correction: >-
+      Remove both comments. The rule is held by the `input.valid_from !== null && input.valid_from_basis === null` branch and by the node.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment lines 11-13, the ERRATA_MARKERS docstring at lines 61-65, and the comment at line 117
+    evidence: >-
+      "//   - correction signal: `change_hint = 'correction'` requires textual errata
+      //     evidence in at least one cited fragment." and "'correction' requires textual evidence of an
+      * errata in at least one cited fragment (case-insensitive substring of any
+      * of the Portuguese/English markers used in the domain glossary)."
+    cost: >-
+      The rule and the marker vocabulary are restated in prose in three places. The docstring points to a "domain glossary" as the source of the markers. The real home is the node, so the pointer misdirects the next reader.
+    kind: restates
+    correction: >-
+      Remove the three comments. The markers and the refusal are held by ERRATA_MARKERS and the `change_hint === "correction"` branch, and by the node.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment lines 15-22, the comment at line 135, and the comment at line 167
+    evidence: >-
+      "The
+      //   BUSINESS_DATE_UNJUSTIFIED rejection only fires when ALL THREE links of the chain are absent." and "// ALL three links absent — only now is the row BUSINESS_DATE_UNJUSTIFIED."
+    cost: >-
+      The refusal condition for a required start is stated in prose in several places. The code enforces it in the final `throw`, so each comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The refusal is held by the final `throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", ...)` in the `requires_valid_from` branch and by the node.
+    node: rules/knowledge-base/required-start-available
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment lines 15-22 and the comment at line 159
+    evidence: >-
+      "//   stated -> document -> received. When `valid_from` is not supplied and
+      //   `document_date` is absent BUT `received_at` is available, the layer
+      //   resolves `valid_from := received_at` (date portion) with
+      //   `valid_from_source := 'received'`."
+    cost: >-
+      The prose restates the received link of the fallback and names a field, `valid_from_source`, that the code and the node do not use (they use valid_from_basis). It is a second home for the fallback with a drifted name.
+    kind: restates
+    correction: >-
+      Remove the comments. The received fallback is held by the `toIsoDate(input.received_at)` branch that returns `valid_from_basis: "received"`.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      The `document_date !== null` branch inside `if (input.requires_valid_from && input.valid_from === null)`, lines 145-158
+    evidence: >-
+      "if (input.document_date !== null) {" ... "return {
+        valid_from: input.valid_from,
+        valid_from_basis: input.valid_from_basis,
+      };" with the comment "we DO NOT
+      // resolve `valid_from`/`valid_from_basis` to the document_date here."
+    cost: >-
+      The node says a required start that is not stated takes the source's document date with basis document. This branch lets it pass with no start and no basis, which is the behavior the decision log records as decided against ("A type that requires a validity start is never left without one"). A required-start assertion from a dated document is therefore stored with no start unless another file fills it, and the next reader looking at the node would not expect that.
+    kind: contradicts
+    correction: >-
+      Resolve `valid_from` to `input.document_date` with `valid_from_basis: "document"` in this branch, as the received branch does for the reception date. If another file is meant to hold that resolution, it must be named and bound to the node.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      validateTemporal(input: TemporalLayerInput): TemporalResolved checks only dates, basis, change hint and fragment text. It does not present content to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no call to a language model and defines no proposal tool. It is a pure validation function.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file knows no transport. It only throws `new ValidationFailure(code, message, details)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the codes "BUSINESS_TEMPORAL_INCOHERENT" and "BUSINESS_DATE_UNJUSTIFIED" for two of the operations' refusals appear. The operations, accepted answers and other refusals are not stated in this file.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing filter or page is declared in this file.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias is mentioned in this file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the boolean `readonly requires_valid_from: boolean` arrives as an input. The attribute key itself is not declared here.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      the `change_hint` member of TemporalLayerInput
+    evidence: >-
+      readonly change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item appears in this file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item kind appears in this file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item status appears in this file.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity match appears in this file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Fragments arrive only as `readonly fragment_texts: readonly string[]`. The fragment record is not declared here.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool name appears in this file.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link record is declared here. The file resolves only `valid_from` and `valid_from_basis`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node appears in this file.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the boolean `requires_valid_from` arrives as an input. The link type is not declared here.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No type rule appears in this file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      A run appears only in a comment about where `received_at` comes from. No run is declared or used.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias appears in this file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute record is declared here. The file resolves only `valid_from` and `valid_from_basis`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node resolution appears in this file.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node type appears in this file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in this file.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      TemporalLayerInput carries only four of the proposal's fields (valid_from, valid_to, valid_from_basis, change_hint), together with the type flags and the source dates. The proposal object itself is not declared here.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk appears in this file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only `readonly document_date: string | null;` and `readonly received_at: string | null;` arrive as inputs. The record is not declared here.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status appears in this file.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in this file.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool call appears in this file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the `valid_from_basis` members of TemporalLayerInput and TemporalResolved
+    evidence: >-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validation outcome appears in this file. It throws `ValidationFailure`.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value type appears in this file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node logic appears in this file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node logic appears in this file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node logic appears in this file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in this file.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute key check appears in this file.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file orders only its own four date checks. It does not order the attribute proposal's checks.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No allowed-values check appears in this file.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value parsing appears in this file. `toIsoDate` reads the prefix of a timestamp, not an attribute value.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence appears in this file.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The input type still admits the basis "received" (`"stated" | "document" | "received" | null`), and no branch refuses a caller who states it. The refusal is not held in this file.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity appears in this file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk listing appears in this file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      A comment says the anti-hallucination layer reads the fragments. This file performs no anchoring check.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file receives fragment texts already fetched (`readonly fragment_texts: readonly string[]`). It does not check that they exist.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check that fragments belong to a run.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run closing appears in this file.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No dispute logic appears in this file.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation appears in this file. It only resolves values for the consolidator.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance appears in this file.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash appears in this file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash appears in this file.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content length check appears in this file.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only checks the correction evidence. It does not supersede anything.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      ERRATA_MARKERS, hasErrataSignal, and the `change_hint === "correction"` branch of validateTemporal
+    evidence: >-
+      const ERRATA_MARKERS = ["errata", "errado", "correção", "corrigir", "correction", "correcao"] as const; ... if (input.change_hint === "correction") { if (!hasErrataSignal(input.fragment_texts)) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT",
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No currency derivation appears in this file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      the sequence of four checks in validateTemporal
+    evidence: >-
+      The checks run in this order: `input.valid_from >= input.valid_to`, then `input.change_hint === "correction"` with `hasErrataSignal`, then `input.valid_from !== null && input.valid_from_basis === null`, then `input.requires_valid_from && input.valid_from === null`. Each one throws.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in this file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed ingestion appears in this file.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document ingestion appears in this file.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email parsing appears in this file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email parsing appears in this file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      No audit record appears in this file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in this file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment proposal check appears in this file.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment proposal check appears in this file.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment proposal check appears in this file.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment recording appears in this file.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads fragment texts but checks no length.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion appears in this file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key derivation appears in this file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key appears in this file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion appears in this file.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule check appears in this file.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file orders only its own four date checks. It does not order the link proposal's checks.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog check appears in this file.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No rule-in-effect check appears in this file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run transition appears in this file.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in this file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction appears in this file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name normalization appears in this file. `toLowerCase()` here is applied to fragment text, not to names.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion recording appears in this file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence appears in this file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in this file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in this file.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name check appears in this file.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog check appears in this file.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in this file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in this file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in this file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in this file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length check appears in this file.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No orphan derivation appears in this file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears in this file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version check appears in this file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence appears in this file.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No current assertion lookup appears in this file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status check appears in this file.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run checks appear in this file.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance appears in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No re-affirmation appears in this file.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears in this file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears in this file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears in this file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears in this file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `received_at` as an input. It does not record a reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file throws a `ValidationFailure`. It records nothing.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      the final `throw` in the `requires_valid_from && valid_from === null` branch of validateTemporal
+    evidence: >-
+      if (input.document_date !== null) { ... } const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { ... } throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", "link_type / attribute_key requires_valid_from = true but no date is available (stated, document_date, and received_at are all absent).",
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      the received branch of validateTemporal. The document_date branch departs (see the finding).
+    evidence: >-
+      const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { return { valid_from: receivedDate, valid_from_basis: "received", }; } ... and for document_date: return { valid_from: input.valid_from, valid_from_basis: input.valid_from_basis, };
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in this file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in this file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No speaker line appears in this file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the `valid_from !== null && valid_from_basis === null` branch of validateTemporal
+    evidence: >-
+      if (input.valid_from !== null && input.valid_from_basis === null) { throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", "valid_from supplied without a valid_from_basis (stated | document | received).",
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution appears in this file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in this file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in this file.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in this file.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds only the errata markers, not the succession markers.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in this file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in this file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing appears in this file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears in this file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears in this file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool call outcome appears in this file.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the first branch of validateTemporal
+    evidence: >-
+      if (input.valid_from !== null && input.valid_to !== null) { if (input.valid_from >= input.valid_to) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", "valid_from must be strictly before valid_to.",
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email parsing appears in this file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion appears in this file.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      `toIsoDate` checks only the `^\d{4}-\d{2}-\d{2}$` shape of a timestamp prefix, not that the day exists. It parses no attribute value.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession or dispute appears in this file.
+looked_past: >-
+  The `__testing__` export, the string comparison of ISO dates with `>=`, and the `toIsoDate` shape guard are implementation choices that state no domain fact.

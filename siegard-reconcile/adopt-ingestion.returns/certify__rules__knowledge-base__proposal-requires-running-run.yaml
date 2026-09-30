@@ -1,0 +1,47 @@
+certified:
+  - node: rules/knowledge-base/proposal-requires-running-run
+    state: partial
+    tests:
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 409 BUSINESS_RUN_NOT_RUNNING when the run exists but is completed
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 404 RESOURCE_NOT_FOUND when the llm_run id is unknown
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 404 RESOURCE_NOT_FOUND when the llmRunId is unknown
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 200 with ok:true envelope when run is running and input is valid
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 200 with ok:true envelope and resolution=created_new on the happy path
+      - file: src/__tests__/integration/ingestion/mcp-endpoint.spec.ts
+        name: tools/call with `llm_run_id` for a non-running run returns isError + BUSINESS_RUN_NOT_RUNNING
+      - file: src/__tests__/integration/ingestion/mcp-endpoint.spec.ts
+        name: tools/call with `llm_run_id` pointing to an unknown run returns isError + RESOURCE_NOT_FOUND
+      - file: src/__tests__/integration/ingestion/mcp-endpoint.spec.ts
+        name: tools/call without `llm_run_id` in args returns isError + VALIDATION_INVALID_FORMAT
+    why: >-
+      Only two of the four proposal kinds are ever sent against a run that exists but is
+      not running. One is a node proposal over REST, where the test checks both the refusal
+      and that no node was inserted. The other is a fragment proposal over MCP, where the
+      test checks only the error code: the fake pool accepts every INSERT without complaint,
+      so nothing shows the fragment was not taken anyway.
+
+      Link and attribute proposals are sent only against a running run or an unknown one. A
+      fragment proposal is never sent against a completed run over REST, and node, link and
+      attribute proposals are never sent against a non-running run over MCP. If the running
+      check stopped holding for link or attribute proposals, or on one transport, every
+      offered test would still pass.
+
+      Every non-running case uses status completed. A failed run is never submitted, though
+      the REST fixture's own row type lists that status. So nothing shows a proposal is
+      refused within a failed run.
+
+      The unknown-run and missing-run-id tests show a proposal with no run is refused. The
+      running-run tests show a running run is accepted. Neither set shows the refusal for a
+      run that exists and is not running.
+    remainder: testable
+    remainder_why: >-
+      A finite table closes it. Send each proposal kind (fragment, node, link, attribute) on
+      each transport (REST mirror and MCP tool) against a run in each non-running status
+      (completed and failed, or whatever set the run-status node declares). Expect each one
+      to be refused with BUSINESS_RUN_NOT_RUNNING and nothing of that kind written, and check
+      that the same input against a running run is accepted.

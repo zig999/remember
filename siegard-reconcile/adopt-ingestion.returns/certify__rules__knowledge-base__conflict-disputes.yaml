@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/conflict-disputes
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: flags both old and new row as disputed and surfaces conflicting_link_id
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: disputed — divergent value, same overlapping period, no signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: functional link with different valid_from does NOT auto-consolidate (still requires sameValidFrom)
+    why: >-
+      The second half of the fact is exercised for both a functional link type and
+      a functional attribute key. A new row is recorded with status disputed and a
+      null supersedes_link_id / supersedes_attribute_id, and the tests assert both
+      values on the inserted row. The first half, that the proposal marks the
+      current assertion itself as disputed, is not exercised in those terms. Both
+      dispute tests only check that exactly one UPDATE was issued and that its SQL
+      text contains the literal 'disputed'. Neither checks the UPDATE's bindings, so
+      nothing ties the mark to EXISTING_LINK_ID or EXISTING_ATTR_ID. A mark that
+      landed on some other row would still pass. So would an UPDATE whose 'disputed'
+      appears only in a guard clause rather than in what it sets. This assertion
+      checks the shape of the SQL, not the current assertion's resulting status.
+      The third test reaches the dispute outcome only incidentally, on the way to
+      showing that a functional link with a different valid_from is not
+      consolidated. It checks the outcome and the insert count, but not the new
+      row's status, its supersedes value, or the mark on the existing row. The
+      first test's name promises conflicting_link_id, but nothing in it asserts
+      that value.
+    remainder: testable
+    remainder_why: >-
+      One input: a proposal on a type that does not allow multiple current
+      assertions, meeting a current assertion (EXISTING_LINK_ID, and separately
+      EXISTING_ATTR_ID) as a dispute. One expected result: the status write sets
+      disputed on that same assertion's id, shown by the UPDATE's bound id and set
+      status or by reading the assertion back, alongside the new disputed row that
+      supersedes nothing.

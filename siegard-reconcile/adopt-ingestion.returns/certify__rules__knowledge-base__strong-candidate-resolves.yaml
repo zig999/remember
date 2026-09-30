@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/strong-candidate-resolves
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 2: trigram strong-unique -> matched_existing (no node insert, no review rows)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: returns strong_unique when exactly one candidate is >= MATCH_STRONG and no other is >= MATCH_FLOOR
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: returns ambiguous when one candidate is strong AND a second is in [FLOOR, STRONG)
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3: ambiguous (one strong + one in [FLOOR, STRONG)) -> needs_review + 2 review rows"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55
+    why: >-
+      The resolution itself is tested. With no exact alias, one candidate at 0.92
+      and another at 0.3 resolves as matched-existing to the 0.92 candidate. Nothing
+      is inserted, and no review rows are written. The tests also show that a second
+      candidate at 0.6 stops the match. Three parts of the fact are not tested.
+      (1) "Active" and "of its node type". The stub client returns the configured
+      candidate rows no matter what the SQL says. So nothing in the set shows that
+      an inactive node (merged, deleted, needs_review) or a node of a different
+      type, even at 0.85 or above, is left out as the match and left out as the
+      competitor. Those restrictions could be dropped and every test would still
+      pass. (2) The inclusive bound "at least 0.85". The strong candidates used are
+      0.9, 0.92 and 0.95. No test uses exactly 0.85, or anything between 0.85 and
+      0.9. (3) The inclusive bound "reaches 0.55". The competitor that stops the
+      match is always at 0.6. No test puts a competitor at exactly 0.55. The test
+      "exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55" only checks the constant
+      values. It would still pass if the comparison changed from >= to >, so it does
+      not cover either bound.
+    remainder: testable
+    remainder_why: >-
+      Each gap closes with one input against one expected result. (a) A proposal
+      with no exact alias, one active same-type node at exactly 0.85 and no other at
+      0.55 or above, should resolve as matched-existing to that node. (b) The same
+      setup plus a second active same-type node at exactly 0.55 should not resolve
+      as matched-existing. (c) Run against a store that applies the candidate query:
+      an inactive same-type node at 0.85 or above, as the only strong candidate,
+      should not be matched. The same holds for a node of another type. And an
+      inactive or other-type node at 0.55 or above should not stop an otherwise
+      unique strong active match of the right type.

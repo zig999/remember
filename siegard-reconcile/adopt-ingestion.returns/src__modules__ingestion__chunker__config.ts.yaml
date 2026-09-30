@@ -1,0 +1,864 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 19, the lower bound of CHUNK_TARGET
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+      (the docstring says the chunker "keeps appending sentences while the running block stays within `[CHUNK_TARGET[0], CHUNK_TARGET[1]]`"). Only `CHUNK_TARGET[1]` is read, in v1.ts: `if (tentativeSize > CHUNK_TARGET[1]) {`.
+    cost: >-
+      1500 is a chunk-size threshold that no node holds, and nothing reads it. The chunking nodes state only 4000 and 2000. The docstring describes a soft window the chunker does not apply. A later reader would take 1500 as a decided minimum chunk size, and it would live only in this file.
+    kind: unstated
+    correction: >-
+      Either give the 1500 lower bound a node, in the chunking rules alongside long-block-sentence-chunks, or drop it from the declaration.
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 30, READING_TAIL
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+      (the docstring describes it as an "overlap added to the END of a chunk", "computed at read time by the future retrieval layer")
+    cost: >-
+      A 200-unit chunk overlap for retrieval is stated only here, and no code reads it (a grep of backend/src finds no importer). The only node with a 200 is rules/knowledge-base/extraction-reads-chunks-in-order, which is the tail of the previous chunk shown to the model during extraction. That is a different fact. A reader looking for the overlap rule would find it here, and would either not find it in the specification or confuse it with the extraction tail.
+    kind: unstated
+    correction: >-
+      If a retrieval overlap is a decided fact, give it a node. If it is not, remove the unused declaration.
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      docstring above CHUNK_HARD_MAX, line 21
+    evidence: >-
+      /** Hard ceiling on a single chunk. A block above this size is sentence-split. */
+    cost: >-
+      The docstring says in prose what rules/knowledge-base/long-block-sentence-chunks holds, and it is a second home for it. It also calls 4000 a "ceiling on a single chunk", and long-sentence-own-chunk says a sentence longer than 2000 is one chunk whatever its length. The pair conforms because the code holds the fact. What the prose owes is its removal.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code that holds the fact is the split at `if (blockSize <= CHUNK_HARD_MAX)` in src/modules/ingestion/chunker/v1.ts.
+    node: rules/knowledge-base/long-block-sentence-chunks
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only CHUNKING_VERSION, CHUNK_TARGET, CHUNK_HARD_MAX and READING_TAIL. None concerns how content is presented to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants, for example `export const CHUNK_HARD_MAX = 4000 as const;`. Nothing in it concerns what the extracting model may act through.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants, for example `export const CHUNKING_VERSION = "v1" as const;`. It has no transport code.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants and holds no operation, answer or refusal.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no filter type.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no alias kinds.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no attribute key.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no change-hint values.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed ingestion.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed item.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed item kinds.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed item statuses.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no entity match review.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no fragment shape.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no tool names.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link shape.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no node shape.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link type.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link type rule.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run shape.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no alias shape.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no attribute shape.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no resolution values.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no node type.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no prompt versions.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no proposal shape.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only the chunking version and size constants (`export const CHUNKING_VERSION = "v1" as const;`). The chunk entity's shape is built in v1.ts, not here. The version value is held for rules/knowledge-base/chunking-version.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no raw information shape.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run statuses.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no tool call shape.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no basis values.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no outcome values.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no value types.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns affected nodes.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns affected nodes.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns affected nodes.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no similarity threshold.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns attribute keys.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no check order.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no allowed values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no value parsing.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no confidence floor.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns bases.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no similarity.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; excerpts are built in v1.ts.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; indexing is done in v1.ts.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no listing.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      the CHUNKING_VERSION declaration, line 10
+    evidence: >-
+      export const CHUNKING_VERSION = "v1" as const;
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; blocks are cut in v1.ts, and nothing here concerns block edges.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns citations.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns citations.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns citations.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns run closing.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns disputes.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns consolidation.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no hashing.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no hash uniqueness.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no content length bounds.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; the whole-content chunk is emitted in v1.ts.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns corrections.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns errata.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns currency.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no date checks.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no prompt version default.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns directed values.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; nothing concerns directed values.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed defaults.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed references.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no dispatch.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no anchoring.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no confidence.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run model.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no item status.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no references.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no node pinning.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no reference length.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed requirements.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run completion.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no directed source content.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no label length.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no original input.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no ingestion flow.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; email blocks are cut in v1.ts.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; email blocks are cut in v1.ts.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no auditing.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no anchoring.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run closing.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no failure counting.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares `export const READING_TAIL = 200 as const;`, but its docstring gives it a different role (an overlap for a future retrieval layer) and nothing imports it. It is not the extraction prompt's 200-character tail, which is reported as a finding.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run status check.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no chunk citation checks.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no chunk citation checks.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no check order.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no fragment status.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no text length bounds.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no idempotence.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no key derivation. The chunking version is exported here for a key built elsewhere.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no key uniqueness.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; recording is done in the service.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link rule.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no check order.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no catalog.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no rule effect dates.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run transitions.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      the CHUNK_HARD_MAX declaration, line 22, and the upper bound of CHUNK_TARGET, line 19
+    evidence: >-
+      export const CHUNK_HARD_MAX = 4000 as const;
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      the upper bound of CHUNK_TARGET, line 19, with CHUNK_HARD_MAX, line 22. Standalone emission of a long sentence is done in v1.ts.
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+      export const CHUNK_HARD_MAX = 4000 as const;
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no alias handling.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no model refusal.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no normalization.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no assertions.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no confidence thresholds.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no alias creation.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no node creation.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no name length bounds.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no catalog.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no attribute currency.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no attribute currency.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link currency.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no link currency.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no input length bound.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no orphan detection.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no paging.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; form-feed cutting is in v1.ts.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no prompt versions.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no confidence range.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no proposal matching.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no run status check.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no check order.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no re-affirmation.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no listing.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no limit bounds.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no limit default.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no listing order.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no refusal recording.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no start dates.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no start dates.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no retry.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no retry.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      the CHUNK_HARD_MAX declaration, line 22
+    evidence: >-
+      export const CHUNK_HARD_MAX = 4000 as const;
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; speaker lines are matched in v1.ts.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no bases.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no similarity threshold.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no succession.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no succession.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no succession.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no signal words.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no listing.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no paging.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no listing.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no validation outcomes.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; turn cutting is in v1.ts.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; source-type block rules are in v1.ts.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no date validation.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; the scenario is exercised by chunking logic in v1.ts.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; the scenario is exercised by chunking logic in v1.ts.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no ingestion flow.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no date validation.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only chunking constants; no succession or dispute.
+looked_past: >-
+  The header comments (BR-03, BR-04, BR-05, BR-06, BR-07, A22) cite business-rule identifiers from a back-spec and not from the specification nodes. The rule that changing a constant requires bumping CHUNKING_VERSION is a process convention, not a domain fact, so I did not report it.

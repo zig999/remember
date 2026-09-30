@@ -1,0 +1,1014 @@
+findings:
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      header comment, lines 8-10, and the docstring of splitByHardBoundaries, lines 155-158
+    evidence: >-
+      no hard boundary — single block.
+    cost: >-
+      The comment says again that minutes, articles and other sources are one block. The switch that does it is right below, so the second statement is prose that will not follow the node when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the `case "ata": case "artigo": case "outro": return [{ start: 0, endExclusive: total }];` branch in this file.
+    node: rules/knowledge-base/undivided-sources
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      header comment, line 11
+    evidence: >-
+      For each block, try to keep it as one chunk if its size is at most
+    cost: >-
+      The comment restates the short-block rule. The `blockSize <= CHUNK_HARD_MAX` branch holds it, so a reader can take the comment for the authority.
+    kind: restates
+    correction: >-
+      Remove the prose. The `if (blockSize <= CHUNK_HARD_MAX)` branch in this file holds the fact.
+    node: rules/knowledge-base/short-block-one-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      header comment, lines 13-19
+    evidence: >-
+      Append sentence segments to a running buffer; close the buffer when
+    cost: >-
+      The comment restates how a long block is cut at sentences. The loop over `sentenceRanges` holds that rule, so the comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The `tentativeSize > CHUNK_TARGET[1]` loop in this file holds the fact.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of RawChunkInput, lines 42-46
+    evidence: >-
+      original content between `offset_start` and `offset_end` (code points,
+    cost: >-
+      The comment restates that a chunk's text is the verbatim slice between its offsets. `buildChunk` holds this and the comment repeats it.
+    kind: restates
+    correction: >-
+      Remove the prose. `text: codePoints.slice(start, endExclusive).join("")` in buildChunk holds the fact.
+    node: rules/knowledge-base/chunk-excerpt-is-verbatim
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of RawChunkInput, lines 42-46
+    evidence: >-
+      semi-open). `chunk_index` is the 0-based position within the document.
+    cost: >-
+      The comment restates the chunk index rule. The `chunks.length` argument to buildChunk holds it and the comment repeats it.
+    kind: restates
+    correction: >-
+      Remove the prose. The `chunks.length` index passed to buildChunk holds the fact.
+    node: rules/knowledge-base/chunk-index-follows-content
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      comment inside the oversize loop, lines 99-103
+    evidence: >-
+      no finer atom to split on (a single 5000-char sentence will become one
+    cost: >-
+      The comment restates that an over-long sentence becomes its own chunk. The behavior comes from the buffer-closing branch, so the comment is prose outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The `tentativeSize > CHUNK_TARGET[1]` branch holds the fact.
+    node: rules/knowledge-base/long-sentence-own-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      comment on the fallback at lines 121-127
+    evidence: >-
+      still emit one chunk covering the raw content to preserve the audit
+    cost: >-
+      The comment restates the rule for content whose blocks hold nothing. The `chunks.length === 0` branch holds it.
+    kind: restates
+    correction: >-
+      Remove the prose. `chunks.push(buildChunk(codePoints, 0, totalCodePoints, 0));` holds the fact.
+    node: rules/knowledge-base/contentless-blocks-single-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of splitByHardBoundaries, pdf entry, lines 145-146
+    evidence: >-
+      form-feed (`\f`, U+000C).
+    cost: >-
+      The comment restates the pdf boundary. `splitOnCharBoundary(codePoints, "\f")` holds it.
+    kind: restates
+    correction: >-
+      Remove the prose. The `case "pdf":` branch holds the fact.
+    node: rules/knowledge-base/pdf-blocks-at-form-feeds
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of splitByHardBoundaries, email entry, and docstring of splitEmail, lines 147-149 and 213-216
+    evidence: >-
+      first blank line closes the headers, every transition into
+    cost: >-
+      The comment restates where an email's header block ends. `splitEmail` holds the rule, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The `!headersClosed && isBlank` branch in splitEmail holds the fact.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of splitEmail, lines 213-216
+    evidence: >-
+      or out of a quotation block (`^>+ `) closes a chunk.
+    cost: >-
+      The comment restates the quotation rule, and it states it as `^>+ `. The code (`codePoints[i] === ">"` after leading spaces or tabs) does not require a trailing space, so the prose reads differently from the behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The `isQuotedLine` function and the `isQuoted !== prevQuoted` branch hold the fact.
+    node: rules/knowledge-base/email-quote-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docstring of splitByHardBoundaries, chat entry, and docstring of splitTurns, lines 150-154 and 261-266
+    evidence: >-
+      Split chat / transcript: a new "speaker line" opens a new block.
+    cost: >-
+      The comment restates the turn-block rule. `splitTurns` holds it.
+    kind: restates
+    correction: >-
+      Remove the prose. The `isSpeakerLine` branch in splitTurns holds the fact.
+    node: rules/knowledge-base/turn-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      scanLines (line 298) and the isBlank test in splitEmail (line 229)
+    evidence: >-
+      if (codePoints[i] === "\n") {
+
+      const isBlank = line.endExclusive === line.start;
+    cost: >-
+      The code decides what a line and a blank line are. A line ends only at U+000A. A blank line is one of zero length. A whitespace-only line, or any line of a CRLF email (which keeps a trailing "\r"), is never blank. On a CRLF email the header block then never ends and the whole email stays one block. No node says this, so the next reader looks in the specification and does not find the decision.
+    kind: unstated
+    correction: >-
+      Give the definitions of a line and of a blank line a home in the specification, most naturally in rules/knowledge-base/email-header-block. That should also settle how "\r" is treated.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      SPEAKER_LINE_REGEX, line 351
+    evidence: >-
+      /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/
+    cost: >-
+      The node lists the time stamp forms [h:mm], [hh:mm], (hh:mm) and (hh:mm:ss). The regex accepts a wider set: `(1:00)`, `[12:00:30]` and mismatched brackets such as `[12:00)`. Lines the node does not count as speaker lines therefore open new blocks. The node says "letters", but the class is ASCII plus U+00C0-U+00FF. That excludes letters such as Ł or Greek, and includes × and ÷. A reader who trusts the node predicts different chunk boundaries than the code produces.
+    kind: contradicts
+    correction: >-
+      Make the regex and the node agree on the time stamp forms and on what counts as a letter.
+    node: rules/knowledge-base/speaker-line
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only cuts content into chunks and marks nothing as data for a model: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls no model and no proposal tool: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no transport code: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file exposes no operation and answers no request: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment filter appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute key appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      no change hint appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item kind appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item status appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity match review appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool name appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no knowledge node appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link type appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link type rule appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node alias appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node attribute appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node type appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkInput interface and buildChunk, which carry chunk_index, the offsets, the excerpt (as text) and the chunking version
+    evidence: >-
+      chunk_index: index,
+          text: codePoints.slice(start, endExclusive).join(""),
+          offset_start: start,
+          offset_end: endExclusive,
+          chunking_version: CHUNKING_VERSION,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file receives only `content` and `sourceType` and records no raw information: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run status appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run summary appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no validity basis appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      no validation outcome appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no value type appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      no confidence handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      buildChunk, the text field
+    evidence: >-
+      text: codePoints.slice(start, endExclusive).join(""),
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      chunkV1, where the running chunk count is passed to buildChunk as the index while blocks are visited in content order
+    evidence: >-
+      buildChunk(codePoints, block.start, block.endExclusive, chunks.length)
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts chunks and lists none: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      buildChunk, the chunking_version field. The value v1 itself comes from CHUNKING_VERSION in ./config.js, which is outside the file set.
+    evidence: >-
+      chunking_version: CHUNKING_VERSION,
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      chunkV1, where splitByHardBoundaries cuts the blocks and every chunk is built inside a block's range
+    evidence: >-
+      const blocks = splitByHardBoundaries(codePoints, sourceType);
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      no citation check appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      no citation check appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no citation check appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run closing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      no provenance appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no hash: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no hash: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the only length guard is `if (content.length === 0) {` followed by `return [];`. It enforces no bound, and the 10,485,760 upper bound appears nowhere in the file.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      chunkV1, the branch after the block loop
+    evidence: >-
+      if (chunks.length === 0 && totalCodePoints > 0) {
+          chunks.push(buildChunk(codePoints, 0, totalCodePoints, 0));
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion state appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records nothing and extracts nothing: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      splitEmail, the first-blank-line branch. What counts as a blank line is not stated by the node (see the unstated finding).
+    evidence: >-
+      if (!headersClosed && isBlank) {
+            if (line.start > blockStart) {
+              ranges.push({ start: blockStart, endExclusive: line.start });
+            }
+            headersClosed = true;
+            seenBlank = true;
+            blockStart = nextLineStart(lines, i);
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      splitEmail and isQuotedLine
+    evidence: >-
+      if (headersClosed && i > 0 && !isBlank && isQuoted !== prevQuoted) {
+
+      return i < line.endExclusive && codePoints[i] === ">";
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal auditing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only cuts and orders chunks and reads none for extraction: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment recording appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records nothing and checks no held content: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no idempotency key appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      no idempotency key appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records nothing and opens no run: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run lifecycle appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      chunkV1, the oversize branch with splitBySentences. The 4000 and 2000 values come from CHUNK_HARD_MAX and CHUNK_TARGET in ./config.js, which is outside the file set and was not opened.
+    evidence: >-
+      const sentenceRanges = splitBySentences(blockText, block.start);
+
+      if (tentativeSize > CHUNK_TARGET[1]) {
+
+      const segmenter = new Intl.Segmenter("pt", { granularity: "sentence" });
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      chunkV1, the buffer-closing branch inside the oversize loop
+    evidence: >-
+      if (tentativeSize > CHUNK_TARGET[1]) {
+              chunks.push(
+                buildChunk(codePoints, bufferStart, bufferEnd, chunks.length)
+              );
+              bufferStart = sStart;
+              bufferEnd = sEnd;
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no model call appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      no name normalization appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion recording appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no confidence handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no original input appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no paging appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      splitByHardBoundaries, the pdf case, and splitOnCharBoundary
+    evidence: >-
+      case "pdf":
+            return splitOnCharBoundary(codePoints, "\f");
+
+      if (i > cursor) {
+              ranges.push({ start: cursor, endExclusive: i });
+            }
+            cursor = i + 1;
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      no confidence handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      no provenance appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      no reception time appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date handling appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run retry appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run retry appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      chunkV1, the whole-block branch. The 4000 value comes from CHUNK_HARD_MAX in ./config.js, which is outside the file set and was not opened.
+    evidence: >-
+      if (blockSize <= CHUNK_HARD_MAX) {
+            // Whole block fits — emit as a single chunk.
+            chunks.push(
+              buildChunk(codePoints, block.start, block.endExclusive, chunks.length)
+            );
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      SPEAKER_LINE_REGEX and isSpeakerLine. The regex does not agree with the node; see the contradicts finding.
+    evidence: >-
+      const SPEAKER_LINE_REGEX = /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/;
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      no succession logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      no succession logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      no succession logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      no succession logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run summary appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run summary appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call listing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      splitTurns, the loop from the second line onward
+    evidence: >-
+      for (let i = 1; i < lines.length; i++) {
+          const line = lines[i]!;
+          if (isSpeakerLine(codePoints, line)) {
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      splitByHardBoundaries, the ata, artigo and outro case
+    evidence: >-
+      case "ata":
+      case "artigo":
+      case "outro":
+        return [{ start: 0, endExclusive: total }];
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date validation appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      splitEmail, where headersClosed and every split after it depend on a blank line having been seen
+    evidence: >-
+      if (headersClosed && i > 0 && !isBlank && isQuoted !== prevQuoted) {
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      splitOnCharBoundary returns no range for a content of only form feeds, so chunkV1 falls to the empty-chunks branch
+    evidence: >-
+      if (chunks.length === 0 && totalCodePoints > 0) {
+          chunks.push(buildChunk(codePoints, 0, totalCodePoints, 0));
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records and compares nothing: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      no date parsing appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion logic appears in the file: `export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[] {`
+looked_past: >-
+  The SourceType union at the top of the file declares the source-type vocabulary in the material's own words (ata, artigo, transcricao, outro), a mirror of the PostgreSQL enum. domain/knowledge-base/source-type records those words as the material's own spelling of its values, so I left the union alone, and the enum's value set is another judgment's.
+candidates_opened:
+  - domain/knowledge-base/source-type

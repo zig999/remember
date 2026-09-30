@@ -1,0 +1,910 @@
+findings:
+  - file: src/modules/ingestion/mcp/propose-attribute.handler.ts
+    where: >-
+      the header comment, lines 1-9
+    evidence: >-
+      "Thin transport adapter. Business logic — including the full 5-layer
+      // validation pipeline (BR-13) — lives in
+      // `service/propose-attribute.service.ts`."
+    cost: >-
+      The comment says the attribute proposal goes through a "5-layer" pipeline. The node fixes
+      seven ordered checks that stop at the first failure. A reader who trusts the comment counts
+      layers where the node counts checks. The comment is prose no system emits. The handler forwards
+      to the service with `proposeAttributeService(client, input, ...)`, and the comment says the
+      pipeline is there. I did not open that file, so I did not confirm that it holds the check order.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then reconcile this file. Do not refresh the
+      count. The check order belongs to the node and to whatever code applies it.
+    node: rules/knowledge-base/attribute-proposal-check-order
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never handles document content or a prompt. Its calls are
+      `ProposeAttributeInputSchema.safeParse(raw)`, `runIngestHandler({`,
+      `assertRunIsRunning(client, deps.llm_run_id)` and `proposeAttributeService(`.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export function buildProposeAttributeHandler(args: {` is one proposal entry point. Nothing in
+      the file restricts what else the extracting model may do.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the MCP side only. `return await runIngestHandler({` shows nothing about the REST
+      transport, so it cannot show that the two answer alike.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly. The Zod-failure branch of `buildProposeAttributeHandler` holds the malformed-proposal
+      refusal of propose-attribute. The rest of the operation's answers sit in the service and
+      transport files, outside this set.
+    evidence: >-
+      `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "Input failed Zod parse.", { issues:
+      parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) })`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment listing appears. The imports are `ProposeAttributeInputSchema`, `ProposeAttributeInput`
+      and `ProposeAttributeResult`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no alias. The only names it declares are the two handlers.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `catalog: CatalogSnapshot` but only forwards it with `{ catalog: deps.catalog, now:
+      deps.now }`. It declares nothing about attribute keys.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions change hints. The input is opaque here and is only forwarded as `input`.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item kinds. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed item statuses. `validation_outcome: "rejected"` belongs to tool calls,
+      not to directed items.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution. It only forwards `input` to `proposeAttributeService`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never touches fragments. `proposeAttributeService(client, input, { llmRunId:
+      deps.llm_run_id, rawInformationId: run.input_raw_information_id }` is the only forwarding.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      The tool name literal passed to `runIngestHandler`, in both the Zod-failure call and the main
+      call of `proposeAttributeHandler`.
+    evidence: >-
+      `tool_name: "propose_attribute",`
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link handling. It is the attribute handler and only forwards to
+      `proposeAttributeService`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions a node. Its only domain calls are `assertRunIsRunning` and
+      `proposeAttributeService`.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link types. It is the attribute handler.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link type rules. It is the attribute handler.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the run: `const run = await assertRunIsRunning(client, deps.llm_run_id);` and
+      `rawInformationId: run.input_raw_information_id`. It declares nothing of the entity.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no aliases. It only forwards `input` to `proposeAttributeService`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The entity is not declared here. The file only types its return as `ProposeAttributeResult`,
+      imported from `../dto/propose-attribute.dto.js`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposals. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions node types. `catalog: deps.catalog` is only forwarded.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions prompt versions. Its only run reading is `run.input_raw_information_id`.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file gives the proposal no shape of its own. It imports `ProposeAttributeInputSchema` and
+      `ProposeAttributeInput` from `../dto/propose-attribute.dto.js`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. `rawInformationId: run.input_raw_information_id` is its only
+      reach toward the source.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the run's raw information identity: `rawInformationId:
+      run.input_raw_information_id`. It declares nothing of the entity.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no status. `assertRunIsRunning(client, deps.llm_run_id)` does the comparison,
+      and its body sits in handler-base.ts.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never counts or summarises outcomes. It only returns `result: envelope.result`.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The entity is written by `runIngestHandler`, whose body is in handler-base.ts. The file only
+      passes `tool_name`, `input`, `validation_outcome` and `tool_call_result`.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions validity dates or their basis. The input is opaque and is only
+      forwarded.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file uses one value of the enumeration, `validation_outcome: "rejected",`. The enumeration
+      is declared in `../dto/llm-run.dto.js`, outside this file.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions value types. Value handling is inside `proposeAttributeService`.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes. It only returns `result: envelope.result`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes. It only returns `result: envelope.result`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes. It only returns `result: envelope.result`.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution. It is the attribute handler.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The order lives inside `proposeAttributeService`. In this file the header comment only names a
+      "5-layer validation pipeline", and a comment does not hold the fact. That is the finding above.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence threshold. It maps `!envelope.ok` and otherwise defers to
+      `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions validity basis. The input is opaque and is only forwarded.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no similarity. It is the attribute handler.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never closes a run. It only reads the run with `assertRunIsRunning`.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance. It only forwards to `proposeAttributeService`.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never hashes anything. Its calls are `safeParse`, `runIngestHandler`, `assertRunIsRunning`
+      and `proposeAttributeService`.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never hashes anything. Its calls are `safeParse`, `runIngestHandler`, `assertRunIsRunning`
+      and `proposeAttributeService`.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no length limits. Its calls are `safeParse`, `runIngestHandler`, `assertRunIsRunning`
+      and `proposeAttributeService`.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions chunks. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions currency of assertions. It only forwards to `proposeAttributeService`.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no prompt versions. Its only run reading is `run.input_raw_information_id`.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed ingestion. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no document ingestion. It is a proposal handler that receives an already-open run
+      through `deps.llm_run_id`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      Both `runIngestHandler({` calls in the file. The Zod-failure call and the main call in
+      `proposeAttributeHandler` each pass the tool name, the input, the result and the validation
+      outcome. The insert itself is in handler-base.ts.
+    evidence: >-
+      `tool_name: "propose_attribute", input,` together with `validation_outcome: "rejected", tool_call_result:
+      envelope as unknown as Record<string, unknown>` and `validation_outcome:
+      deriveValidationOutcome(envelope), tool_call_result: { ...(envelope.result as unknown as
+      Record<string, unknown>) }`
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution. It is the attribute handler.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It is a proposal handler.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no keys. It is a proposal handler.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no keys. It is a proposal handler.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It is a proposal handler.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file changes no run state. It only reads the run with `assertRunIsRunning`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the extraction. It is the MCP attribute handler.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalises no names. It is the attribute handler.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence thresholds. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node proposal. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It only forwards to `proposeAttributeService`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It only forwards to `proposeAttributeService`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link handling. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link handling. `tool_name: "propose_attribute"` is the only tool it names.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no length limits and no intake. It is a proposal handler.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions fragments. It only forwards `input` to `proposeAttributeService`.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no paging. It is a proposal handler.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no prompt versions. Its only run reading is `run.input_raw_information_id`.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The range would sit in `ProposeAttributeInputSchema`, imported from `../dto/propose-attribute.dto.js`.
+      The file states no bound.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It only forwards to `proposeAttributeService`.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      The `assertRunIsRunning(client, deps.llm_run_id)` call, the first statement of the `run` closure
+      in `proposeAttributeHandler`. It comes before the service call. The comparison itself is in
+      handler-base.ts.
+    evidence: >-
+      `const run = await assertRunIsRunning(client, deps.llm_run_id);` followed by `const envelope =
+      await proposeAttributeService(`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      The order of statements. `ProposeAttributeInputSchema.safeParse(raw)` comes first, then
+      `assertRunIsRunning`, then `proposeAttributeService`. A malformed request is refused before the
+      run is read.
+    evidence: >-
+      `const parsed = ProposeAttributeInputSchema.safeParse(raw); if (!parsed.success) {` … `const run =
+      await assertRunIsRunning(client, deps.llm_run_id); const envelope = await
+      proposeAttributeService(`
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance and touches no fragment status. It only forwards to
+      `proposeAttributeService`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ingestion listing. It is a proposal handler.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ingestion listing. It is a proposal handler.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ingestion listing. It is a proposal handler.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no ingestion listing. It is a proposal handler.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no reception time. `now` is only forwarded with `{ catalog: deps.catalog, now:
+      deps.now }`.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      Rollback belongs to `runIngestHandler` in handler-base.ts. It happens only when the `run` closure
+      throws, as the Zod-failure `throw new ValidationFailure(` does. The `!envelope.ok` branch returns
+      normally with `validation_outcome: "rejected"`, so this file does not itself guarantee that a
+      refusal leaves only its tool call.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never mentions validity starts or fallbacks. The input is opaque and is only forwarded.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no retry. It is a proposal handler.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no retry. It is a proposal handler.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution. It is the attribute handler.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It only forwards `now: deps.now` to the service.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation and has no signal word list. It only forwards to
+      `proposeAttributeService`.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts nothing. It only returns `result: envelope.result`.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts nothing. It only returns `result: envelope.result`.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool-call listing. It is a proposal handler.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool-call listing. It is a proposal handler.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool-call listing. It is a proposal handler.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      The refused branch of the `run` closure in `proposeAttributeHandler` sets `rejected`. The taken
+      branch delegates to `deriveValidationOutcome(envelope)`, which is in handler-base.ts. A thrown
+      system failure gets `error` in handler-base.ts, outside this file.
+    evidence: >-
+      `if (!envelope.ok) { return { result: envelope as unknown as ProposeAttributeResult,
+      validation_outcome: "rejected",` and `validation_outcome: deriveValidationOutcome(envelope),`
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttributeService(` — the check is applied inside the service,
+      outside this file. The file states none of its terms.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only forwards `rawInformationId: run.input_raw_information_id`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It is a proposal handler.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The date check would be inside `proposeAttributeService`, outside this file. The file states no
+      value parsing.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no consolidation. It reads only `deriveValidationOutcome(envelope)`.
+looked_past: >-
+  The `!envelope.ok` branch stores a service refusal as the tool call's `rejected` result. In handler-base.ts, `runIngestHandler` returns it as `{ ok: true, result }`, so whether MCP and REST answer refusals alike depends on the service and transport files, outside this set. This file also never format-checks `llm_run_id`.

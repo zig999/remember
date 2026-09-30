@@ -1,0 +1,26 @@
+certified:
+  - node: constraints/ingestion-transports-answer-alike
+    state: partial
+    tests:
+      - file: src/__tests__/integration/ingestion/mcp-parity.spec.ts
+        name: propose_link with unknown link_type — REST and MCP return byte-identical BUSINESS_UNKNOWN_LINK_TYPE
+      - file: src/__tests__/integration/ingestion/mcp-parity.spec.ts
+        name: propose_link with Zod-invalid body (missing fragment_ids) — REST and MCP return byte-identical VALIDATION_INVALID_FORMAT
+    why: >-
+      Only the refusal half is exercised, and only for one operation. The two tests send the same
+      propose_link call over REST and over MCP and check that both return the same error code, for
+      two refusals: an unknown link_type (BUSINESS_UNKNOWN_LINK_TYPE) and a body missing
+      fragment_ids (VALIDATION_INVALID_FORMAT). Neither test makes a call that succeeds, so the
+      fact's first half goes unexercised: nothing checks that both transports return the same
+      result on success. The other ingestion operations both transports expose (the remaining
+      propose_* mirrors) are never called over either transport, so parity is unchecked for them
+      in both halves. Within propose_link, no refusal from a later validation layer (graph rule,
+      temporal, confidence, provenance, or a run that is not running) is compared across the two
+      transports.
+    remainder: testable
+    remainder_why: >-
+      The set of ingestion operations exposed on both transports is finite, and so is the set of
+      refusals each one declares. The remainder is a table: for each shared operation, send one
+      valid input over REST and over MCP and assert the two results are equal. Then, for each
+      refusal that operation declares, send one refusing input over both and assert the two error
+      codes are equal.

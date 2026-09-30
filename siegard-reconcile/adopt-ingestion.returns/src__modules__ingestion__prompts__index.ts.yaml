@@ -1,0 +1,870 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the header comment, lines 10-15 ("An unknown version is a configuration error ... it must never silently run a different prompt than the audit trail records")
+    evidence: >-
+      // An unknown version is a configuration error, NOT a silent fallback: BR-26
+      // step 2 mandates "load the extraction.${prompt_version} module; fail with 500
+      // SYSTEM_INTERNAL_ERROR if the module is missing". `selectPromptModule` throws
+      // `UnknownPromptVersionError`; the extraction orchestrator runs it inside its
+      // run-scoped try, so the run is flipped to `failed` and the error surfaces (it
+      // must never silently run a different prompt than the audit trail records).
+    cost: >-
+      The refusal of an unknown prompt version, and its failing the run with SYSTEM_INTERNAL_ERROR, is written a second time as prose in this file. A reader who looks here for the rule finds a paraphrase that cites "BR-26" (a back-spec label, not a node) as its authority. The paraphrase does not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the comment. The node already holds the fact. The code holds it in this file (`throw new UnknownPromptVersionError(promptVersion)` in selectPromptModule). Removal goes through the comment route, followed by /reconcile over the file.
+    node: rules/knowledge-base/prompt-version-known
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the JSDoc above UnknownPromptVersionError (line 72) and the JSDoc above selectPromptModule (lines 83-87)
+    evidence: >-
+      /** Thrown when `prompt_version` names no registered module (BR-26 step 2). */
+      ... Throws
+      * `UnknownPromptVersionError` for an unregistered version (BR-26 step 2 — fail
+      * loud, never silently substitute a different prompt than the run declares).
+    cost: >-
+      This is the same fact as the header comment, restated in two more places, each citing BR-26 as its authority. The next reader sees three prose copies next to one throw and cannot tell which is the decision.
+    kind: restates
+    correction: >-
+      Remove both doc comments. The throw at `if (module === undefined) { throw new UnknownPromptVersionError(promptVersion); }` holds the fact.
+    node: rules/knowledge-base/prompt-version-known
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the comment above DEFAULT_PROMPT_VERSION, line 62
+    evidence: >-
+      /** Recommended version for NEW runs — callers SHOULD send this at intake. */
+    cost: >-
+      The comment restates the default prompt version in prose and adds a caller recommendation ("SHOULD send this at intake") that no node holds. The node says the system fills v4 when a document ingestion names no version. A reader takes the comment as the rule for intake callers.
+    kind: restates
+    correction: >-
+      Remove the comment. `export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;` holds the value. If the "callers SHOULD send" guidance is a business decision, it belongs in the specification, not in a comment.
+    node: rules/knowledge-base/default-prompt-version
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `user(args: UserPromptArgs): Anthropic.Messages.TextBlockParam[];` from the imported modules. It does not mark any document content apart from instructions.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no model call and declares no tool. Its constructs are the PromptModule interface, four wrappers, REGISTRY and selectPromptModule.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no transport, no result and no error code. `throw new UnknownPromptVersionError(promptVersion);` is the only refusal it raises.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file throws `UnknownPromptVersionError` for an unknown version. The SYSTEM_INTERNAL_ERROR answer carrying the failed run appears only in a comment (lines 10-15), and no code in this file emits it.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only names `CatalogSnapshot` as a parameter type in `system(catalog: CatalogSnapshot): string;`. It declares no attribute key.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no proposal tool. It has no `propose_fragment`, `propose_node`, `propose_link` or `propose_attribute`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file takes `promptVersion: string` as a plain argument in `selectPromptModule(promptVersion: string): PromptModule`. It declares no run, no status and no attempts.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      REGISTRY, lines 65-70. The four registered versions are the four imported modules' PROMPT_VERSION values, and no other version resolves.
+    evidence: >-
+      const REGISTRY: Readonly<Record<string, PromptModule>> = { [v1.PROMPT_VERSION]: V1, [v2.PROMPT_VERSION]: V2, [v3.PROMPT_VERSION]: V3, [v4.PROMPT_VERSION]: V4, };
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds and validates no proposal. It only dispatches `system` and `user` prompt builders.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not set a run status. The `failed` transition is only described in a comment ("the run is flipped to `failed`").
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`const REGISTRY: Readonly<Record<string, PromptModule>> = {`).
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the DEFAULT_PROMPT_VERSION declaration, line 63
+    evidence: >-
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`). The `directed-v1` version is not registered here.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`). The run's failing is only described in a comment.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `user(args: UserPromptArgs)` to the per-version modules. It reads no chunks, shows the model nothing and carries no 200-character tail.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      selectPromptModule, lines 88-94, with the class UnknownPromptVersionError, lines 73-81. A version outside REGISTRY throws instead of falling back.
+    evidence: >-
+      const module = REGISTRY[promptVersion]; if (module === undefined) { throw new UnknownPromptVersionError(promptVersion); } return module;
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      Not touched. The file's only constructs concern prompt-module dispatch (`export function selectPromptModule(promptVersion: string): PromptModule {`).
+looked_past: >-
+  The emitted error message in UnknownPromptVersionError cites "BR-26", a back-spec label rather than a node. It states the prompt-version-known fact truly, so it is behavior agreeing with the node and not a finding, and the header history about v1 being used regardless of the recorded version is narrative, not a node fact.

@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/exact-alias-resolves
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 1: exact alias match -> matched_existing (no trigram query, no node insert)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "matched_existing (exact) resolution propagates as ok:true with resolution='matched_existing'"
+      - file: src/__tests__/unit/ingestion/propose-service-layer.spec.ts
+        name: proposeNodeService matches existing node when alias exact-norm hits
+    why: >-
+      The tests cover only the second half of the fact. When the exact-match lookup returns a node,
+      the proposal resolves to that node as matched_existing and no new knowledge node is inserted.
+      The first half is never checked: that a proposal's name equal to an alias of an active node
+      of the proposal's own node type is what produces the match. In both files the database is a
+      stub that recognises the lookup by the text of the SQL (`alias_norm = norm(`, or `FROM
+      node_alias na` with `JOIN knowledge_node kn`). It returns whatever row the test configured,
+      whatever the proposed name is, and no alias, node status or node type is ever seeded or
+      compared. The stub also matches on how the SQL is written, not on how it behaves. So these
+      tests would still pass if the lookup compared the name to something other than the alias,
+      dropped the active-status filter, or dropped the node-type filter. In each of those cases
+      the fact would no longer hold as stated. The stub would also fail if the SQL were only
+      rewritten without any change in behavior.
+    remainder: testable
+    remainder_why: >-
+      Run against a store that actually evaluates the lookup. Seed an active Person node with an
+      alias. A Person proposal whose name equals that alias must resolve to that node as
+      matched_existing, with no new node created. Two contrasting inputs should not resolve to it:
+      the same alias held only by a node that is not active, and the same alias held only by an
+      active node of a different node type.

@@ -1,0 +1,965 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the header comment, lines 8-10 ("or 'refusal' — soft skip"), with the branch at lines 661-667 that holds the behavior
+    evidence: >-
+      // 'end_turn' (or `'refusal'` — soft skip; or `'pause_turn'` — resume once
+    cost: >-
+      The header states in prose that a refused chunk is skipped. The branch `if (response.stop_reason === "refusal")` holds that, and the node holds it too. A reader can take the comment for a second home for the rule, and nothing checks it when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The behavior and the node stay where they are.
+    node: rules/knowledge-base/model-refusal-skips-chunk
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the header comment, line 21, and the docstring at line 89, beside the pre-check at lines 424-426
+    evidence: >-
+      //   - run not 'running' at entry           -> RunNotRunnableError (409)
+    cost: >-
+      The prose restates the "only a running run is extracted" rule and its 409 refusal. `if (run.status !== "running") { throw new RunNotRunnableError(llmRunId, run.status); }` already holds it, and the node holds it as well. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the header lines and the class docstring that restate the rule.
+    node: rules/knowledge-base/extraction-requires-running-run
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the header comment, line 23, the docstring at line 385, and the comment at lines 716-722, beside `FATAL_ERROR_BURST` and the `startsWith("SYSTEM_")` count
+    evidence: >-
+      //   - >=3 consecutive 'error' outcomes      -> ExtractionFatalError (500)
+    cost: >-
+      Three places in prose restate that three system errors in a row within a chunk fail the run. `export const FATAL_ERROR_BURST = 3 as const;` and `if (envelope.error.code.startsWith("SYSTEM_"))` hold it in code, and the node holds it too. If the threshold moves, the comments read as decisions of their own.
+    kind: restates
+    correction: >-
+      Remove the prose. The constant and the branch stay.
+    node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the header comment, lines 27-29, and the comment at line 523, beside `closeRunSafe(pool, llmRunId, "failed")` and `closeRunSafe(pool, llmRunId, "completed")`
+    evidence: >-
+      // All four close the run as `failed` in a fresh short transaction (BR-26
+      // step 7) BEFORE the exception is thrown out. Successful completion closes
+      // the run as `completed` (BR-26 step 6).
+    cost: >-
+      The prose restates that an extraction completes its run after the last chunk and fails it when it stops on an error. The `closeRunSafe` calls hold that, and so does the node. The comment cites "BR-26 step 6/7" as though that were where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/extraction-closes-its-run
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the constants at lines 200-201, `ANTHROPIC_REQUEST_TIMEOUT_MS` and `ANTHROPIC_MAX_RETRIES`, applied in `defaultAnthropicFactory`
+    evidence: >-
+      const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+      const ANTHROPIC_MAX_RETRIES = 2;
+    cost: >-
+      These two values decide when a stalled model call counts as the provider failing. That failure is what the contract answers with SYSTEM_LLM_PROVIDER_UNAVAILABLE and a failed run. The contract states the failure but not the five-minute ceiling or the two retries, so the next reader looks for them in the specification and finds only this file.
+    kind: unstated
+    correction: >-
+      Give the contract's provider-failure answer, or a rule beside it, the wait ceiling and the retry count. Or decide that they are operational settings and not domain facts.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment at lines 235-241, in `dispatchToolUse`'s propose_fragment case, beside `chunk_ids: [chunkId]`
+    evidence: >-
+      // Option (b): the orchestrator is authoritative about which chunk is
+      // being processed, so it injects the current `chunk_id` instead of
+      // asking the LLM for an opaque uuid it cannot know
+    cost: >-
+      The prose restates that a fragment an extraction proposes is anchored to the chunk being read, whatever chunks the model names. The spread `...(rawInput as Record<string, unknown>), chunk_ids: [chunkId]` holds that in code, and the node holds it too. The comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/extraction-anchors-to-read-chunk
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the default branch of `dispatchToolUse`, lines 282-293
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: `Unknown tool '${toolName}'.`,
+      details: { tool_name: toolName },
+    cost: >-
+      A tool call from the model that names none of the four proposals gets a VALIDATION_INVALID_FORMAT refusal. It counts as a business refusal, so it resets the fatal-burst counter and never counts toward it. No node states what an extraction does with a tool name outside the four proposals. The behavior lives only in this branch.
+    kind: unstated
+    correction: >-
+      State in the constraint, or in a rule beside it, what an extraction does with a tool call outside the four proposals, and whether that call counts toward the repeated-error burst.
+    node: constraints/extraction-acts-only-through-proposals
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the docstring at line 388 and the slice at lines 492-494, beside `PREV_TAIL_CHARS`
+    evidence: >-
+      /** `prev_tail` window — last N characters of the previous chunk's text. */
+    cost: >-
+      The prose restates that the model is shown the tail of the previous chunk. `PREV_TAIL_CHARS = 200` and `chunk.text.slice(-PREV_TAIL_CHARS)` hold that in code, and the node holds it as well.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      `MAX_TURNS_PER_CHUNK` inside `runChunkLoop`, lines 625-627 and 749-755
+    evidence: >-
+      const MAX_TURNS_PER_CHUNK = 64;
+      ...
+      "extraction_chunk_turn_cap_reached"
+      );
+      return { kind: "completed" };
+    cost: >-
+      After 64 turns on one chunk the extraction stops asking about it, counts it as read, logs a warning and moves on without failing the run. That is a decision about when a chunk is deemed read, with a threshold, and no node states it. A chunk can be left partly extracted with the run still completing, and the specification says nothing of it.
+    kind: unstated
+    correction: >-
+      State in a rule beside the run-closing rule when a chunk counts as read. Cover a turn ceiling if one is intended, and give its value.
+    node: rules/knowledge-base/extraction-closes-its-run
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the branch at lines 681-686 of `runChunkLoop`
+    evidence: >-
+      if (toolUseBlocks.length === 0) {
+      ...
+      return { kind: "completed" };
+    cost: >-
+      A model turn that ends with neither a stop signal nor any proposal is taken as the chunk being read, and the run goes on. No node states this. It is the case where a chunk yields nothing, and the code alone decides that it is not a failure.
+    kind: unstated
+    correction: >-
+      State in a rule beside the run-closing rule that a chunk which yields no proposals counts as read.
+    node: rules/knowledge-base/extraction-closes-its-run
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file hands the chunk to the prompt module and marks nothing itself: `const userBlocks = input.prompt.user({ metadata: input.metadata, chunkText: input.chunkText, prevTail: input.prevTail, });`. How the content is marked as data is in the prompt module, outside this file.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      `buildTools()` (lines 324-333) and `dispatchToolUse()` (lines 225-295)
+    evidence: >-
+      buildTool("propose_fragment", IngestToolDescriptions.propose_fragment),
+      buildTool("propose_node", IngestToolDescriptions.propose_node),
+      buildTool("propose_link", IngestToolDescriptions.propose_link),
+      buildTool("propose_attribute", IngestToolDescriptions.propose_attribute),
+      The model is offered these four tools, and the switch dispatches only those four names.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file is the in-process extraction loop (`export async function runLlmExtraction(`). It carries no REST or MCP transport and no comparison of the two.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the error sentinels `RunNotRunnableError`, `LlmProviderFatalError` and `ExtractionFatalError` (lines 90-148) and the `catch` block of `runLlmExtraction` (lines 496-521). Only the run-extraction refusals sit in this file; the other operations of the contract do not.
+    evidence: >-
+      public readonly code = "BUSINESS_RUN_NOT_RUNNABLE" as const;
+      public readonly code = "SYSTEM_LLM_PROVIDER_UNAVAILABLE" as const;
+      public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+      throw new ResourceNotFoundError("llm_run", llmRunId);
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no accepted fragments and takes no filter; its constructs are the extraction loop and the tool dispatch (`export async function runLlmExtraction(`).
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads or sets an alias kind; its constructs are the extraction loop and the tool dispatch (`export async function runLlmExtraction(`).
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads the attribute-key catalog; it hands the catalog on with `catalog: deps.catalog`, and the handlers use it.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no change hint; a proposal's fields are parsed by the imported schemas (`ProposeLinkInputSchema.safeParse(rawInput)`).
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file drives a language model (`client.messages.stream`); it never handles a directed batch.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no entity match reviews. Node resolution happens in `proposeNodeHandler`, outside this file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never builds a fragment. It passes `proposeFragmentHandler(parsed.data, {...})` the proposal and the handler records it.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      `buildTools()` and the `switch (toolName)` of `dispatchToolUse`
+    evidence: >-
+      case "propose_fragment": ... case "propose_node": ... case "propose_link": ... case "propose_attribute":
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never builds or reads a link; it passes `proposeLinkHandler(parsed.data, {...})` the proposal.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only resolves collected node ids through `resolveAffectedNodes(client, collectedIds)`. It states nothing of what a node is.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads link types; the catalog is only forwarded (`catalog: deps.catalog`).
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no link type rules; the catalog is only forwarded (`catalog: deps.catalog`).
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      `readFinalRun` (lines 915-948), which builds the run's response from its row
+    evidence: >-
+      model: row.model, prompt_version: row.prompt_version, started_at: row.started_at.toISOString(), finished_at: row.finished_at === null ? null : row.finished_at.toISOString(), status: row.status, attempts: row.attempts, input_raw_information_id: row.input_raw_information_id, idempotency_key: row.idempotency_key, summary,
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never touches aliases; its constructs are the extraction loop and the tool dispatch.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never builds or reads an attribute; it passes `proposeAttributeHandler(parsed.data, {...})` the proposal.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no node resolution; it looks only at `outcome === "error"` in `isErrorValidationOutcome`.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads node types; the catalog is only forwarded (`catalog: deps.catalog`).
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the versions are listed elsewhere. The file asks for one with `selectPromptModule(run.prompt_version)` and enumerates none.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file parses a proposal's fields with the imported schemas (`ProposeNodeInputSchema.safeParse(rawInput)`) and states none of them.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads chunks (`findChunksByRawInformationId(client, rawInfo.id)`) and states nothing about a chunk's shape.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads a raw information (`findRawInformationById`) and states nothing of what one is.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the status literals at lines 94, 811, `closeRunSafe`'s outcome parameter and the pre-check
+    evidence: >-
+      readonly currentStatus: "running" | "completed" | "failed"; outcome: "completed" | "failed"
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      the summary is computed elsewhere and only forwarded here: `const summary = await aggregateToolCallOutcomes(client, llmRunId);`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the audit row is written by the handlers (`runIngestHandler`). The file states, in a comment only, that the handlers do so.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads a validity basis; its constructs are the extraction loop and the tool dispatch.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names only one outcome value: `return outcome === "error";` in `isErrorValidationOutcome`. It states the enumeration nowhere.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads a value type; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      merges are followed in `resolveAffectedNodes`, in another file. Here: `resolved = await resolveAffectedNodes(client, collectedIds);`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      which nodes count is decided in the collector from another file. Here: `input.affectedNodes.record(block.name, envelope);`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      `readFinalRun`, line 941
+    evidence: >-
+      if (row.status === "completed" && affectedNodes !== undefined) { return { ...base, affected_nodes: [...affectedNodes] }; }
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      resolution is done by `proposeNodeHandler`; the file states no similarity threshold for it.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only passes the catalog on: `proposeAttributeHandler(parsed.data, { ... catalog: deps.catalog, now: deps.now })`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the check order sits in the handler; the file only calls `proposeAttributeHandler`.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no attribute values; it calls `proposeAttributeHandler`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no attribute values; it calls `proposeAttributeHandler`.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no confidence floor; its only mention is the comment "Any ok:true (including outcome=rejected for confidence floor)".
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not inspect a proposal's basis; the proposals are parsed by the imported schemas.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file sorts no chunks and lists none. It iterates them in the order the repository returns: `for (const chunk of chunks) {`.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      anchoring is checked by `proposeLinkHandler` and `proposeAttributeHandler`; the file only dispatches to them.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the check is in the handlers; the file only dispatches to `proposeLinkHandler` and `proposeAttributeHandler`.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the check is in the handlers; the file only passes `llm_run_id: deps.llm_run_id`.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the finish time is stamped by the repository function. Here: `await closeLlmRunRow(client, { llm_run_id: llmRunId, outcome });`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no dispute; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no consolidation; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no provenance; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no content hash; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no content hash; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no content length; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no correction; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no errata check and no errata keyword; it calls the handlers.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file derives no current state; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no dates; it calls the handlers.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no default prompt version. It uses the run's own: `selectPromptModule(run.prompt_version)`.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items. Its anchoring is to the chunk being read (`chunk_ids: [chunkId]`), not to the first chunk.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls a language model (`input.anthropic.messages.stream(`) and opens no directed run.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries no directed items; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no document and records no raw information. It extracts an existing run: `export async function runLlmExtraction(`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      the audit row is written by the handlers; here it appears only in a comment ("dispatches to the matching transport-agnostic service"), and the file writes no tool_call.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      resolution is done by `proposeNodeHandler`; the file only calls it.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      the propose_fragment case of `dispatchToolUse`, lines 232-249
+    evidence: >-
+      const withChunk = { ...(rawInput as Record<string, unknown>), chunk_ids: [chunkId], };
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      `runLlmExtraction`: the `closeRunSafe(pool, llmRunId, "failed")` calls on every failure path and `closeRunSafe(pool, llmRunId, "completed")` after the chunk loop (line 524)
+    evidence: >-
+      // ---- Happy path — close run as completed ----
+      await closeRunSafe(pool, llmRunId, "completed");
+      and, on the failure paths: `await closeRunSafe(pool, llmRunId, "failed");`
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      `FATAL_ERROR_BURST` (line 386) and the counting in `runChunkLoop` (lines 704-740), with the fatal branch at lines 482-490
+    evidence: >-
+      export const FATAL_ERROR_BURST = 3 as const;
+      if (envelope.error.code.startsWith("SYSTEM_")) { consecutiveErrors += 1; }
+      if (consecutiveErrors >= FATAL_ERROR_BURST) { return { kind: "fatal_burst" }; }
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the `for (const chunk of chunks)` loop of `runLlmExtraction` (line 465), `PREV_TAIL_CHARS` (line 389) and the metadata built in `loadRunContext` (lines 843-849). The index order itself comes from the repository read, not from this file.
+    evidence: >-
+      export const PREV_TAIL_CHARS = 200 as const;
+      const metadata: DocumentMetadata = { source_type: rawInfo.source_type, document_date: stringOrNull(metadataObj["document_date"]), title: stringOrNull(metadataObj["title"]), received_at: rawInfo.received_at.toISOString(), };
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      `runLlmExtraction`, lines 424-426
+    evidence: >-
+      if (run.status !== "running") { throw new RunNotRunnableError(llmRunId, run.status); }
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `proposeFragmentHandler`; the check is in the handler.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `proposeFragmentHandler`; the check is in the handler.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `proposeFragmentHandler`; the check order is in the handler.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no fragment; it calls `proposeFragmentHandler`.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no length; the shape is parsed by the imported `ProposeFragmentInputSchema.safeParse(withChunk)`.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no content; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads the key, in `idempotency_key: row.idempotency_key`. It computes none.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads the key, in `idempotency_key: row.idempotency_key`. It enforces no uniqueness.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no raw information, chunks or run; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no type rule; it calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the check order is in the handler; the file only calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no link type; it calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file evaluates no rule span; it calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      the transitions are enforced by the repository and service. Here: `await closeLlmRunRow(client, { llm_run_id: llmRunId, outcome });`. Only the entry check on `running` is in this file, and that is extraction-requires-running-run.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file adds no aliases; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      `runChunkLoop`, lines 661-667, and `runLlmExtraction`, lines 491-494
+    evidence: >-
+      if (response.stop_reason === "refusal") { input.logger.warn({ llm_run_id: input.llmRunId }, "extraction_chunk_refused"); return { kind: "refused" }; }
+      and the loop then proceeds: `// soft per-chunk outcomes (refusal, end_turn) -> proceed to next chunk.`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalises no names; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no assertion; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no confidence threshold; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no nodes or aliases; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no nodes; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no length; the shape is parsed by the imported `ProposeNodeInputSchema.safeParse(rawInput)`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no node type; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file guards no succession; it calls `proposeAttributeHandler`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file guards no succession; it calls `proposeAttributeHandler`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file guards no succession; it calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file guards no succession; it calls `proposeLinkHandler`.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no input length; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file counts no orphans; the summary is forwarded: `const summary = await aggregateToolCallOutcomes(client, llmRunId);`
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file pages nothing; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the set of held versions is checked in the prompt module. Here: `const prompt = selectPromptModule(run.prompt_version);`, and a miss falls to the catch-all `throw new ExtractionFatalError(llmRunId, cause, partial);`.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no confidence; the shape is parsed by the imported schemas.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no meeting; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks the run's status only at extraction entry (`if (run.status !== "running")`). The per-proposal check is in the handlers.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the per-proposal check order is in the handlers; the file only calls them.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file moves no fragment status; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no re-affirmation; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no recent ingestions; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no recent ingestions; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no recent ingestions; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no recent ingestions; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads the reception time, in `received_at: rawInfo.received_at.toISOString()`. It records none.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records nothing itself; it turns refusals into tool results (`content: JSON.stringify(envelope)`). What is recorded is decided in the handlers.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no validity start; it calls the handlers.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file supplies no fallback start; it calls the handlers.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not retry runs; it only reads `attempts: row.attempts`.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not retry runs; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks; it reads them: `findChunksByRawInformationId(client, rawInfo.id)`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file recognises no speaker lines; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no validity basis; it calls the handlers.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no similarity threshold; it calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file closes no assertions; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file closes no assertions; it calls the link and attribute handlers.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file closes no assertions; it passes only `now: deps.now` to the handlers.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no succession keywords; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the count is done in the repository. Here: `const summary = await aggregateToolCallOutcomes(client, llmRunId);`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      the count is done in the repository. Here: `const summary = await aggregateToolCallOutcomes(client, llmRunId);`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file derives no validation outcome for an audit row. It only reads `outcome === "error"` in `isErrorValidationOutcome`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks; its constructs are the extraction loop and the tool dispatch.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no dates; it calls the handlers.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests and cuts no emails; its constructs are the extraction loop and the tool dispatch.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests and cuts no pdfs; its constructs are the extraction loop and the tool dispatch.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no content; its constructs are the extraction loop and the tool dispatch.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no attribute values; it calls `proposeAttributeHandler`.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no dispute; it calls the link and attribute handlers.
+looked_past: >-
+  The name-prefix test in `isAnthropicSdkError` (whether real SDK errors match it, which decides 502 against 500), the error swallowing in `closeRunSafe`, the unused `burstReset` and the BR and UC citations in the comments are code-review or citation matters, not domain-fact judgments.

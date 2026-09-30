@@ -1,0 +1,47 @@
+certified:
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3: ambiguous (one strong + one in [FLOOR, STRONG)) -> needs_review + 2 review rows"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3b: ambiguous (two strong candidates) -> needs_review + exactly 2 review rows"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3c: ambiguous with a below-floor third candidate inserts only 2 review rows"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "returns ambiguous when one candidate is strong AND a second is in [FLOOR, STRONG)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "returns ambiguous when two-or-more candidates are >= MATCH_STRONG"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "returns ambiguous when only one candidate sits in [FLOOR, STRONG)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "ambiguous candidates exclude rows below MATCH_FLOOR"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "ambiguous resolution propagates through proposeNodeService as ok:true with resolution='needs_review'"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 2: trigram strong-unique -> matched_existing (no node insert, no review rows)"
+    why: >-
+      Most of the fact is exercised. With no exact alias match and no single strong candidate,
+      and with candidates at or above 0.55 (0.6, 0.7, 0.9, 0.95), the tests assert that the new
+      knowledge node is inserted with status needs_review. Branch 3 also asserts that one entity
+      match review is recorded per candidate, pairing the new node with that candidate and its
+      similarity. Branch 3c asserts that a candidate below the floor gets no review. Two parts go
+      unexercised. First, the rule only counts active knowledge nodes of the proposal's node type.
+      The stubbed client returns the configured trigram rows whatever the SQL's predicates say,
+      so no test offers a candidate that is merged, deleted or needs-review, or one of a different
+      node type. If the candidate query stopped filtering on active status or node type, every test
+      would still pass. Second, the bound is inclusive ("0.55 or more"), but no candidate sits at
+      exactly 0.55. Changing the comparison from >= to > would pass every test. The test
+      "exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55" only checks the exported constants'
+      values, not the comparison, so it does not close that gap.
+    remainder: testable
+    remainder_why: >-
+      Three single-input assertions would close it. (1) A proposal whose only candidate at 0.55
+      or more is inactive (merged or deleted) should produce a node created active with no entity
+      match review. (2) A proposal whose only candidate at 0.55 or more has a different node type
+      should produce the same result. Both need a candidate query that actually applies its
+      predicates, such as a database-backed run. (3) A proposal with no exact alias match and a
+      single active same-type candidate at exactly 0.55 should create a needs-review node and
+      record one review with similarity 0.55.

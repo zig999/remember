@@ -1,0 +1,23 @@
+certified:
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    state: partial
+    tests:
+      - file: src/__tests__/integration/ingestion/llm-run-routes.spec.ts
+        name: returns paginated tool_call rows
+    why: >-
+      The "before the page is cut" half is exercised. Five tool calls of one run are listed
+      with limit=3 and offset=1, and the test expects total to be 5 next to 3 items. A total
+      read from the page would give 3 and fail. The "every tool call of the LLM run" half is
+      not exercised. The test never runs the real SQL: its fake client answers any query that
+      starts with `SELECT count(*)` and names `tool_call` with the number of seeded calls whose
+      llm_run_id equals the first parameter, whatever the query's own predicate says. All five
+      seeded calls share one tool_name and one validation_outcome, and no other run's tool
+      calls are seeded. So a total that leaves out some of the run's tool calls, or counts
+      another run's, still passes.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, with the count's predicate actually evaluated.
+      The input is an LLM run with tool calls of mixed tool names and validation outcomes,
+      seeded next to another run's tool calls, and listed with a limit and offset that cut a
+      page smaller than the run's tool-call set. The expected result is a total equal to the
+      number of that run's tool calls: all of them, and none from the other run.

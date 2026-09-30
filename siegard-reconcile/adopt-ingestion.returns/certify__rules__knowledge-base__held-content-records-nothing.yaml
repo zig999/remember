@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/held-content-records-nothing
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: never re-inserts raw_information or llm_run on the noop path
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: returns status 200 with outcome=noop_existing and an empty chunks array when content_hash already exists
+      - file: src/__tests__/integration/ingestion/routes.spec.ts
+        name: returns 200 outcome=noop_existing on a repeated content_hash with empty chunks array
+    why: >-
+      Only one test carries the fact: "never re-inserts raw_information or llm_run
+      on the noop path". It checks that the raw information, raw chunk and LLM run
+      counts stay the same when the service re-ingests content whose hash is
+      already held. It covers one case only. The fake already holds an LLM run
+      under the same idempotency key, because the model and prompt_version match.
+      The fake also refuses a duplicate hash or idempotency key by itself. So the
+      LLM run half is only tested where an existing run would block a new one
+      anyway. Nothing in the set re-ingests held content under a different model
+      or prompt_version, where no run under that key exists yet. That is the case
+      where the fact's "no new LLM run" does real work, and it goes unexercised.
+      The other two tests check only what comes back (outcome=noop_existing, an
+      empty chunks array, the same raw_information_id and llm_run_id). They never
+      count what was stored, so a new chunk or run recorded next to the returned
+      ids would not make them fail. Their bearing is incidental. The set also
+      reaches only ingestRawInformation and POST /api/v1/ingest/raw-information.
+      The one-shot ingest_document entry point also records a raw information,
+      chunks and an LLM run for content it is given. Nothing in the set re-ingests
+      held content through it.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, each against one expected result, would close it. First,
+      re-ingest content whose hash a raw information already holds, under a model
+      or prompt_version that no existing LLM run's idempotency key covers. Expect
+      the raw information, raw chunk and LLM run counts to be unchanged. Second,
+      send the same held content through ingest_document. Expect the same three
+      counts to be unchanged there too.

@@ -1,0 +1,38 @@
+certified:
+  - node: rules/knowledge-base/extraction-closes-its-run
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: "happy path: two tool_use blocks then end_turn — both dispatched, run completed"
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: "refusal: logged, chunk skipped, next chunk continues normally"
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: "pause_turn: resumed once without modifying messages"
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: ">=3 consecutive INTERNAL errors in one chunk: run failed → ExtractionFatalError (500)"
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: "Anthropic SDK fatal error: run failed → LlmProviderFatalError (502) with partial summary"
+      - file: src/__tests__/unit/ingestion/extraction-orchestrator.spec.ts
+        name: "uncaught (non-SDK) exception: run failed → ExtractionFatalError (500)"
+    why: >-
+      The failure half is covered. Three tests stop the extraction on an error:
+      an error burst from the tools, a fatal SDK error and a generic exception.
+      Each asserts that the last status written to the run is failed. The
+      completion half is covered in part. The happy-path test shows the run
+      ends completed and that every chunk was sent to the model (three stream
+      calls over two chunks). The refusal and pause_turn tests show the run
+      ends completed. The fact says the run completes "once it has read every
+      chunk", and that timing goes untested. The completion tests check the
+      status history with `toContain("completed")`. They never check when the
+      completed write happened compared with the reading of the last chunk.
+      They also never check that completed is the only status written. So a
+      run marked completed before its last chunk is read, or marked completed
+      and then something else, passes every test in the set.
+    remainder: testable
+    remainder_why: >-
+      One input: a run with two chunks where every turn ends in end_turn. One
+      expected result: the run's status is written exactly once, as completed,
+      and only after the stream has been called for the last chunk. For
+      example, record how many stream calls had been made at the moment the
+      status update runs, assert it equals the number of chunks, and assert the
+      status history equals ["completed"].

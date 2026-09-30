@@ -1,0 +1,928 @@
+findings:
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the comment above LlmRunSummarySchema, lines 36-41
+    evidence: >-
+      * Counters for `LlmRun`. The 8 outcome buckets are aggregated from
+      * `tool_call.validation_outcome`; `orphaned_fragments` is a separate
+      * fragment-level recall signal (see field doc). All fields always
+      * present (BR-12).
+    cost: >-
+      The count-by-outcome rule and the zero-for-absent rule are written a second time as prose beside the schema. The code that holds them is aggregateToolCallOutcomes in src/modules/ingestion/repository/llm-run.repository.ts (`GROUP BY validation_outcome`, buckets defaulted to 0). A reader of this DTO takes the comment for the authority, and it names BR-12, not the node.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The fact is held by the node and by the repository query.
+    node: rules/knowledge-base/summary-counts-tool-calls
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the doc comment on the `orphaned_fragments` field, lines 51-59
+    evidence: >-
+      * Fragments proposed by this run that carry NO provenance row — i.e. the
+      * LLM extracted them but never cited them in any consolidated link/attribute.
+      * Such fragments stay `status='proposed'` and are excluded from the partial
+      * FTS index (`WHERE status='accepted'`), so they are unsearchable
+    cost: >-
+      The definition of an orphaned fragment (status proposed, cited by no provenance) is restated as prose here. The code that holds it is the `information_fragment` count in aggregateToolCallOutcomes in src/modules/ingestion/repository/llm-run.repository.ts. The comment also adds claims about the partial FTS index that no node in this set holds.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The definition is held by the node and by the repository query.
+    node: rules/knowledge-base/orphaned-fragment
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the doc comment above LlmRunResponseSchema, lines 80-90
+    evidence: >-
+      `affected_nodes` (BR-33, v1.3.0) is OPTIONAL — attached ONLY when
+      `status === 'completed'`.
+    cost: >-
+      The completed-only condition is stated as prose in a file that cannot enforce it, and it cites BR-33 instead of the node. The code that holds it is the `if (row.status === "completed")` branch in src/modules/ingestion/service/llm-run.service.ts. A reader of the DTO sees a rule the schema does not carry.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The condition is held by the node and by llm-run.service.ts.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the `attempts` field of LlmRunResponseSchema, line 98
+    evidence: >-
+      attempts: z.number().int().positive(),
+    cost: >-
+      The schema fixes a lower bound of 1 on a run's attempts. The llm-run node says only that attempts is an integer, and retry-counts-attempts says only that a retry adds one. Neither states that the first attempt counts as 1. The floor is a decision that now lives in this schema, and a reader looking in the specification will not find it.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a run's attempts start at 1 and give that a node. Otherwise the bound should not be asserted here.
+    node: domain/knowledge-base/llm-run
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the `affected_nodes` field, line 102, with the comment on lines 83-89
+    evidence: >-
+      affected_nodes: z.array(AffectedNodeSchema).optional(),
+      ... ABSENT means the run is
+      * `running` / `failed` OR the best-effort batched lookup could not produce
+      * the list.
+    cost: >-
+      The response type lets a completed run carry no affected nodes when the lookup failed, and the comment says so. affected-nodes-only-when-completed and the read-llm-run answer say the nodes are listed when the run is completed, with no failure exception. The best-effort omission is a behaviour decided in code and prose, and a reader of the specification will believe a completed run always lists its nodes.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a completed run may omit its affected nodes when the lookup fails, and give that a node. Otherwise the response should not allow it.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only the LlmRun response/request schemas; nothing in it presents document content to a model
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares only response/request schemas; `IngestToolNameSchema` lists the four propose_* names but constrains no actor
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds REST DTO schemas only; no construct compares REST and MCP answers
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the read-llm-run, list-tool-calls and retry-llm-run shapes, held at LlmRunResponseSchema, ToolCallResponseSchema, ListToolCallsResponseSchema, RetryLlmRunRequestSchema and ListToolCallsQuerySchema. The other operations of the contract are not in this file.
+    evidence: >-
+      reason: z.string().max(500).optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      total: z.number().int().nonnegative(),
+      affected_nodes: z.array(AffectedNodeSchema).optional(),
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      no schema in the file filters accepted fragments; the only listing query is ListToolCallsQuerySchema
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias enumeration appears in the file
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no attribute-key construct appears in the file
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      no change-hint enumeration appears in the file
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion schema appears in the file
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-item schema appears in the file
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-item-kind enumeration appears in the file
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      ValidationOutcomeSchema lists eight values and has no dependency_failed, so it is not this enumeration
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-match construct appears in the file
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file mentions fragments only in a comment on orphaned_fragments and declares no fragment schema
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      IngestToolNameSchema, lines 28-33
+    evidence: >-
+      export const IngestToolNameSchema = z.enum([
+        "propose_fragment",
+        "propose_node",
+        "propose_link",
+        "propose_attribute",
+      ]);
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      no knowledge-link schema appears in the file
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      AffectedNodeSchema carries id, canonical_name and node_type as a listing entry, not the node's own shape
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link-type construct appears in the file
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link-type-rule construct appears in the file
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      LlmRunResponseSchema, lines 91-103
+    evidence: >-
+      model: z.string(),
+      prompt_version: z.string(),
+      finished_at: z.string().datetime({ offset: true }).nullable(),
+      status: LlmRunStatusSchema,
+      input_raw_information_id: z.string().uuid(),
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+      summary: LlmRunSummarySchema,
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias construct appears in the file
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node-attribute schema appears in the file
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node-resolution enumeration appears in the file
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_type: z.string()` in AffectedNodeSchema is a name in a listing entry, not the catalog kind
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string(), which does not enumerate v1 to v4
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no proposal request schema
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk schema appears in the file
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      only `input_raw_information_id: z.string().uuid()` refers to a raw information; no raw-information shape is declared
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      LlmRunStatusSchema, line 11
+    evidence: >-
+      export const LlmRunStatusSchema = z.enum(["running", "completed", "failed"]);
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      LlmRunSummarySchema, lines 42-61
+    evidence: >-
+      accepted: z.number().int().nonnegative(),
+      ...
+      error: z.number().int().nonnegative(),
+      orphaned_fragments: z.number().int().nonnegative(),
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      ToolCallResponseSchema, lines 107-115
+    evidence: >-
+      tool_name: IngestToolNameSchema,
+      arguments: z.record(z.string(), z.unknown()),
+      result: z.record(z.string(), z.unknown()).nullable(),
+      validation_outcome: ValidationOutcomeSchema,
+      created_at: z.string().datetime({ offset: true }),
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no valid-from-basis enumeration appears in the file
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      ValidationOutcomeSchema, lines 15-24
+    evidence: >-
+      export const ValidationOutcomeSchema = z.enum([
+        "accepted",
+        "consolidated",
+        "superseded_previous",
+        "needs_review",
+        "uncertain",
+        "disputed",
+        "rejected",
+        "error",
+      ]);
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no value-type enumeration appears in the file
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      AffectedNodeSchema declares the entry shape only; no construct follows merges
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      AffectedNodeSchema declares `id`, `canonical_name` and `node_type`; which nodes a run affects is computed outside the file
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the schema only permits absence (`affected_nodes: z.array(AffectedNodeSchema).optional(),`); the completed-only condition appears in this file only in a comment
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      no confidence threshold appears in the file
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no similarity construct appears in the file
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk construct appears in the file
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk construct appears in the file
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk construct appears in the file
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `finished_at` is declared nullable; nothing in the file stamps it
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no content hash; `idempotency_key` is a different digest
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      no raw-information construct appears in the file
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no intake schema appears in the file
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion construct appears in the file
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string(), with no default of v4
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion construct appears in the file
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion construct appears in the file
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      ToolCallResponseSchema shapes the audit record on output; nothing in the file records a proposal
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment recording appears in the file
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion construct appears in the file
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      the idempotency_key field of LlmRunResponseSchema, line 100. It holds the key's format only; the derivation of the digest is not in this file.
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the regex on `idempotency_key` fixes a format and states no uniqueness
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no ingestion construct appears in the file
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link-type-rule construct appears in the file
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunStatusSchema lists the three statuses and declares no transition
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction construct appears in the file
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      no normalization construct appears in the file
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no confidence threshold appears in the file
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion construct appears in the file
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion construct appears in the file
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion construct appears in the file
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      no assertion construct appears in the file
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no intake schema appears in the file
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the field is declared (`orphaned_fragments: z.number().int().nonnegative(),`), but the definition of an orphan appears in this file only in the comment above it
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file's only listing query is ListToolCallsQuerySchema, which defaults to 50 for tool calls; the search and accepted-fragment default of 20 is not here
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      prompt_version: z.string(), which is not restricted to the versions the system holds
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      no provenance construct appears in the file
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no recent-ingestions construct appears in the file
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      ListToolCallsQuerySchema bounds the tool-call limit, not the recent-ingestions limit
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      no recent-ingestions construct appears in the file
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no recent-ingestions construct appears in the file
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      no raw-information construct appears in the file
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      no recording construct appears in the file
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      `attempts: z.number().int().positive(),` shapes the response; nothing in the file adds one on retry or clears the finish time
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares RetryLlmRunRequestSchema for the request body only, with no fragment handling
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity-resolution construct appears in the file
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      no consolidation construct appears in the file
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      the orphaned_fragments field of LlmRunSummarySchema, line 60. It holds the field's shape only; the count is computed outside the file.
+    evidence: >-
+      orphaned_fragments: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      the eight outcome counters of LlmRunSummarySchema, lines 43-50. They hold the summary's shape only; the counting is computed outside the file.
+    evidence: >-
+      accepted: z.number().int().nonnegative(),
+      consolidated: z.number().int().nonnegative(),
+      superseded_previous: z.number().int().nonnegative(),
+      needs_review: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      ListToolCallsResponseSchema declares `items: z.array(ToolCallResponseSchema)` and states no ordering
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      ListToolCallsQuerySchema, lines 136-139
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      `total: z.number().int().nonnegative(),` is declared in the envelope; the file does not say what it counts
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      ValidationOutcomeSchema lists the outcome vocabulary and states no rule for which outcome a proposal receives
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking construct appears in the file
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      no proposal validation appears in the file
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      a scenario about email chunking; no chunking construct appears in the file
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      a scenario about pdf chunking; no chunking construct appears in the file
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      a scenario about intake idempotency; no ingestion construct appears in the file
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      a scenario about attribute value validation; no proposal validation appears in the file
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      a scenario about consolidation; no consolidation construct appears in the file
+looked_past: >-
+  ListToolCallsQuerySchema also holds `.min(1).max(100)` and `.min(0)`, which page-limit-bounds and page-offset-non-negative govern; those two nodes are outside the set and the values agree with them, so I filed nothing.

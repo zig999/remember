@@ -1,0 +1,897 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The docstring above ValidFromBasisSchema, lines 5-15, the part saying `received` MUST NOT appear in this input enum.
+    evidence: >-
+      "Only `stated` and `document` are accepted at the API boundary. The third value, `received`, is a backend-only fallback ... it is never sent by an LLM or any external caller, so it MUST NOT appear in this input enum."
+    cost: >-
+      The refusal of the basis `received` is written in prose and also held by the enum on line 16, `z.enum(["stated", "document"])`. A reader who edits one can leave the other stale, and the node is the place they should look for it.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement. The enum on line 16 holds the fact, and the node's binding to this file claims it.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The same docstring, lines 5-15, the part describing the temporal validator's fallback to `received`.
+    evidence: >-
+      "The third value, `received`, is a backend-only fallback that the temporal validator applies internally when neither `stated` nor `document` can justify the date"
+    cost: >-
+      The prose describes the fallback chain, but nothing in this file runs it. The behavior sits in src/modules/ingestion/validation/temporal.ts (`valid_from_basis: "received"`). A second description of the chain can drift from the node and from that code without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the sentence. The fallback is held by rules/knowledge-base/required-start-fallback and implemented in src/modules/ingestion/validation/temporal.ts.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The `fragment_ids` field of ProposeLinkInputSchema, lines 54-59.
+    evidence: >-
+      fragment_ids: z
+          .array(z.string().uuid())
+          .min(1)
+          .describe(
+            "Evidence: id(s) of propose_fragment claims from this chunk that state the relation. At least one required."
+    cost: >-
+      The refusal of a link proposal that cites no fragment is a domain rule, and only this schema states it. The specification says a proposal "cites the information fragments it rests on" with cardinality 0..*, and its cited-fragments rules cover only fragments that exist and belong to the run. The next reader looks in the specification for the minimum of one and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the minimum of one cited fragment per link proposal a node, or state it on domain/knowledge-base/proposal.
+    node: domain/knowledge-base/proposal
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The `valid_to` field's description, lines 63-65.
+    evidence: >-
+      "Date the relation STOPS holding (YYYY-MM-DD), if stated. Intervals are half-open [from, to)."
+    cost: >-
+      This text is sent to the model as the tool description. It states half-open validity intervals for proposals, and no node in the set holds that. The nearest node, validity-start-before-end, says only that the start is strictly before the end. Half-open is stated for link type rules and chunk offsets, not for assertion validity. The convention therefore lives only in what the model is told.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether an assertion's validity interval is half-open and put that in a node, for example on rules/knowledge-base/validity-start-before-end.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The `change_hint` field's default, line 69.
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none").describe(
+    cost: >-
+      A link proposal that omits its change hint is treated as change hint none. That decides re-affirmation, because reaffirmation-consolidates needs "change hint is none". The specification states the default only for directed ingestion (directed-defaults), so for a proposal from an extraction the default lives only in this schema.
+    kind: unstated
+    correction: >-
+      Analysis should state on domain/knowledge-base/change-hint, or in a rule, that a proposal naming no change hint has change hint none.
+    node: domain/knowledge-base/change-hint
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file holds only the link proposal's input schema and result type, and does not present document content to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file declares the shape of one proposal and does not restrict what the model can act through.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { readonly link_id: string | null; ... } — the file declares one result type and no transport behavior.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      ProposeLinkOutcome and ProposeLinkResult, lines 75-88, which are the result shape of the propose-link operation only. The rest of the contract is not in this file.
+    evidence: >-
+      export type ProposeLinkOutcome =
+        | "accepted"
+        | "consolidated"
+        | "superseded_previous"
+        | "disputed"
+        | "rejected";
+      ... readonly link_id: string | null; readonly superseded_link_id?: string; readonly reason?: "BELOW_CONFIDENCE_FLOOR";
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ — no accepted-fragment listing filter appears in the file.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no alias appears in the file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns links and declares no attribute key.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      ChangeHintSchema, line 20.
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]);
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file declares no directed-ingestion batch.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file declares no directed item.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed item kind appears in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | "consolidated" | "superseded_previous" | "disputed" | "rejected"; — this is the link proposal outcome, not the directed item status enumeration.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no entity match review appears in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1) — the file only references fragments by identity and declares no fragment.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      // MCP `ingest.propose_link` input/output contract (UC-10). — the file is the propose-link tool's schema, but no enumeration of ingest tool names is declared here.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      readonly link_id: string | null; — the file names a link only by identity in the result and declares no link aggregate.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      source_node_id: z.string().uuid() — the file references nodes by identity and declares no node aggregate.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      link_type: z.string().min(1) — the file only names a link type as a non-empty string and declares no catalog entry.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      link_type: z.string().min(1) — no link type rule appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ — the schema carries no LLM run field and declares no run.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no alias appears in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns links and declares no node attribute.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | ... | "rejected"; — this is a link outcome, not a node resolution.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node type is declared in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no prompt version appears in the file.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeLinkInputSchema, lines 28-72, as the link proposal's confidence, change hint, validity dates and basis, and its cited fragments.
+    evidence: >-
+      confidence: z.number().min(0).max(1) ... fragment_ids: z.array(z.string().uuid()).min(1) ... valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() ... valid_from_basis: ValidFromBasisSchema.optional() ... change_hint: ChangeHintSchema.default("none")
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no raw chunk appears in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no raw information appears in the file.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run status appears in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — this is a single proposal's result, not a run summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — the file records no tool call.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      ValidFromBasisSchema, line 16. It declares only the two values a caller may state, and the node's third value, received, is deliberately left out.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | "consolidated" | "superseded_previous" | "disputed" | "rejected"; — this is a link proposal outcome, and the file does not declare the validation outcome enumeration.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file declares no value type.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — no affected node list appears in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — no affected node list appears in the file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — no affected node list appears in the file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not node resolution.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not attribute proposals.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not attribute proposals.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not attribute proposals.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, ...) — this is the format of a link proposal's validity dates, not an attribute value.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      readonly reason?: "BELOW_CONFIDENCE_FLOOR"; — the file declares the result's shape, but the behavior of recording nothing is not in it.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      ValidFromBasisSchema, line 16.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no similarity computation appears in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunk appears in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunk appears in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunk listing appears in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1) — the file checks only the shape of the cited identities, not their anchoring in the run's raw information.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1) — the file checks only the shape of the cited identities, not that the fragments exist.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1) — the file checks only the shape of the cited identities, not that they belong to the run.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run closing appears in the file.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      | "disputed" — the file names the outcome in a type union but holds no dispute behavior.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | "consolidated" | ... — the file names outcomes and holds no precedence.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | "consolidated" | ... — no provenance is recorded in the file.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no content hash appears in the file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no content hash appears in the file.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no content appears in the file.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]); — the file declares the hint and holds no replacement behavior.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]); — the file declares the hint and holds no errata check.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no currency of an assertion is decided in the file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() — the schema checks only the format of each date, in no order among dates.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no prompt version appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed attribute appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed attribute appears in the file.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none") — this is the default of a link proposal through this schema, and no directed ingestion is in the file.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      confidence: z.number().min(0).max(1) — the confidence is the caller's, and the file holds no directed default of 1.0.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed item appears in the file.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed item appears in the file.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed node appears in the file.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed reference appears in the file.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no directed ingestion appears in the file.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no document ingestion appears in the file.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no email appears in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no email appears in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — the file records no tool call.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node resolution appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not fragment proposals.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not fragment proposals.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not fragment proposals.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not fragment proposals.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not fragment proposals.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no ingestion of content appears in the file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no idempotency key appears in the file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no idempotency key appears in the file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no ingestion of content appears in the file.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      link_type: z.string().min(1) — the file checks only that the name is non-empty, and the text says "must be a catalog LinkType allowed for the source/target node types", but no code checks a rule.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ — the schema checks the shape of the request and orders none of the proposal's checks.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      link_type: z.string().min(1) — the file checks only that the name is non-empty, not that the catalog holds it.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no link type rule appears in the file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run lifecycle appears in the file.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node resolution appears in the file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no extraction appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no name comparison appears in the file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      | "accepted" — the file names the outcome in a type union and records no assertion.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Confidence 0–1 in this relation. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped." — the thresholds appear only in the emitted tool description, and no code in the file assigns a status.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node creation appears in the file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node resolution appears in the file.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not node proposals.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns link proposals, not node proposals.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns links and holds no attribute uniqueness.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file concerns links and holds no attribute uniqueness.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file holds no link uniqueness.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file holds no link uniqueness.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no original input appears in the file.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file decides no fragment status.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no paging appears in the file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no pdf appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no prompt version appears in the file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      The `confidence` field of ProposeLinkInputSchema, lines 47-50.
+    evidence: >-
+      confidence: z
+          .number()
+          .min(0)
+          .max(1)
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file looks up no current assertion.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ — the schema carries no run identity and checks no run status.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ — the schema carries no run identity and orders no checks.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — the file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      "'none' = plain assertion (re-affirming an identical fact consolidates, never duplicates)" — this is emitted tool description text, and no code in the file re-affirms.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no recent ingestion appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no recent ingestion appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no recent ingestion appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no recent ingestion appears in the file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no reception time appears in the file.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      export interface ProposeLinkResult { ... } — the file records nothing.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      valid_from: IsoDateSchema.optional() — the schema leaves the start optional and never checks that a required start is available.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      "The third value, `received`, is a backend-only fallback that the temporal validator applies internally" — only the docstring speaks of the fallback, and the code that applies it is in src/modules/ingestion/validation/temporal.ts (`valid_from_basis: "received"`).
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run retry appears in the file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run retry appears in the file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chunking appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no speaker line appears in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      valid_from: IsoDateSchema.optional() ... valid_from_basis: ValidFromBasisSchema.optional() — both fields are independently optional, so the schema does not require a basis when a start is stated. The requirement appears only in the text "Omit when valid_from is omitted".
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no node resolution appears in the file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no succession behavior appears in the file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      | "superseded_previous" — the file names the outcome in a type union and holds no succession behavior.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no succession behavior appears in the file.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no fragment text is examined in the file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run summary appears in the file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no run summary appears in the file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no tool call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no tool call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no tool call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkOutcome = | "accepted" | ... | "rejected"; — the file records no tool call and assigns no validation outcome.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no chat or transcript appears in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no source blocks appear in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() — the schema checks only the format of each date and never compares them.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no email appears in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no pdf appears in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      export type ProposeLinkInput = z.infer<typeof ProposeLinkInputSchema>; — no ingestion of content appears in the file.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, ...) — this checks a link proposal's date format only, and no attribute value or calendar-day check is in the file.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]); — the file declares the hint and decides no dispute.
+looked_past: >-
+  Two things in other files are another judgment's. src/modules/ingestion/mcp/mcp-schemas.ts line 310 appears to declare its own `ValidFromBasis` enum. src/modules/ingestion/validation/temporal.ts returns the document-date branch with a null start, where the required-start-fallback node has it take the document date.

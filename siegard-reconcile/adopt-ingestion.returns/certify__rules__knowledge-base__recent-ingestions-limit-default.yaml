@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    state: uncovered
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-ops-tools.spec.ts
+        name: returns recent items and applies the default limit (10) when omitted
+    why: >-
+      The one test that touches the default is "returns recent items and
+      applies the default limit (10) when omitted". It does not show that a
+      listing with no limit holds 10 entries. Its fake pool matches any SQL
+      containing "FROM raw_information" and records params[0]. The test then
+      checks that this recorded value was 10. That is a check on an internal
+      call: it pins which position the query-parameter array puts the value
+      in. It does not pin what the listing holds. The fake never runs the SQL,
+      so no LIMIT is ever applied. The code could pass 10 as the first
+      parameter and use it for something other than the row cap, or cap at
+      some other number, and the test would still pass. If the code moved the
+      limit to another parameter position without changing behaviour, the test
+      would fail. The fake also returns exactly one row, and the test's only
+      check on what comes back is items having length 1. Nothing offers more
+      than 10 recent ingestions and checks that a call with no limit answers
+      10 of them, so the fact itself goes unexercised. The other test in that
+      block, which rejects a limit of 999, is about the maximum, not the
+      default.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Seed a store with more than 10
+      ingestions (say 12) and call list_recent_ingestions with no limit
+      against a query path that actually applies the SQL. Expect exactly 10
+      items back.

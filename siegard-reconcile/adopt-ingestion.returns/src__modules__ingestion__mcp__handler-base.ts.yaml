@@ -1,0 +1,890 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      The file-header comment (lines 9-12, step 4) and the runIngestHandler docstring (lines 129-130).
+    evidence: >-
+      "4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
+      short TX to write the audit `tool_call` row (BR-23)." and "BR-23: even when the business transaction rolls back, the audit row is
+      written via a SEPARATE short transaction (`insertToolCallStandalone`)."
+    cost: >-
+      Two comments state that a refused proposal records only its tool call, while the same file already does it in code (the ROLLBACK, then insertToolCallStandalone in safeWriteAuditOnRollback). A reader can take the comment for the place the rule is decided, and when the node moves `--check` does not reach a comment.
+    kind: restates
+    correction: >-
+      Remove the header steps and the docstring sentence. The behavior is held by runIngestHandler in this file (the ROLLBACK, then safeWriteAuditOnRollback calling insertToolCallStandalone) and by the node.
+    node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      The deriveValidationOutcome docstring, lines 55-65, and the inline comment at lines 85-86.
+    evidence: >-
+      "Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+      branch returns this), the audit row is `'rejected'` per BR-17. Every other
+      `ok:true` envelope is `'accepted'`."
+    cost: >-
+      The docstring states the mapping to a tool call's validation outcome, and it is also incomplete: it says every other envelope is `accepted`, while the switch maps consolidated, superseded_previous, disputed, needs_review and uncertain to themselves. The two homes can drift apart, and the docstring points to BR-17 and TC-010/TC-011 instead of to the node.
+    kind: restates
+    correction: >-
+      Remove the docstring prose. The mapping is held by the switch in deriveValidationOutcome and by the node.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      The assertRunIsRunning docstring, lines 91-102.
+    evidence: >-
+      "- id does not match any LLMRun row -> `RESOURCE_NOT_FOUND`
+      - id matches a row whose `status !== 'running'` -> `BUSINESS_RUN_NOT_RUNNING`"
+    cost: >-
+      The docstring restates which code answers a missing run and which a run that is not running. The same codes are thrown a few lines below, and the contract holds them. The docstring is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring prose. The branches at lines 108-121 hold the fact, together with the contract's propose-* answers.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      The uncaught-error branch of runIngestHandler, lines 185-201.
+    evidence: >-
+      error: { code: "SYSTEM_INTERNAL_ERROR", message: "Internal error in MCP handler." }
+    cost: >-
+      The code decides that a failed proposal is answered with SYSTEM_INTERNAL_ERROR and this message, and recorded as `error`. The contract's propose-fragment, propose-node, propose-link and propose-attribute answers list no system-failure answer. The only SYSTEM_INTERNAL_ERROR answers the contract holds are for run-extraction and ingest-document. The next reader looks in the specification for how a failed proposal is answered and finds nothing.
+    kind: unstated
+    correction: >-
+      Give the contract's propose-* operations a refusal for an unexpected failure, naming the code SYSTEM_INTERNAL_ERROR.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      The catch block of safeWriteAuditOnRollback, lines 227-238.
+    evidence: >-
+      "// Swallow — we already lost the business TX; failing to audit must not
+      // surface a SECOND error to the LLM."
+    cost: >-
+      The code lets a refused or failed proposal end up with no tool call when the audit write fails: it logs `tool_call_audit_write_failed` and returns the original envelope. The node says every proposal is recorded as a tool call, and no node states this exception. A run's summary is counted from its tool calls, so such a proposal would be missing from its run's account with no rule saying that can happen.
+    kind: unstated
+    correction: >-
+      State in the specification whether a proposal whose audit write fails is still answered and left unrecorded, or is instead answered with an error.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's functions are deriveValidationOutcome, assertRunIsRunning, runIngestHandler and safeWriteAuditOnRollback. None presents document content to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only wraps a proposal handler's transaction and audit row. It holds no extraction path and no model access.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file re-exports the shared envelope types, `export type { McpEnvelope, McpErr, McpOk } from "../service/propose.types.js";`. It does not itself hold the alike-answer property across transports.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      assertRunIsRunning (lines 103-123) and the two error envelopes of runIngestHandler (lines 173-180 and 195-198). The success envelope is `{ ok: true, result: outcome!.result }` (line 204).
+    evidence: >-
+      throw new ValidationFailure("RESOURCE_NOT_FOUND", ...) and throw new ValidationFailure("BUSINESS_RUN_NOT_RUNNING", `LLMRun ${llmRunId} is not running (status='${row.status}').`, { llm_run_id: llmRunId, status: row.status })
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment listing filters.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns aliases.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attribute keys.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns change hints.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed items.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed item kinds.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed item statuses.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity match reviews.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns information fragments.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only imports the type: `import type { IngestToolName, ValidationOutcome } from "../dto/llm-run.dto.js";`. The values are declared elsewhere.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns knowledge links.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns knowledge nodes.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link types.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link type rules.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads a run row, `const row = await findLlmRunById(client, llmRunId);`. It does not declare the run.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node aliases.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node attributes.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `result?.resolution` only as a tag for the audit outcome (line 70). It does not decide resolutions.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node types.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns prompt versions.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file wraps a proposal handler generically, `run: (client: PoolClient) => Promise<HandlerBusinessOutcome<R>>`. It does not declare the proposal's shape.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns raw chunks.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only returns `input_raw_information_id` from the run row (line 122). It holds nothing of the raw information.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only compares a status, `if (row.status !== "running")`. It does not declare the enumeration.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns run summaries.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      The insertToolCall call at lines 148-154 and the insertToolCallStandalone call at lines 220-226.
+    evidence: >-
+      insertToolCall(client, { llm_run_id: args.deps.llm_run_id, tool_name: args.tool_name, arguments: args.input as unknown as Record<string, unknown>, result: outcome.tool_call_result, validation_outcome: outcome.validation_outcome, })
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity bases.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only imports the type, `ValidationOutcome` from "../dto/llm-run.dto.js", and returns its values from deriveValidationOutcome. It does not declare the enumeration.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns value types.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns affected nodes.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns affected nodes.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns affected nodes.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity resolution.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attribute keys.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no proposal checks of its own. It only runs the run check that precedes them.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attribute values.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attribute values.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps a returned outcome, `case "rejected": return "rejected";`. It does not apply the confidence floor.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity bases.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns similarity.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunk listing.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns cited fragments.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns cited fragments.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns cited fragments.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file closes a run.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps a returned outcome, `case "disputed": return "disputed";`. It does not decide disputes.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps a returned outcome, `case "consolidated": return "consolidated";`. It does not decide precedence.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns content hashes.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns content hashes.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns content length.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns corrections.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns corrections.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns current assertions.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns dates.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns prompt versions.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns directed ingestion.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns document ingestion.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      runIngestHandler, lines 145-155 (success path) and lines 172-201 with safeWriteAuditOnRollback (refused and failed paths). The audit-write failure swallow at lines 227-238 is reported as an unstated finding.
+    evidence: >-
+      await insertToolCall(client, { llm_run_id: args.deps.llm_run_id, tool_name: args.tool_name, arguments: ..., result: outcome.tool_call_result, validation_outcome: outcome.validation_outcome, }); and await safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "rejected");
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction. The running-run check is in assertRunIsRunning, which the file states for proposals.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment chunks.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment chunks.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment chunks.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment recording.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragment text.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns intake.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns idempotency keys.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns idempotency keys.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns intake.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link type rules.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no link checks of its own. It only runs the run check that precedes them.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link types.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns link type rules.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads a run's status, `row.status !== "running"`. It performs no transition.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node aliases.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns extraction.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file normalizes names.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file records assertions.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns confidence.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node aliases.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity resolution.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node names.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns node types.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attributes.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attributes.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns links.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns links.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns original input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns fragments.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns paging.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns prompt versions.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns confidence.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns current assertions.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      assertRunIsRunning, lines 115-121.
+    evidence: >-
+      if (row.status !== "running") { throw new ValidationFailure("BUSINESS_RUN_NOT_RUNNING", `LLMRun ${llmRunId} is not running (status='${row.status}').`, { llm_run_id: llmRunId, status: row.status }); }
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      assertRunIsRunning, lines 107-121. It checks that the run exists and then that it is running. The well-formed-request check is not in this file.
+    evidence: >-
+      if (row === null) { throw new ValidationFailure("RESOURCE_NOT_FOUND", ...) } followed by if (row.status !== "running") { throw new ValidationFailure("BUSINESS_RUN_NOT_RUNNING", ...) }
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns re-affirmation.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns listings.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns listings.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns listings.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns listings.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      runIngestHandler, lines 156-183 and 195-200, with safeWriteAuditOnRollback.
+    evidence: >-
+      await client.query("ROLLBACK"); ... await safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "rejected"); return errEnv; and the same call with "error" on the failure path.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity starts.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity starts.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file retries a run.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file retries a run.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns validity bases.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns entity resolution.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns succession.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns succession.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns succession.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns succession.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns run summaries.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns run summaries. It only writes the rows they are counted from.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns tool-call listings.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns tool-call listings.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns tool-call listings.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      deriveValidationOutcome, lines 66-89, and the "rejected" and "error" arguments of the two safeWriteAuditOnRollback calls, lines 181 and 199.
+    evidence: >-
+      const tag = result?.outcome ?? result?.resolution; switch (tag) { case "rejected": return "rejected"; case "consolidated": return "consolidated"; case "superseded_previous": ... case "disputed": ... case "needs_review": ... case "uncertain": ... default: return "accepted"; }
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns dates.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns chunking.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns intake.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns attribute values.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No construct in the file concerns disputes.
+looked_past: >-
+  Prose in the file calls the run id "bound at MCP session start by the transport" and cites BR-21 and BR-17, and CLAUDE.md records the per-session model as retired. That is a stale-comment and code-review matter, and no pack node holds the ambient-id fact, so I did not report it.

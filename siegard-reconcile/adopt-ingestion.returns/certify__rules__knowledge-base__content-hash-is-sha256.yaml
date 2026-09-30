@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/content-hash-is-sha256
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: sha256Hex > returns 64 lowercase hex characters
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: sha256Hex > matches the canonical sha256 of UTF-8 bytes
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: ingestRawInformation — create path (BR-01, UC-01) > returns status 201 with outcome=created and a non-empty chunks array
+      - file: src/__tests__/integration/ingestion/routes.spec.ts
+        name: POST /api/v1/ingest/raw-information > returns 201 outcome=created on a new content_hash
+      - file: src/__tests__/integration/ingestion/routes.spec.ts
+        name: GET /api/v1/ingest/raw-information/:id > returns 200 with the raw_information row when found
+    why: >-
+      The digest itself is fully tested, but only for the helper sha256Hex and not for a raw
+      information. The two hash.spec tests check the output format (64 lowercase hexadecimal
+      characters, by regex and by length). They also compare the output with node:crypto's
+      SHA-256 over the UTF-8 bytes of a non-ASCII input ("Olá mundo"), so a change of
+      algorithm, encoding or letter case would fail them. The other half of the fact is that a
+      raw information's content hash is that digest of its content. That half is only checked
+      in passing. The service create-path test checks content_hash on the way to checking the
+      201/created outcome and the chunk count, and its own comment calls the check "sanity
+      check". The routes POST-create and GET-by-id tests do the same on the way to the status
+      code and the row's shape. All three use the production sha256Hex as the expected value,
+      never an independently known digest, and none of them is about the hash. So the checks
+      that a raw information's hash is the SHA-256 of its UTF-8 content, in lowercase
+      hexadecimal, would change the day the outcome or shape checks around them change.
+      Nothing marks them as the ones the fact depends on.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Ingest a raw information whose content includes
+      non-ASCII characters, then read it back. Its content_hash should equal a fixed literal:
+      the known 64-character lowercase hexadecimal SHA-256 digest of that content's UTF-8
+      bytes, computed independently of sha256Hex. A test built this way exists to check the
+      hash and nothing else.

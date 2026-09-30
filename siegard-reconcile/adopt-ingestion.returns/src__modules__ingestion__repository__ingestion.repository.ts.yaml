@@ -1,0 +1,912 @@
+findings:
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring above RAW_INFORMATION_CONTENT_HASH_CONSTRAINT, line 27
+    evidence: >-
+      /** Constraint name used by the DB to enforce the content_hash uniqueness. */
+    cost: >-
+      The uniqueness of a content hash is stated in prose beside a constant. The node holds it, and the DDL enforces it at migrations/0001_init.sql:234 (`content_hash  text NOT NULL UNIQUE`). A third statement of the rule can drift from both.
+    kind: restates
+    correction: >-
+      Remove the prose. The constant and the DDL keep the behavior, and the node holds the fact.
+    node: rules/knowledge-base/content-hash-unique
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring above LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT, line 31
+    evidence: >-
+      /** Constraint name used by the DB to enforce the llm_run idempotency_key uniqueness. */
+    cost: >-
+      Idempotency-key uniqueness is restated in prose. The node holds it, and the DDL enforces it at migrations/0001_init.sql:277 (`idempotency_key          text NOT NULL UNIQUE`). A second reader-facing home for the rule can drift from both.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/idempotency-key-unique
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring on RawInformationRow.original_input, lines 44-49
+    evidence: >-
+      Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
+      BR-34). `null` for every non-chat path (REST, MCP direct, document
+      ingestion).
+    cost: >-
+      The rule for when the original input is recorded is restated in a comment. The node holds it, and code in src/modules/ingestion/service/directed-ingestion.service.ts:366 applies it (`original_input: deps.sourceExcerpt ?? null,`). The comment's "Verbatim user turn" and "every non-chat path" phrasing is a second wording of the same fact and can drift from the node's "turn's excerpt".
+    kind: restates
+    correction: >-
+      Remove the docstring prose. The service holds the behavior, and the node holds the fact.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring above insertRawChunks, lines 153-154
+    evidence: >-
+      Returns the inserted rows ordered by `chunk_index` ascending. That ordering
+      is the contract of the calling route (the response chunk array is sorted).
+    cost: >-
+      Chunk listing order is stated as a contract in prose. The node holds it, and this file enforces it with `return result.rows.sort((a, b) => a.chunk_index - b.chunk_index);`. A reader may treat the comment as the place the order was decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The sort keeps the behavior.
+    node: rules/knowledge-base/chunk-listing-order
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring above findChunksByRawInformationId, lines 181-184
+    evidence: >-
+      Find every `raw_chunk` of the given `raw_information_id`, ordered by
+      `chunk_index` ascending. Used by GET .../chunks.
+    cost: >-
+      Chunk listing order is restated in prose. The node holds it, and the same function enforces it with `ORDER BY chunk_index ASC`.
+    kind: restates
+    correction: >-
+      Remove the ordering sentence from the docstring.
+    node: rules/knowledge-base/chunk-listing-order
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the docstring above insertLlmRun, lines 200-203, the status default
+    evidence: >-
+      Insert a new `llm_run` row. Default `status = 'running'`, `attempts = 1`,
+      `finished_at = NULL` (DB defaults).
+    cost: >-
+      A new run's opening status is restated in a comment. The node holds it, and the DDL applies it at migrations/0001_init.sql:274 (`status                   llm_run_status NOT NULL DEFAULT 'running',`). The insert in this file sets no status, so the comment is the only statement of it here.
+    kind: restates
+    correction: >-
+      Remove the prose about the status default.
+    node: rules/knowledge-base/ingestion-records-chunks-and-run
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the same docstring above insertLlmRun, lines 200-203, the attempts default
+    evidence: >-
+      Default `status = 'running'`, `attempts = 1`,
+      `finished_at = NULL` (DB defaults).
+    cost: >-
+      A new run starts with one attempt. That fact appears only in this comment and in the DDL default (migrations/0001_init.sql:275, `attempts int NOT NULL DEFAULT 1`). No node holds it: retry-counts-attempts says only that a retry adds one, and llm-run says only that attempts is a required integer. The value the retry arithmetic starts from therefore lives where nobody looks for a business decision.
+    kind: unstated
+    correction: >-
+      Give the initial attempts count of a run a node, most naturally in the node that says a run is opened in status running. Then remove the comment.
+    node: rules/knowledge-base/ingestion-records-chunks-and-run
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt. Its statements are `INSERT INTO raw_information`, `INSERT INTO raw_chunk` and `INSERT INTO llm_run`, and SELECTs over them.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no model-facing action. Its statements are `INSERT INTO raw_information`, `INSERT INTO raw_chunk` and `INSERT INTO llm_run`, and SELECTs over them.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is transport-neutral persistence. It has no REST or MCP handler, only `export async function insertRawInformation(`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      toRawInformationResponse and toRawChunkResponse hold the response fields of the two source reads (read-raw-information, list-raw-chunks). No other operation of the contract sits in this file.
+    evidence: >-
+      `received_at: row.received_at.toISOString(),` and `metadata: row.metadata ?? {},` in toRawInformationResponse. `locator: row.locator ?? null,` and `chunking_version: row.chunking_version,` in toRawChunkResponse.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches information fragments. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches node aliases. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches the attribute catalog. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal handling. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no batch structure. Its only trace of directed ingestion is the optional `original_input?: string | null;` argument.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches curation records. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `information_fragment`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no tool call handling. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `knowledge_link`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `knowledge_node`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches the link catalog. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches the link catalog. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      LlmRunRow, insertLlmRun, findLlmRunByIdempotencyKey. The attributes model, prompt_version, status, attempts, started_at, finished_at, idempotency_key and the raw information reference are all read and written. The run's summary and its tool calls are not touched here.
+    evidence: >-
+      `INSERT INTO llm_run (model, prompt_version, input_raw_information_id, idempotency_key)` with `RETURNING id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key`.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_alias`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_attribute`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches the node catalog. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: string;` is an unconstrained string in insertLlmRun's arguments. The set v1 to v4 is not declared here.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal handling. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkRow, insertRawChunks, findChunksByRawInformationId, toRawChunkResponse. The chunk's index, offsets, text (the excerpt), locator and chunking version are persisted and read. superseded_at is neither selected nor filtered on.
+    evidence: >-
+      `INSERT INTO raw_chunk (raw_information_id, chunk_index, "text", offset_start, offset_end, chunking_version)` and `readonly locator: ChunkLocator;`.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationRow, insertRawInformation, findRawInformationByHash, findRawInformationById, toRawInformationResponse. source_type, content, storage_ref, content_hash, received_at, metadata and original_input are handled. title and document_date are not touched.
+    evidence: >-
+      `INSERT INTO raw_information (source_type, content, content_hash, metadata, original_input)` with `RETURNING id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the status member of LlmRunRow
+    evidence: >-
+      `readonly status: "running" | "completed" | "failed";`
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunRow carries no summary: `readonly idempotency_key: string;` is its last member.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement handles validity dates or bases. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches attribute values. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches nodes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches nodes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunRow carries no affected nodes: `readonly idempotency_key: string;` is its last member.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence handling. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no similarity computation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertRawChunks stores the `text` it is handed (`const texts = chunks.map((c) => c.text);`). It never compares that text with the content between the offsets, so the chunker owns the rule.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertRawChunks stores the caller's numbering (`const indices = chunks.map((c) => c.chunk_index);`) and assigns none.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      findChunksByRawInformationId and insertRawChunks
+    evidence: >-
+      `ORDER BY chunk_index ASC` in findChunksByRawInformationId, and `return result.rows.sort((a, b) => a.chunk_index - b.chunk_index);` in insertRawChunks.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertRawChunks persists a caller-supplied value (`const versions = chunks.map((c) => c.chunking_version);`). That value being v1 is not stated in this file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run closing. insertLlmRun opens a run and leaves `finished_at` to the database default.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches provenance. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The hash is received, never computed: `content_hash: string;` in insertRawInformation's arguments. Its 64-hex shape is enforced by the DDL at migrations/0001_init.sql:235 (`CHECK (content_hash ~ '^[0-9a-f]{64}$')`).
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only names the constraint (`"raw_information_content_hash_key" as const`). The uniqueness is enforced by the DDL at migrations/0001_init.sql:234, not by any statement here.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `content: string;` in insertRawInformation's arguments carries no length check.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertLlmRun requires the caller to supply it: `prompt_version: string;`. No default appears in this file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertLlmRun takes the model as a caller argument (`model: string;`). The values "directed" and "directed-v1" do not appear in this file.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches nodes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run closing. It contains no UPDATE of `llm_run`.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertRawInformation stores the `content: string;` it is handed and composes none.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertRawInformation persists only what the caller passes: `args.original_input ?? null,`. Deciding that a chat turn's excerpt goes there happens in the service. Here it is stated only in the RawInformationRow docstring.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no orchestration. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run closing. It contains no UPDATE of `llm_run`.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only lists chunks (`ORDER BY chunk_index ASC`). It has no extraction reading and shows a model nothing.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `information_fragment`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `information_fragment`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file offers `findRawInformationByHash`, a lookup only. The decision to record nothing when the hash is held is not made in this file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The key is received, never computed: `idempotency_key: string;` in insertLlmRun's arguments. No digest is computed in this file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only names the constraint (`"llm_run_idempotency_key_key" as const`). The uniqueness is enforced by the DDL at migrations/0001_init.sql:277, not by any statement here.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The three inserts exist as separate functions (insertRawInformation, insertRawChunks, insertLlmRun). Recording them together and opening the run in status running is not done here. insertLlmRun's column list omits status (`INSERT INTO llm_run (model, prompt_version, input_raw_information_id, idempotency_key)`) and relies on the DDL default.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches the link catalog. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunRow only types the three states (`readonly status: "running" | "completed" | "failed";`). The file contains no transition and no UPDATE of `llm_run`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_alias`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no name comparison. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence handling. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_alias`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_attribute`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `node_attribute`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `knowledge_link`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `knowledge_link`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `original_input?: string | null;` in insertRawInformation's arguments carries no length check.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches fragments or provenance. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no paging. Its lists are `LIMIT 1` lookups and the unpaged `ORDER BY chunk_index ASC`.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: string;` in insertLlmRun's arguments is unconstrained.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. It contains no check of `status`.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches fragments or provenance. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent-ingestions listing. Its lookups are by hash, id and idempotency key.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent-ingestions listing. Its lookups are by hash, id and idempotency key.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent-ingestions listing. Its lookups are by hash, id and idempotency key.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no recent-ingestions listing. Its lookups are by hash, id and idempotency key.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The insert omits the column and returns the database's value: `INSERT INTO raw_information (source_type, content, content_hash, metadata, original_input)` with `RETURNING ... received_at`. The moment is set by the DDL default at migrations/0001_init.sql:236 (`received_at   timestamptz NOT NULL DEFAULT now()`).
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`, and the file has no proposal handling.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. It reads no document date. Its `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input` omits it.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal handling. It reads no document date. Its `SELECT id, source_type, content, storage_ref, content_hash, received_at, metadata, original_input` omits it.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no UPDATE of `llm_run`, so it changes `attempts` nowhere.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches fragments, and the file has no retry.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches links or attributes. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches fragments. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunRow carries no summary: `readonly idempotency_key: string;` is its last member.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      LlmRunRow carries no summary: `readonly idempotency_key: string;` is its last member.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`, and the file has no paging.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`, and the file has no paging.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `tool_call`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal validation. Its exports are the insert, find and map functions over `raw_information`, `raw_chunk` and `llm_run`.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. insertRawChunks takes prepared `chunks: readonly RawChunkInput[]`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file offers `findRawInformationByHash` and `findLlmRunByIdempotencyKey`, both lookups only. The decision to record nothing is not made here.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no value parsing. No statement touches `node_attribute`.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No statement touches `knowledge_link`. The tables written are `raw_information`, `raw_chunk` and `llm_run`.
+looked_past: >-
+  Left to other judgments: the back-spec citations in comments (BR-09, BR-19, BR-34, TC-01, §11 compliance_delete) and the transaction-ownership remark, and the response-side vocabulary (`text`, `offset_start`, `offset_end`) that differs from the nodes' `excerpt`, `start_offset`, `end_offset`. Also the `metadata ?? {}` and `locator ?? null` defensive defaults, and listing chunks without filtering or marking superseded ones.

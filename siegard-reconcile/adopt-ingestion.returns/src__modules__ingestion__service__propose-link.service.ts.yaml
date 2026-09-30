@@ -1,0 +1,919 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, lines 6-15 (the five-layer list)
+    evidence: >-
+      // Layered validation (BR-13) in the documented order. Each layer is a
+      // sequential `await`, so layer N+1 only runs when layer N has not thrown:
+      //   1. Structural    — cross-table refs (nodes exist, fragments exist,
+      //                      link_type known).
+      //   2. Graph rules   — active link_type_rule for the triple (BR-15).
+    cost: >-
+      The order in which a link proposal's checks run is written twice, once in the node and once in this
+      comment. If the node's order changes, the comment keeps describing the old one, and a reader trusts
+      whichever they open first. The comment even lists "link_type known" last within layer 1, while the
+      node lists it first.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by the sequence of statements in proposeLinkService (link type,
+      nodes, fragments, graph rule, temporal, confidence, anchoring), and the node holds it in prose.
+    node: rules/knowledge-base/link-proposal-check-order
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, lines 13 and 17-19 (the 0.40 floor)
+    evidence: >-
+      //   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+      // On confidence < 0.40 the service returns `{ ok: true, result: { outcome:
+      // 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`.
+    cost: >-
+      The 0.40 floor is stated in prose here, while the running value is CONFIDENCE_FLOOR in
+      validation/confidence.ts. If the number moves, this comment keeps naming the old one.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held in code by `CONFIDENCE_FLOOR = 0.4` in
+      src/modules/ingestion/validation/confidence.ts, and here by the `below_floor` branch that returns
+      before `consolidateLink`.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, lines 21-28 (what the consolidator decides)
+    evidence: >-
+      // the consolidator locks the
+      // vigent row(s) under FOR UPDATE and decides between consolidated /
+      // superseded_previous / correction (outcome=accepted) / disputed / accepted
+      // (new).
+    cost: >-
+      The set of ways a link proposal is taken is restated outside the node. The decision lives in
+      graph-consolidation.service.ts, so this list can drift from both the code and the node without any
+      check noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The decision is held by `consolidateLink` in
+      src/modules/ingestion/service/graph-consolidation.service.ts.
+    node: rules/knowledge-base/consolidation-precedence
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      Layer 3 comment, lines 139-142, and the comment at lines 206-208
+    evidence: >-
+      // `received_at` is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The received-date fallback is written as prose in this file, while its running form is in
+      validation/temporal.ts. A reader looking for where a missing validity start is filled in finds the
+      claim here and not the rule.
+    kind: restates
+    correction: >-
+      Remove both comments. The fallback is held in code by `validateTemporal` in
+      src/modules/ingestion/validation/temporal.ts (the `received` branch that returns
+      `valid_from_basis: "received"`).
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      result mapping, lines 221-232
+    evidence: >-
+      // Map consolidator outcome to the public DTO. `superseded_link_id` only
+      // surfaces for `superseded_previous` and `accepted` (correction branch);
+      // ...
+      consolidation.superseded_link_id !== undefined
+            ? { ...baseResult, superseded_link_id: consolidation.superseded_link_id }
+    cost: >-
+      The link answer carries the superseded link's identity for a correction that is taken as `accepted`.
+      The contract names that identity only for `superseded_previous`. The behaviour is set by this
+      pass-through together with graph-consolidation.service.ts, which returns `superseded_link_id` on
+      `outcome: "accepted"`. No node holds it, so a client and the specification disagree about what an
+      accepted answer contains.
+    kind: unstated
+    correction: >-
+      Decide whether an accepted correction answers with the superseded link's identity. If it does, the
+      propose-link answer in the ingestion contract should say so. If it does not, the pass-through has to
+      stop returning it for `accepted`.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file sends no prompt to a model; its only export is `export async function proposeLinkService(` and it makes no model call
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file is one proposal endpoint's service and holds no extraction loop; nothing in it restricts what a model may do
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      the signature and returns of proposeLinkService, lines 60-65 and 177/232
+    evidence: >-
+      `): Promise<McpEnvelope<ProposeLinkResult>> {` with `return { ok: true, result };` and every refusal thrown as `new ValidationFailure(` — one transport-free implementation with no REST or MCP branch
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      proposeLinkService, the propose-link operation: refusals at lines 68-124 and 186-194, answers at lines 172-177 and 224-232
+    evidence: >-
+      `const result: ProposeLinkResult = { link_id: null, outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR", };` and `throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more fragment_ids do not resolve to a fragment row.", { fragment_ids: args.fragment_ids })`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no accepted fragments; its only fragment access is `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no node alias; it holds no alias kind
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only; it declares or reads no attribute key
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only forwards `change_hint: args.change_hint` and declares no change-hint values
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no directed-ingestion logic; its only export is `proposeLinkService`
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no directed-item logic; its only export is `proposeLinkService`
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no directed-item kinds
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no directed-item statuses
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution and records no entity match review
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `FROM information_fragment` but declares no fragment structure; the entity is declared in the schema and DTOs
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file declares no tool names and records no tool call
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes no link row; it passes `link_type_id: resolvedLink.id` and the dates to `consolidateLink(`, which writes it
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only asks `findNodeTypeIdByNodeId(client, args.source_node_id)` and declares no node structure
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `deps.catalog.linkTypeByName.get(args.link_type)` and `resolvedLink.requires_valid_from` but declares no link-type structure
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls `validateGraphRule(deps.catalog, {...}, deps.now())` and declares no rule structure
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `runCtx.llmRunId` and `runCtx.rawInformationId` and declares no run structure
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no alias
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no node proposal
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads node type ids (`sourceNodeTypeId`, `targetNodeTypeId`) and declares no node-type structure
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no prompt version
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file takes `args: ProposeLinkInput` from "../dto/propose-link.dto.js"; the proposal shape is declared there
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no chunk field; anchoring goes through `countFragmentsAnchoredToSource(` in the repository
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `(metadata->>'document_date') AS document_date, received_at FROM raw_information` but declares no structure
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads or writes a run status
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file forwards `valid_from_basis: args.valid_from_basis ?? null` and declares no basis values
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file returns `outcome: "rejected"` for the floor case, but the outcome values are declared elsewhere
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no attribute value types
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no affected nodes
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no affected nodes
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no affected nodes
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file orders link checks only; it has no attribute proposal
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the below_floor branch, lines 168-178; the 0.40 threshold itself is CONFIDENCE_FLOOR in validation/confidence.ts
+    evidence: >-
+      `const route = routeConfidence(args.confidence); if (route.kind === "below_floor") { ... return { ok: true, result }; }` — the return comes before `consolidateLink(`, so no link is written
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only forwards `valid_from_basis: args.valid_from_basis ?? null` and refuses no `received` basis; any such refusal is not in this file
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no chunks
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks and names no chunking version
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      Layer 5, lines 180-194
+    evidence: >-
+      `const anchored = await countFragmentsAnchoredToSource(client, { fragment_ids: args.fragment_ids, expected_raw_information_id: runCtx.rawInformationId, }); if (anchored !== args.fragment_ids.length) { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", ...`
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      Layer 1 (c), lines 109-115
+    evidence: >-
+      `if (fragRes.rows.length !== args.fragment_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more fragment_ids do not resolve to a fragment row.", { fragment_ids: args.fragment_ids }`
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      Layer 1 (c), lines 116-124
+    evidence: >-
+      `if (f.llm_run_id !== runCtx.llmRunId) { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "fragment_id does not belong to this run.", { fragment_id: f.id, llm_run_id: runCtx.llmRunId }`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file closes no run
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`; the dispute decision is in graph-consolidation.service.ts
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `const consolidation = await consolidateLink(client, {...}, resolvedLink, fragmentTexts, runCtx);`; the precedence is decided inside the consolidator
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `fragment_ids: args.fragment_ids` to `consolidateLink(` and records no provenance itself
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no content hash
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no raw information
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no content length
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`; the correction branch is decided in the consolidator
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `change_hint: args.change_hint, fragment_texts: fragmentTexts` to `validateTemporal({`; the errata test (ERRATA_MARKERS) is in validation/temporal.ts
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no currency
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls `const resolvedTemporal = validateTemporal({`; the order of the date checks is inside validation/temporal.ts
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no prompt version
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file opens no run
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no directed logic
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no document
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call; its comment says "The caller maps this to `validation_outcome = 'rejected'` on the `tool_call` row (BR-17)"
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file proposes no fragment and runs no extraction
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no extraction
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no extraction
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no extraction
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no extraction
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles cited fragments, not cited chunks
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles cited fragments, not cited chunks
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file proposes no fragment
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no fragment
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no fragment text length; it reads `"text"` only for the errata check
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no content
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no idempotency key
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no run
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no raw information, chunk or run
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file assembles the triple and calls `validateGraphRule(deps.catalog, { source_node_type_id: sourceNodeTypeId!, link_type_id: resolvedLink.id, target_node_type_id: targetNodeTypeId! }, deps.now())`; the decision and the BUSINESS_LINK_RULE_VIOLATION are in validation/graph-rules.ts
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      the sequence of statements in proposeLinkService, lines 66-194
+    evidence: >-
+      `assertKnownType({ kind: "link_type", ...` then `findNodeTypeIdByNodeId(` for source and target, then the fragment query and its two throws, then `validateGraphRule(`, `validateTemporal({`, `routeConfidence(args.confidence)`, and last `countFragmentsAnchoredToSource(`
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      Layer 1 (a), lines 67-74
+    evidence: >-
+      `const linkType = deps.catalog.linkTypeByName.get(args.link_type); assertKnownType({ kind: "link_type", name: args.link_type, found: linkType !== undefined, });`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only passes `deps.now()` to `validateGraphRule(`; the in-effect test on `valid_from` and `valid_to` is not in this file
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never changes a run's status
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls no model
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no names
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`; the new-assertion branch is in the consolidator
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      lines 197-198; the 0.75 and 0.40 thresholds are in validation/confidence.ts
+    evidence: >-
+      `const statusForNewRow: "active" | "uncertain" = route.kind === "active" ? "active" : "uncertain";` passed as `status_for_new_row: statusForNewRow`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no node
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no node proposal
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks link types only; `assertKnownType` is called with `kind: "link_type"`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attributes
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes no link row; succession is guarded in the consolidator it calls
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes no link row; the guard is in the consolidator it calls
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no original input
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file decides no orphaning
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file pages nothing
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no prompt version
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `routeConfidence(args.confidence)`; it checks no 0-to-1 range (the DTO may)
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file finds no current assertion; the consolidator does
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives `runCtx: RunContext` and checks no run status
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives `runCtx: RunContext`; the run checks happen before it is called
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no provenance and changes no fragment status
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads `received_at`; it records no raw information
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      every refusal is a `throw new ValidationFailure(` before `consolidateLink(`, but the file itself records no tool call, so the rule's whole statement is not held here
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `requires_valid_from: resolvedLink.requires_valid_from, document_date: documentDate, received_at: receivedAt` to `validateTemporal({`; the BUSINESS_DATE_UNJUSTIFIED refusal is in validation/temporal.ts
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file threads `valid_from: resolvedTemporal.valid_from, valid_from_basis: resolvedTemporal.valid_from_basis` from `validateTemporal` into `consolidateLink(`; the fallback itself is in validation/temporal.ts
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file parses no content
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `valid_from: args.valid_from ?? null, valid_from_basis: args.valid_from_basis ?? null` to `validateTemporal({`; the refusal is in validation/temporal.ts
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does no entity resolution
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `fragmentTexts` to `consolidateLink(` and names no succession marker
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file returns `outcome: "rejected"` but records no tool call or validation outcome; the mapping is left to the caller (comment "The caller maps this to `validation_outcome = 'rejected'`")
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `valid_from: args.valid_from ?? null, valid_to: args.valid_to ?? null` to `validateTemporal({`; the start-before-end test is in validation/temporal.ts
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests no content
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles links only, not attribute values
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only calls `consolidateLink(`; the dispute is decided in the consolidator
+looked_past: >-
+  In another file's judgment, validation/temporal.ts returns valid_from null when a document date exists instead of taking it with basis document (which required-start-fallback states), and this file reads the document date from `metadata->>'document_date'` where the raw-information node lists it as its own attribute.

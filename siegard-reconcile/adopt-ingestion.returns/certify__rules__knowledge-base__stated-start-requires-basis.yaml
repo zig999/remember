@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/stated-start-requires-basis
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: rejects BUSINESS_DATE_UNJUSTIFIED when valid_from supplied without basis
+    why: >-
+      Only one test gives a validity start with no basis. It sets requires_valid_from = true
+      and leaves both document_date and received_at null, and it expects
+      BUSINESS_DATE_UNJUSTIFIED. So the invariant is checked in one situation only: a start
+      is required and there is nowhere else to get a date from. The node puts no condition on
+      it. It says any proposal that states a validity start must state its basis. Two cases
+      are never tried. The first is a proposal that states a start with no basis when
+      requires_valid_from = false. The second is a proposal that states a start with no basis
+      while a document_date or received_at is available. A validator could reject only when a
+      start is required, or it could fill in the missing basis from the document or received
+      dates. Either one would break the invariant and this test would still pass. In the
+      tested case both date fields are null, so the rejection is also what an empty date chain
+      produces. The test therefore does not show that the missing basis caused the rejection.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, each a proposal with a stated valid_from and a null valid_from_basis. The
+      first has requires_valid_from = false. The second has requires_valid_from = true with
+      document_date and received_at both present. Each is expected to be rejected with
+      BUSINESS_DATE_UNJUSTIFIED. Neither should be accepted, and neither should come back with
+      a basis the proposal did not state.

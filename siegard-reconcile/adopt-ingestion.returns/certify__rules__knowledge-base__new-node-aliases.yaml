@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/new-node-aliases
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 4: novel (no candidate at or above floor) -> created_new with status='active'"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3: ambiguous (one strong + one in [FLOOR, STRONG)) -> needs_review + 2 review rows"
+    why: >-
+      The canonical half is exercised. For a new node created as active and for one created as
+      needs_review, the tests check that the proposed name is written as an alias of kind
+      canonical against the new node's id. The "each of its proposed aliases" half is only
+      exercised with one proposed alias. No new node in the set is proposed with two or more, so
+      code that kept only the first alias, or only the last, would still pass. The tests also do
+      not check what the node holds after the write. They check the INSERT INTO node_alias
+      statements a stub client captures: kind comes from a SQL literal matched by regex, and
+      node and alias come from parameter position, not from the column list. The inserts use
+      ON CONFLICT DO NOTHING, so an alias silently dropped by a conflict, or a statement whose
+      column list puts the values in the wrong columns, would pass unnoticed. "branch 4: novel
+      with empty candidate set" and "branch 3b"/"branch 3c" create new nodes but assert nothing
+      about their aliases.
+    remainder: testable
+    remainder_why: >-
+      Propose a novel node with a name and at least two distinct aliases. Then read back the
+      aliases the created node holds: the name must be there as the canonical alias and every
+      proposed alias as an alias, each tied to the new node. Doing the same for a node created
+      as needs_review closes the other creation path.

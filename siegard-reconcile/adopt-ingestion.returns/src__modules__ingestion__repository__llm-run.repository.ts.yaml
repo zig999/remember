@@ -1,0 +1,950 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `RecentIngestionRow`, lines 38-44
+    evidence: >-
+      "joined to its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears with null run fields)"
+    cost: >-
+      The rule that a recent ingestion shows its most recently started run, or none, is written a second time as prose beside the query that enforces it. When the node changes, the docstring keeps saying the old rule and nothing reads it. The next reader of this file may take the prose for the decision.
+    kind: restates
+    correction: >-
+      Remove the docstring's statement of the rule. The `LEFT JOIN LATERAL (... ORDER BY started_at DESC LIMIT 1) lr ON true` in `findRecentIngestions` holds the fact, and the node's bind claims it.
+    node: rules/knowledge-base/recent-ingestion-latest-run
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `findRecentIngestions`, lines 59-63
+    evidence: >-
+      "Most recent ingestions, newest first."
+    cost: >-
+      The listing order is stated as prose beside `ORDER BY ri.received_at DESC`, which holds it. If the node's order changes, the comment goes on asserting the old one.
+    kind: restates
+    correction: >-
+      Remove the phrase. The `ORDER BY ri.received_at DESC` in this file holds the fact.
+    node: rules/knowledge-base/recent-ingestions-order
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `findRecentIngestions`, lines 59-63
+    evidence: >-
+      "`limit` is validated (1..50) at the toolset boundary before it reaches here."
+    cost: >-
+      The bounds of the limit appear as a number in prose in a file that does not enforce them. The next reader sees "1..50" here, and a change to the node leaves this copy stale.
+    kind: restates
+    correction: >-
+      Remove the sentence. Code holds the bound in another file, `src/modules/ingestion/mcp/mcp-schemas.ts` (`limit: z.number().int().min(1).max(50).default(10)` in `ListRecentIngestionsMcpInputSchema`).
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `aggregateToolCallOutcomes`, lines 111-114 (the second bullet continues to line 117)
+    evidence: >-
+      "every field present, missing buckets default to 0 (BR-12)"
+    cost: >-
+      The zero-for-absent-outcome rule is restated as prose, cited by a back-spec number, next to the initial `summary` object that holds it. A reader looking for where the rule lives is pointed at BR-12 and not at the node.
+    kind: restates
+    correction: >-
+      Remove the sentence. The initialised `summary` object and the `for (const row of result.rows)` fill in this file hold the fact.
+    node: rules/knowledge-base/summary-counts-tool-calls
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `aggregateToolCallOutcomes` (lines 115-117) and the inline comment before the orphan query (lines 148-149)
+    evidence: >-
+      "`orphaned_fragments`, the count of this run's `proposed` fragments with no provenance row" and "Same definition as the retry orphan-cleanup: `proposed` fragments of this run with no provenance."
+    cost: >-
+      The definition of an orphaned fragment is written twice as prose, in addition to the SQL predicate. A change to the node's definition leaves three places that must agree, and only one of them is read by anything.
+    kind: restates
+    correction: >-
+      Remove both passages. The `status = 'proposed' AND id NOT IN (SELECT fragment_id FROM provenance ...)` predicate of the `orphan` query holds the fact in this file.
+    node: rules/knowledge-base/summary-counts-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `retryLlmRunRow` (lines 165-171) and the inline comment before the second query (lines 188-189)
+    evidence: >-
+      "In the same transaction, orphan `proposed` fragments of this run are flipped to `rejected`."
+    cost: >-
+      The retry's rejection of orphaned fragments is stated as prose twice, next to the `UPDATE information_fragment SET status = 'rejected'` that performs it. The prose cites BR-10 and BR-11, so a reader is sent to the back-spec for a fact the node holds.
+    kind: restates
+    correction: >-
+      Remove both passages. The `UPDATE information_fragment SET status = 'rejected'` statement in this file holds the fact.
+    node: rules/knowledge-base/retry-rejects-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `retryLlmRunRow` (lines 165-168) and the docstring above `closeLlmRunRow` (lines 204-207)
+    evidence: >-
+      "UPDATE ... WHERE status = 'failed' RETURNING the new row. If no row is affected, the caller surfaces 409 BUSINESS_RUN_NOT_RETRYABLE." and "drive `running -> completed | failed`"
+    cost: >-
+      The lifecycle's allowed transitions and the refusal code for a non-retryable run are stated as prose here. The guards are `WHERE id = $1 AND status = 'failed'` and `WHERE id = $1 AND status = 'running'`. The refusal code is not raised in this file. The prose claims what a caller does, so it can go stale without any check noticing.
+    kind: restates
+    correction: >-
+      Remove the passages. The two `WHERE ... AND status = ...` guards in this file hold the transitions. The 409 BUSINESS_RUN_NOT_RETRYABLE answer belongs to the contract node and is raised by a caller, not by this file.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `findToolCallsByRun`, line 237
+    evidence: >-
+      "Page of `tool_call` rows ordered by `created_at` ascending."
+    cost: >-
+      The listing order is written as prose, and it is also incomplete, since the node adds the identifier as a tiebreak. A reader who trusts the comment misses the tiebreak that `ORDER BY created_at ASC, id ASC` holds.
+    kind: restates
+    correction: >-
+      Remove the sentence. The `ORDER BY created_at ASC, id ASC` in this file holds the fact.
+    node: rules/knowledge-base/tool-call-listing-order
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `insertToolCallStandalone`, lines 287-290
+    evidence: >-
+      "This is the BR-23 safety net: even when the business transaction rolls back, the audit row must be written."
+    cost: >-
+      The requirement that every proposal is audited, whether taken, refused or failed, is restated as prose citing BR-23. The next reader is sent to the back-spec for a fact the node holds and the function implements.
+    kind: restates
+    correction: >-
+      Remove the docstring. The separate `BEGIN` / `insertToolCall` / `COMMIT` on a pooled client in `insertToolCallStandalone` holds the behavior.
+    node: rules/knowledge-base/every-proposal-audited
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `countFragmentsAnchoredToSource`, lines 320-326
+    evidence: >-
+      "BR-18 anti-hallucination check. For every fragment in `fragment_ids`, the fragment must exist AND have at least one `fragment_source` row pointing to a `raw_chunk` of `expected_raw_information_id`."
+    cost: >-
+      The anchoring rule is restated as prose, along with the caller's refusal code, next to the SQL that counts anchored fragments. The rule now has a second home that the node's bind does not reach.
+    kind: restates
+    correction: >-
+      Remove the docstring's statement of the rule. The `JOIN fragment_source` / `JOIN raw_chunk ... rc.raw_information_id = $2` query in this file holds the fact, and its callers, `propose-link.service.ts` and `propose-attribute.service.ts`, compare the count.
+    node: rules/knowledge-base/cited-fragments-anchored
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above `countChunksInSource`, lines 347-350
+    evidence: >-
+      "Verify every chunk in `chunk_ids` exists AND belongs to `expected_raw_information_id`."
+    cost: >-
+      The rule that a cited chunk belongs to the run's raw information is stated as prose beside the query that counts matches. A change to the node leaves the comment asserting the old rule.
+    kind: restates
+    correction: >-
+      Remove the sentence. The `WHERE id = ANY($1::uuid[]) AND raw_information_id = $2` query in this file holds the fact, and `propose-fragment.service.ts` compares the count.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it; there is no prompt or model call here
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it; there is no model call here
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it; the file knows no transport
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the data reads behind list-recent-ingestions, list-tool-calls and read-llm-run, in `findRecentIngestions`, `findToolCallsByRun` and `findLlmRunById`
+    evidence: >-
+      `left(ri.content, 80) AS content_preview` and `SELECT id, llm_run_id, tool_name, arguments, result, validation_outcome, created_at FROM tool_call WHERE llm_run_id = $1`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      `insertFragmentWithSources`
+    evidence: >-
+      `INSERT INTO information_fragment (llm_run_id, "text", confidence) VALUES ($1, $2, $3) RETURNING id` followed by `INSERT INTO fragment_source (fragment_id, raw_chunk_id) SELECT $1, c FROM unnest($2::uuid[]) AS c`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      the values are only imported as the type `IngestToolName` from "../dto/llm-run.dto.js"; the file declares none of them
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      `findNodeTypeIdByNodeId`
+    evidence: >-
+      `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      `findLlmRunById`, `retryLlmRunRow` and `closeLlmRunRow`
+    evidence: >-
+      `SELECT id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key FROM llm_run WHERE id = $1 LIMIT 1`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads only the `node_type_id` column of `knowledge_node`; it holds no node-type name or description
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only selects `prompt_version` as a column (`lr.prompt_version AS prompt_version`); it declares none of the versions
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions judges or records a proposal's kind, confidence, hint or dates
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      `countChunksInSource` and the `raw_chunk` join in `countFragmentsAnchoredToSource`
+    evidence: >-
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      `findRecentIngestions`
+    evidence: >-
+      `FROM raw_information ri` selecting `ri.source_type`, `ri.status`, `ri.received_at` and `left(ri.content, 80) AS content_preview`
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      `retryLlmRunRow` and `closeLlmRunRow`
+    evidence: >-
+      `args: { llm_run_id: string; outcome: "completed" | "failed" }` and `WHERE id = $1 AND status = 'running'`
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      the `summary` object built in `aggregateToolCallOutcomes`
+    evidence: >-
+      `accepted: 0, consolidated: 0, superseded_previous: 0, needs_review: 0, uncertain: 0, disputed: 0, rejected: 0, error: 0, orphaned_fragments: 0`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      `ToolCallRow`, `insertToolCall` and `findToolCallsByRun`
+    evidence: >-
+      `INSERT INTO tool_call (llm_run_id, tool_name, arguments, result, validation_outcome) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::validation_outcome)`
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      the eight outcome buckets of the `summary` object in `aggregateToolCallOutcomes`
+    evidence: >-
+      `accepted: 0, consolidated: 0, superseded_previous: 0, needs_review: 0, uncertain: 0, disputed: 0, rejected: 0, error: 0`
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no affected nodes; `findLlmRunById` selects only the run's own columns
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no affected nodes; `findLlmRunById` selects only the run's own columns
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no affected nodes; `findLlmRunById` selects only the run's own columns
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds two counting queries the attribute service calls; the order of checks is not decided here
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` takes `confidence: number` and applies no threshold; no link or attribute is recorded in this file
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `raw_chunk` only to count rows; it never cuts or reads an excerpt
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `raw_chunk` only to count rows; it never cuts chunks or reads an index
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no chunks; `countChunksInSource` returns only a count
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      `countFragmentsAnchoredToSource`
+    evidence: >-
+      `FROM information_fragment f JOIN fragment_source fs ON fs.fragment_id = f.id JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id WHERE f.id = ANY($1::uuid[]) AND rc.raw_information_id = $2`
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `countFragmentsAnchoredToSource` counts fragments that exist and are anchored in one predicate (`WHERE f.id = ANY($1::uuid[]) AND rc.raw_information_id = $2`), so it cannot tell a missing fragment from an unanchored one; no separate existence check sits in this file
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `countFragmentsAnchoredToSource` filters by `f.id` and `rc.raw_information_id` only; no predicate on `f.llm_run_id` appears in the file's SELECTs over `information_fragment`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      `closeLlmRunRow`
+    evidence: >-
+      `SET status = $2::llm_run_status, finished_at = now() WHERE id = $1 AND status = 'running'`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `provenance` only inside the orphan predicate (`SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL`); it records none
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions computes a hash
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only truncates a preview with `left(ri.content, 80)`; it enforces no content length
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` anchors to whatever `chunk_ids` it is handed; it picks no first chunk
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` writes the `confidence` it is handed; it fixes none
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions opens a run
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findNodeTypeIdByNodeId` reads a node's type only; it resolves nothing
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `closeLlmRunRow` closes the run with the outcome it is handed; it does not decide when a directed ingestion completes
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions records or extracts a document
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      `insertToolCall` and `insertToolCallStandalone`
+    evidence: >-
+      `await client.query("BEGIN"); const row = await insertToolCall(client, args); await client.query("COMMIT");` on a client from `pool.connect()`, with `arguments`, `result` and `validation_outcome` all written to `tool_call`
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` anchors to the `chunk_ids` it is handed; it knows no chunk being read
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `closeLlmRunRow` closes with a handed `outcome`; it does not decide when an extraction completes or fails
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions counts consecutive failures
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions reads chunks in order
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions runs an extraction; `findLlmRunById` returns the run's status and does not judge it
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `countChunksInSource` counts chunks that exist and belong in one predicate (`WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`), so it cannot tell a missing chunk from a foreign one
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      `countChunksInSource`
+    evidence: >-
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      `countChunksInSource` merges the existence and belonging checks in one count, so the order between them is not decided in this file
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `INSERT INTO information_fragment (llm_run_id, "text", confidence) VALUES ($1, $2, $3)` names no status column
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` writes `args.text` without a length check
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only selects the `idempotency_key` column (`attempts, input_raw_information_id, idempotency_key`); it computes none
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only selects the `idempotency_key` column; it enforces no uniqueness
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions opens a run or records a raw information
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findNodeTypeIdByNodeId` returns a node type only; no link type rule is read in this file
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds counting queries a link service calls; the order of checks is not decided here
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      `retryLlmRunRow` and `closeLlmRunRow`
+    evidence: >-
+      `WHERE id = $1 AND status = 'failed'` with `SET status = 'running'` for retry, and `WHERE id = $1 AND status = 'running'` with a `"completed" | "failed"` outcome for closing
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions calls a model
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      the `orphan` query in `aggregateToolCallOutcomes` and the `UPDATE` in `retryLlmRunRow`
+    evidence: >-
+      `WHERE llm_run_id = $1 AND status = 'proposed' AND id NOT IN (SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL)`
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findToolCallsByRun` takes `limit` and `offset` as given (`LIMIT $2 OFFSET $3`); it defaults none
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertFragmentWithSources` writes `args.confidence` with no range check
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertToolCall` and `insertFragmentWithSources` write for the `llm_run_id` they are handed without reading its status
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findLlmRunById` returns the run or null; the order of checks is not decided in this file
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads `provenance` only inside the orphan predicate; it records none and never moves a fragment to accepted
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      `findRecentIngestions`
+    evidence: >-
+      `LEFT JOIN LATERAL ( SELECT id, status, started_at, finished_at, prompt_version, model FROM llm_run WHERE input_raw_information_id = ri.id ORDER BY started_at DESC LIMIT 1 ) lr ON true`
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findRecentIngestions` binds `LIMIT $1` with `[limit]` and applies no bound; only the docstring says "`limit` is validated (1..50) at the toolset boundary", and code holds the bound in `mcp-schemas.ts`
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findRecentIngestions(client: PoolClient, limit: number)` takes the limit as a required argument and defaults none
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      `findRecentIngestions`
+    evidence: >-
+      `ORDER BY ri.received_at DESC LIMIT $1`
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only selects `ri.received_at`; it records none
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      `insertToolCallStandalone`
+    evidence: >-
+      `const row = await insertToolCall(client, args); await client.query("COMMIT");` in its own transaction on a client from `pool.connect()`, writing the `tool_call` row and nothing else
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      `retryLlmRunRow`
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed'` with `started_at` left untouched
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      `retryLlmRunRow`
+    evidence: >-
+      `UPDATE information_fragment SET status = 'rejected' WHERE llm_run_id = $1 AND status = 'proposed' AND id NOT IN (SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL)`
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      the `orphan` query in `aggregateToolCallOutcomes`
+    evidence: >-
+      `SELECT count(*)::int AS n FROM information_fragment WHERE llm_run_id = $1 AND status = 'proposed' AND id NOT IN (...)` assigned by `summary.orphaned_fragments = orphan.rows[0]?.n ?? 0`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      `aggregateToolCallOutcomes`
+    evidence: >-
+      `SELECT validation_outcome, count(*)::text AS n FROM tool_call WHERE llm_run_id = $1 GROUP BY validation_outcome` filled into a `summary` initialised with every outcome at 0
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      `findToolCallsByRun`
+    evidence: >-
+      `ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3`
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      `findToolCallsByRun` takes `args: { llm_run_id: string; limit: number; offset: number }` and defaults none
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      `countToolCalls`
+    evidence: >-
+      `SELECT count(*)::text AS n FROM tool_call WHERE llm_run_id = $1`, with no limit or offset
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      `insertToolCall` writes the `validation_outcome` its caller hands it (`args.validation_outcome`); it derives none
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions cuts content
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions ingests content or reads a content hash
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no construct in the file's thirteen exported query functions concerns it
+looked_past: >-
+  The comments citing BR-19, BR-23, UC-07 and BR-12, the "caller owns the transaction" statement, and the `InvariantError` guards on missing RETURNING rows describe persistence mechanics and back-spec numbering, not domain facts, so I left them to another judgment.

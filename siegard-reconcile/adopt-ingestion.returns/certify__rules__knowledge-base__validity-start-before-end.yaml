@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/validity-start-before-end
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: rejects valid_from >= valid_to with BUSINESS_TEMPORAL_INCOHERENT
+    why: >-
+      The one test that bears on the fact gives a start equal to the end
+      (2026-06-12 for both) and expects a refusal. That checks the boundary
+      that makes "strictly" strict. Nothing in the set gives a start that falls
+      after the end, so a validator that refused only equal dates would still
+      pass the whole file while accepting an inverted period. The fact would
+      stop holding and no test would fail. The test drives validateTemporal on
+      its own, not a proposal through its entry point, so it cannot show that
+      every proposal stating both dates reaches this check. The test also pins
+      the refusal code BUSINESS_TEMPORAL_INCOHERENT, which this node does not
+      state. That is a claim beyond the fact, for a reader to route. The other
+      tests in the file never state a validity end. They exercise date
+      justification, the errata signal and the received_at fallback, and none
+      of them bears on this fact.
+    remainder: testable
+    remainder_why: >-
+      One input against one result closes it: a proposal whose validity start
+      is after its validity end (for example 2026-06-13 against 2026-06-12)
+      must be refused and nothing consolidated. The case should be submitted
+      through the proposal path, so the refusal is shown to reach every
+      proposal that states both dates.

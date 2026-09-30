@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/prompt-version-known
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: throws UnknownPromptVersionError for an unregistered version (BR-26 — fail loud, no silent fallback)
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: dispatches 'v1' → v1 module
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: dispatches 'v2' → v2 module
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: the recommended default always resolves to a registered module (v2 no longer the default)
+    why: >-
+      The tests cover the prompt registry only. selectPromptModule resolves 'v1', 'v2'
+      and DEFAULT_PROMPT_VERSION to modules. It throws UnknownPromptVersionError for
+      'extraction.v1' and 'v99'. No test starts an extraction with a prompt version the
+      system does not hold. The fact itself is about an extraction's prompt version: the
+      version an LLMRun records must be one the system holds. These tests would still pass
+      if the ingestion path stopped using the registry, for example if it recorded an
+      LLMRun with an unregistered prompt_version or skipped selectPromptModule. The
+      default test also asserts that DEFAULT_PROMPT_VERSION is not 'v1'. The fact does
+      not state that, and the check will break if a later version choice changes. The
+      other tests in the file (v2's PROMPT_VERSION, v2 extending v1 verbatim, v2's
+      directive and content, the registry telling the two versions apart) are about
+      prompt content. None of them bears on this fact.
+    remainder: testable
+    remainder_why: >-
+      One input and one expected result. Start an extraction (create the LLMRun) with a
+      prompt version the system does not hold, such as 'v99'. It must be refused, and no
+      LLMRun may be recorded with that version. Pair this with an extraction under a held
+      version, which records that version.

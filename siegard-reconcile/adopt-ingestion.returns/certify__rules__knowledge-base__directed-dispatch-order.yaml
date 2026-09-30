@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/directed-dispatch-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "happy path: dispatches fragments → nodes → attributes → links in order; run closes 'completed'"
+    why: >-
+      The happy-path test sends three fragments, two nodes, one attribute and one link. It checks
+      that the proposals come in exactly the order fragments, then nodes, then attributes, then
+      links. It also checks that the report's refs come in that same order. So the order of the
+      four groups is exercised, and so is the order within the fragment group and within the node
+      group. The order within the attribute group and the link group is not exercised. Each of
+      those groups holds a single item, so a directed ingestion that reversed or reshuffled its
+      attributes, or its links, would still pass. That is true both for the order they are
+      proposed in and for the order the report lists them in. There is a second, smaller gap. The
+      stubs record each proposal when it is called and settle at once. A dispatch that started the
+      node proposals before the fragment proposals had settled would still record the same order.
+      The attributes and links are partly protected from this, because they would fail to resolve
+      their refs and show up as dependency_failed. The fragment-to-node boundary has no such
+      protection. None of the other tests in the file assert order.
+    remainder: testable
+    remainder_why: >-
+      Send a directed ingestion with at least two attributes and at least two links, each group in
+      a known order. Expect the attribute proposals, and then the link proposals, in exactly that
+      order. Expect the report to list those attribute and link entries in that same order, after
+      the fragments and nodes. To close the sequencing gap as well, the fragment stubs should
+      settle later than they are called. Then expect that no node proposal starts before every
+      fragment proposal has settled.

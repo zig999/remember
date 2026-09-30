@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts a triple authorised by an active rule
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_to of a rule (expired = not active)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_from of a rule (not yet effective)
+    why: >-
+      Four parts of the rule are exercised. A rule with no validity start and no validity end is
+      in effect. A rule whose validity end falls on the day itself is not in effect, which pins
+      "day < valid_to" against "day <= valid_to". A rule whose validity start is well after the
+      day is not in effect. Four parts of the rule are not exercised. (1) A validity start on the
+      day itself is never tested. The only start used is 2027-01-01 against a day of 2026-06-12,
+      so the boundary "valid_from <= day" is never checked, and code using "valid_from < day"
+      would still pass. (2) A validity start before the day, or a validity end after the day, is
+      never shown to leave the rule in effect. Every set bound in the file makes the rule inactive.
+      So code that treats any non-null bound as disqualifying would pass every test. (3) Both
+      bounds are never set together. (4) "Day is the UTC calendar date" is never tested. The only
+      "today" is 2026-06-12T12:00:00Z, compared against a bound at 00:00Z of the same date. A plain
+      timestamp comparison gives the same results as a UTC-date comparison there. So does a
+      comparison on a local calendar date. Nothing in the file puts "today" at a time where the
+      UTC date and the local date differ. The Tier 1 describe block, and the test "rejects a
+      triple not in the rule set with BUSINESS_LINK_RULE_VIOLATION", use only rules with no bounds
+      and assert only which type pairs are allowed. They bear on the rule's validity only in
+      passing, so they are not cited.
+    remainder: testable
+    remainder_why: >-
+      Each gap is one input with one expected result. (a) A rule with valid_from equal to the day
+      is in effect. (b) A rule with valid_from before the day and valid_to after it is in effect.
+      (c) A rule with valid_to the day after "today" is in effect. (d) A "today" given as an
+      instant whose UTC date differs from its local date, for example 2026-06-12T23:30-03:00
+      (UTC date 2026-06-13), against a rule with valid_to 2026-06-13. The expected result is that
+      the rule is not in effect, because the UTC date 2026-06-13 is not before valid_to. A rule
+      with valid_from 2026-06-13 on that same instant is in effect.

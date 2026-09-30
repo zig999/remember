@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (a) forwards invocation_context.source_excerpt as deps.sourceExcerpt to the orchestrator
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (g) passes sourceExcerpt as original_input to ingestRawInformation
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (c) forwards original_input to insertRawInformation when provided
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (d) emits original_input in the INSERT column list and RETURNING clause
+    why: >-
+      Only the raw-information half is actually tested. Test (c) gives
+      ingestRawInformation an original_input and checks that the same value
+      reaches the raw_information INSERT through a recording pg client. So a
+      raw information that is handed an original input does record it. The
+      rest of the fact has no real test. No test starts from a chat turn: test
+      (a) builds invocation_context.source_excerpt by hand. So nothing checks
+      that the excerpt recorded is the turn's own excerpt. The path from a
+      directed ingestion to original_input is tested only in pieces, through
+      stubbed seams. Test (a) checks the argument the handler passes to a
+      stubbed orchestrator (deps.sourceExcerpt). Test (g) checks the argument
+      the orchestrator passes to a stubbed ingestRaw, and it forces intake to
+      throw. Both check internal calls, so they track the code's shape rather
+      than the fact. Both still pass if the seams are rewired so that the
+      persisted row never gets the turn's excerpt. Test (d) matches the SQL
+      text for the column name, which also checks shape rather than what gets
+      recorded. No test runs one directed ingestion, made from one chat turn,
+      and then checks that turn's excerpt on the raw information it recorded.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. The input is a chat turn with
+      excerpt X that dispatches a directed ingestion, running the real handler,
+      orchestrator and ingestRawInformation with nothing stubbed in between.
+      The expected result is that the raw_information row persisted at the
+      database boundary (a recording pg client) carries original_input = X.

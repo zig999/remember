@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/succession-closing-date
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: recognizes change_hint='succession' as a succession signal even without textual marker
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: superseded_previous — different value on a functional key with succession signal
+    why: >-
+      Only one test checks the date a succession closes the old assertion at,
+      and it checks it only in passing. The intra-day test checks that the
+      close date is bound as 2026-06-01, which is the new assertion's validity
+      start. The test is there to prove the same-day guard. Its old assertion
+      also starts on 2026-06-01, so an implementation that closed at the old
+      assertion's own start would still pass. Nothing is checked about the
+      close date taking effect. In the main link succession test the old
+      assertion starts 2026-01-01 and the new one 2026-06-01, but the test
+      only checks that the close SQL contains the text "valid_to". It never
+      checks which date is bound, so closing at today (2026-06-12) or at any
+      other date would pass. The change_hint='succession' link test only
+      counts one UPDATE and one INSERT. The attribute succession test only
+      checks that the close touches valid_to. Nothing checks a node_attribute
+      being closed at the new attribute's validity start. The "today" half is
+      never run. Every succession in the file proposes a valid_from, and both
+      the leads link type and the deadline key require one. So no test sends
+      a succession without a validity start and checks the close falls on
+      today.
+    remainder: testable
+    remainder_why: >-
+      Three checks would close it, each on one input and one expected result.
+      (1) Close a functional link: old assertion valid_from 2026-01-01, new
+      assertion valid_from 2026-06-01, now fixed at 2026-06-12. The old
+      assertion's validity end should be 2026-06-01, not 2026-06-12. (2) The
+      same succession on a functional node_attribute should give the same
+      closing date. (3) Close a link and an attribute whose type does not
+      require valid_from, sending the new assertion with no validity start
+      and now fixed at 2026-06-12. The old assertion's validity end should be
+      2026-06-12.

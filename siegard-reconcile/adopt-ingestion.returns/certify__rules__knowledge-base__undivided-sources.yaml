@@ -1,0 +1,34 @@
+certified:
+  - node: rules/knowledge-base/undivided-sources
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`ata`, `artigo`, `outro`: no hard boundary — single chunk under CHUNK_HARD_MAX"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "offset_end equals total code-point count for single-chunk inputs"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "counts emoji as one position (Unicode code points, not UTF-16 units)"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "counts accented characters as one position each"
+    why: >-
+      I read "any other source" as the `outro` source type, because the node constrains
+      domain/knowledge-base/source-type. Read literally as every source, the fact would
+      contradict the pdf, email, chat and transcricao splitting that the same file asserts.
+      The one test that makes this fact its subject passes meeting minutes (`ata`), an
+      article (`artigo`) and an other source (`outro`) through the chunker, but the content
+      holds nothing except single newlines, and a single newline is not a boundary for any
+      source type. So it would still pass if minutes, articles or other sources were split
+      at a boundary that another source type uses. Nothing in the set gives one of these
+      three types content with a form feed, a blank line after header-like lines, a
+      "Name:" speaker line or a "[00:01] Name:" timestamped turn and then checks that the
+      content stays one block. The other three tests show `ata` or `artigo` producing one
+      chunk only as a side effect of checking code-point offsets, on content with no
+      boundary characters at all. So nothing marks that assertion as load-bearing for this
+      fact.
+    remainder: testable
+    remainder_why: >-
+      A test would give each of `ata`, `artigo` and `outro` content under CHUNK_HARD_MAX
+      that holds a form feed, a header block followed by a blank line, speaker lines and
+      bracketed timestamped turns. It would expect exactly one chunk for each type, with
+      offset_start 0, offset_end equal to the content's code-point count, and text equal
+      to the whole content.

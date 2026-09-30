@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/tool-call-audit.spec.ts
+        name: writes tool_call with validation_outcome='rejected' on validation failure
+    why: >-
+      Only one refused proposal is exercised: a propose_fragment whose chunk is not
+      found. For that case the test checks that exactly one tool_call row is written,
+      with outcome 'rejected', the right tool name and the right run id. That covers
+      the "records its tool call" half, for a refusal only. The "nothing but" half is
+      checked only through how the handler uses transactions: the first connection
+      rolled back and something committed somewhere. The fake pool records only
+      INSERT INTO tool_call and answers every other statement with empty rows. So if a
+      fragment, provenance or any other row were written and committed on the audit
+      connection or on a third connection, all the assertions would still pass. The
+      test also relies on the business transaction being the first connection, which
+      is a detail of the code's structure, not of the fact. The "failed" half of the
+      fact is not exercised at all: nothing in the set makes a proposal fail with an
+      error, as opposed to being refused by validation, and then checks what was
+      recorded. The file's header comment says the refusal comes from a Zod min-length
+      failure on `text`. The mock actually causes it through a chunk count of zero, so
+      the comment does not describe what the test does.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, each checked against a store that captures every committed write.
+      First, a refused proposal: the committed writes must be exactly one tool_call row
+      with outcome 'rejected', and nothing in any other table. Second, a proposal that
+      fails partway through its business writes (the store throws on a write after the
+      fragment insert): the committed writes must again be exactly one tool_call row,
+      with the failure outcome, and no fragment, provenance, node, link or attribute row.

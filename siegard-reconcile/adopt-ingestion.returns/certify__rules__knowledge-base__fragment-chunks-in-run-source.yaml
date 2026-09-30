@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    state: partial
+    tests:
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 200 with ok:false VALIDATION_INVALID_FORMAT envelope when chunk_ids do not belong to the run's source
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 200 with ok:true envelope when run is running and input is valid
+    why: >-
+      The refusal test sends a proposal that cites one chunk, and that chunk belongs to
+      some other raw information. It checks that the proposal is refused and that no
+      fragment is inserted. The happy-path test sends one chunk that belongs to the run's
+      raw information and checks that the proposal is accepted. Two parts of "every raw
+      chunk ... MUST belong" go untested. First, no proposal in the set cites a mix: a
+      chunk from the run's source together with a chunk from another source. An
+      implementation that accepted a proposal when any cited chunk belonged, instead of
+      requiring every chunk to belong, would pass both tests. Second, the fake PoolClient
+      decides membership itself. It compares the chunk id to CHUNK_VALID_ID and the
+      expected raw id to RAW_INFO_ID, both hardcoded. It never reads the SQL predicate
+      that ties raw_chunk to raw_information. So a wrong predicate in the real query would
+      still get the answer the test expects, and the test only covers how the service
+      reacts to the count the fake returns. Also, every seeded run shares the same
+      RAW_INFO_ID, so nothing tells "the proposal's own LLM run's raw information" apart
+      from any other run's.
+    remainder: testable
+    remainder_why: >-
+      Two inputs would close it. (1) A proposal to a running run that cites one chunk of
+      the run's raw information and one chunk of a different raw information. Expected:
+      a refusal and no fragment written. (2) The same refusal and acceptance run against
+      a store that works out chunk membership from the chunk rows' raw_information_id,
+      not from literal ids, with two runs over different raw information. Expected: a
+      chunk accepted for its own run is refused for the other run.

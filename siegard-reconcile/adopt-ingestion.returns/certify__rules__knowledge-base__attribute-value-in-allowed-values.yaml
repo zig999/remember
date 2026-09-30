@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: is silent when value IS in the closed domain (exact match)
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: throws VALIDATION_INVALID_FORMAT with {value, allowed_values} on miss
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: treats case differences as a miss (exact-match, no normalisation)
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: treats accent differences as a miss (exact-match, no normalisation)
+      - file: src/__tests__/unit/ingestion/propose-attribute-domain.spec.ts
+        name: accepts an in-domain value (closed domain, value present in set)
+      - file: src/__tests__/unit/ingestion/propose-attribute-domain.spec.ts
+        name: rejects an out-of-domain value with VALIDATION_INVALID_FORMAT + {value, allowed_values}
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: BR-30 closed-domain in-domain literal → 200 ok:true accepted
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: BR-30 closed-domain out-of-domain literal → 200 ok:false VALIDATION_INVALID_FORMAT with allowed_values
+    why: >-
+      The service and route tests both check the basic behaviour on a real proposal. A key with
+      allowed values accepts a value from its set ("proposta", "Apollo"). It refuses a value
+      that is plainly foreign ("PROPOSAL", "Voyager") and writes no attribute. The "exactly as
+      written" half is only checked on assertValueInDomain called directly: "Proposta" against
+      "proposta" and "relatorio" against "relatório". No proposal in the set carries a value that
+      differs from an allowed value only by case or accent. So if the value were normalised
+      anywhere between the proposal and that helper, the proposal would be accepted and every
+      named test would still pass. Those two structural.spec.ts tests do not cover the fact.
+      Some tests also assert more than the fact states: the exact message "attribute value not in
+      closed domain" and the lexicographic sort of allowed_values (structural.spec.ts "sorts
+      allowed_values lexicographically for diagnostic stability", plus the equality checks in
+      the refusal tests). propose-attribute-domain.spec.ts also checks the order of SQL
+      statements, which ties it to the query shape rather than to this fact. "is a no-op on an
+      OPEN domain" covers keys that have no allowed values, which this fact does not constrain.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Send a proposal, through proposeAttributeService
+      or POST propose-attribute, for a key with allowed values ("proposta", "relatório"). Give
+      it a value that differs from one of them only by case or accent ("Proposta", "relatorio").
+      Expect a VALIDATION_INVALID_FORMAT refusal with no node_attribute and no provenance
+      written.

@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/turn-blocks
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`chat`: starts a new chunk on each speaker line"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`transcricao`: treats bracketed timestamp + speaker as a new turn"
+    why: >-
+      The chat half is covered. Its test feeds three speaker lines. It asserts
+      three blocks, and that each block begins with the matching speaker line,
+      so a chat speaker line after the first that did not start a block would
+      fail it. The transcript half is covered only by count. Its test feeds
+      three bracketed-timestamp speaker lines and asserts only that three blocks
+      come out. It never checks where each block begins. A transcript chunker
+      that cut three blocks somewhere other than the second and third speaker
+      lines would still pass, for example at each line's sentence terminator.
+      So for a transcript, the fact that each later speaker line is where a
+      block starts goes unchecked. In both halves the first line is itself a
+      speaker line. The block counts therefore also check that the first line
+      does not open an extra empty leading block.
+    remainder: testable
+    remainder_why: >-
+      One input: transcript content of three timestamped speaker lines. One
+      expected result: the second and third blocks begin exactly at the second
+      and third speaker lines. That means their text starts with "[00:15] Maria:"
+      and "[00:30] João:", and each offset_start equals the code-point offset of
+      its speaker line in the original content.

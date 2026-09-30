@@ -1,0 +1,862 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the header comment (lines 11-23), the ingest_document comment (lines 243-247) and the Zod-failure audit comment (lines 431-441)
+    evidence: >-
+      "A Zod failure (missing/invalid `llm_run_id` or malformed business DTO) also goes through `runIngestHandler` so the rejected `tool_call` audit row is written (BR-23 updated). When no `llm_run_id` is parseable from the raw input, the audit-row insert cannot resolve its FK; the shell's `safeWriteAuditOnRollback` logs and swallows that"
+    cost: >-
+      The audit rule (every proposal leaves a tool call, and a refused one leaves nothing else) is also told in prose here, in BR-numbered terms the specification does not use. When the node changes, this prose is not bound to it and will go on saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the comments. The code that holds the fact is `runZodFailureAudit` in this file, which routes the failure through `runIngestHandler`. The handler shell in `./handler-base.js` also holds it.
+    node: rules/knowledge-base/every-proposal-audited
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the `health` tool registration (lines 325-333)
+    evidence: >-
+      mcp.registerTool("ingest", { name: "health", description: IngestToolDescriptions.health, inputSchema: HealthMcpInputSchema, handler: async (): Promise<McpEnvelopeJson> => { const report = await collectHealth(pool); return { ok: true, result: report }; } });
+    cost: >-
+      The `ingest` toolset exposes a liveness and database-ping operation that always answers `ok: true`. The contract's operation list and its description of what MCP carries do not include it. The next reader looks in the ingestion contract for what the toolset offers and does not find it. The rule that a database failure appears inside `result` and not as an error is decided only here, in a comment.
+    kind: unstated
+    correction: >-
+      Analysis has to decide whether a health operation belongs to the ingestion contract, to another contract, or to no contract, and then give it a node. A search of the specification root for its terms found nothing.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      `mapReadError`, the pg-unavailable and unknown-error branches (lines 425-428)
+    evidence: >-
+      if (isPgUnavailable(err)) { return serviceUnavailableError().envelope; } return internalError().envelope;
+    cost: >-
+      `get_ingestion_status` and `list_recent_ingestions` refuse with a service-unavailable error or an internal error. The refusals listed for read-llm-run and list-recent-ingestions are only VALIDATION_INVALID_FORMAT and RESOURCE_NOT_FOUND. The rule for when these operations answer with a SYSTEM_* code lives only in this branch order.
+    kind: unstated
+    correction: >-
+      Give the system refusals of the read operations a home in the contract, or state that they belong to the shared error mapping.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt. `ingestDocumentHandler(parsed.data, { ..., anthropicApiKey, ingestModel, ... })` hands the extraction to another file.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only registers the four proposal tools, ingest_document, ingest_directed and three read tools. Nothing here restricts what the extracting model may call.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the MCP side only. Handlers return their envelopes with `as McpEnvelopeJson`, and `mapReadError` maps errors, but no REST route appears here to compare against.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the registerTool calls for propose_fragment, propose_node, propose_link, propose_attribute, ingest_document, ingest_directed, get_ingestion_status and list_recent_ingestions (lines 138-369), and the VALIDATION_INVALID_FORMAT and RESOURCE_NOT_FOUND branches of `mapReadError` (lines 401-424)
+    evidence: >-
+      mcp.registerTool("ingest", { name: "ingest_directed", ... }); code: "VALIDATION_INVALID_FORMAT", message: "ingest_document arguments failed validation.", details: { issues: [...] }; if (err instanceof ResourceNotFoundError) { return { ok: false, error: { code: err.code, ...
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No accepted-fragment listing or filter appears in the file.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes `catalog` to the handlers and holds no attribute key declaration.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      No change hint appears in the file.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only registers `ingest_directed` and forwards `rawInput` to `ingestDirectedHandler`, which owns the parse.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item declaration appears in the file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item kind appears in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item status appears in the file.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity match review appears in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only registers `propose_fragment` and forwards to `proposeFragmentHandler`.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      the four proposal names in the registerTool calls, lines 139, 164, 190 and 217; the typed vocabulary comes from `IngestToolName` and `INGEST_TOOL_NAMES`, imported
+    evidence: >-
+      name: "propose_fragment", name: "propose_node", name: "propose_link", name: "propose_attribute"
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `propose_link` to `proposeLinkHandler`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node declaration or node handling appears in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes `catalog` through and declares no link type.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads a run through `getLlmRunById(client, llm_run_id)`. Run fields and states are declared elsewhere.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `propose_attribute` to `proposeAttributeHandler`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      No resolution values appear in the file.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes `catalog` through and declares no node type.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file. `ingestModel: deps.env.INGEST_MODEL` is the only model input.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      the four proposal handlers, each splitting the run identity from the proposal body and forwarding both (lines 153-158, 178-184, 204-211, 231-238)
+    evidence: >-
+      const { llm_run_id, ...input } = parsed.data; return (await proposeFragmentHandler(input, { pool, logger, llm_run_id })) as McpEnvelopeJson;
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk declaration appears in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      No raw information declaration appears in the file.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status values appear in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run summary appears in the file.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      `runIngestHandler({ deps, tool_name: toolName, input: rawInput as never, run })` delegates the tool call record to the handler shell.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No basis values appear in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validation outcome values appear in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value types appear in the file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      `getLlmRunById(client, llm_run_id)` returns the run, and the affected-node logic is not in this file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `getLlmRunById(client, llm_run_id)` returns the run, and the affected-node logic is not in this file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `getLlmRunById(client, llm_run_id)` returns the run, and the affected-node logic is not in this file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      Entity resolution is not in the file. It only calls `proposeNodeHandler`.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only calls `proposeAttributeHandler` with `catalog`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The check order is inside `proposeAttributeHandler`. This file holds only the Zod parse before dispatch.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No allowed-values check appears in the file.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value parsing appears in the file.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence threshold appears in the file.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      No basis check appears in the file.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity computation appears in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk listing appears in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking version appears in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The anchoring check is not in the file.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The existence check for cited fragments is not in the file.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run-membership check for cited fragments is not in the file.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run closing appears in the file.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance recording appears in the file.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hashing appears in the file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content hash handling appears in the file.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound would sit in `IngestDocumentMcpInputSchema`, which is imported. The file itself declares no length.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No errata check appears in the file.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No currency derivation appears in the file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date checks appear in the file. `now` is only forwarded to the link and attribute handlers.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version default appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directed value conversion is not in the file. `ingestDirectedHandler` owns it.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The comment says "The handler owns its own Zod parse", and no shape is declared in the file.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed defaults appear in the file.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed dependency logic appears in the file.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed dispatch appears in the file.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No anchoring appears in the file.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence value appears in the file.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run opening appears in the file. The comment says directed ingestion "never calls Anthropic", but the code that does so is in the handler.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No item statuses appear in the file.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      No reference handling appears in the file.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node pinning appears in the file.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length bound appears in the file.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed input validation appears in the file.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run completion appears in the file.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No source content composition appears in the file.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length bound appears in the file.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      `invocation_context` is only cast and forwarded to `ingestDirectedHandler`. The file never reads `source_excerpt`.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await ingestDocumentHandler(parsed.data, {...})` delegates the whole behaviour.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      `runZodFailureAudit` (lines 449-477), which sends a malformed proposal through the audit shell. The valid path is left to the propose handlers.
+    evidence: >-
+      return (await runIngestHandler({ deps: { pool, logger, llm_run_id: llmRunId }, tool_name: toolName, input: rawInput as never, run: async () => { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "MCP tool args failed Zod parse.", {...
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No resolution appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk check appears in the file.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk check appears in the file.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      No check order appears in the file.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards to `proposeFragmentHandler`.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length bound appears in the file.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No idempotency logic appears in the file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key computation appears in the file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key handling appears in the file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recording appears in the file.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No rule check appears in the file.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No check order appears in the file.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog check appears in the file.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No effect check appears in the file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      No transitions appear in the file.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No normalization appears in the file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence thresholds appear in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No resolution appears in the file.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length bound appears in the file.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      No catalog check appears in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in the file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in the file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession guard appears in the file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No length bound appears in the file.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No orphan logic appears in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears in the file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version check appears in the file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The range would sit in the imported `Propose*McpInputSchema` schemas. The file declares none.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file forwards `llm_run_id` to the handlers, and its comment says the handler "owns ... `assertRunIsRunning`". No run status check appears in the file.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      the parse-before-dispatch order in each propose handler (lines 143-158 and its three siblings). This file checks well-formedness first and leaves the existing-run and running checks to the handler.
+    evidence: >-
+      const parsed = ProposeFragmentMcpInputSchema.safeParse(rawInput); if (!parsed.success) { return (await runZodFailureAudit(...
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance recording appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `listRecentIngestions(client, limit)` is called and the latest-run choice is not in this file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const { limit } = ListRecentIngestionsMcpInputSchema.parse(rawInput);` reads a bound that the imported schema declares. The file states none.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const { limit } = ListRecentIngestionsMcpInputSchema.parse(rawInput);` reads a default that the imported schema declares. The file states none.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The order is inside `listRecentIngestions`, which this file only calls.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No reception time handling appears in the file.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      `runZodFailureAudit`, whose `run` callback only throws a ValidationFailure so the shell records the tool call and nothing else
+    evidence: >-
+      run: async () => { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "MCP tool args failed Zod parse.", { issues: ...
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date check appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date fallback appears in the file.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No speaker parsing appears in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date check appears in the file.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      No resolution appears in the file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession logic appears in the file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession logic appears in the file.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession logic appears in the file. `now` is only forwarded.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession signal appears in the file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary counting appears in the file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary counting appears in the file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing tool is registered here, because listing tool calls is REST only.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing tool is registered here, because listing tool calls is REST only.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing tool is registered here, because listing tool calls is REST only.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file assigns no validation outcome. `runIngestHandler` and the handlers do.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      No date check appears in the file.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No block cutting appears in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      No idempotency logic appears in the file.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value parsing appears in the file.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+looked_past: >-
+  The comments naming a rollout flag for a retired `start_async_ingestion` tool (an env field declared and never read), a `STRUCTURAL_INVALID` code the ingest_directed handler is said to emit, and the tool-registered log line are dead-code, other-file or observability matters, not judged here.

@@ -1,0 +1,786 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      header comment, lines 1-7
+    evidence: >-
+      A failed parse becomes a `ZodError` and the global error handler maps it to
+      `422 VALIDATION_INVALID_FORMAT`.
+    cost: >-
+      The comment states, outside behavior, the refusal that the ingestion contract already holds. The code that
+      applies it is the 422 entry for VALIDATION_INVALID_FORMAT at backend/src/shared/error-mapping.ts:91. A reader
+      of this file sees a second statement of the refusal. If the contract's answer changes, this comment goes
+      stale without any check noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The contract node binds the refusal, and the mapping code sits in
+      backend/src/shared/error-mapping.ts.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      doc comment on IngestRawInformationRequestSchema, `content` bullet, lines 16-19
+    evidence: >-
+      `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+       in code points
+    cost: >-
+      The comment gives the content bound in code points. The node fixes it at UTF-16 code units, and
+      `.max(10 * 1024 * 1024, ...)` on line 30 counts UTF-16 units. A reader who trusts the comment expects
+      astral characters to count once, when each counts twice. The code holds the bound, so the comment is a
+      second and inexact home for it.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by the `.min(1)` and `.max(10 * 1024 * 1024)` calls and by the
+      content-length node.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      doc comment, `storage_ref` bullet, line 19
+    evidence: >-
+      `storage_ref`: nullable; must be `null` in v1.0.0 (BR carve-out, A5).
+    cost: >-
+      The comment claims a domain rule, that a raw information's storage reference is null in v1.0.0. No node
+      holds it, and the schema (`storage_ref: z.string().nullable().optional()`) accepts any string. The
+      repository INSERT in backend/src/modules/ingestion/repository/ingestion.repository.ts names no
+      `storage_ref` column, so the value is silently dropped rather than refused. The next reader looks in the
+      specification for what a supplied storage reference does and finds nothing.
+    kind: unstated
+    correction: >-
+      Analysis would give the raw-information node, or a rule constraining it, the decision on whether a caller
+      may supply a storage reference. Then remove the comment.
+    node: domain/knowledge-base/raw-information
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      doc comment, `model` and `prompt_version` bullet, lines 22-23
+    evidence: >-
+      `model` and `prompt_version`: parts of the `llm_run.idempotency_key`
+       composition (BR-08, A18).
+    cost: >-
+      The comment states part of how the idempotency key is composed. The idempotency-key node holds that fact,
+      and code holds it in composeIdempotencyKey, imported in
+      backend/src/modules/ingestion/service/ingestion.service.ts from ../hash.js. Prose here duplicates the rule
+      and will not follow it if the composition changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The composition is held by the idempotency-key node and by `composeIdempotencyKey`.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      doc comment on `original_input`, lines 35-39
+    evidence: >-
+      Never
+         factored into `content_hash`.
+    cost: >-
+      The comment restates what the content-hash node fixes, that the hash covers the content. The computation
+      is `sha256Hex(input.content)` in backend/src/modules/ingestion/service/ingestion.service.ts. The prose is
+      a second home for the rule, with nothing tying it to the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The hash rule is held by the content-hash-is-sha256 node and by the computation in
+      ingestion.service.ts.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      doc comment on `original_input`, lines 35-39
+    evidence: >-
+      Capped at 10 MiB to match `content`.
+    cost: >-
+      The comment restates the original-input bound. The code holds it on line 42 with
+      `.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")`. The prose is a second home for the
+      value.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by the `.max(...)` call and by the original-input-length node.
+    node: rules/knowledge-base/original-input-length
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      `export const IngestRawInformationRequestSchema = z.object({` declares intake fields only and presents
+      nothing to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: nowhere
+    evidence: >-
+      The file holds request and response schemas for intake only, with no extraction or proposal
+      construct.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      `export const IngestOutcomeSchema = z.enum(["created", "noop_existing"]);` is one REST response
+      schema, with no MCP counterpart in the file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The ingest-raw-information operation only: IngestRawInformationRequestSchema (lines 25-45),
+      IngestOutcomeSchema, ChunkRefSchema and IngestRawInformationResponseSchema (lines 52-73).
+    evidence: >-
+      `source_type: SourceTypeSchema,` with `model: z.string().min(1, "model is required"),` and
+      `prompt_version: z.string().min(1, "prompt_version is required"),`. Response:
+      `outcome: IngestOutcomeSchema, raw_information_id: z.string().uuid(), content_hash: ..., chunk_count: ...,
+      chunks: z.array(ChunkRefSchema), llm_run_id: z.string().uuid(), idempotency_key: ...`. The other
+      operations are not in this file.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      No listing filter appears; the file ends at `export type IngestRawInformationResponse`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      No alias construct in the file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      No attribute-key construct in the file.
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      No change hint appears in the request schema.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file is the raw-information intake DTO, with no directed batch.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      No directed item construct in the file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      No directed item kind in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed item status in the file.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      No match review construct in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      No fragment construct in the file.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      No proposal tool enumeration in the file.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No link construct in the file.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No knowledge node construct in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      No link type construct in the file.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: nowhere
+    evidence: >-
+      No link type rule construct in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      Request `model` and `prompt_version` (lines 33-34), response `llm_run_id` and `idempotency_key`
+      (lines 71-72). The run's status, attempts and summary are not in this file.
+    evidence: >-
+      `model: z.string().min(1, "model is required"),` and `llm_run_id: z.string().uuid(),` and
+      `idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),`
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      No alias construct in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No node attribute construct in the file.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      No resolution construct in the file.
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      No node type construct in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      `prompt_version: z.string().min(1, "prompt_version is required"),` accepts any non-empty string and
+      does not enumerate v1 to v4.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      No proposal construct in the file.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ChunkRefSchema (lines 56-61), which carries a chunk's identity, index and offsets.
+    evidence: >-
+      `chunk_index: z.number().int().nonnegative(), offset_start: z.number().int().nonnegative(),
+      offset_end: z.number().int().positive(),` The excerpt, locator and chunking version are not in this
+      file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestRawInformationRequestSchema (lines 25-45): source_type, content, storage_ref, metadata and
+      original_input. content_hash is in the response (line 68).
+    evidence: >-
+      `source_type: SourceTypeSchema, content: z .string()`, `storage_ref: z.string().nullable().optional(),
+      metadata: z.record(z.string(), z.unknown()).default({}),` and `original_input: z .string()`
+  - node: domain/knowledge-base/run-status
+    held_at: nowhere
+    evidence: >-
+      No run status construct in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      No run summary construct in the file.
+  - node: domain/knowledge-base/tool-call
+    held_at: nowhere
+    evidence: >-
+      No tool call construct in the file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      No validity basis construct in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No validation outcome construct in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      No value type construct in the file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in the file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in the file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in the file.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal in the file.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal in the file.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal in the file.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal in the file.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: nowhere
+    evidence: >-
+      No confidence handling in the file.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      No validity basis in the file.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity computation in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: nowhere
+    evidence: >-
+      `ChunkRefSchema` carries no excerpt.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: nowhere
+    evidence: >-
+      `chunk_index: z.number().int().nonnegative(),` only bounds the value; the ordering from 0 is not stated
+      here.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: nowhere
+    evidence: >-
+      `chunks: z.array(ChunkRefSchema),` states no order.
+  - node: rules/knowledge-base/chunking-version
+    held_at: nowhere
+    evidence: >-
+      `ChunkRefSchema` carries no chunking version.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: nowhere
+    evidence: >-
+      No cited fragments in the file.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: nowhere
+    evidence: >-
+      No cited fragments in the file.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: nowhere
+    evidence: >-
+      No cited fragments in the file.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: nowhere
+    evidence: >-
+      No run closing in the file.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance in the file.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      The format of the response's content_hash only (line 68). The digest is computed in another file.
+    evidence: >-
+      `content_hash: z.string().regex(/^[0-9a-f]{64}$/),` accepts 64 lowercase hexadecimal characters, and
+      nothing in this file computes the SHA-256.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: nowhere
+    evidence: >-
+      `content_hash: z.string().regex(/^[0-9a-f]{64}$/),` states a format, not uniqueness.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      `content` in IngestRawInformationRequestSchema, lines 27-30.
+    evidence: >-
+      `.min(1, "content must not be empty") .max(10 * 1024 * 1024, "content must not exceed 10 MiB"),` Zod
+      string bounds count UTF-16 code units, and 10 * 1024 * 1024 = 10,485,760.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      No proposal in the file.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion construct in the file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: nowhere
+    evidence: >-
+      No proposal dates in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      `prompt_version: z.string().min(1, "prompt_version is required"),` is required and has no default.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in the file.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: nowhere
+    evidence: >-
+      The only trace is the comment "Verbatim user turn that triggered a chat-directed ingestion". The schema
+      field `original_input` records nothing about directed ingestion.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: nowhere
+    evidence: >-
+      No document ingestion or extraction in the file.
+  - node: rules/knowledge-base/email-header-block
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: nowhere
+    evidence: >-
+      No proposal or audit construct in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: nowhere
+    evidence: >-
+      No fragment proposal in the file.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: nowhere
+    evidence: >-
+      No fragment proposal in the file.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: nowhere
+    evidence: >-
+      No fragment proposal in the file.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: nowhere
+    evidence: >-
+      No fragment proposal in the file.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: nowhere
+    evidence: >-
+      No fragment proposal in the file.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      `z.enum(["created", "noop_existing"])` only names the outcome. What is recorded on the no-op path is
+      not in this file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      The format of the response's idempotency_key only (line 72). The composition is held in another file.
+    evidence: >-
+      `idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),` accepts 64 lowercase hexadecimal characters. The
+      composition is not computed here.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      `idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),` states a format, not uniqueness.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: nowhere
+    evidence: >-
+      The response schema describes the outcome but records nothing.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: nowhere
+    evidence: >-
+      No link proposal in the file.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No link proposal in the file.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No link proposal in the file.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: nowhere
+    evidence: >-
+      No link type rule in the file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: nowhere
+    evidence: >-
+      No run transition in the file.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in the file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No name normalization in the file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: nowhere
+    evidence: >-
+      No confidence handling in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No node creation in the file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in the file.
+  - node: rules/knowledge-base/node-name-length
+    held_at: nowhere
+    evidence: >-
+      No node proposal in the file.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No node proposal in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      `original_input` in IngestRawInformationRequestSchema, lines 40-44.
+    evidence: >-
+      `.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB") .nullable() .optional(),` Zod string
+      bounds count UTF-16 code units.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: nowhere
+    evidence: >-
+      No fragment construct in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      No paging in the file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      `prompt_version: z.string().min(1, "prompt_version is required"),` checks non-emptiness, not
+      membership in the versions the system holds.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: nowhere
+    evidence: >-
+      No proposal in the file.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      No proposal in the file.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: nowhere
+    evidence: >-
+      No proposal in the file.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: nowhere
+    evidence: >-
+      No provenance in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in the file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in the file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: nowhere
+    evidence: >-
+      The response schema carries no reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: nowhere
+    evidence: >-
+      No proposal in the file.
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      No proposal dates in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal dates in the file.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: nowhere
+    evidence: >-
+      No retry in the file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No retry in the file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      No proposal dates in the file.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in the file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+  - node: rules/knowledge-base/succession-signal
+    held_at: nowhere
+    evidence: >-
+      No fragment text handling in the file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No run summary in the file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: nowhere
+    evidence: >-
+      No run summary in the file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in the file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in the file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in the file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No tool call in the file.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      No proposal dates in the file.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking algorithm in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: nowhere
+    evidence: >-
+      The file declares the response shape `outcome: IngestOutcomeSchema` only, with no no-op behavior.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal in the file.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: nowhere
+    evidence: >-
+      No assertion handling in the file.
+looked_past: >-
+  I saw the free-text Zod messages ("content must not be empty"), the prose claim about the route's 11 MiB Fastify bodyLimit, and the wire names offset_start and offset_end against the node's start_offset and end_offset. None is a node's fact or a code review question for this pass.

@@ -1,0 +1,734 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      header comment, lines 9-11 ("The catalog covers BR-14 ... and BR-15 ...")
+    evidence: >-
+      // The catalog covers BR-14 (`BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}`
+      // on the respective miss) and BR-15 (`BUSINESS_LINK_RULE_VIOLATION` via
+      // `LinkTypeRule`).
+    cost: >-
+      The prose says which refusal code answers a link no rule permits. That fact belongs to the ingestion contract's propose-link refusal. The code that raises it is not in this file. A reader who edits the comment, or reads it as the place the refusal is decided, has a second statement of a contract fact to keep in step.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal is raised in src/modules/ingestion/validation/graph-rules.ts, which calls `isLinkRuleActive`. The node holds the rule.
+    node: rules/knowledge-base/link-permitted-by-type-rule
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      header comment, lines 13-21 (closed and open value domains), repeated in the `attributeValidValuesByKeyId` doc comment, lines 96-112
+    evidence: >-
+      // zero rows = open domain (backward-compatible legacy behavior; any literal
+      // that parses against `value_type` is accepted). A key with >= 1 rows =
+      // closed domain — only the listed values are accepted by the structural
+      // validator.
+    cost: >-
+      The prose states when a value must be one of the allowed values. The code that applies the check is `domainOf` here plus the caller in src/modules/ingestion/service/propose-attribute.service.ts. A reader who wants the rule finds it re-told here, and the copy can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment prose. The rule is held by the node, and the enforcing code is in propose-attribute.service.ts (`domainOf(deps.catalog, resolvedKey.id)`).
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      `LinkTypeRuleRow` doc comment, lines 47-51
+    evidence: >-
+      the temporal filter (`valid_to IS NULL OR valid_to > current_date`) is applied at
+      * lookup time so a rule that expires between reloads is honoured.
+    cost: >-
+      The comment gives the in-effect condition as a `valid_to`-only filter on `current_date`. The code applies both bounds through `stripTime`, on UTC dates. The comment is a second, partial account of a rule the node states. When the two differ, a reader cannot tell which was decided.
+    kind: restates
+    correction: >-
+      Remove the comment. `isLinkRuleActive` in this file holds the condition (`today.getTime() < from.getTime()` and `today.getTime() >= to.getTime()`).
+    node: rules/knowledge-base/link-type-rule-in-effect
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      `domainOf` docstring, lines 227-249
+    evidence: >-
+      everything else fails with
+      * `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
+    cost: >-
+      The docstring is prose no running system emits, and it states the refusal code and payload for a value outside the allowed set. The contract holds that answer, and the code that emits it is in another file. The docstring is a second home for a contract fact that neither `--check` nor the node reaches.
+    kind: restates
+    correction: >-
+      Remove the docstring. The contract's propose-attribute refusals hold the answer, and propose-attribute.service.ts emits it.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      `isLinkRuleActive` docstring, lines 265-270
+    evidence: >-
+      validity window includes today (semi-open `[valid_from, valid_to)`; nulls
+      * mean unbounded — §5.1).
+    cost: >-
+      The prose restates the in-effect interval that the code in the same function already holds. It also cites a section of a superseded document as its authority. The specification is where a reader should find the interval.
+    kind: restates
+    correction: >-
+      Remove the docstring. The interval is held by the function body and by the node.
+    node: rules/knowledge-base/link-type-rule-in-effect
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file loads and indexes catalog rows only (`export async function loadCatalog(`) and builds no prompt or extraction input.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: nowhere
+    evidence: >-
+      The file only reads catalog tables (`SELECT id, name, description FROM node_type`) and calls no language model.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      No transport, REST or MCP construct appears in the file (`import type { PoolClient } from "pg";` is the only import).
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No operation is exposed or answered here. The only mentions of a refusal are comments (`BUSINESS_LINK_RULE_VIOLATION`, `VALIDATION_INVALID_FORMAT`), which are prose.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      No listing or filter construct in the file; it holds `CatalogSnapshot` only.
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      No alias construct appears in the file.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      `AttributeKeyRow` (lines 61-69), the `SELECT ... FROM attribute_key` in `loadCatalog`, and `attributeValidValuesByKeyId` with `domainOf` for the allowed values
+    evidence: >-
+      export interface AttributeKeyRow { readonly id: string; readonly node_type_id: string; readonly key: string; readonly value_type: "date" | "number" | "text" | "bool"; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; }
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      No change-hint construct appears in the file.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      No directed-ingestion construct appears in the file.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      No directed-item construct appears in the file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      No directed-item-kind values appear in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed-item-status values appear in the file.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      No entity-match construct appears in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      No fragment construct appears in the file.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The only mention is the comment "used by `propose_attribute` cross-checks"; no tool enumeration is declared.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No link assertion row or logic appears; only `LinkTypeRow` (catalog) is declared.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No knowledge-node construct appears in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      `LinkTypeRow` (lines 38-45) and the `SELECT ... FROM link_type` in `loadCatalog`
+    evidence: >-
+      export interface LinkTypeRow { readonly id: string; readonly name: string; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; readonly requires_valid_to_on_change: boolean; }
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      `LinkTypeRuleRow` (lines 52-58) and the `SELECT ... FROM link_type_rule` in `loadCatalog`
+    evidence: >-
+      export interface LinkTypeRuleRow { readonly link_type_id: string; readonly source_node_type_id: string; readonly target_node_type_id: string; readonly valid_from: Date | null; readonly valid_to: Date | null; }
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      No run construct appears in the file.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      No alias construct appears in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      Only the catalog `AttributeKeyRow` is declared; no attribute assertion is.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      No resolution construct appears in the file.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      `NodeTypeRow` (lines 26-35) and the `SELECT id, name, description FROM node_type` in `loadCatalog`
+    evidence: >-
+      export interface NodeTypeRow { readonly id: string; readonly name: string; readonly description?: string; }
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt-version values appear in the file.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      No proposal construct appears in the file; the only mention is the comment "used by `propose_attribute` cross-checks".
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunk construct appears in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      No raw-information construct appears in the file.
+  - node: domain/knowledge-base/run-status
+    held_at: nowhere
+    evidence: >-
+      No run-status values appear in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      No summary construct appears in the file.
+  - node: domain/knowledge-base/tool-call
+    held_at: nowhere
+    evidence: >-
+      No tool-call construct appears in the file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      No basis values appear in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No validation-outcome values appear in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the `value_type` field of `AttributeKeyRow`, line 65
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: nowhere
+    evidence: >-
+      No affected-node or merge logic appears in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No affected-node logic appears in the file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: nowhere
+    evidence: >-
+      No run logic appears in the file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      No similarity or entity-resolution logic appears in the file.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file only indexes keys by node type (`attributeKeyCacheKey(nodeTypeId, key)`). The refusal for an unknown key is not raised here.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No check sequence appears in the file.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      `domainOf` only returns the allowed set (`return domain;`). The comparison with the proposed value and the refusal are in propose-attribute.service.ts, not in this file. The docstring that mentions the refusal is prose.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file declares `value_type` but has no parsing or date check.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: nowhere
+    evidence: >-
+      No confidence logic appears in the file.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      No basis handling appears in the file.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity logic appears in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: nowhere
+    evidence: >-
+      No chunk listing appears in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: nowhere
+    evidence: >-
+      No chunking-version value appears in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: nowhere
+    evidence: >-
+      No run logic appears in the file.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: nowhere
+    evidence: >-
+      No assertion handling appears in the file, though `allows_multiple_current` is declared as a flag on the catalog rows.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance logic appears in the file.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: nowhere
+    evidence: >-
+      No hashing appears in the file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: nowhere
+    evidence: >-
+      No hash logic appears in the file.
+  - node: rules/knowledge-base/content-length
+    held_at: nowhere
+    evidence: >-
+      No content-length bound appears in the file.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: nowhere
+    evidence: >-
+      No correction logic appears in the file.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      No errata terms appear in the file.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      No currentness logic appears in the file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: nowhere
+    evidence: >-
+      No date-check sequence appears in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: nowhere
+    evidence: >-
+      No directed logic appears in the file.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: nowhere
+    evidence: >-
+      No ingestion logic appears in the file.
+  - node: rules/knowledge-base/email-header-block
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: nowhere
+    evidence: >-
+      No audit logic appears in the file.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity-resolution logic appears in the file.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file. The `description` comment about the prompt is prose about a use elsewhere.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: nowhere
+    evidence: >-
+      No fragment check appears in the file.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: nowhere
+    evidence: >-
+      No fragment logic appears in the file.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: nowhere
+    evidence: >-
+      No length bounds appear in the file.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      No ingestion logic appears in the file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: nowhere
+    evidence: >-
+      No key derivation appears in the file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      No key logic appears in the file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: nowhere
+    evidence: >-
+      No ingestion logic appears in the file.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      `isLinkRuleActive`, lines 271-296 (the permission predicate; the refusal is raised by its caller in validation/graph-rules.ts)
+    evidence: >-
+      if (r.link_type_id !== args.link_type_id || r.source_node_type_id !== args.source_node_type_id || r.target_node_type_id !== args.target_node_type_id) { continue; } ... return true; ... return false;
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No check sequence appears in the file.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file only indexes link types by name (`linkTypeByName`). The refusal for an unknown link type is not raised here.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      `isLinkRuleActive`, lines 289-292, with `stripTime` at lines 298-300 for the UTC calendar date
+    evidence: >-
+      if (from !== null && today.getTime() < from.getTime()) continue; if (to !== null && today.getTime() >= to.getTime()) continue; ... return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: nowhere
+    evidence: >-
+      No run state appears in the file.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No alias logic appears in the file.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction logic appears in the file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No normalization appears in the file. Names are used as raw map keys (`nodeTypeByName.set(r.name, r)`).
+  - node: rules/knowledge-base/new-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: nowhere
+    evidence: >-
+      No confidence thresholds appear in the file.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No alias logic appears in the file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: nowhere
+    evidence: >-
+      No resolution logic appears in the file.
+  - node: rules/knowledge-base/node-name-length
+    held_at: nowhere
+    evidence: >-
+      No length bounds appear in the file.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file only indexes node types by name (`nodeTypeByName`). The refusal for an unknown node type is not raised here.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: nowhere
+    evidence: >-
+      No length bounds appear in the file.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: nowhere
+    evidence: >-
+      No fragment logic appears in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      No paging appears in the file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt-version logic appears in the file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: nowhere
+    evidence: >-
+      No confidence bounds appear in the file.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      No run check appears in the file.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: nowhere
+    evidence: >-
+      No check sequence appears in the file.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: nowhere
+    evidence: >-
+      No provenance logic appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No consolidation logic appears in the file.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: nowhere
+    evidence: >-
+      No listing logic appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      No listing bounds appear in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: nowhere
+    evidence: >-
+      No listing default appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: nowhere
+    evidence: >-
+      No listing order appears in the file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: nowhere
+    evidence: >-
+      No reception time logic appears in the file.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: nowhere
+    evidence: >-
+      No recording logic appears in the file.
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      The file carries the `requires_valid_from` flag on the rows (`readonly requires_valid_from: boolean;`) but has no availability check.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file carries the `requires_valid_from` flag but has no fallback logic.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: nowhere
+    evidence: >-
+      No run logic appears in the file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No run logic appears in the file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line pattern appears in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      No basis check appears in the file.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: nowhere
+    evidence: >-
+      No resolution logic appears in the file.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: nowhere
+    evidence: >-
+      No succession logic appears in the file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: nowhere
+    evidence: >-
+      No succession logic appears in the file.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: nowhere
+    evidence: >-
+      No succession logic appears in the file.
+  - node: rules/knowledge-base/succession-signal
+    held_at: nowhere
+    evidence: >-
+      No signal terms appear in the file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No summary logic appears in the file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: nowhere
+    evidence: >-
+      No summary logic appears in the file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: nowhere
+    evidence: >-
+      No listing logic appears in the file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: nowhere
+    evidence: >-
+      No paging appears in the file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No paging appears in the file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No tool-call logic appears in the file.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      No date comparison of a proposal appears in the file. `isLinkRuleActive` compares rule windows against today, which is another fact.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: nowhere
+    evidence: >-
+      No email or chunking logic appears in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No pdf or chunking logic appears in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: nowhere
+    evidence: >-
+      No ingestion logic appears in the file.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      No date parsing appears in the file.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: nowhere
+    evidence: >-
+      No assertion logic appears in the file.
+looked_past: >-
+  The header and field comments say the catalog is loaded once at boot and that changes need a BFF restart. That is operational rationale, not a domain fact, and it belongs to a code-review or decision-log judgment, not to this one.

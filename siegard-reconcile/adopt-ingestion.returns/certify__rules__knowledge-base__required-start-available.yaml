@@ -1,0 +1,50 @@
+certified:
+  - node: rules/knowledge-base/required-start-available
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: accepts an empty period when not required
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: rejects BUSINESS_DATE_UNJUSTIFIED when requires_valid_from but ALL three chain links are absent
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: accepts requires_valid_from = true when document_date is available
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-1: falls back to received_at when stated and document dates are absent"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-1: received_at fallback extracts only the YYYY-MM-DD portion"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-2: still rejects BUSINESS_DATE_UNJUSTIFIED when received_at is ALSO null"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-3: no behaviour change when valid_from IS present (stated)"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-3: no behaviour change when document_date is the source (precedence over received)"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: received_at fallback ignored when requires_valid_from = false
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: received_at fallback rejected when timestamp is malformed
+    why: >-
+      The decision itself is tested in full at the validateTemporal layer. When a
+      validity start is required and there is no stated start, no document date and
+      no reception date, the proposal is refused with BUSINESS_DATE_UNJUSTIFIED. A
+      stated start is accepted. A document date alone is accepted. A reception date
+      alone is accepted and turned into a start. When no start is required, nothing
+      is demanded. The gap is that every test passes `requires_valid_from`,
+      `document_date` and `received_at` to the validator as literal arguments. No
+      test sends a proposal for a real link type or attribute key, so nothing checks
+      that the requirement comes from the catalog entry of the proposed link type or
+      attribute key. Nothing checks either that the two dates come from the document
+      date and reception date of the proposal's own source RawInformation. If the
+      ingest path passed `requires_valid_from = false` for a key that requires a
+      start, or read the dates from somewhere else, the fact would stop holding and
+      every test here would still pass. Both constrained nodes, the proposal and the
+      raw information, are only stood in for by literals.
+    remainder: testable
+    remainder_why: >-
+      Send one proposal through the ingest path. Use an attribute key or link type
+      whose catalog entry requires a validity start, give no stated start, and anchor
+      it to a source RawInformation that has neither a document date nor a reception
+      date. Assert that it is refused with BUSINESS_DATE_UNJUSTIFIED. Then send the
+      same proposal against a source that has only a document date, and assert that
+      it is accepted. Do the same with a source that has only a reception date. Last,
+      send a proposal for a key that does not require a start, with no dates, and
+      assert that it is accepted.

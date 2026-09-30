@@ -1,0 +1,868 @@
+findings:
+  - file: src/modules/ingestion/mcp/propose-fragment.handler.ts
+    where: >-
+      the comment above the assertRunIsRunning call in proposeFragmentHandler (lines 71-72)
+    evidence: >-
+      // BR-21 (defence in depth at the service-call boundary). Returns the
+      // run's `input_raw_information_id` used to scope the service.
+      const run = await assertRunIsRunning(client, deps.llm_run_id);
+    cost: >-
+      The comment cites a back-spec rule (BR-21) as the authority for the running-run check. A reader
+      trying to learn where "a proposal is taken only within a running run" is decided is sent to
+      that prose and to a rule identifier outside the specification, when the fact is held by the
+      node and by the call beneath the comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The node holds the fact and the `assertRunIsRunning` call, in this file,
+      enforces it.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/mcp/propose-fragment.handler.ts
+    where: >-
+      the `if (!envelope.ok)` branch in proposeFragmentHandler (lines 79-88)
+    evidence: >-
+      if (!envelope.ok) {
+        // Defensive: a future evolution of the service contract could return
+        // an error envelope directly. Map it to the audit shape so the
+        // handler shell records the right outcome.
+        return {
+          result: envelope as unknown as ProposeFragmentResult,
+          validation_outcome: "rejected",
+    cost: >-
+      The node splits a tool call's outcome into rejected for a refused proposal and error for a
+      failed one. This branch records "rejected" for every non-ok envelope and does not look at
+      what kind of failure it carries. The branch is unreachable while the service only throws. If
+      it ever runs, a system failure would be audited as a refusal, and the run summary's `error`
+      and `rejected` counts would be wrong.
+    kind: contradicts
+    correction: >-
+      Derive the outcome for an error envelope by the node's rejected/error split, in the same place
+      that derives the other outcomes, instead of hard-coding "rejected" here.
+    node: rules/knowledge-base/tool-call-validation-outcome
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and marks no content as data. It only parses the input and forwards it: `proposeFragmentService(client, input, {`.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is one of the proposal tools and states no constraint on the extracting model: `tool_name: "propose_fragment"`.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the MCP adapter only. It returns `McpEnvelope<ProposeFragmentResult>` and does no comparison with the REST answers.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The Zod-failure branch in buildProposeFragmentHandler (lines 36-49) and the propose-fragment success envelope in proposeFragmentHandler. Only the propose-fragment operation appears here, and the other operations of the contract are absent.
+    evidence: >-
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "Input failed Zod parse.", { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }) ; return { result: envelope.result, validation_outcome: deriveValidationOutcome(envelope), ... }
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing filter appears in the file. It handles a single proposal: `buildProposeFragmentHandler`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias is handled. The file forwards `input` to `proposeFragmentService`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute-key concept. Its only tool name is `"propose_fragment"`.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no change hint, and none is named in the file.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code. It handles one MCP proposal: `run: async (client) => {`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item is handled in the file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item kind appears in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item status appears in the file. The only outcome literal is `validation_outcome: "rejected"`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity match is handled in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragment is recorded by the service. This file imports only the DTO types and forwards: `proposeFragmentService(client, input, {`.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      The tool_name argument of the two runIngestHandler calls, which spells the value as the material does.
+    evidence: >-
+      tool_name: "propose_fragment",
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is handled in the file.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node is handled in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type appears in the file.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule appears in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      Only the run's raw information is read, from the run assertRunIsRunning returns, and it is passed to the service as the source scope.
+    evidence: >-
+      rawInformationId: run.input_raw_information_id,
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias appears in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is handled in the file.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal has no resolution, and none appears in the file.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node type appears in the file.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no proposal shape. The shape is imported from the DTO: `ProposeFragmentInputSchema`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is read or cut in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw information is only an identity passed through: `rawInformationId: run.input_raw_information_id`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no status value. The running check is delegated: `assertRunIsRunning(client, deps.llm_run_id)`.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary is computed in the file.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      The arguments handed to runIngestHandler, which records the tool call: its name, its arguments, its result and its validation outcome.
+    evidence: >-
+      tool_name: "propose_fragment", input, ... validation_outcome: deriveValidationOutcome(envelope), tool_call_result: { ...(envelope.result as unknown as Record<string, unknown>) }
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validity basis appears in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      The outcome literal in the defensive branch, and the derivation call for the success path.
+    evidence: >-
+      validation_outcome: "rejected", ; validation_outcome: deriveValidationOutcome(envelope),
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value type appears in the file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node listing appears in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node computation appears in the file.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node listing appears in the file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not an attribute proposal.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not an attribute proposal.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not an attribute proposal.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not an attribute proposal.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The rule concerns link and attribute proposals. The file contains no confidence threshold.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validity basis is checked in the file.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity appears in the file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is cut in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is cut in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk listing appears in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, which cites no fragments.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, which cites no fragments.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, which cites no fragments.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never completes or fails a run.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, which meets no current assertion.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, which meets no current assertion.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash appears in the file.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash appears in the file.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content length appears in the file.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a correction.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a correction.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion appears in the file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no dates, and none are checked in the file.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion code.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no document-ingestion code.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      Both paths go through runIngestHandler, which records the tool call. That covers the Zod-failure path, where the raw arguments are recorded, and the parsed path.
+    evidence: >-
+      return await runIngestHandler({ deps: { pool: args.pool, logger: args.logger, llm_run_id: args.llm_run_id }, tool_name: "propose_fragment", input: raw as ProposeFragmentInput,
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code. It checks the run for a proposal: `assertRunIsRunning(client, deps.llm_run_id)`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The existence check is not in the file. The file forwards to the service: `proposeFragmentService(client, input, {`.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only supplies the run's source to the service, and the comparison of chunks against it is not here: `rawInformationId: run.input_raw_information_id,`.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The order of the two chunk checks is not in the file. It forwards to `proposeFragmentService`.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragment's status is set by the service. The file only forwards: `proposeFragmentService(client, input, {`.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound is not in the file. It parses with the imported `ProposeFragmentInputSchema.safeParse(raw)`.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion appears in the file.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key computation appears in the file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key appears in the file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No ingestion appears in the file.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a link proposal.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a link proposal.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a link proposal.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule appears in the file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no run transition. It only asserts the run is running: `assertRunIsRunning(client, deps.llm_run_id)`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name normalization appears in the file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion is recorded in the file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no confidence threshold.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias appears in the file.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is recorded in the file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is recorded in the file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is recorded in the file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is recorded in the file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No original input appears in the file.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No orphan computation appears in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No paging appears in the file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      No confidence bound appears in the file. Parsing is delegated: `ProposeFragmentInputSchema.safeParse(raw)`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion is met in the file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      The assertRunIsRunning call that gates the service call in proposeFragmentHandler.
+    evidence: >-
+      const run = await assertRunIsRunning(client, deps.llm_run_id);
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      The order of the two paths. Parsing runs first and a parse failure throws before any run check. On the parsed path the run is asserted before the service is called.
+    evidence: >-
+      const parsed = ProposeFragmentInputSchema.safeParse(raw); if (!parsed.success) { ... } ; const run = await assertRunIsRunning(client, deps.llm_run_id); const envelope = await proposeFragmentService(
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No provenance is recorded in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion is met in the file.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions code appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions code appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions code appears in the file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions code appears in the file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      No reception time appears in the file.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      The Zod-failure branch. Its run callback throws before the service is reached, so only the tool call that runIngestHandler records exists.
+    evidence: >-
+      run: async () => { throw new ValidationFailure( "VALIDATION_INVALID_FORMAT",
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no validity start, and none is checked in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no validity start, and none is defaulted in the file.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry appears in the file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no validity start, and none is checked in the file.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles a fragment proposal, not a node proposal.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in the file.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in the file.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession appears in the file.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No succession signal appears in the file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in the file.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      No summary appears in the file.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool-call listing appears in the file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      The success path delegates to deriveValidationOutcome. The defensive non-ok branch hard-codes "rejected" and does not separate refused from failed, which is the finding above.
+    evidence: >-
+      validation_outcome: deriveValidationOutcome(envelope), ; validation_outcome: "rejected",
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      A fragment proposal carries no validity dates, and none are compared in the file.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns email chunking, and no chunking appears in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns pdf chunking, and no chunking appears in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns intake of held content, and no intake appears in the file.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns attribute proposals, and the file handles a fragment proposal.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The scenario concerns link consolidation, and no link is handled in the file.
+looked_past: >-
+  The header docstring cites UC-08 and BR-19 and describes the four-step adapter structure, and the result cast `envelope as unknown as ProposeFragmentResult` in the defensive branch is a typing and code-quality matter; both are left to other judgments.

@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/directed-full-confidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "forced confidence: dispatched propose_* args carry confidence=1.0 even when the caller payload has no confidence field"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "happy path: dispatches fragments → nodes → attributes → links in order; run closes 'completed'"
+    why: >-
+      The forced-confidence test submits one fragment, one attribute and one link.
+      None of them carries a confidence of its own. The test then asserts that each
+      proposal the orchestrator dispatches carries confidence 1.0. The happy-path test
+      asserts the same thing along the way, from inside its stubs, over three fragments
+      and one each of attribute and link. Its main job is to check dispatch order.
+      Nothing in the set submits a directed item that states its own confidence below
+      1.0, so the fact is exercised only where the caller is silent. If a payload's
+      confidence were passed through into the proposal, nothing here would fail. No
+      test proposes more than one attribute or more than one link, so the claim for
+      "every" attribute and link rests on a single item each. Both tests check the
+      proposal at the injected propose_* handler stubs. Nothing reads the confidence
+      from what a proposal records, so the production wiring of those handlers goes
+      unexercised.
+    remainder: testable
+    remainder_why: >-
+      Submit one input: a directed payload with two fragments, two attributes and two
+      links, each carrying its own confidence of 0.5. Expect one result: every
+      dispatched fragment, attribute and link proposal carries confidence 1.0, or the
+      payload is refused as malformed before intake.

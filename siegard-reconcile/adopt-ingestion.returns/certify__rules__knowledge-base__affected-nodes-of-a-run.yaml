@@ -1,0 +1,65 @@
+certified:
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_node ok:true with each resolution contributes the node_id
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_link contributes BOTH source and target on contributing outcomes; not on rejected
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_attribute contributes node_id on contributing outcomes only
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: ok:false envelopes do NOT contribute (layered-validation rejections)
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: non-writer tools (propose_fragment) do NOT contribute even on ok:true
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: de-duplicates by node_id — first-write-wins, insertion order preserved
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: preserves the input id order on the output
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: re-applies the collector over tool_call.result rows and resolves
+    why: >-
+      Several parts of the fact are exercised. Node proposals count under each
+      resolution (created_new, matched_existing, needs_review). A link counts
+      both the node it starts from and the node it points to when the link is
+      accepted or consolidated. An attribute counts the node it describes when
+      the attribute is accepted, consolidated or disputed. Rejected outcomes,
+      failed (ok:false) proposals and fragment proposals add nothing. A node
+      reached by a node, a link and an attribute proposal is listed once, in the
+      order first reached. Four parts are not exercised:
+      (1) Nothing in the set submits a link proposal that superseded a previous
+      assertion, or a link proposal that was disputed. So two of the link
+      outcomes the fact names as counting are never checked.
+      (2) Nothing in the set submits an attribute proposal that superseded a
+      previous assertion, so that outcome is never checked for attributes.
+      (3) "Each listed once" is checked only on the ids the collector gathers.
+      No test sends two different ids that both lead to the same surviving
+      node, so the resolved list could name one node twice and every test would
+      still pass.
+      (4) The test "follows merged_into_node_id one hop and swaps in the
+      survivor" checks that a merged node is replaced by the node it was merged
+      into. The fact says only "resolved to" and does not state that swap.
+      Other findings:
+      - The test "skips ids the lookup does not find (e.g. compliance-deleted
+        node)" asserts more than the fact says. The fact does not say a deleted
+        node leaves the list, so this is a behaviour nobody stated, not extra
+        coverage.
+      - The test "issues ONE query for the active-node case (no merges)" and the
+        test "empty ids -> empty result without issuing any query" check query
+        counts and SQL text. That is how the code is built, not the fact, so
+        they cover nothing.
+      - The three LRU cache tests check cache storage and eviction. They bear on
+        no part of the fact.
+    remainder: testable
+    remainder_why: >-
+      Four checks would close the gap:
+      (a) A link proposal whose outcome is that it superseded a previous
+      assertion, and another whose outcome is disputed, each expected to add
+      both linked nodes to the run's list.
+      (b) An attribute proposal whose outcome is that it superseded a previous
+      assertion, expected to add the node it describes.
+      (c) Two proposals whose nodes both lead to the same surviving node,
+      expected to list that node once, where it was first reached.
+      (d) If the fact is meant to include resolving a merged node to the node it
+      was merged into, a merged node expected to appear as that surviving node.
+      Nothing is needed for (d) if the fact is not meant to include that.

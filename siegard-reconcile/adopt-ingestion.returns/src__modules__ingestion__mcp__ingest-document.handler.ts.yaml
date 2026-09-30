@@ -1,0 +1,924 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      header comment, lines 13-16
+    evidence: >-
+      // The extraction LLM is the SERVER's (ANTHROPIC_API_KEY) — the calling client
+      // only hands over the document; the inviolable rule that the LLM never touches
+      // the DB directly is preserved (every write still goes through the validated
+      // propose-* path the orchestrator calls).
+    cost: >-
+      The rule that an extraction acts only through the four proposals is written a second time as prose in a handler that does not enforce it. The next reader can take this comment for where the rule lives. The enforcing code is the tool list the orchestrator builds in src/modules/ingestion/service/extraction.service.ts (`buildTool("propose_fragment", ...)`, `buildTool("propose_node", ...)`). A change to the node would not reach this comment.
+    kind: restates
+    correction: >-
+      Remove the sentence. The constraint is held by the orchestrator's tool list in extraction.service.ts, and the node is the constraint's home.
+    node: constraints/extraction-acts-only-through-proposals
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      header comment, lines 18-21
+    evidence: >-
+      // Idempotency (BR-08): if the same content was already ingested,
+      // `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
+      // (the existing run is completed, or running, and re-running would either no-op
+      // or 409).
+    cost: >-
+      The rule "extracts nothing when its content is already held" is stated in prose. The same file also holds it in code, in the `if (outcome === "noop_existing")` branch that returns before `runExtraction`. The prose is a second home, and it adds a claim about why (no-op or 409) that no node holds.
+    kind: restates
+    correction: >-
+      Remove the comment. The `noop_existing` branch holds the behavior, and the node holds the rule.
+    node: rules/knowledge-base/document-ingestion-extracts-new-content
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      DEFAULT_INGEST_MODEL, line 49, and its use at line 119
+    evidence: >-
+      export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";
+      ...
+      model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL,
+    cost: >-
+      The model an ingest_document run is recorded under, when the caller names none and no environment default is wired, is decided only here. The contract's ingest-document operation says nothing about which model a document ingestion runs under. The model feeds the run's idempotency key, so the value decides which content counts as already ingested. A reader looking in the specification will not find the default.
+    kind: unstated
+    correction: >-
+      Give the default extraction model (and the precedence of caller argument, then environment setting, then fallback) a home in the ingestion contract or in a rule beside default-prompt-version.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      intake catch branch, lines 132-153 (pg unavailable branch)
+    evidence: >-
+      code: "SYSTEM_SERVICE_UNAVAILABLE",
+      message: "A backing service is temporarily unavailable.",
+    cost: >-
+      This is a refusal code that ingest-document answers when the database is unreachable at intake. The contract's ingest-document refusals list only content length, source type, repeated system errors, unknown prompt version and provider failure. Clients branch on the code, and it is written down only in this handler.
+    kind: unstated
+    correction: >-
+      Add the refusal, its cause (a backing service unavailable at intake) and its code to the ingest-document refusals of the ingestion contract.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      intake catch branch, lines 149-152 (any other intake failure)
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: "Failed to persist the document before extraction.",
+    cost: >-
+      The contract holds SYSTEM_INTERNAL_ERROR for ingest-document only "carrying the failed run", for repeated extraction errors or an unknown prompt version. Here the same code answers a persistence failure before any run exists, carrying no run. The answer for this case exists only in the handler.
+    kind: unstated
+    correction: >-
+      State in the ingest-document refusals what is answered when intake fails before a run exists.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      already_ingested result, lines 177-189, and readRunStatus, lines 91-104
+    evidence: >-
+      run_status: runStatus ?? null,
+      message: completed
+        ? "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered."
+        : `This exact content was already ingested, but its run is '${runStatus ?? "unknown"}' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.`,
+    cost: >-
+      The contract's already_ingested answer carries the identities, the chunk count and the run's status. The handler adds a `message` field with a recovery instruction. It also lets the status be null when the best-effort read fails (`catch { return undefined; }`). Neither the field nor the null status is held by a node, so a client cannot know from the specification that the status may be absent.
+    kind: unstated
+    correction: >-
+      Either state in the ingest-document answer the message and the case where the run's status cannot be read, or drop them from the handler.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      final catch branch, lines 256-263 (unknown extraction error)
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: "Unexpected error during document ingestion.",
+      details: { llm_run_id, raw_information_id },
+    cost: >-
+      A failure that is neither a provider failure nor an extraction failure is answered with SYSTEM_INTERNAL_ERROR carrying the run and raw information identities, not the failed run. The contract holds SYSTEM_INTERNAL_ERROR only "carrying the failed run", so this answer is decided only in the handler.
+    kind: unstated
+    correction: >-
+      State in the ingest-document refusals what is answered for an unexpected failure during extraction, and what it carries.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards the document, `content: input.content`, into ingestion. It builds no prompt and marks no content as data.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the header comment claims it ("every write still goes through the validated propose-* path the orchestrator calls"). The code calls `runExtraction(deps.pool, llm_run_id, deps.logger, deps.catalog, extractionDeps)` and leaves the tool list to the orchestrator.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the MCP handler only, with no REST counterpart. Nothing in it compares the two transports' answers.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the ingest-document operation: the `already_ingested` result at lines 177-189, the `ingested` result at lines 209-218, and the extraction failure return at lines 237-244. It departs in the findings above.
+    evidence: >-
+      outcome: "already_ingested", raw_information_id, llm_run_id, chunk_count, run_status: runStatus ?? null,
+      outcome: "ingested", raw_information_id, llm_run_id, chunk_count, run,
+      code: err.code, message: err.message, details: { llm_run_id, raw_information_id, partial_run: err.partialRun }
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No accepted-fragment listing appears in the file. It holds only intake, the noop_existing short-circuit and the extraction call.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No alias handling appears in the file; `ingestDocumentHandler` deals with intake and extraction only.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute key is named or checked in the file.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal is built in the file; proposals are made by the orchestrator it calls.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the one-shot document handler (`ingestDocumentHandler`); directed ingestion is a separate handler.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed items.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed items.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed items.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      No entity resolution occurs in the file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no fragment; the orchestrator it calls does.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no proposal tool; it logs `tool: "ingest_document"`, which is not one of the four proposal kinds.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no link.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no knowledge node.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consults no link type.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consults no link type rule.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no run entity. It passes `llm_run_id` from the intake result to `runExtraction`, and the run itself is opened in the service `ingestRaw`.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no aliases.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consults no node type; it only passes `deps.catalog` through.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no version enumeration; `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION` takes the value from the import "../prompts/index.js".
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no proposal.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads `chunk_count` from the intake result; chunking is in the service `ingestRaw`.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds the intake `body` (`source_type`, `content`, `storage_ref: null`, `metadata`, `model`, `prompt_version`) but declares no raw-information entity.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file compares a status string, `runStatus === "completed"`, but does not declare the enumeration.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file passes through the `run` returned by `runExtraction` and builds no summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call; its comment says "No `tool_call` audit row is due — no run exists yet."
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no validity dates.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no validation outcome.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no attribute values.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes; `run` comes back from `runExtraction`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes; `run` comes back from `runExtraction`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes; `run` comes back from `runExtraction`.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no confidence threshold.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no basis or validity date.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      Chunks are cut in the `ingestRaw` service; the file only reads `chunk_count`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      Chunks are cut in the `ingestRaw` service; the file only reads `chunk_count`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no chunks.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never closes a run; the orchestrator does.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no hash; the intake service does.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file enforces no uniqueness; it reacts to the outcome `noop_existing`.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file measures no length; `content: input.content` is forwarded unchecked, and the bound belongs to the input schema in mcp-schemas.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertion.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no current state.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no dates.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      line 120, the fallback of the prompt version to `DEFAULT_PROMPT_VERSION` (its value comes from ../prompts/index.js, where it is v4)
+    evidence: >-
+      prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file opens its run with an ordinary model and prompt version, `model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL`, and calls a language model. It is not the directed handler.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is not the directed handler.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      lines 157-190, the `noop_existing` short-circuit that returns before extraction, and lines 201-218, the extraction of the new run
+    evidence: >-
+      if (outcome === "noop_existing") { ... return { ok: true, result: { outcome: "already_ingested", ...
+      const run = await runExtraction(deps.pool, llm_run_id, deps.logger, deps.catalog, extractionDeps);
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call for proposals; only the comment "No `tool_call` audit row is due — no run exists yet."
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never closes a run. The comment says "the run is already closed `failed`", and the closing is done in the orchestrator.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not count errors. It forwards the failure the orchestrator raises, `code: err.code, ... details: { llm_run_id, raw_information_id, partial_run: err.partialRun }`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunks.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no run status before extracting. The comment claims "NotFound/NotRunnable cannot occur here".
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no fragment.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      lines 157-190, the `noop_existing` branch, which returns without opening a run or extracting (the non-recording itself is done in the `ingestRaw` service)
+    evidence: >-
+      if (outcome === "noop_existing") {
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no key; it passes `model` and `prompt_version` in `body` to `ingestRaw`.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file enforces no key uniqueness.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file delegates the recording, `ingest = await withTransaction(deps.pool, (client) => ingestRaw(client, body));`. The recording itself is in the service.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file evaluates no rule.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no run transition.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunks.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no name.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no confidence threshold.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no node.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attribute.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no link.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no link.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The intake `body` carries no original input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts no fragment.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file paginates nothing.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not check membership; `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION` is forwarded unchecked.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no recent ingestion.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no recent ingestion.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no recent ingestion.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no recent ingestion.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file stamps no reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no validity start.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run; the comment says "no retry tool is exposed over MCP yet".
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no entity resolution.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no fragment text.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no proposal.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no block cutting.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      lines 157-190, the `noop_existing` branch, which answers with the held raw information's and run's identities whatever model the request names
+    evidence: >-
+      if (outcome === "noop_existing") { ... outcome: "already_ingested", raw_information_id, llm_run_id, chunk_count,
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file validates no attribute value.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertion.
+looked_past: >-
+  The metadata default `metadata: input.metadata ?? {}` and the constant `storage_ref: null` are intake defaults I did not file, since the ingest-document contract names neither.

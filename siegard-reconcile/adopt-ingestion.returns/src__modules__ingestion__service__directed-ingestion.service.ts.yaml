@@ -1,0 +1,1162 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 5-8, and the docblock on synthesiseContent, lines 834-838
+    evidence: >-
+      "// `RawInformation` (stamped with a nonce so the `content_hash` is unique per
+      // call — no `noop_existing` branch on this path)" and "Concatenates
+      `fragments[].text` with `[ref]` prefixes; appends a trailing nonce line so
+      the resulting `content_hash` is unique per call"
+    cost: >-
+      The content-composition rule (reference and text per fragment, label, moment, nonce) is written
+      in prose above the code that holds it (synthesiseContent, lines 839-852). A reader can take the
+      comment for the authority, and the two can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove both comments. The rule is held by rules/knowledge-base/directed-source-content and by
+      synthesiseContent.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 9-11
+    evidence: >-
+      "// the items in dependency order (fragments → nodes → attributes → links)
+      // through the existing `propose_*` handlers"
+    cost: >-
+      The dispatch order is stated in prose while the loops 3a-3d hold it. The order can change in
+      the code and the comment will still claim the old one.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by rules/knowledge-base/directed-dispatch-order and by
+      the sequence of loops 3a-3d in this file.
+    node: rules/knowledge-base/directed-dispatch-order
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 14-19, and the constant docblocks, lines 83-87
+    evidence: >-
+      "// NEVER calls Anthropic — the directed path is `model = 'directed'`,
+      // `prompt_version = 'directed-v1'` (sentinels; ...)" and "/** Sentinel `model` for
+      every directed run — NEVER an Anthropic model id. */"
+    cost: >-
+      The run's model and prompt-version values are also stated as prose. The code holds them at
+      DIRECTED_MODEL, DIRECTED_PROMPT_VERSION and the ingestRaw call (lines 360-361). A reader looking
+      for the decision finds three places.
+    kind: restates
+    correction: >-
+      Remove the header sentence and the two docblocks. The code holds the fact, and
+      rules/knowledge-base/directed-ingestion-run binds it.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 21-24, and step 4 comment, line 763
+    evidence: >-
+      "Failure to open the run is the only `failed` terminal outcome; otherwise the run always lands
+      `completed`." and "// ---- Step 4 — close the run (always 'completed' on this path) ----"
+    cost: >-
+      The completes-whatever-the-items rule is restated in prose. The code holds it in
+      closeRunCompletedSafe, which passes outcome "completed" unconditionally.
+    kind: restates
+    correction: >-
+      Remove both comments. rules/knowledge-base/directed-run-completes binds the fact, and the
+      closeLlmRunRow call holds it.
+    node: rules/knowledge-base/directed-run-completes
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 26-27, and step 3c comment, lines 599-601
+    evidence: >-
+      "// - Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+      //   when the caller omits it (BR-34 step 4)." and "`confidence = 1.0`; `valid_from_basis`
+      defaults to `'stated'` when omitted by caller (BR-34 Defaults matrix)."
+    cost: >-
+      The full-confidence rule is stated in prose beside the three `confidence: 1.0` literals that
+      hold it. It is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the confidence part of both comments. The code holds it (lines 475, 632, 712), and
+      rules/knowledge-base/directed-full-confidence binds it.
+    node: rules/knowledge-base/directed-full-confidence
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 26-27, and step 3c comment, lines 599-601
+    evidence: >-
+      "defaults `valid_from_basis = 'stated'` when the caller omits it" and "`valid_from_basis`
+      defaults to `'stated'` when omitted by caller (BR-34 Defaults matrix)."
+    cost: >-
+      The defaults for basis and change hint are stated in prose while the code holds them at
+      `item.valid_from_basis ?? "stated"` and `item.change_hint ?? "none"`. The prose can
+      go stale without the code moving.
+    kind: restates
+    correction: >-
+      Remove the comment text on defaults. rules/knowledge-base/directed-defaults binds the fact, and
+      lines 636-637 and 716-717 hold it.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 28-31
+    evidence: >-
+      "// - Cascade rule: when a ref dependency is missing (the referenced
+      //   fragment/node was rejected at its own step), the dependent item is
+      //   skipped with a synthetic `dependency_failed` report entry"
+    cost: >-
+      The cascade rule is stated in prose while checkCascade and checkLinkCascade hold it. The ordering
+      of the checks is what the node fixes, and the comment does not carry it.
+    kind: restates
+    correction: >-
+      Remove the comment. rules/knowledge-base/directed-dependency-failed binds the fact, and lines
+      902-921 hold it.
+    node: rules/knowledge-base/directed-dependency-failed
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      docblock on DirectedAttributeValueSchema, lines 119-129
+    evidence: >-
+      "the orchestrator
+       * canonicalises to the string form `propose_attribute` expects:
+       *   - boolean → `\"true\"` / `\"false\"`"
+    cost: >-
+      The text-form rule for number and boolean values is restated as prose above the code that holds
+      it, canonicaliseAttributeValue at lines 941-945.
+    kind: restates
+    correction: >-
+      Remove the docblock, and the docblock on canonicaliseAttributeValue (lines 936-940).
+      rules/knowledge-base/directed-attribute-value-as-text binds the fact.
+    node: rules/knowledge-base/directed-attribute-value-as-text
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      docblock on the sourceExcerpt dep, lines 274-281, and the comment at lines 362-365
+    evidence: >-
+      "Forwarded as
+       * `original_input` to `ingestRawInformation`; NEVER mixed into
+       * `synthesiseContent` (so `content_hash` is unaffected)."
+    cost: >-
+      The original-input rule is restated as prose. The code holds it at
+      `original_input: deps.sourceExcerpt ?? null`.
+    kind: restates
+    correction: >-
+      Remove both comments. rules/knowledge-base/directed-turn-is-original-input binds the fact, and
+      line 366 holds it.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the intakeMetadata construction, lines 339-344
+    evidence: >-
+      "const intakeMetadata: Record<string, unknown> = {
+         directed: true,
+       };
+       if (payload.source_label !== undefined) {
+         intakeMetadata.source_label = payload.source_label;
+       }"
+    cost: >-
+      The raw information's metadata carries a `directed: true` marker and the label under
+      `source_label`. No node holds either key. The next reader who filters or reports on directed
+      sources looks in the specification, finds nothing, and takes the code as the decision.
+    kind: unstated
+    correction: >-
+      Give the metadata a directed ingestion writes a home in the specification. The natural place is
+      rules/knowledge-base/directed-source-content or domain/knowledge-base/raw-information.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the metadataPointer merge, lines 345-351, and its dep type, lines 282-294
+    evidence: >-
+      "if (deps.metadataPointer !== undefined) {
+         intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+         intakeMetadata.message_id = deps.metadataPointer.message_id;
+       }"
+    cost: >-
+      A directed ingestion made from a chat turn records a pointer to the chat conversation and
+      message inside the raw information's metadata. The spec holds the turn's excerpt as the
+      original input but says nothing of this pointer or its key names. The link from a raw
+      information back to its chat row lives only here.
+    kind: unstated
+    correction: >-
+      State in the specification that a chat-turn directed ingestion records the conversation and
+      message identities in its metadata. rules/knowledge-base/directed-turn-is-original-input is the
+      neighbouring node.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the intake catch block, lines 369-391
+    evidence: >-
+      "code: \"SYSTEM_SERVICE_UNAVAILABLE\",
+       message: \"A backing service is temporarily unavailable.\"" and "code: \"SYSTEM_INTERNAL_ERROR\",
+       message: \"Failed to persist the directed payload before dispatch.\""
+    cost: >-
+      The contract's ingest-directed operation lists only validation refusals. The refusal a caller
+      gets when persisting the payload fails (which code, and the split between an unavailable
+      backing service and an internal error) is stated only here. A client reading the contract
+      cannot know these answers exist.
+    kind: unstated
+    correction: >-
+      Add the intake-failure refusals, with their error codes, to the ingest-directed operation in
+      contracts/knowledge-base/ingestion.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the anchor comment, lines 449-454
+    evidence: >-
+      "// All fragments are anchored to the first chunk of the synthesised content.
+       // The chunker may produce multiple chunks for long payloads, but for the
+       // anti-hallucination check (BR-18) any chunk of the run's source is a valid
+       // anchor — we deliberately pick the first one for determinism."
+    cost: >-
+      The first-chunk rule is restated as prose. The code holds it in `const anchorChunkId =
+      chunks[0]!.id;` and `chunk_ids: [anchorChunkId]`.
+    kind: restates
+    correction: >-
+      Remove the comment. rules/knowledge-base/directed-fragments-anchor-first-chunk binds the fact.
+    node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the pin branch comment, lines 511-512, and the docblock on verifyNodePin, lines 854-858
+    evidence: >-
+      "// 3b. Nodes — `node_id` pin bypasses BR-25 fuzzy resolution; otherwise
+       //     delegate to `propose_node`" and "the node row must exist AND its
+       * `status` must be `'active'`."
+    cost: >-
+      The pinned-node rule is restated as prose. The code holds it in verifyNodePin
+      (`row.status !== "active"`) and in the `if (item.node_id !== undefined)` branch.
+    kind: restates
+    correction: >-
+      Remove both comments. rules/knowledge-base/directed-pinned-node binds the fact.
+    node: rules/knowledge-base/directed-pinned-node
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the pin-failure branch, lines 533-553, and verifyNodePin details, lines 877-890
+    evidence: >-
+      "const pinCode =
+         (pinResult.details as { reason?: unknown }).reason === \"not_found\"
+           ? \"RESOURCE_NOT_FOUND\"
+           : \"VALIDATION_INVALID_FORMAT\";" and "details: { reason: \"inactive\", current_status: row.status }"
+    cost: >-
+      A pinned node that is absent is reported with RESOURCE_NOT_FOUND. One that is not active is
+      reported with VALIDATION_INVALID_FORMAT, and the details carry a `reason` and a
+      `current_status`. The node says only that the item is rejected. The codes live only here,
+      and the split has no rationale in the specification.
+    kind: unstated
+    correction: >-
+      State in rules/knowledge-base/directed-pinned-node, or in the ingest-directed operation, what
+      answer a pinned node that is absent or inactive gets.
+    node: rules/knowledge-base/directed-pinned-node
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the pin branch of the node loop, lines 513-555
+    evidence: >-
+      "if (item.node_id !== undefined) {
+         const pinResult = await verifyPin(deps.pool, item.node_id);
+         if (pinResult.kind === \"ok\") {
+           refToNodeId.set(item.ref, item.node_id);"
+    cost: >-
+      A pinned node item, taken or refused, never reaches proposeNode, the only place a tool call is
+      written. Every other dispatched item leaves one. The node says every proposal made within a run
+      is recorded as a tool call, whether taken or refused. A refused pin therefore leaves no
+      record, and the run's audit trail has a gap for the owner's own input.
+    kind: contradicts
+    correction: >-
+      Record a tool call for a pinned node item, or state in the specification that a pin is not a
+      proposal and so is not audited. Which one is the owner's decision.
+    node: rules/knowledge-base/every-proposal-audited
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the schemas for attribute and link items, lines 136-156, and refForAttribute and refForLink, lines 929-934
+    evidence: >-
+      "export const DirectedAttributeItemSchema = z.object({
+         node_ref: DirectedRefSchema,
+         key: z.string().min(1)," and "return `${item.node_ref}.${item.key}`;"
+    cost: >-
+      The node gives every directed item, attributes and links included, a required reference. Here
+      an attribute or link item accepts none, and the report entry's reference is composed from its
+      parts. An owner cannot name their attribute or link, and the reference-length rule cannot
+      apply to what is reported.
+    kind: contradicts
+    correction: >-
+      Either give attribute and link items a `ref` as domain/knowledge-base/directed-item states, or
+      change the node to say that only fragments and nodes carry one.
+    node: domain/knowledge-base/directed-item
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      refForAttribute and refForLink, lines 929-934
+    evidence: >-
+      "return `${item.node_ref}.${item.key}`;" and
+      "return `${item.source_ref}->${item.link_type}->${item.target_ref}`;"
+    cost: >-
+      The format of the reference a report gives an attribute or a link is a value no node holds. A
+      client reading the report has to learn it from this file.
+    kind: unstated
+    correction: >-
+      State in domain/knowledge-base/directed-item how an attribute's or a link's reference is
+      reported, if the owner does not supply one.
+    node: domain/knowledge-base/directed-item
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the affected-nodes resolution catch, lines 767-787
+    evidence: >-
+      "// resolvedAffected stays []; the run is still completed."
+    cost: >-
+      When resolving the affected nodes fails, the response carries an empty `affected_nodes` list
+      on a completed run and the failure goes only to a log. The affected-nodes nodes hold no such
+      degradation, so the caller cannot tell an empty list from a failed lookup.
+    kind: unstated
+    correction: >-
+      State in rules/knowledge-base/affected-nodes-of-a-run what a directed ingestion answers when
+      the affected nodes cannot be resolved.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      closeRunCompletedSafe, lines 1006-1034, and readClosedRunSafe, lines 1041-1091
+    evidence: >-
+      "const fallback = {
+         started_at: new Date(0).toISOString(),
+         finished_at: new Date(0).toISOString(),
+         attempts: 1,
+       };" and "/** Close the run as `completed` in a fresh short transaction. Swallow errors"
+    cost: >-
+      When closing or reading the run fails, the response still says `status: "completed"` and
+      carries the epoch as its start and finish times, with attempts 1. The times are invented
+      values no node holds. The stored run may still be running, and the caller cannot tell.
+    kind: unstated
+    correction: >-
+      State in rules/knowledge-base/directed-run-completes what a directed ingestion answers when
+      its run cannot be closed or read back.
+    node: rules/knowledge-base/directed-run-completes
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the docblock on classifyEnvelopeFailureStatus, lines 960-970
+    evidence: >-
+      "System-level failures (`SYSTEM_*` — e.g. `SYSTEM_INTERNAL_ERROR`,
+       `SYSTEM_SERVICE_UNAVAILABLE`) collapse to `'error'` ... Every other namespaced code ... is a
+       layered-validation rejection and collapses to `'rejected'`."
+    cost: >-
+      The error-versus-rejected status rule is restated as prose. The code holds it in
+      `envelope.error.code.startsWith("SYSTEM_") ? "error" : "rejected"`.
+    kind: restates
+    correction: >-
+      Remove the docblock. rules/knowledge-base/directed-item-status binds the fact.
+    node: rules/knowledge-base/directed-item-status
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directed path sends no content to a model: `model: DIRECTED_MODEL,`. No prompt is built in this file.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      No language model acts in this file. Its own dispatch goes through `const envelope = await proposeFragment(fragInput, {`, except the pin branch.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file returns a transport-neutral `Promise<McpEnvelope<DirectedIngestionResult>>` and mounts no transport.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the ingest-directed answer, the return of directedIngestionService (lines 806-827), and the Zod refusal (lines 308-323)
+    evidence: >-
+      "outcome: \"ingested\", raw_information_id, llm_run_id, chunk_count, run: {...}, report, summary" and "code: \"VALIDATION_INVALID_FORMAT\", message: \"Input failed Zod parse.\", details: { issues: ... path ... message }"
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No listing of accepted fragments appears in the file.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only `aliases: z.array(z.string().min(1).max(500)).optional(),` is read; the canonical and alias kinds are not declared here.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: z.string().min(1),` names a key only; the catalog's attribute keys are not held in this file.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: ChangeHintSchema.optional(),` imports the enumeration from "../dto/propose-link.dto.js"; its values are not declared here.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      DirectedIngestionInputSchema, lines 158-164
+    evidence: >-
+      "fragments: z.array(DirectedFragmentItemSchema).min(1), nodes: z.array(DirectedNodeItemSchema).min(1), attributes: ..., links: ..., source_label: z.string().min(1).max(200).optional(),"
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      the DirectedItemReport interface, lines 196-215. Attribute and link items carry no ref: see the finding.
+    evidence: >-
+      "readonly ref: string; readonly kind: DirectedItemKind; readonly status: DirectedItemStatus;"
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      the DirectedItemKind type, line 177
+    evidence: >-
+      export type DirectedItemKind = "fragment" | "node" | "attribute" | "link";
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      the DirectedItemStatus type, lines 185-194
+    evidence: >-
+      "| \"accepted\" | \"consolidated\" | \"superseded_previous\" | \"needs_review\" | \"uncertain\" | \"disputed\" | \"rejected\" | \"error\" | \"dependency_failed\""
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the resolution: `envelope.result.resolution === "needs_review" ? "needs_review" : "accepted"`. The review record is written by the node handler.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      "const fragInput: ProposeFragmentInput = { text: item.text, confidence: 1.0, chunk_ids: [anchorChunkId] };" The fragment is recorded by proposeFragment.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      `affectedNodes.record("propose_fragment", ...)` uses the tool names but does not declare them.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      `link_id: envelope.result.link_id` is only read from the handler's answer.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      "SELECT status FROM knowledge_node WHERE id = $1 LIMIT 1" reads only the status of a pinned node.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `link_type: z.string().min(1),` names a link type only.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule is read or written in this file; `proposeLink` does that.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run is opened by `ingestRaw` and closed by `closeLlmRunRow(client, { llm_run_id: llmRunId, outcome: "completed" })`; this file declares only a response projection.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      `...(item.aliases !== undefined ? { aliases: item.aliases } : {})` forwards aliases; alias records are made by the node handler.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      `attribute_id: envelope.result.attribute_id` is only read from the handler's answer.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly resolution?: ProposeNodeResolution;` imports the type from "../dto/propose-node.dto.js".
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_type: z.string().min(1),` names a type only.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;` is a sentinel outside the enumeration; no version list is declared here.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The proposals are typed with `ProposeFragmentInput`, `ProposeAttributeInput` and `ProposeLinkInput`, imported from the dto files.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the id of the first chunk is used: `const anchorChunkId = chunks[0]!.id;`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The raw information is recorded by `ingestRaw(client, { source_type: "chat", content: synth.content, ... })`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly status: "completed";` is the only status this file names.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      DirectedSummary has a different shape (`fragments`, `nodes`, `dependency_failed` counts); it is not the run's summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      Tool calls are written by the propose handlers; this file writes none.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from_basis: ValidFromBasisSchema.optional(),` imports the enumeration from the dto file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      `function mapLinkOutcomeToStatus(outcome: ProposeLinkOutcome): DirectedItemStatus { return outcome; }` consumes outcomes and does not declare them.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      "The downstream structural layer (`parseAttributeValue`) re-validates" is a comment; no value type is declared in code here.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      `resolvedAffected = await resolveAffectedNodes(client, affectedNodes.ids());` delegates to affected-nodes.js.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file feeds `affectedNodes.record("propose_link", {...})`; which results count is decided in createAffectedNodeCollector, imported from ./affected-nodes.js.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `affected_nodes: resolvedAffected` is returned after `await closeRunCompletedSafe(...)`, but the rule about a run's status is not held here.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeNode(nodeInput, {` delegates the resolution to proposeNodeHandler.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: item.key,` is forwarded to proposeAttribute, which checks the catalog.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttribute(attrInput, {` delegates the checks to the handler.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: canonicaliseAttributeValue(item.value),` forwards the value; allowed values are checked by the handler.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: canonicaliseAttributeValue(item.value),` forwards the text form; the value type is parsed by the handler.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `confidence: 1.0,` is always above the floor; the floor is held by the handlers.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      `valid_from_basis: ValidFromBasisSchema.optional(),` in DirectedAttributeItemSchema (line 143) and DirectedLinkItemSchema (line 154). The imported schema in dto/propose-link.dto.ts is `z.enum(["stated", "document"])`, which excludes received.
+    evidence: >-
+      "valid_from_basis: ValidFromBasisSchema.optional(),"
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      No similarity is computed in this file.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      Chunks come from `intake.body`; none is cut here.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `chunks[0]!.id` is read; indexing is done by the intake.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk listing is made in this file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking version appears in this file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The content is handed to `ingestRaw(client, { source_type: "chat", content: synth.content, ...})`, which cuts it.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: [fragmentId],` is forwarded; anchoring is checked by the handler.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: [fragmentId],` is forwarded; existence is checked by the handler.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: [fragmentId],` is forwarded; run membership is checked by the handler.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `await closeLlmRunRow(client, { llm_run_id: llmRunId, outcome: "completed" });` delegates the stamp to the repository.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const status = mapLinkOutcomeToStatus(envelope.result.outcome);` consumes the outcome.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeLink(linkInput, {` delegates the precedence to the handler.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: [fragmentId],` is forwarded; provenance is recorded by the handler.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      No hash is computed here; the nonce line only makes it unique: `lines.push(`-- directed_at=${at.toISOString()} nonce=${nonce}`);`
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (intake.body.outcome !== "created") {` guards a collision, but uniqueness is held by the intake.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No content length is checked in this file; `content: synth.content` goes to ingestRaw.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: item.change_hint ?? "none",` is forwarded; the correction is applied by the handler.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: item.change_hint ?? "none",` is forwarded; the evidence check is in the handler.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion is read for currency in this file.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `...(item.valid_from !== undefined ? { valid_from: item.valid_from } : {}),` forwards the dates; the handler checks them.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: DIRECTED_PROMPT_VERSION,` is the directed sentinel, not the default of a document ingestion.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      canonicaliseAttributeValue, lines 941-945
+    evidence: >-
+      "if (typeof v === \"boolean\") return v ? \"true\" : \"false\"; return String(v);"
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      DirectedAttributeValueSchema, lines 130-134
+    evidence: >-
+      "z.string().min(1).max(2000), z.number().finite(), z.boolean(),"
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      the attribute input, lines 636-637, and the link input, lines 716-717
+    evidence: >-
+      "valid_from_basis: item.valid_from_basis ?? \"stated\", change_hint: item.change_hint ?? \"none\","
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      checkCascade and checkLinkCascade, lines 902-921, and the dependency_failed entries, lines 605-611 and 684-690
+    evidence: >-
+      "if (!refToNodeId.has(item.source_ref)) return item.source_ref; if (!refToNodeId.has(item.target_ref)) return item.target_ref; if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref;"
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      the loops in steps 3a-3d, lines 472, 513, 603 and 682
+    evidence: >-
+      "for (const item of payload.fragments) {", "for (const item of payload.nodes) {", "for (const item of attributeItems) {", "for (const item of linkItems) {"
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      lines 455 and 476
+    evidence: >-
+      "const anchorChunkId = chunks[0]!.id;" and "chunk_ids: [anchorChunkId],"
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      the fragment, attribute and link inputs, lines 475, 632 and 712
+    evidence: >-
+      "confidence: 1.0,"
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      the sentinels, lines 84 and 87, and the ingestRaw call, lines 360-361
+    evidence: >-
+      "model: DIRECTED_MODEL, prompt_version: DIRECTED_PROMPT_VERSION," with `DIRECTED_MODEL = "directed"` and `DIRECTED_PROMPT_VERSION = "directed-v1"`
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      the node status (lines 577-579), the attribute and link mapping (lines 654 and 737) and classifyEnvelopeFailureStatus (lines 971-975)
+    evidence: >-
+      "return envelope.error.code.startsWith(\"SYSTEM_\") ? \"error\" : \"rejected\";"
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      the reference maps, lines 484, 519 and 569
+    evidence: >-
+      "refToFragmentId.set(item.ref, envelope.result.fragment_id);" and "refToNodeId.set(item.ref, envelope.result.node_id);" (a later set overwrites an earlier one)
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      the pin branch, lines 513-555, and verifyNodePin, lines 859-896
+    evidence: >-
+      "if (row.status !== \"active\") {" and "refToNodeId.set(item.ref, item.node_id);"
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      DirectedRefSchema, line 104
+    evidence: >-
+      const DirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      DirectedIngestionInputSchema, lines 159-160
+    evidence: >-
+      "fragments: z.array(DirectedFragmentItemSchema).min(1), nodes: z.array(DirectedNodeItemSchema).min(1),"
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      the call in step 4, line 764, and closeRunCompletedSafe, lines 1006-1034
+    evidence: >-
+      "await closeRunCompletedSafe(deps.pool, llm_run_id, deps.logger);" and "await closeLlmRunRow(client, { llm_run_id: llmRunId, outcome: \"completed\" });"
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      synthesiseContent, lines 839-852, and the intake call, line 357
+    evidence: >-
+      "`[${f.ref}] ${f.text}`", "`-- source_label=${payload.source_label}`", "`-- directed_at=${at.toISOString()} nonce=${nonce}`" and `source_type: "chat",`
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      DirectedIngestionInputSchema, line 163
+    evidence: >-
+      "source_label: z.string().min(1).max(200).optional(),"
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the intake call, line 366
+    evidence: >-
+      "original_input: deps.sourceExcerpt ?? null,"
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction runs in this file; the header comment says so, and the code makes no model call.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking of emails is not in this file; the source type is fixed to `source_type: "chat",`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking of emails is not in this file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The pin branch never calls a handler that writes a tool call: "const pinResult = await verifyPin(deps.pool, item.node_id); if (pinResult.kind === \"ok\") { refToNodeId.set(item.ref, item.node_id);" See the finding.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeNode(nodeInput, {` delegates alias resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction reads chunks in this file; `chunk_ids: [anchorChunkId],` is the directed anchor.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction runs here; the run is closed in closeRunCompletedSafe without an extraction.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      "status: classifyEnvelopeFailureStatus(envelope)," records an error and carries on; nothing counts errors in a row.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      "// - No chunk loop, no model dispatch" is a comment; the code has no chunk loop.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction is run here, and no run status is checked before dispatch.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `chunk_ids: [anchorChunkId],` is forwarded; existence is checked by proposeFragment.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      `chunk_ids: [anchorChunkId],` is forwarded; the source check is in proposeFragment.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The check order is in proposeFragment, not here.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `status: "accepted",` in the report is the directed item's status, not the fragment's; the fragment record is written by the handler.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      DirectedFragmentItemSchema, line 108
+    evidence: >-
+      "text: z.string().min(1).max(1000),"
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (intake.body.outcome !== "created") {` treats a held content as an internal error; the rule is held by the intake.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key is computed in this file.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      No key is computed or checked in this file.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      "intake = await withTransaction(deps.pool, async (client) => { return await ingestRaw(client, {" delegates the recording.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeLink(linkInput, {` delegates the check.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeLink(linkInput, {` delegates the checks.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `link_type: item.link_type,` is forwarded; the catalog is consulted by the handler.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule is read in this file.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      `outcome: "completed"` is passed to closeLlmRunRow; the transitions are held in the repository.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `...(item.aliases !== undefined ? { aliases: item.aliases } : {})` forwards aliases; the handler adds them.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No model is called in this file.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      No name is compared in this file.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const status = mapAttributeOutcomeToStatus(envelope.result.outcome);` consumes the outcome.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `confidence: 1.0,` is forwarded; the status is derived by the handler.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `name: item.name,` is forwarded; the aliases are recorded by the node handler.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeNode(nodeInput, {` delegates the resolution.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      DirectedNodeItemSchema, lines 114 and 116
+    evidence: >-
+      "name: z.string().min(1).max(500)," and "aliases: z.array(z.string().min(1).max(500)).optional(),"
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_type: item.node_type,` is forwarded; the catalog is consulted by the handler.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is written by this file.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is written by this file.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is written by this file.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is written by this file.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `original_input: deps.sourceExcerpt ?? null,` is forwarded without a length check.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No orphaned fragment is counted or read in this file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No page is read in this file.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking of pdfs is not in this file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      `prompt_version: DIRECTED_PROMPT_VERSION,` is never resolved to a prompt in this file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      `confidence: 1.0,` is a literal within the range; the range check is in the handlers.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeAttribute(attrInput, {` delegates the matching.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The run is open when the handlers are called, but the check is theirs: `llm_run_id: handlerDeps.llm_run_id,`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The order of checks is in the handlers.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: [fragmentId],` is forwarded; provenance is recorded by the handler.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      `status = mapLinkOutcomeToStatus(envelope.result.outcome)` consumes the outcome.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent ingestions are listed in this file.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent ingestions are listed in this file.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent ingestions are listed in this file.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent ingestions are listed in this file.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `now` is passed to the handlers; the reception time is set by the intake.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      A refused proposal is only reported: `status: classifyEnvelopeFailureStatus(envelope),`. What it records is up to the handler.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      `...(item.valid_from !== undefined ? { valid_from: item.valid_from } : {}),` forwards the start; the handler checks it.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from_basis: item.valid_from_basis ?? "stated",` sets a basis but no fallback start is computed here.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      `attempts: row.attempts` is read only.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry is made in this file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from_basis: item.valid_from_basis ?? "stated",` supplies a basis; the requirement is held by the handler.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const envelope = await proposeNode(nodeInput, {` delegates the resolution.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: item.change_hint ?? "none",` is forwarded; succession is applied by the handler.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: item.change_hint ?? "none",` is forwarded; succession is applied by the handler.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_to: item.valid_to` is forwarded; the closing date is set by the handler.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      No fragment text is scanned in this file.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const summary = buildSummary(report);` counts report entries, not orphaned fragments.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      `summary[item.status] += 1;` counts report entries, not tool calls.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool calls are listed in this file.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool calls are listed in this file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool calls are listed in this file.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      Tool calls are written by the handlers; the file only maps their answers to report statuses.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `source_type: "chat",` is set but the chunking of a chat is done by ingestRaw.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The chunking is done by ingestRaw.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from` and `valid_to` are forwarded to the handlers, which compare them.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email is chunked in this file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No pdf is chunked in this file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `if (intake.body.outcome !== "created") {` is an unreachable guard here; the held-content behavior is in the intake.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: canonicaliseAttributeValue(item.value),` is forwarded; the date is checked by the handler.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const status = mapLinkOutcomeToStatus(envelope.result.outcome);` consumes the outcome.
+looked_past: >-
+  I saw the input schema repeat the fragment-text, node-name and date-format limits of the propose DTOs, the defensive noop_existing and no-chunks guards that return SYSTEM_INTERNAL_ERROR, and the exact `[ref] text` and `-- directed_at=` line formats of the synthesised content, and left them out as duplication or detail that is another judgment's.

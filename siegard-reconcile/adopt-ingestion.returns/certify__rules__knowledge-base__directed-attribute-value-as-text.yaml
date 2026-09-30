@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: canonicalises attribute values to string form
+    why: >-
+      The conversion forms are exercised, but only on the private helper
+      __testing__.canonicaliseAttributeValue. It is given 42, -1.5, true and
+      false and must return "42", "-1.5", "true" and "false". Nothing in the set
+      checks that the helper's text form is what gets proposed. No orchestrator
+      test inspects the value handed to propose_attribute. The happy-path test
+      records it only through the template literal `attribute:${input.key}=${input.value}`,
+      which prints "age=30" whether the value is the number 30 or the string
+      "30", so that check cannot fail on this fact. The forced-confidence test
+      captures attributeArgs[0] but checks only confidence and
+      valid_from_basis, never value. No test in the set sends a directed
+      attribute with a boolean value through the orchestrator at all. If the
+      orchestrator stopped canonicalising and proposed the raw number or boolean,
+      every test in the set would still pass.
+    remainder: testable
+    remainder_why: >-
+      Run directedIngestionService with a directed attribute whose value is the
+      number 30, and a second whose value is the boolean true (and one with
+      false). Expect propose_attribute to receive the value as the strings "30",
+      "true" and "false", checked with a strict type-sensitive equality, not a
+      string interpolation.

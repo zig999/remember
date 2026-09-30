@@ -1,0 +1,734 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      Header comment, line 3 ("Layer 1 (structural) of the 5-layer validation").
+    evidence: >-
+      // Layer 1 (structural) of the 5-layer validation. The DB CHECK on
+    cost: >-
+      The comment states that validation has five layers and that this file is the first. No node holds a
+      five-layer division. The nodes hold check orders per proposal (`link-proposal-check-order`,
+      `attribute-proposal-check-order`, `proposal-run-checks-first`), and there is none for a fragment proposal.
+      A reader who takes the comment as the layering of validation will look for it in the specification and
+      not find it.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the layering (and where a fragment proposal's checks sit in it) a node, or the
+      comment is removed by the comment route.
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      Header comment, lines 4-6, above `ProposeFragmentInputSchema`.
+    evidence: >-
+      // `information_fragment.text` (≤ 1000 chars) is mirrored here so the failure
+      // surfaces as a typed `VALIDATION_INVALID_FORMAT` instead of a SQLSTATE
+      // error from pg.
+    cost: >-
+      This is prose, not emitted text. It restates the 1-to-1000-character limit on a fragment's text, which
+      `rules/knowledge-base/fragment-text-length` holds and `.min(1).max(1000)` on `text` in this file enforces.
+      The limit now sits in the comment, the schema and the specification. If the limit moves, the comment
+      becomes a second, stale statement of it that no check reaches.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is the `.min(1).max(1000)` on `text` in this file.
+    node: rules/knowledge-base/fragment-text-length
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      The `.describe(...)` on `text`, line 16.
+    evidence: >-
+      "The factual claim, quoted verbatim from the chunk. One assertion only; max 1000 characters."
+    cost: >-
+      This text is part of the tool's schema, so a model reads it as an instruction. It says a fragment's text
+      is a verbatim quote of the chunk and holds one assertion only. No node holds either rule. The
+      `information-fragment` node and `fragment-text-length` say only that the text is a string of 1 to 1000
+      characters. Nothing in the specification says a fragment must be verbatim or single-assertion, so those
+      rules live only in this description.
+    kind: unstated
+    correction: >-
+      The analysis gives the verbatim-quote and one-assertion rules a home on the fragment node, or the
+      description stops asserting them.
+    node: domain/knowledge-base/information-fragment
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      The `.describe(...)` on `confidence`, line 23.
+    evidence: >-
+      "Confidence 0–1 that this claim is correctly extracted. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped."
+    cost: >-
+      This tells the calling model that a fragment is stored active at 0.75 or more and dropped below 0.40.
+      `rules/knowledge-base/fragment-recorded-proposed` says a fragment proposal records the fragment in status
+      proposed, whatever its confidence. The result type in the same file also declares `status: "proposed"`.
+      The 0.75 and 0.40 thresholds belong to links and attributes (`new-assertion-status-from-confidence`,
+      `below-confidence-floor-records-nothing`). The model is told a fragment can be dropped or active when the
+      system records every fragment as proposed.
+    kind: contradicts
+    correction: >-
+      The description should say what the node says: a fragment is recorded as proposed whatever its
+      confidence. It should keep the thresholds for link and attribute proposals only.
+    node: rules/knowledge-base/fragment-recorded-proposed
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file declares only `ProposeFragmentInputSchema` (text, confidence, chunk_ids) and `ProposeFragmentResult`; nothing in it presents document content to a model as data.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` is the input shape of one proposal; it does not restrict the extracting model to proposals.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file holds one shared input schema and a result type but no transport or error-mapping construct.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Only the propose-fragment slice: `ProposeFragmentInputSchema` for the input shape and `ProposeFragmentResult` for the accepted answer.
+    evidence: >-
+      `export interface ProposeFragmentResult { readonly fragment_id: string; readonly status: "proposed"; }`. The other operations and the refusal codes are not in this file.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      The file declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`; no listing filter.
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      No alias construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      No attribute key construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` has no change_hint field: text, confidence, chunk_ids only.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      No directed-ingestion construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      No directed-item construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      No directed-item kind in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed-item status in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      No entity-match construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      `ProposeFragmentInputSchema` fields `text` and `confidence` (the fragment's proposed attributes) and `chunk_ids` (its source chunks); the input side only.
+    evidence: >-
+      `text: z.string().min(1).max(1000)`, `confidence: z.number().min(0).max(1)`, `chunk_ids: z.array(z.string().uuid()).min(1)`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The file names the tool only in a comment (`MCP \`ingest.propose_fragment\``); no enumeration of proposal kinds is declared.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No link construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No node construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      No link type construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: nowhere
+    evidence: >-
+      No link type rule construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The schema carries no run identity or status; the file declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      No alias construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No attribute construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      No resolution construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      No node type construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      `ProposeFragmentInputSchema` holds the fragment proposal's confidence and its cited chunks (`confidence`, `chunk_ids`). The kind, change hint, dates and run are not in the file.
+    evidence: >-
+      `confidence: z.number().min(0).max(1)` and `chunk_ids: z.array(z.string().uuid()).min(1)`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file references chunks only by `chunk_ids: z.array(z.string().uuid())`; it holds none of the raw chunk's attributes.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      No raw-information construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/run-status
+    held_at: nowhere
+    evidence: >-
+      No run status in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      No run summary in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/tool-call
+    held_at: nowhere
+    evidence: >-
+      No tool-call record in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` has no valid_from_basis field: text, confidence, chunk_ids only.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No validation outcome in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      No value type in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: nowhere
+    evidence: >-
+      No affected-node construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      No attribute key check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      No attribute value check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      No attribute value parsing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The only floor stated is prose in the confidence description (`<0.40 dropped`). It is about a fragment, and no code applies it.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` has no basis field: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: nowhere
+    evidence: >-
+      No similarity computation in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: nowhere
+    evidence: >-
+      No chunk excerpt construct in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: nowhere
+    evidence: >-
+      No chunk listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/chunking-version
+    held_at: nowhere
+    evidence: >-
+      No chunking version in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` is a fragment proposal and cites no fragments: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` is a fragment proposal and cites no fragments: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` is a fragment proposal and cites no fragments: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: nowhere
+    evidence: >-
+      No run closing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: nowhere
+    evidence: >-
+      No dispute handling in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: nowhere
+    evidence: >-
+      No consolidation in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: nowhere
+    evidence: >-
+      No hashing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: nowhere
+    evidence: >-
+      No content hash in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/content-length
+    held_at: nowhere
+    evidence: >-
+      The file's only length bound is on a fragment's `text` (`.max(1000)`), not on a raw information's content.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: nowhere
+    evidence: >-
+      No correction handling in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      No correction check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion currency in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/date-check-order
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` carries no dates: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      No prompt version in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: nowhere
+    evidence: >-
+      No document ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: nowhere
+    evidence: >-
+      No chunking or block cutting in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking or block cutting in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: nowhere
+    evidence: >-
+      No audit recording in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      Only the `chunk_ids` description states it, and that text is not code: "During an ingestion run the server injects the current chunk automatically — you do not need to send this." No construct in the file anchors anything.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: nowhere
+    evidence: >-
+      No extraction loop in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: nowhere
+    evidence: >-
+      No extraction loop in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      No extraction loop in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      No extraction in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: nowhere
+    evidence: >-
+      `chunk_ids: z.array(z.string().uuid()).min(1)` checks shape only; no existence lookup is in the file.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: nowhere
+    evidence: >-
+      `chunk_ids: z.array(z.string().uuid()).min(1)` checks shape only; the run's raw information is not visible in the file.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no chunk existence or run-source check, so it holds no order between them.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      Only the result type: `ProposeFragmentResult.status` typed as the literal "proposed". The recording is not in this file.
+    evidence: >-
+      `readonly status: "proposed";`. The confidence description in the same file ("≥0.75 stored active ... <0.40 dropped") contradicts the rule; see the findings.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      `text` in `ProposeFragmentInputSchema`, line 11-14.
+    evidence: >-
+      `text: z.string().min(1).max(1000)`
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      No ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: nowhere
+    evidence: >-
+      No idempotency key in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      No idempotency key in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: nowhere
+    evidence: >-
+      No ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: nowhere
+    evidence: >-
+      No link check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      No link proposal in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No link type check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: nowhere
+    evidence: >-
+      No link type rule in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: nowhere
+    evidence: >-
+      No run lifecycle in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      No node resolution in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: nowhere
+    evidence: >-
+      No extraction in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      No name normalization in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/new-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion recording in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: nowhere
+    evidence: >-
+      The 0.75 and 0.40 thresholds appear only in the confidence description text, applied to a fragment; no code applies them to a link or attribute here.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      No node creation in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: nowhere
+    evidence: >-
+      No node resolution in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/node-name-length
+    held_at: nowhere
+    evidence: >-
+      No node proposal in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      No node type check in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: nowhere
+    evidence: >-
+      No attribute succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: nowhere
+    evidence: >-
+      No attribute succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: nowhere
+    evidence: >-
+      No link succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: nowhere
+    evidence: >-
+      No link succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/original-input-length
+    held_at: nowhere
+    evidence: >-
+      No original input in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: nowhere
+    evidence: >-
+      No orphan detection in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      No paging in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      No prompt version in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      `confidence` in `ProposeFragmentInputSchema`, lines 18-21.
+    evidence: >-
+      `confidence: z.number().min(0).max(1)`
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: nowhere
+    evidence: >-
+      No assertion matching in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      The schema carries no run and checks no run status; the file declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: nowhere
+    evidence: >-
+      The schema carries no run and orders no checks; the file declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: nowhere
+    evidence: >-
+      No provenance recording in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No consolidation in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: nowhere
+    evidence: >-
+      No recent-ingestions listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: nowhere
+    evidence: >-
+      No reception time in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: nowhere
+    evidence: >-
+      No refusal handling or recording in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` carries no dates: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` carries no dates: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: nowhere
+    evidence: >-
+      No run retry in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No run retry in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` carries no dates or basis: text, confidence, chunk_ids only.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: nowhere
+    evidence: >-
+      No entity resolution in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: nowhere
+    evidence: >-
+      No succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: nowhere
+    evidence: >-
+      No succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: nowhere
+    evidence: >-
+      No succession in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/succession-signal
+    held_at: nowhere
+    evidence: >-
+      No succession signal in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      No run summary in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: nowhere
+    evidence: >-
+      No run summary in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No tool-call listing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: nowhere
+    evidence: >-
+      No tool-call recording in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      `ProposeFragmentInputSchema` carries no dates: text, confidence, chunk_ids only.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: nowhere
+    evidence: >-
+      No email parsing or chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: nowhere
+    evidence: >-
+      No pdf handling or chunking in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: nowhere
+    evidence: >-
+      No ingestion in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      No attribute value parsing in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: nowhere
+    evidence: >-
+      No succession or dispute handling in this file, which declares only `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+looked_past: >-
+  The `chunk_ids` description says the server injects the current chunk and the caller need not send it, while the schema requires `.min(1)`. Whether the injection precedes parsing is in another file, and that is a behavior question rather than a fact the nodes hold.

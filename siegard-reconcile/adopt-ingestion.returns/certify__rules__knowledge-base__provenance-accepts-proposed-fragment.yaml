@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    state: uncovered
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: promotes the cited fragment proposed -> accepted when provenance is created (§6.6)
+    why: >-
+      The only test that bears on the fact is "promotes the cited fragment proposed -> accepted
+      when provenance is created (§6.6)". It checks the text of the UPDATE information_fragment
+      statement sent to a mocked PoolClient. The mock never runs that statement. The test only
+      checks that the SQL contains the substrings "status = 'accepted'" and "status = 'proposed'",
+      that the first binding is the cited fragment id, and that one such statement was issued. It
+      never reads any fragment's status afterwards. It binds the shape of the call, not the
+      behavior. A statement that turned an accepted fragment back to proposed (SET status =
+      'proposed' ... WHERE status = 'accepted') holds both substrings and would pass. So would a
+      statement where 'proposed' appears somewhere other than the row filter. Neither half of the
+      fact is observed. Nothing shows a proposed fragment ending up accepted. Nothing records a
+      provenance to a fragment in any other status and shows it staying as it was. The test runs
+      only on the new-link path of proposeLinkService. No test checks the promotion when
+      provenance is recorded through proposeAttributeService or on the consolidated, succession,
+      correction or disputed branches. The "BR-18 provenance invariant" tests and the other branch
+      tests assert that provenance rows are inserted, never the fragment's status, so they do not
+      bear on this fact.
+    remainder: testable
+    remainder_why: >-
+      Record a provenance citing fragments in known statuses, against a store that actually
+      applies the statements (a real Postgres, or a fake that evaluates status). Cite one fragment
+      in status proposed and one in each other status the fragment-status node declares. Then
+      assert the proposed fragment reads back as accepted and every other fragment reads back
+      with the status it had. Repeat this for provenance recorded on an attribute as well as on a
+      link.

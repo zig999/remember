@@ -1,0 +1,48 @@
+certified:
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts a triple authorised by an active rule
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: rejects a triple not in the rule set with BUSINESS_LINK_RULE_VIOLATION
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_to of a rule (expired = not active)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_from of a rule (not yet effective)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Event concerns Project (aboutness, not part_of composition)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Document concerns Project
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Document delivered_to Person
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: rejects Document concerns Person with BUSINESS_LINK_RULE_VIOLATION
+      - file: src/__tests__/unit/ingestion/mcp-ingest.spec.ts
+        name: graph rule violation returns BUSINESS_LINK_RULE_VIOLATION
+      - file: src/__tests__/unit/ingestion/mcp-ingest.spec.ts
+        name: accepted path inserts a provenance row in the same transaction (BR-18)
+    why: >-
+      The tests do exercise three parts of the rule when a proposal is checked. A rule must
+      match the proposal's link type: Document concerns Person is refused even though a
+      delivered_to rule for Document to Person exists. The source node type must match:
+      Project participates_in Project is refused. The target node type must match: concerns
+      from a Document to a Person is refused while concerns from a Document to a Project,
+      Event or Organization is permitted. The propose_link handler also refuses a link when
+      no rule allows the node types of its source and target nodes, and accepts one when a
+      rule does. The part left unexercised is "in effect today". Both temporal tests call
+      isLinkRuleActive directly and check its boolean. Neither sends a proposal through
+      validateGraphRule or proposeLinkHandler, so nothing checks that a proposal is refused
+      when its only matching rule has expired or has not started yet. If the proposal check
+      stopped looking at rule validity dates, both tests would still pass. Every rule that
+      grants permission in the set has open dates (valid_from and valid_to both null), so no
+      test shows that a rule whose dates include today grants permission.
+    remainder: testable
+    remainder_why: >-
+      Three inputs, each with its expected result, would close it. First, a link proposal
+      whose only matching rule has valid_to on or before today should be refused with
+      BUSINESS_LINK_RULE_VIOLATION. Second, a proposal whose only matching rule has
+      valid_from after today should be refused the same way. Third, a proposal whose
+      matching rule has valid_from before today and valid_to after today should be
+      permitted. Each should go through validateGraphRule or proposeLinkHandler, not
+      through isLinkRuleActive alone.

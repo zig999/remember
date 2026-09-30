@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`pdf`: splits on form-feed (U+000C)"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: is deterministic for a multi-block PDF input
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: text field is the verbatim slice between offset_start and offset_end
+    why: >-
+      Two parts of the fact are exercised. "`pdf`: splits on form-feed (U+000C)" cuts a pdf with
+      two form feeds into exactly three blocks. It asserts each block's text as "página 1",
+      "página 2" and "página 3", so the text of each block leaves out the form feed. It does not
+      assert offsets. The block's span is pinned to leave out the form feed only when read
+      together with "text field is the verbatim slice between offset_start and offset_end", which
+      checks each text against the original between its offsets but does not itself assert what
+      the text is. "is deterministic for a multi-block PDF input" checks the count of three
+      blocks only in passing, while asserting determinism. The third part goes unexercised:
+      nothing in the set gives a pdf with two form feeds next to each other (an empty span
+      between them). So the rule that an empty span between two form feeds forms no block would
+      stop holding without any test failing.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. A pdf whose content is "a\f\fb" should give exactly
+      two blocks, with texts "a" and "b". No block should be empty and no text should contain a
+      form feed.

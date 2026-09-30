@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes a high-confidence (>= 0.75) to 'active'
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes mid-confidence (0.40 <= c < 0.75) to 'uncertain'
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: the published constants exactly match the spec
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts a new knowledge_link row and one provenance row when no vigent exists
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts with status='uncertain' when 0.40 <= confidence < 0.75
+    why: >-
+      The fact is about the status a recorded knowledge link or node attribute carries. The
+      tests only partly reach that status.
+
+      The routeConfidence tests in confidence.spec.ts pin the 0.75 and 0.40 boundaries
+      exactly, but only on the pure routing function. They would keep passing if the
+      consolidator stopped using that function and recorded some other status. "the published
+      constants exactly match the spec" asserts two numeric constants and not any recorded
+      status.
+
+      On the recorded side, only knowledge links are exercised, and only at 0.9 and 0.5, far
+      from both boundaries. The 0.9 'active' check is incidental: it sits in a test about
+      inserting a row and its provenance. The dedicated test checks 'uncertain' at 0.5.
+
+      Unexercised:
+      - No test checks the status of a recorded node attribute at any confidence. The
+        attribute "accepted (new)" test reads only the outcome and row counts.
+      - No recorded link or attribute is proposed at exactly 0.75 or 0.40, or just below 0.75.
+      - No test checks the status of the new row written by a succession or correction
+        proposal. Both are proposals other than a dispute.
+    remainder: testable
+    remainder_why: >-
+      Propose a node attribute with no vigent row through proposeAttributeService at confidence
+      0.75 and at 0.9, expecting the inserted row's status to be 'active'. Propose it at 0.40
+      and at 0.749999, expecting 'uncertain'. Run the same boundary inputs through
+      proposeLinkService for knowledge links. Then run a succession proposal and a correction
+      proposal at 0.5, expecting the new chained row's status to be 'uncertain', and at 0.9,
+      expecting 'active'.

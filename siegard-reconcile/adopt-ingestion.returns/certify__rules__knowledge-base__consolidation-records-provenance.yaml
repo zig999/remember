@@ -1,0 +1,33 @@
+certified:
+  - node: rules/knowledge-base/consolidation-records-provenance
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/mcp-ingest.spec.ts
+        name: accepted path inserts a provenance row in the same transaction (BR-18)
+    why: >-
+      Only one part of the fact is exercised: a taken link proposal that cites a
+      single fragment writes one provenance row, and that row names the cited
+      fragment. Four parts are not exercised. (1) No attribute proposal appears
+      anywhere in the set, so the fact is unexercised for attributes. (2) Every
+      proposal cites exactly one fragment. An implementation that recorded only
+      the first cited fragment, or a single row whatever the number cited, would
+      still pass, so "one provenance for each information fragment it cites" is
+      not bound. (3) The test never checks that the provenance row sits on the
+      assertion the proposal landed on. The recorded link_id is never compared
+      with the id of the created link, so provenance attached to some other link
+      would pass. (4) Every taken proposal creates a new link. Nothing takes a
+      proposal that lands on an assertion that already exists (a re-affirmation
+      that consolidates), so whether provenance is recorded on that existing
+      assertion is unexercised. Also, the test sees provenance only through a
+      fake pool that matches the SQL text "INSERT INTO provenance" and reads the
+      fragments from the second parameter as an array. That ties the observation
+      to one way of writing the insert, not to what gets persisted.
+    remainder: testable
+    remainder_why: >-
+      Each open part takes one input and one expected result. First, a taken
+      link proposal that cites two distinct fragments should leave exactly two
+      provenance rows, one per cited fragment, each on the id of the link it
+      landed on. Second, the same check for a taken attribute proposal, with
+      each row on the attribute it landed on. Third, a taken proposal that
+      consolidates onto an existing link or attribute should add one provenance
+      per cited fragment on that existing assertion, not on a new one.

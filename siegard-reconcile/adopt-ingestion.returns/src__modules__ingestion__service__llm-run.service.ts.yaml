@@ -1,0 +1,765 @@
+findings:
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the header comment, lines 6-12 ("Errors:" list)
+    evidence: >-
+      //   - `RunNotRetryableError` -> 409 BUSINESS_RUN_NOT_RETRYABLE.
+      //   - `RunNotRunningError`   -> 409 BUSINESS_RUN_NOT_RUNNING (TC-13 propose-*
+    cost: >-
+      The status and error code of both refusals are stated in a second place outside behavior. The classes below set the same values, and error-mapping.ts maps them to 409. When the contract's answer changes, this list keeps saying the old one and nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the comment. The values stay held by the two classes at lines 44-84 and by `BUSINESS_RUN_NOT_RETRYABLE: 409` and `BUSINESS_RUN_NOT_RUNNING: 409` in src/shared/error-mapping.ts.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the docstring of RunNotRunningError, lines 58-69
+    evidence: >-
+      On the MCP transport the same situation surfaces as a
+      `BUSINESS_RUN_NOT_RUNNING` envelope via `assertRunIsRunning` in
+      `handler-base.ts` — REST + MCP are now byte-identical on this condition
+      per the P2.1 namespaced taxonomy.
+    cost: >-
+      The claim that both transports answer alike is made only by this prose. What holds it is code in two other files: `assertRunIsRunning` in handler-base.ts emits "BUSINESS_RUN_NOT_RUNNING", and ingestion.routes.ts throws `RunNotRunningError`. A reader looking for where the two transports are kept alike finds a comment rather than the constraint.
+    kind: restates
+    correction: >-
+      Remove the docstring's transport paragraph. The code in src/modules/ingestion/mcp/handler-base.ts and src/modules/ingestion/routes/ingestion.routes.ts keeps holding the fact.
+    node: constraints/ingestion-transports-answer-alike
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the BR-33 comments in getLlmRunById (lines 97-102) and toLlmRunResponse (lines 254-256)
+    evidence: >-
+      // BR-33 — attach `affected_nodes` ONLY when the run is `completed`. The
+      // field is the snapshot of the run at completion; a `running` or `failed`
+      // run does not surface a partial list.
+    cost: >-
+      The rule that only a completed run lists affected nodes is written in prose and also enforced by `if (row.status === "completed")`. Two homes exist for one fact, and only the code is checked against the node.
+    kind: restates
+    correction: >-
+      Remove both comments. The branch at `if (row.status === "completed")` keeps holding the rule.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the try/catch around deriveAffectedNodes in getLlmRunById, lines 109-117
+    evidence: >-
+      } catch {
+        // Best-effort — omit the field on a transient read failure; the
+        // caller can re-derive on the next poll.
+        affectedNodes = undefined;
+      }
+    cost: >-
+      The code makes a rule the specification never states. A completed run's read can answer 200 with no affected nodes when the derivation fails, and the failure is neither logged nor surfaced. The contract says a completed run's read carries its affected nodes. A reader who trusts the node will treat a missing list as "none affected", and nothing tells them the code can omit it on error.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether a completed run's read may omit its affected nodes when they cannot be derived, or must refuse. The decision belongs in the read-llm-run answer of the ingestion contract or in a rule of its own.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the docstring of retryLlmRun, line 192 ("Orphan-fragment cleanup happens inside `retryLlmRunRow` in the same TX.")
+    evidence: >-
+      3. Orphan-fragment cleanup happens inside `retryLlmRunRow` in the same TX.
+    cost: >-
+      The consequence of a retry for orphaned fragments is stated in prose here, while the code that does it sits in another file. This file never touches fragments, so a reader of this file cannot tell whether the claim still holds.
+    kind: restates
+    correction: >-
+      Remove the item. The fact is held by the `UPDATE information_fragment SET status = 'rejected'` statement in retryLlmRunRow in src/modules/ingestion/repository/llm-run.repository.ts.
+    node: rules/knowledge-base/retry-rejects-orphaned-fragments
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the docstring of retryLlmRun, lines 187-192 (items 1 and 2 of the order)
+    evidence: >-
+      1. Pre-read to distinguish "not found" (404) from "wrong status" (409).
+      2. Atomic `UPDATE ... WHERE status = 'failed'`; rowCount === 0 means the
+         pre-read showed `failed` but a concurrent transition raced us -> 409.
+    cost: >-
+      The retry transition (only a failed run may return to running) is restated in prose next to the code that enforces it, in `existing.status !== "failed"` and in the `WHERE id = $1 AND status = 'failed'` update in the repository. It is a second home for the state machine that nothing checks.
+    kind: restates
+    correction: >-
+      Remove the items. The guard at `if (existing.status !== "failed")` and the repository's conditional UPDATE keep holding the transition.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the race branch of retryLlmRun, lines 209-215
+    evidence: >-
+      const currentStatus = refreshed?.status ?? "running";
+      if (currentStatus === "failed") {
+        // Should not happen — log internally and surface as 409 conservatively.
+        throw new RunNotRetryableError(llmRunId, "running");
+      }
+    cost: >-
+      The contract says the refusal names the run's status. Here the run was just read as `failed`, and the 409 names `running` anyway. A failed run, which the lifecycle allows to be retried, is refused with a status it does not have. The same branch answers `running` when the row has vanished (`?? "running"`).
+    kind: contradicts
+    correction: >-
+      The refusal would have to name the status actually read. What a retry should do when the row is `failed` again is a decision for whoever owns the lifecycle.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: nowhere
+    evidence: >-
+      The file only reads runs and tool calls (`export async function getLlmRunById(`). It presents no document content to any model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: nowhere
+    evidence: >-
+      No construct calls a model or a proposal. The exports are getLlmRunById, listRecentIngestions, listToolCallsByLlmRun, retryLlmRun and closeLlmRun.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The only mention is the docstring at lines 65-68 ("On the MCP transport the same situation surfaces ... via `assertRunIsRunning` in `handler-base.ts`"). The code that keeps the transports alike is in handler-base.ts and ingestion.routes.ts, not here.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partly. RunNotRetryableError and RunNotRunningError (409 with the status named), getLlmRunById (read-llm-run), listToolCallsByLlmRun (list-tool-calls), listRecentIngestions (list-recent-ingestions) and retryLlmRun (retry-llm-run). The other operations are not in this file.
+    evidence: >-
+      public readonly code = "BUSINESS_RUN_NOT_RETRYABLE" as const; ... return { total, limit: args.limit, offset: args.offset, items: rows.map(toToolCallResponse) };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or filter appears in the file's imports (`aggregateToolCallOutcomes, closeLlmRunRow, countToolCalls, findLlmRunById, findRecentIngestions, findToolCallsByRun, retryLlmRunRow`).
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file has no alias construct; its imports concern runs and tool calls only.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute key construct; its imports concern runs and tool calls only.
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      No change hint is read or written; the exports are getLlmRunById, listRecentIngestions, listToolCallsByLlmRun, retryLlmRun and closeLlmRun.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      No directed ingestion construct exists in the file.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      No directed item construct exists in the file.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      No directed item kind appears in the file.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No directed item status appears in the file.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file has no entity match review construct.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file never handles fragments; the only mention is the comment "Orphan-fragment cleanup happens inside `retryLlmRunRow`".
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      `tool_name: row.tool_name` is passed through from the row. The four proposal kinds are not enumerated in this file.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file has no link construct.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      Nodes appear only as the `AffectedNode` type imported from ./affected-nodes.js. The file does not define the node.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The file has no link type construct.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: nowhere
+    evidence: >-
+      The file has no link type rule construct.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      toLlmRunResponse, lines 237-261, together with the retryLlmRun and closeLlmRun operations.
+    evidence: >-
+      id: row.id, model: row.model, prompt_version: row.prompt_version, started_at: ..., finished_at: ..., status: row.status, attempts: row.attempts, input_raw_information_id: row.input_raw_information_id, idempotency_key: row.idempotency_key, summary,
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file has no alias construct.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file has no attribute construct.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution construct.
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      The file has no node type construct.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      `prompt_version: row.prompt_version` is passed through as a string. The versions are not enumerated here.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file takes no proposal. `RunNotRunningError` only carries the refusal code.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunk construct.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      Raw information appears only as `raw_information_id` and `source_type` pass-through fields of RecentIngestionItem. The file does not define it.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      The status unions in RunNotRetryableError ("running" | "completed"), RunNotRunningError ("completed" | "failed") and the LlmRunStatus type imported for the response.
+    evidence: >-
+      public readonly currentStatus: "running" | "completed"; ... public readonly currentStatus: "completed" | "failed";
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      `summary: LlmRunResponse["summary"]` is only forwarded. The counts are computed by aggregateToolCallOutcomes in the repository.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      toToolCallResponse, lines 263-273.
+    evidence: >-
+      id: row.id, llm_run_id: row.llm_run_id, tool_name: row.tool_name, arguments: row.arguments, result: row.result, validation_outcome: row.validation_outcome, created_at: row.created_at.toISOString(),
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      The file has no validity basis construct.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: nowhere
+    evidence: >-
+      `validation_outcome: row.validation_outcome` is passed through. The outcomes are not enumerated here.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file has no value type construct.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: nowhere
+    evidence: >-
+      `const derived = await deriveAffectedNodes(client, llmRunId);` delegates to ./affected-nodes.js. The merge handling is not in this file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The derivation is delegated: `deriveAffectedNodes(client, llmRunId)` from ./affected-nodes.js.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      getLlmRunById, the `row.status === "completed"` branch at line 104, and the omission in toLlmRunResponse.
+    evidence: >-
+      if (row.status === "completed") { const cached = getCachedAffectedNodes(llmRunId);
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution code.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no confidence handling.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: nowhere
+    evidence: >-
+      The file has no similarity code.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: nowhere
+    evidence: >-
+      The file lists no chunks.
+  - node: rules/knowledge-base/chunking-version
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: nowhere
+    evidence: >-
+      closeLlmRun forwards to `closeLlmRunRow(client, args)`. The `finished_at = now()` update sits in the repository, not here.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: nowhere
+    evidence: >-
+      The file computes no hash.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: nowhere
+    evidence: >-
+      The file records no raw information.
+  - node: rules/knowledge-base/content-length
+    held_at: nowhere
+    evidence: >-
+      The file validates no content.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion code.
+  - node: rules/knowledge-base/date-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file does not ingest documents and names no default prompt version.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion code.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion code. `listRecentIngestions` only reads.
+  - node: rules/knowledge-base/email-header-block
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: nowhere
+    evidence: >-
+      The file only reads tool calls (`findToolCallsByRun`). It records none.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution code.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: nowhere
+    evidence: >-
+      `closeLlmRun` is described as "Used by the LLM orchestrator integration in future TCs". No extraction code is in this file.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: nowhere
+    evidence: >-
+      The file records no fragments.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion code.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: nowhere
+    evidence: >-
+      `idempotency_key: row.idempotency_key` is passed through. The key is not computed here.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      The file enforces no uniqueness.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion code.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: nowhere
+    evidence: >-
+      The file has no link type rule code.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      retryLlmRun holds the failed-only retry guard. The complete and fail guards are not in this file; closeLlmRun forwards to closeLlmRunRow.
+    evidence: >-
+      if (existing.status !== "failed") { throw new RunNotRetryableError(llmRunId, existing.status); }
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution code.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction code.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      The file has no normalization code.
+  - node: rules/knowledge-base/new-assertion
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: nowhere
+    evidence: >-
+      The file has no confidence handling.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no node creation code.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution code.
+  - node: rules/knowledge-base/node-name-length
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion code.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion code.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion code.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion code.
+  - node: rules/knowledge-base/original-input-length
+    held_at: nowhere
+    evidence: >-
+      The file validates no input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: nowhere
+    evidence: >-
+      The file does not define orphaned fragments. The only mention is the comment "Orphan-fragment cleanup happens inside `retryLlmRunRow`".
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no search or accepted-fragment paging.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: nowhere
+    evidence: >-
+      The file validates no prompt version.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: nowhere
+    evidence: >-
+      The file only declares the refusal, `public readonly code = "BUSINESS_RUN_NOT_RUNNING" as const;`. Its docstring says it is "Raised by the route layer's pre-check". The check itself is in ingestion.routes.ts and handler-base.ts.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: nowhere
+    evidence: >-
+      `const rows = await findRecentIngestions(client, limit);` maps the rows only. The latest-run selection sits in the repository query.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      `limit: number` is forwarded unchecked to findRecentIngestions.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: nowhere
+    evidence: >-
+      `limit: number` is a required parameter. No default is applied here.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: nowhere
+    evidence: >-
+      The order is not set here. `rows.map(...)` preserves what findRecentIngestions returned. The docstring's "(newest first)" is prose only.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: nowhere
+    evidence: >-
+      `received_at: r.received_at.toISOString()` only serialises the stored value.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: nowhere
+    evidence: >-
+      The file records no proposals.
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: nowhere
+    evidence: >-
+      `const updated = await retryLlmRunRow(client, llmRunId);` delegates. The attempts and finished_at update sits in the repository.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      The only trace is the docstring "Orphan-fragment cleanup happens inside `retryLlmRunRow` in the same TX." The code is in llm-run.repository.ts.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: nowhere
+    evidence: >-
+      The file has no entity resolution code.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: nowhere
+    evidence: >-
+      The file has no succession code.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: nowhere
+    evidence: >-
+      The file has no succession code.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: nowhere
+    evidence: >-
+      The file has no succession code.
+  - node: rules/knowledge-base/succession-signal
+    held_at: nowhere
+    evidence: >-
+      The file has no succession code.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: nowhere
+    evidence: >-
+      `const summary = await aggregateToolCallOutcomes(client, llmRunId);` delegates. The counting is in the repository.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: nowhere
+    evidence: >-
+      `const summary = await aggregateToolCallOutcomes(client, llmRunId);` delegates. The counting is in the repository.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: nowhere
+    evidence: >-
+      `const rows = await findToolCallsByRun(client, args);` delegates. The ORDER BY sits in the repository query.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: nowhere
+    evidence: >-
+      `args: { llm_run_id: string; limit: number; offset: number }` are required parameters. No default is applied here.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      listToolCallsByLlmRun: total is taken with countToolCalls, apart from the page read.
+    evidence: >-
+      const total = await countToolCalls(client, args.llm_run_id);
+      const rows = await findToolCallsByRun(client, args);
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: nowhere
+    evidence: >-
+      `validation_outcome: row.validation_outcome` is passed through. The outcome is not decided here.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion code.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal validation.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+looked_past: >-
+  I did not report the following, because they are code-review or other-file matters: the docstring rationale for list_recent_ingestions ("the server keeps extracting after the socket drops"), closeLlmRun answering ResourceNotFoundError when the closing UPDATE matched no running row, and the swallowed error inside a live transaction.

@@ -1,0 +1,897 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      header comment, lines 7-8 ("Structural layer additionally parses the literal `value`")
+    evidence: >-
+      //   - Structural layer additionally parses the literal `value` against
+      //     `attribute_key.value_type` (BR-14, structural cross-table check).
+    cost: >-
+      The value-parsing rule is stated in prose here and held by code in another file. A reader of this file takes the comment for the rule and does not look in the specification node. When the node changes, this comment is not bound to it and goes stale without notice.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the fact in src/modules/ingestion/validation/structural.ts (parseAttributeValue, called at line 83 of this file), which throws VALIDATION_INVALID_FORMAT for a value that does not parse as its key's value type.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      header comment lines 9-11, and the comment on the guard at lines 71-73
+    evidence: >-
+      //   - There is no link_type_rule lookup — the attribute_key catalog itself
+      //     scopes the `node_type` (UNIQUE(node_type_id, key)). The "graph rules"
+      //     layer for attributes is "key.node_type_id == node.node_type_id".
+      and
+      // Cross-table check: key.node_type_id matches node.node_type_id. The
+      // catalog lookup already enforces this; if a future version relaxes the
+    cost: >-
+      The rule that an attribute key must belong to its node's type is restated as prose beside the lookup that enforces it. The next reader takes the comment for the rule and does not open the node. The comment can then drift from the node without anything failing.
+    kind: restates
+    correction: >-
+      Remove both comments. Code in this file holds the fact at the `attributeKeyByNodeTypeAndKey.get(attributeKeyCacheKey(nodeTypeId!, args.key))` lookup and the `assertKnownType` call that follows it.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the layer headings at lines 52, 126, 130, 158 and 169, and the ordering comment at lines 85-87
+    evidence: >-
+      // ---- Layer 1: Structural ----
+      ... // ---- Layer 3: Temporal ---- ... // ---- Layer 4: Confidence ---- ... // ---- Layer 5: Anti-hallucination ----
+      and
+      // Closed-domain gate (BR-30). Runs IMMEDIATELY after parseAttributeValue
+      // and BEFORE any subsequent layer (graph rules / temporal / confidence /
+      // anti-hallucination).
+    cost: >-
+      The order in which an attribute proposal is checked is written down a second time as comments. Code in this file already fixes that order by the sequence of its statements. The comments give a competing account under layer numbers no node uses, so a reader looking for the order finds it in the wrong place.
+    kind: restates
+    correction: >-
+      Remove the headings and the ordering sentence. The statements themselves hold the order: node lookup, key lookup, value parse, allowed values, fragment existence and ownership, dates, confidence, anchoring.
+    node: rules/knowledge-base/attribute-proposal-check-order
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the closed-domain comment block, lines 85-92
+    evidence: >-
+      // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The "exactly as written" rule for allowed values is restated as prose, and it cites a BR number instead of the node that holds the rule. Code holds the rule, so the comment is a second home for it.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the fact in src/modules/ingestion/validation/structural.ts (`if (domain.has(value)) { return; }` in assertValueInDomain), reached through the `if (domain !== null) { assertValueInDomain(args.value, domain); }` gate in this file.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      comments at lines 130-134 and 196-198 on the received fallback
+    evidence: >-
+      // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The start-date fallback is described in comments that cite v7 section and ADR numbers instead of the node. Code holds the fallback in another file, so a reader of this file sees a second account of a rule the node owns.
+    kind: restates
+    correction: >-
+      Remove both comments. Code holds the received leg in src/modules/ingestion/validation/temporal.ts (`const receivedDate = toIsoDate(input.received_at); ... valid_from_basis: "received"`). This file only supplies `document_date` and `received_at` and forwards `resolvedTemporal.valid_from` and `resolvedTemporal.valid_from_basis`.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no prompt and presents no document content to a model: `export async function proposeAttributeService(client: PoolClient, args: ProposeAttributeInput, runCtx: RunContext, deps: ProposeAttributeDeps)`
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file is one proposal's service and holds no constraint on what the extracting model may act through: `export async function proposeAttributeService(`
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file returns one transport-neutral envelope and knows no transport: `return { ok: true, result };`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the propose-attribute operation, held across proposeAttributeService. It returns the below-floor result at lines 160-167, the success result with the optional superseded id at lines 211-222, and throws ValidationFailure for the RESOURCE_NOT_FOUND and VALIDATION_INVALID_FORMAT refusals. The other operations of the contract are not in this file.
+    evidence: >-
+      const result: ProposeAttributeResult = { attribute_id: null, outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR", };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing or filter appears in the file; its only fragment read is `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no alias: its imports are `attributeKeyCacheKey, domainOf` from the catalog and `countFragmentsAnchoredToSource, findNodeTypeIdByNodeId` from the repository
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      the file reads the catalog's attribute key through its node-type-scoped lookup, lines 61-69, and uses its id, node_type_id, value_type and requires_valid_from. The definition itself lives in the catalog.
+    evidence: >-
+      const attrKey = deps.catalog.attributeKeyByNodeTypeAndKey.get( attributeKeyCacheKey(nodeTypeId!, args.key) );
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file forwards the value without declaring it: `change_hint: args.change_hint,`
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file is the LLM-run proposal path, and no directed batch appears in it: `runCtx: RunContext`
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item appears in the file: `args: ProposeAttributeInput`
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item kind appears in the file: `args: ProposeAttributeInput`
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item status appears in the file: `outcome: consolidation.outcome,`
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no entity and records no match review: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads fragments, and declares none: `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not declare the tool enumeration: `export async function proposeAttributeService(`
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `const consolidation = await consolidateAttribute(`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only looks up a node's type and declares no node: `const nodeTypeId = await findNodeTypeIdByNodeId(client, args.node_id);`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no link type; its header comment says `There is no link_type_rule lookup`
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file consults no link type rule; its header comment says `There is no link_type_rule lookup`
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file uses the run only as context and declares no run: `runCtx.llmRunId` and `runCtx.rawInformationId`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no alias: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the attribute is written by the consolidator, not by this file: `const consolidation = await consolidateAttribute(client, {`
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no node proposal: `const nodeTypeId = await findNodeTypeIdByNodeId(client, args.node_id);`
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file uses a node type id and declares no node type: `attributeKeyCacheKey(nodeTypeId!, args.key)`
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `runCtx: RunContext`
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives a proposal typed elsewhere and declares none: `args: ProposeAttributeInput`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file names no chunk directly; anchoring goes through `countFragmentsAnchoredToSource(client, {`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads the source's dates and declares no raw information: `SELECT (metadata->>'document_date') AS document_date, received_at FROM raw_information WHERE id = $1`
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not check the run's status: `runCtx: RunContext`
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary: `const baseResult = { attribute_id: consolidation.attribute_id, outcome: consolidation.outcome, };`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call; it only returns `{ ok: true, result }` or throws ValidationFailure
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file forwards the basis without declaring it: `valid_from_basis: args.valid_from_basis ?? null,`
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file returns an outcome and declares no enumeration: `outcome: "rejected",`
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file forwards the type without declaring it: `value_type: resolvedKey.value_type,`
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node listing appears in the file: `return { ok: true, result };`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node listing appears in the file: `return { ok: true, result };`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node listing appears in the file: `return { ok: true, result };`
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no node proposal: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      the node-type-scoped catalog lookup and the assertKnownType call, lines 61-69
+    evidence: >-
+      assertKnownType({ kind: "attribute_key", name: args.key, found: attrKey !== undefined, });
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      the sequence of statements in proposeAttributeService, lines 53-183. It looks up the node, then the key, then parses and checks the value, then the fragments, then dates, then confidence, then anchoring, and each check throws or returns before the next runs.
+    evidence: >-
+      const nodeTypeId = await findNodeTypeIdByNodeId(...); ... parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type }); ... const resolvedTemporal = validateTemporal({ ... }); const route = routeConfidence(args.confidence); ... const anchored = await countFragmentsAnchoredToSource(
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the closed-domain gate, lines 93-96. The exact-match test itself is in validation/structural.ts (assertValueInDomain).
+    evidence: >-
+      const domain = domainOf(deps.catalog, resolvedKey.id); if (domain !== null) { assertValueInDomain(args.value, domain); }
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      the parseAttributeValue call, line 83. The parsing rules themselves are in validation/structural.ts.
+    evidence: >-
+      parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type });
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the early return on the below_floor route, lines 159-167. It returns before the consolidator is reached, so nothing is recorded. The 0.40 threshold itself is in validation/confidence.ts.
+    evidence: >-
+      if (route.kind === "below_floor") { const result: ProposeAttributeResult = { attribute_id: null, outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR", }; return { ok: true, result }; }
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file forwards the basis and refuses no `received` value: `valid_from_basis: args.valid_from_basis ?? null,`
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no similarity: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunk: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunk: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no chunking version: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      the anchoring check, lines 169-183
+    evidence: >-
+      if (anchored !== args.fragment_ids.length) { throw new ValidationFailure( "VALIDATION_INVALID_FORMAT", "One or more fragments are not anchored to the run's source chunks.",
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      the fragment existence check, lines 98-114
+    evidence: >-
+      if (fragRes.rows.length !== args.fragment_ids.length) { throw new ValidationFailure( "RESOURCE_NOT_FOUND", "One or more fragment_ids do not resolve to a fragment row.",
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      the fragment ownership loop, lines 115-123
+    evidence: >-
+      if (f.llm_run_id !== runCtx.llmRunId) { throw new ValidationFailure( "VALIDATION_INVALID_FORMAT", "fragment_id does not belong to this run.",
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file neither completes nor fails a run: `runCtx: RunContext`
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the dispute path is delegated to the consolidator and not decided here: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the precedence is delegated to the consolidator and not decided here: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes the fragments to the consolidator and records no provenance itself: `fragment_ids: args.fragment_ids,`
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no hash: `SELECT (metadata->>'document_date') AS document_date, received_at FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no raw information: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no content length: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      the replacement is delegated to the consolidator, and the file only forwards the hint: `change_hint: args.change_hint,`
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      the file passes the correction hint and the cited fragments' texts into the temporal check, lines 124 and 147-156. The errata test itself is in validation/temporal.ts (hasErrataSignal).
+    evidence: >-
+      change_hint: args.change_hint, fragment_texts: fragmentTexts,
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads or derives no currency: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the order of the date checks is inside validation/temporal.ts, and this file makes one call: `const resolvedTemporal = validateTemporal({`
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `runCtx: RunContext`
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries `value: args.value,` and states no directed conversion
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file carries `value: args.value,` and states no directed shape rule
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file states no directed default: `change_hint: args.change_hint,`
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed reference appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed dispatch appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file anchors nothing to a first chunk: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file sets no confidence of 1.0: `const route = routeConfidence(args.confidence);`
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file opens no run: `runCtx: RunContext`
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reports no directed item status: `outcome: consolidation.outcome,`
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed reference appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file pins no node: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed reference appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file completes no run: `runCtx: RunContext`
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no source content: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed label appears in the file: `args: ProposeAttributeInput`
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no original input: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests and extracts nothing: `runCtx: RunContext`
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no email blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no email blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call, and the audit belongs to the caller: `Receives an OPEN PoolClient` is all the file says of it, and its code only returns or throws
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no alias: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file proposes no fragment and anchors none: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file closes no run: `runCtx: RunContext`
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file counts no system errors: `throw new ValidationFailure(`
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads no chunks: `runCtx: RunContext`
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not check a run's status: `runCtx: RunContext`
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cites no chunks and holds no fragment proposal: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no fragment proposal: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file holds no fragment proposal: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no fragment: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads fragment text and checks no length: `const fragmentTexts = fragRes.rows.map((r) => r.text);`
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests nothing: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file computes no idempotency key: `runCtx: RunContext`
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no idempotency key: `runCtx: RunContext`
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no chunks or run: `runCtx: RunContext`
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `There is no link_type_rule lookup`
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `export async function proposeAttributeService(`
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `kind: "attribute_key",`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no link type rule: `There is no link_type_rule lookup`
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file moves no run between states: `runCtx: RunContext`
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file adds no aliases: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file calls no model: `export async function proposeAttributeService(`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file normalizes no name: `args.key` is used as given in `attributeKeyCacheKey(nodeTypeId!, args.key)`
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the recording of a new assertion is delegated to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      the mapping from the confidence route to the status handed to the consolidator, lines 186-187. The 0.75 and 0.40 thresholds are in validation/confidence.ts.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" = route.kind === "active" ? "active" : "uncertain";
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no node: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file creates no node: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no node proposal: `export async function proposeAttributeService(`
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles no node proposal: `export async function proposeAttributeService(`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file delegates succession and uniqueness to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file delegates uniqueness to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `consolidateAttribute(`
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles attributes only: `consolidateAttribute(`
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no original input: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file derives no orphan state: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file pages nothing: `export async function proposeAttributeService(`
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file: `runCtx: RunContext`
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no 0-to-1 range and routes the value it is given: `const route = routeConfidence(args.confidence);`
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file delegates the meeting of current assertions to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not check the run's status: `runCtx: RunContext`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives an already resolved run: `runCtx: RunContext`
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file moves no fragment's status: `SELECT id, "text", llm_run_id FROM information_fragment`
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      the re-affirmation is delegated to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no ingestions: `FROM raw_information WHERE id = $1`
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no reception time and only reads `received_at` from raw_information
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes nothing before a refusal (its refusals are `throw new ValidationFailure(`), but the recording of the tool call is not in this file
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      the file supplies the source's document date and reception time to the temporal check, lines 135-156, and the check refuses only when neither exists. The refusal is in validation/temporal.ts.
+    evidence: >-
+      const documentDate = sourceMetaRes.rows[0]?.document_date ?? null; const receivedAt = sourceMetaRes.rows[0]?.received_at?.toISOString() ?? null; const resolvedTemporal = validateTemporal({
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      this file supplies the inputs, `requires_valid_from: resolvedKey.requires_valid_from, ... document_date: documentDate, received_at: receivedAt,`, and takes back `valid_from: resolvedTemporal.valid_from`. The choice between document date and reception date is made in validation/temporal.ts, and only the comments at lines 130-134 and 196-198 describe it here.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run: `runCtx: RunContext`
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file retries no run: `runCtx: RunContext`
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file parses no speaker line: `const fragmentTexts = fragRes.rows.map((r) => r.text);`
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the file forwards the stated start and its basis into the temporal check, lines 147-156. The refusal is in validation/temporal.ts.
+    evidence: >-
+      valid_from: args.valid_from ?? null, valid_to: args.valid_to ?? null, valid_from_basis: args.valid_from_basis ?? null,
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file resolves no node proposal: `findNodeTypeIdByNodeId(client, args.node_id)`
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      succession is delegated to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      succession is delegated to the consolidator, and the file forwards `change_hint: args.change_hint,` and `fragmentTexts`
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      succession is delegated to the consolidator: `const consolidation = await consolidateAttribute(`
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file scans no fragment text for a succession signal, and only forwards `fragmentTexts,` to the consolidator
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary: `return { ok: true, result };`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file builds no run summary: `return { ok: true, result };`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls: `return { ok: true, result };`
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls: `return { ok: true, result };`
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file lists no tool calls: `return { ok: true, result };`
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file sets no tool call outcome and only returns `outcome: consolidation.outcome,`
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the file forwards both dates into the temporal check, lines 147-156. The strict start-before-end refusal is in validation/temporal.ts.
+    evidence: >-
+      valid_from: args.valid_from ?? null, valid_to: args.valid_to ?? null,
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no email blocks: `countFragmentsAnchoredToSource(client, {`
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file cuts no chunks: `countFragmentsAnchoredToSource(client, {`
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file ingests nothing: `FROM raw_information WHERE id = $1`
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      this file only calls `parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type });`, and whether 2024-02-30 is refused is decided in validation/structural.ts
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      the dispute is delegated to the consolidator and this file handles attributes only: `const consolidation = await consolidateAttribute(`
+looked_past: >-
+  Outside this file's judgment: validation/structural.ts validates a date with `Date.parse(`${v}T00:00:00Z`)`, which V8 probably accepts for 2024-02-30, against the impossible-calendar-date-refused scenario. validation/temporal.ts returns null start and basis when the source has a document date, where required-start-fallback says to take the document date with basis document. The defensive guard at lines 74-80 (`resolvedKey.node_type_id !== nodeTypeId`) answers with VALIDATION_INVALID_FORMAT where the node's code is BUSINESS_UNKNOWN_ATTRIBUTE_KEY, but the catalog lookup makes it unreachable. The header note that transaction wrapping is the caller's job (BR-19) states no fact any node in this set holds. The existence check compares row count to `fragment_ids.length` and so misjudges duplicate ids.

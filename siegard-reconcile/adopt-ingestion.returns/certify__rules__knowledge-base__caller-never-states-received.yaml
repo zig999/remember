@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/caller-never-states-received
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/dto-valid-from-basis.spec.ts
+        name: >-
+          ValidFromBasisSchema (TC-FR-002 — caller-supplied enum) > rejects 'received' — that value is the BFF-internal fallback only
+      - file: src/__tests__/unit/ingestion/dto-valid-from-basis.spec.ts
+        name: >-
+          ProposeLinkInputSchema rejects valid_from_basis='received' (TC-FR-002) > rejects the payload at the Zod boundary
+      - file: src/__tests__/unit/ingestion/dto-valid-from-basis.spec.ts
+        name: >-
+          ProposeAttributeInputSchema rejects valid_from_basis='received' (TC-FR-002) > rejects the payload at the Zod boundary
+    why: >-
+      The tests exercise the refusal only on the input schemas for link and
+      attribute proposals. Each one parses a payload that states the basis
+      received and checks that the schema rejects it on the valid_from_basis
+      field. Nothing in the set sends a proposal stating received through
+      propose_link or propose_attribute themselves, over REST or MCP. So if an
+      entry point stopped parsing with these schemas, or parsed with a looser
+      one, a proposal stating received would get through and every named test
+      would still pass. The fact is about any proposal, and the pack does not
+      list which kinds of proposal exist. The set covers link and attribute
+      only, so any other proposal kind that can state a basis is unexercised.
+      Four tests in the file bear on nothing in this fact: the two accepts on
+      ValidFromBasisSchema, the "still accepts 'stated' and 'document' (no
+      regression)" pair, and "rejects arbitrary strings". They check that
+      other values are accepted or rejected, while the fact only forbids
+      stating received.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result, for each proposal that can state
+      a basis. The input is a propose_link or propose_attribute call made
+      through its entry point with valid_from_basis set to received. The
+      expected result is a refusal on that field, with no link or attribute
+      recorded from the proposal.

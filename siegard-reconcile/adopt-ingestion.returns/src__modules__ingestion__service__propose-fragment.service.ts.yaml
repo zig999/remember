@@ -1,0 +1,856 @@
+findings:
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment block inside the mismatch branch, lines 50-55
+    evidence: >-
+      // "  - chunk_id resolves to no row -> RESOURCE_NOT_FOUND (UC-08 alt 2b)."
+    cost: >-
+      The refusal for a cited chunk that does not exist is written a second time as prose beside the code that
+      enforces it. If the rule moves, the comment is still there saying the old thing. A later reader may take it
+      for a second authority on which code is refused.
+    kind: restates
+    correction: >-
+      Remove the comment. The `throw new ValidationFailure("RESOURCE_NOT_FOUND", ...)` at lines 62-66 holds the
+      fact, and the node holds it in the specification.
+    node: rules/knowledge-base/fragment-chunks-exist
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment block inside the mismatch branch, lines 50-55
+    evidence: >-
+      // "  - chunk_id belongs to a different source -> VALIDATION_INVALID_FORMAT"
+    cost: >-
+      The refusal for a cited chunk outside the run's raw information is written a second time as prose beside the
+      code that enforces it. The comment and the node can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", ...)` at lines 68-75 holds
+      the fact, and the node holds it in the specification.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and marks no document content. It holds only `export async function proposeFragmentService(client: PoolClient, args: ProposeFragmentInput, runCtx: RunContext)`.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file receives a proposal and validates it. It has no construct that limits what the extracting model may do: `export async function proposeFragmentService(client: PoolClient, args: ProposeFragmentInput, runCtx: RunContext)`.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service is transport-agnostic and returns `{ ok: true, result }` or throws `ValidationFailure`. It holds no REST or MCP construct. Its header comment says only "Transport-agnostic."
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the propose-fragment accepted answer, lines 86-90, and its two chunk refusals, lines 62-75
+    evidence: >-
+      `const result: ProposeFragmentResult = { fragment_id: fragment.id, status: "proposed", }; return { ok: true, result };` and `throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more chunk_ids do not resolve to an existing raw_chunk row.", { chunk_ids: args.chunk_ids })`. The other refusal is `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })`. Both agree with the contract's propose-fragment answers. The other operations of the contract are not in this file.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing or filter. It has only `const matched = await countChunksInSource(client, {`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias construct. It has only `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })`.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute key construct. It handles only fragment proposals: `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragment proposal carries no change hint: `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })`.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item kind. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-item status. It has only `return { ok: true, result };`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no entity-match construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the insert call and the result, lines 79-89
+    evidence: >-
+      `const fragment = await insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids, });` followed by `status: "proposed"`. The fragment's shape (text, confidence, chunks, run) is passed through here. The persisted structure is in the repository, which is not in this file set.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no tool-name enumeration and writes no tool call: `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link-type construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no link-type-rule construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the run's identity and raw information from its context: `llm_run_id: runCtx.llmRunId` and `expected_raw_information_id: runCtx.rawInformationId`. It holds no run structure or lifecycle.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no alias construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no attribute construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node-type construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no prompt-version construct. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consumes a fragment proposal through `args: ProposeFragmentInput` (`args.text`, `args.confidence`, `args.chunk_ids`). The proposal's structure is declared in the DTO, which is not in this file set, so this file holds none of it.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file queries chunks with `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])`. It declares no chunk structure.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads `runCtx.rawInformationId`. It declares no raw-information structure.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never reads or checks a run status. It has only `export async function proposeFragmentService(`.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no summary construct. It has only `return { ok: true, result };`.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service writes no tool call. It throws `ValidationFailure` and leaves the audit write to the caller, per its header comment.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragment proposal carries no validity basis. It has only `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })`.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file assigns no validation outcome. It has only `return { ok: true, result };`.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no value-type construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected-node computation. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected-node computation. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected-node computation. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no confidence floor: `confidence: args.confidence` is passed verbatim to the insert.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The fragment proposal has no validity basis. It has only `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })`.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no similarity. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no chunks. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link or attribute proposals and cites no fragments. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link or attribute proposals and cites no fragments. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link or attribute proposals and cites no fragments. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no run. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no content hash. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no content hash. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no content length. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no corrections. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no corrections. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates. Its header comment says "3. Temporal — N/A."
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no prompt-version default. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not choose chunks. It checks the chunks the caller cites: `chunk_ids: args.chunk_ids`.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sets no confidence. It has only `confidence: args.confidence`.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no document ingestion. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service writes no tool call and leaves that to the caller: "the caller (MCP handler shell / REST mirror / orchestrator) handles ROLLBACK + the `tool_call` audit write (BR-23)." That comment is prose, not code.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file replaces no chunk names. It uses `chunk_ids: args.chunk_ids` as given.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no run. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts no system errors. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file drives no extraction. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file drives no extraction. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      the existence-only follow-up count and its refusal, lines 56-67
+    evidence: >-
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])` followed by `if (exists !== args.chunk_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more chunk_ids do not resolve to an existing raw_chunk row.", { chunk_ids: args.chunk_ids }`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      the source-scoped count and its refusal, lines 45-49 and 68-75
+    evidence: >-
+      `countChunksInSource(client, { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })` with `if (matched !== args.chunk_ids.length)`, then `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId }`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      the ordering of the two throws inside the mismatch branch, lines 56-75
+    evidence: >-
+      The existence check `if (exists !== args.chunk_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", ...` comes before `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", ...`
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      the result literal, lines 86-89. The write itself is in the repository, which is outside this file set.
+    evidence: >-
+      `const result: ProposeFragmentResult = { fragment_id: fragment.id, status: "proposed", };`
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no text length. It passes `text: args.text` through. The header comment says "Zod has already enforced text length / confidence range / non-empty chunk_ids at the boundary", which is a claim in prose and not code.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no idempotency key. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no idempotency key. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no run transition. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file drives no extraction. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file normalizes no names. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file derives no status from confidence. It has only `confidence: args.confidence`, passed verbatim.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file creates no nodes. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attributes. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no attributes. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no links. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no links. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no orphaned status. It has only `status: "proposed"` in the result.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no paging. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no prompt-version construct. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no confidence range. It passes `confidence: args.confidence` through. The header comment says "Zod has already enforced text length / confidence range / non-empty chunk_ids at the boundary", which is a claim in prose and not code.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service never reads a run status: `runCtx: RunContext` is used only for `runCtx.rawInformationId` and `runCtx.llmRunId`.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service checks no run: `runCtx: RunContext` is used only for `runCtx.rawInformationId` and `runCtx.llmRunId`. The run checks are done by the caller.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The service writes nothing on refusal. It throws `ValidationFailure` before `insertFragmentWithSources`. Recording the tool call is the caller's, per the header comment. That comment is prose, not code.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates. Its header comment says "3. Temporal — N/A."
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates. Its header comment says "3. Temporal — N/A."
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no retry. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no retry. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates. Its header comment says "3. Temporal — N/A."
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no assertions. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no summary. It has only `return { ok: true, result };`.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no summary. It has only `return { ok: true, result };`.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no listing. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file assigns no validation outcome. It has only `return { ok: true, result };`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no dates. Its header comment says "3. Temporal — N/A."
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It has only `export async function proposeFragmentService(`.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no intake. It has only `export async function proposeFragmentService(`.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles only fragment proposals. It has only `export async function proposeFragmentService(`.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no assertions. It has only `export async function proposeFragmentService(`.
+looked_past: >-
+  The header comment's claim that Zod enforces text length, confidence range and non-empty chunk_ids at the boundary is prose about code in the DTO file, which is outside this file set, so I did not classify it. Separately, `count(*)` over `id = ANY($1::uuid[])` counts distinct rows, so a `chunk_ids` list with a repeated id is refused as RESOURCE_NOT_FOUND. That is a code-review matter, not a domain fact.

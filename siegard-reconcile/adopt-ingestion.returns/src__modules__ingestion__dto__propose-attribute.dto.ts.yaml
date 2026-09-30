@@ -1,0 +1,939 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the JSDoc above the `value` field, lines 24-27
+    evidence: >-
+      "Canonical-serialized value (string form). The structural layer parses
+      this against the `attribute_key.value_type` and rejects on mismatch."
+    cost: >-
+      The comment states a rule the specification holds, that a value must read as its key's value type. It is prose no
+      running system emits. The code that enforces the rule is in validation/structural.ts (`parseAttributeValue`, a
+      switch on `args.value_type`), called from service/propose-attribute.service.ts. A second statement of the rule
+      sits in this file, and the day the node moves nothing reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and enforced by `parseAttributeValue` in
+      src/modules/ingestion/validation/structural.ts.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the `.describe(...)` text on `value`, lines 28-33
+    evidence: >-
+      "The literal value, serialized as a string. Must parse as the key's declared type (date, number, or string)."
+    cost: >-
+      The text is sent to the language model as the tool's description. It names the value types as date, number and
+      string, and leaves out bool. The specification's value types are date, number, text and bool, and the rule
+      accepts exactly true or false for bool. A model that reads this never learns that boolean keys exist. The
+      description and the node disagree about the vocabulary, and the code (catalog.ts declares
+      `"date" | "number" | "text" | "bool"`) sides with the node.
+    kind: contradicts
+    correction: >-
+      Make the description name the value types as the node holds them: date, number, text and bool.
+    node: domain/knowledge-base/value-type
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      `fragment_ids`, lines 41-46
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1).describe("Evidence: id(s) of propose_fragment claims from this
+      chunk that state the value. At least one required.")
+    cost: >-
+      An attribute proposal that cites no fragment is refused here, as a rule of the business. No node states it. The
+      proposal node gives the cited fragments the cardinality 0..*, and the ingestion contract's refusals for
+      propose-attribute name only a missing or wrongly shaped field. A reader looking in the specification for
+      whether an attribute may be proposed without evidence finds nothing, and this line is the only place that says
+      no.
+    kind: unstated
+    correction: >-
+      Give the fact a node, such as an invariant that an attribute proposal MUST cite at least one information
+      fragment. Alternatively, have the proposal node's cardinality say what the code enforces.
+    node: domain/knowledge-base/proposal
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the `.describe(...)` text on `valid_to`, lines 50-52
+    evidence: >-
+      "Date the value STOPS holding (YYYY-MM-DD), if stated. Intervals are half-open [from, to)."
+    cost: >-
+      The text tells the model that an assertion's validity intervals are half-open. No node holds this for
+      proposals or assertions. The only half-open statement in the specification is the link type rule's
+      `day < valid_to`, and the validity-start-before-end rule says only that the start is strictly before the end.
+      The convention lives in a tool description, and a reader of the specification cannot learn from it whether the
+      end date is inside the interval.
+    kind: unstated
+    correction: >-
+      Give the interval convention of an assertion's validity a node, or drop the sentence from the description.
+    node: domain/knowledge-base/proposal
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file declares an input schema and a result type, and no
+      construct concerns presenting document content to a model.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file declares one proposal's input shape, and no
+      construct governs how an extraction acts.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      `// MCP `ingest.propose_attribute` input/output contract (UC-11).` — the schema is shared by both transports,
+      but no construct in the file makes their answers alike.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      `ProposeAttributeInputSchema` (lines 11-59) for the propose-attribute request shape, and `ProposeAttributeResult`
+      with `ProposeAttributeOutcome` (lines 62-74) for the accepted answer
+    evidence: >-
+      `readonly attribute_id: string | null; readonly outcome: ProposeAttributeOutcome; readonly
+      superseded_attribute_id?: string; readonly reason?: "BELOW_CONFIDENCE_FLOOR";` with the outcome union "accepted"
+      | "consolidated" | "superseded_previous" | "disputed" | "rejected"
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeInput = z.infer<typeof ProposeAttributeInputSchema>;` — the file has no listing
+      filter.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no alias construct.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: z.string().min(1)` — the file accepts a key name and declares no attribute-key catalog fields.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere in this file; the file only uses the enum, whose members are declared in propose-link.dto.ts
+    evidence: >-
+      `change_hint: ChangeHintSchema.default("none")`, with `export const ChangeHintSchema = z.enum(["none",
+      "succession", "correction"]);` read in src/modules/ingestion/dto/propose-link.dto.ts
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file declares the ordinary proposal, not a
+      directed batch.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file declares no directed item.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no directed item kinds.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file's outcomes are those of a proposal, not directed item
+      statuses.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file names a node by identity and records no review.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file cites fragments by identity and declares no
+      fragment fields.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      `// MCP `ingest.propose_attribute` input/output contract (UC-11).` — a comment names the tool, and no
+      construct declares the enumeration.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file references a node by identity and declares none.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the run identity is added by the caller
+      (`ProposeAttributeInputSchema.extend(LlmRunIdField)` in mcp-schemas.ts), not by this file.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no alias construct.
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly attribute_id: string | null;` — the result carries an identity and declares none of the
+      node-attribute record.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file has no node resolution.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: z.string().min(1)` — the file declares no node type.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no prompt version.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      `ProposeAttributeInputSchema`, lines 11-59: confidence, valid_from, valid_to, valid_from_basis, change_hint and
+      the cited fragment identities
+    evidence: >-
+      `confidence: z.number().min(0).max(1)`, `valid_from: IsoDateSchema.optional()`, `valid_to:
+      IsoDateSchema.optional()`, `valid_from_basis: ValidFromBasisSchema.optional()`, `change_hint:
+      ChangeHintSchema.default("none")`, `fragment_ids: z.array(z.string().uuid()).min(1)`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file declares no chunk.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no raw information.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file has no run status.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no run summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file records no tool call.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere in this file; the file only uses the enum, whose members are declared in propose-link.dto.ts
+    evidence: >-
+      `valid_from_basis: ValidFromBasisSchema.optional()`, with `export const ValidFromBasisSchema =
+      z.enum(["stated", "document"]);` read in src/modules/ingestion/dto/propose-link.dto.ts
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "rejected";` — the file's outcome union is the proposal's answer, and it declares no validation-outcome
+      enumeration.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Must parse as the key's declared type (date, number, or string)." — the file's only mention of the types is
+      this description text, and it states them differently from the node.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no affected-nodes construct.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no affected-nodes construct.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no affected-nodes construct.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file has no entity resolution.
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: z.string().min(1)` — only non-emptiness is checked; the description says "must be a catalog AttributeKey
+      for this node's type", and no construct in the file enforces it.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the schema checks shape only, and the check order is
+      not in the file.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: z.string().min(1)` — no allowed-values check is in the file.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      "The structural layer parses this against the `attribute_key.value_type` and rejects on mismatch." — only a
+      comment claims it. The schema is `value: z.string().min(1)`, and the parsing code is in validation/structural.ts.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `readonly reason?: "BELOW_CONFIDENCE_FLOOR";` — the file declares the reason in the result type, and the
+      floor itself is applied in service/propose-attribute.service.ts.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere in this file; the restriction is in the enum this file imports from propose-link.dto.ts
+    evidence: >-
+      `valid_from_basis: ValidFromBasisSchema.optional()`, with `export const ValidFromBasisSchema =
+      z.enum(["stated", "document"]);` read in src/modules/ingestion/dto/propose-link.dto.ts
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file has no similarity construct.
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no chunk construct.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no chunk construct.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no chunk construct.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no chunk construct.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no chunk construct.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file checks that the identities are well formed, and
+      anchoring is not checked here.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file checks that the identities are well formed, and
+      existence is not checked here.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file checks that the identities are well formed, and
+      membership of the run is not checked here.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file does not close runs.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "disputed"` — the file names the outcome and holds no consolidation behavior.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "consolidated"` — the file names the outcome and holds no consolidation behavior.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no content hash.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no content hash.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no raw content.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: ChangeHintSchema.default("none")` — the file carries the hint, and the replacement behavior is not
+      in the file.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: ChangeHintSchema.default("none")` — the file carries the hint, and no errata check is in it.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_to: IsoDateSchema.optional()` — the file carries the end date, and currency is not derived here.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: IsoDateSchema.optional()` — the file checks the date's format only, and no date-check order is in
+      it.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no prompt version.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: z.string().min(1)` — the file takes a text value, and the directed conversion is not in it.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      `value: z.string().min(1)` — the file has no directed value shape.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: ChangeHintSchema.default("none")` — the default here is the ordinary proposal's, and the file has
+      no directed construct.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `confidence: z.number().min(0).max(1)` — the file accepts any confidence in range, and it fixes none at 1.0.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file has no directed item status.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no directed construct.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no document ingestion.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file records no tool call.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file has no entity resolution.
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file has no extraction construct.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no extraction construct.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no extraction construct.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no extraction construct.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no extraction construct.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not fragment
+      proposals.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not fragment
+      proposals.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not fragment
+      proposals.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not fragment
+      proposals.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not fragment
+      proposals.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no intake.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no idempotency key.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no idempotency key.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no intake.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file has no run lifecycle.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not node
+      proposals.
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no extraction construct.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      `key: z.string().min(1)` — the file does not normalize names.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "accepted"` — the file names the outcome and records no assertion.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      "Confidence 0–1 in this value. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped." — the
+      file only tells the model this in a description, and the status is decided in the services.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not node
+      proposals.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not node
+      proposals.
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not node
+      proposals.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file concerns attribute proposals, not node
+      proposals.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "superseded_previous"` — the file names the outcome and enforces no uniqueness.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "consolidated"` — the file names the outcome and enforces no uniqueness.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file concerns attributes, not links.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no original input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file cites fragments and derives no orphan state.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no paging.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no prompt version.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      `confidence` in `ProposeAttributeInputSchema`, lines 34-40
+    evidence: >-
+      `confidence: z.number().min(0).max(1)`
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file finds no current assertion.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no run-status check.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no check ordering.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `fragment_ids: z.array(z.string().uuid()).min(1)` — the file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      "'none' = plain assertion (re-affirming an identical fact consolidates, never duplicates)" — the file only tells
+      the model this in a description, and no consolidation behavior is in it.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no ingestion listing.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no ingestion listing.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no ingestion listing.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no ingestion listing.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file records nothing.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: IsoDateSchema.optional()` — the file accepts an absent start and has no availability check.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: IsoDateSchema.optional()` — the file accepts an absent start and applies no fallback.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no retry.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no retry.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from_basis: ValidFromBasisSchema.optional()` — the basis is optional in the schema, and the rule is not
+      enforced in the file.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `node_id: z.string().uuid()` — the file has no entity resolution.
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "superseded_previous"` — the file names the outcome and closes no assertion.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "superseded_previous"` — the file names the outcome and closes no assertion.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "superseded_previous"` — the file names the outcome and closes no assertion.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      `change_hint: ChangeHintSchema.default("none")` — the file carries the hint and reads no fragment text.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no run summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no run summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no tool-call listing.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no tool-call listing.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export interface ProposeAttributeResult {` — the file has no tool-call listing.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export type ProposeAttributeOutcome =` — the file declares the proposal's outcomes, and it does not derive the
+      tool call's validation outcome.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: IsoDateSchema.optional()` and `valid_to: IsoDateSchema.optional()` — the two dates are validated
+      independently, and no ordering check is in the file.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no chunking.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export const ProposeAttributeInputSchema = z.object({` — the file has no intake.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      `.regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD")` — this check is on the validity
+      dates, and the value itself is checked only for non-emptiness (`value: z.string().min(1)`).
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `| "disputed"` — the file names the outcome and holds no consolidation behavior.
+looked_past: >-
+  The validity-date check `IsoDateSchema` uses a regex that accepts an impossible day such as 2024-02-30, and the same schema is declared a second time in propose-link.dto.ts, but I judged both as code quality and not as a domain fact.

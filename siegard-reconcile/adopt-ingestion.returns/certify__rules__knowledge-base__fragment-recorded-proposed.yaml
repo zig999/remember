@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/propose-service-layer.spec.ts
+        name: proposeFragmentService returns success envelope without issuing BEGIN/COMMIT (transaction is caller's)
+      - file: src/__tests__/unit/ingestion/mcp-ingest.spec.ts
+        name: accepted path writes fragment and audit row in same transaction
+      - file: src/__tests__/integration/ingestion/propose-routes.spec.ts
+        name: returns HTTP 200 with ok:true envelope when run is running and input is valid
+    why: >-
+      Each of the three tests checks that a fragment row was inserted and that the answer says
+      status "proposed". None of them checks the status the fragment is recorded in. All three
+      fakes capture the INSERT INTO information_fragment statement but keep only its count, or
+      its llm_run_id and text, and give back only an id. So the "proposed" they check is the
+      status the service reports, not the one it stores. A fragment stored in any other status
+      would pass as long as the answer still said "proposed". The phrase "whatever its
+      confidence" is also never tested. Every fragment proposal in the set uses a high
+      confidence (0.9 or 0.92). None uses the low confidences at which link proposals in the
+      same set are rejected (0.1), so nothing shows that a low-confidence fragment is still
+      recorded as proposed rather than refused or recorded in another status.
+    remainder: testable
+    remainder_why: >-
+      Submit fragment proposals across the confidence range, at least one low (such as 0.1)
+      and one high (such as 0.9). For each, assert that the information fragment written for
+      it carries status proposed. Check this on the stored row itself, either from the INSERT
+      parameters or by reading the row back, and not on the answer. A test is also needed
+      showing that a low-confidence proposal is recorded and not refused.

@@ -1,0 +1,66 @@
+certified:
+  - node: rules/knowledge-base/succession-closes-previous
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: recognizes change_hint='succession' as a succession signal even without textual marker
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: superseded_previous — different value on a functional key with succession signal
+    why: >-
+      One case is proven in full. A link type that does not allow multiple
+      current assertions meets a current assertion with a different target,
+      and the cited fragment signals succession. The test checks that the
+      close marks the assertion 'superseded' and that the new link's
+      supersedes_link_id names the existing link.
+
+      Other stated parts are unexercised or only partly exercised.
+
+      (1) The change-hint half for links. The test that sends
+      change_hint='succession' with a neutral fragment checks only the
+      outcome and that one update and one insert happened. It does not check
+      that the current link is closed as superseded, or that the new link
+      names the one it supersedes.
+
+      (2) The change-hint half for attributes. No test sends
+      change_hint='succession' through proposeAttributeService.
+
+      (3) The attribute close "as superseded". The attribute succession test
+      checks the update's table, that its SQL contains "valid_to", and that
+      the new attribute's supersedes_attribute_id is the existing one. It
+      never checks that the close sets status 'superseded'.
+
+      (4) Which assertion is closed. The mocked client accepts every UPDATE
+      with rowCount 1 regardless of its bindings. No test checks that the
+      close targets the current assertion's id rather than some other row.
+      superseded_link_id and superseded_attribute_id are checked only in the
+      returned envelope.
+
+      Where the close is checked at all, the check is for tokens in the SQL
+      string sent to a mocked PoolClient. It is not a check on the resulting
+      row. A close written differently but correctly would fail it, and a
+      wrong close that keeps those tokens would pass.
+
+      The succession-signal heuristic tests call the internal helper
+      __testing__.hasSuccessionSignal. They do not prove this fact.
+    remainder: testable
+    remainder_why: >-
+      One test per missing case, each on a type that does not allow multiple
+      current assertions, closes the gap.
+
+      Link, change hint: the current link has a different target, the fragment
+      is neutral, and change_hint='succession'. Expected: the close marks that
+      link superseded, bound to its id, and the new link's supersedes_link_id
+      is that link's id.
+
+      Attribute, change hint: the current attribute has a different value, the
+      fragment is neutral, and change_hint='succession'. Expected: the close
+      marks that attribute superseded, bound to its id, and the new
+      attribute's supersedes_attribute_id is that attribute's id.
+
+      Attribute, fragment signal: the existing fragment-signal attribute test
+      also needs to check that the close sets status 'superseded' on the
+      current attribute's id.

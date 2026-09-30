@@ -1,0 +1,996 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      header comment, lines 4-33 (the five branches of §6.5 and their precedence)
+    evidence: >-
+      // Responsibility: given a fully-validated `propose_link` / `propose_attribute`
+      // call (5-layer validation already passed), look up the vigent row(s) under
+      // `SELECT ... FOR UPDATE` (A11) and decide between the five branches of
+      // §6.5:
+    cost: >-
+      The order and conditions of re-affirmation, succession, dispute and new assertion are written as prose beside the branches that implement them. When the node moves, this comment keeps saying the old rule, and a reader will take it for the current one.
+    kind: restates
+    correction: >-
+      Remove the prose. The precedence is held by the branch order in consolidateLinkOnce and consolidateAttributeOnce, and by the node.
+    node: rules/knowledge-base/consolidation-precedence
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      header comment, lines 34-39 (provenance on every branch)
+    evidence: >-
+      // In every branch where a (new or existing) main row id ends up being the
+      // provenance target, the service inserts one provenance row per fragment
+      // with ON CONFLICT DO NOTHING
+    cost: >-
+      The provenance rule is stated a second time in prose beside the code that does it, with a BR-18 citation in place of the node. The prose will drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the prose. insertLinkProvenance and insertAttributeProvenance hold the fact.
+    node: rules/knowledge-base/consolidation-records-provenance
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      header comment "SPEC DIVERGENCE — `status='corrected'`", lines 45-62
+    evidence: >-
+      // This service uses `'superseded'` for the
+      //   closed vigent row in the correction branch; the audit of WHY it was
+      //   superseded lives in (a) the supersedes_* chain on the new row and
+    cost: >-
+      What a correction does to the old assertion is restated as a divergence note citing BR-25 and BR-27, which are not the node. A reader looking for what correction does finds a history of a disagreement instead of the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The UPDATE in the correction branch holds the fact, and the divergence belongs in the decision log.
+    node: rules/knowledge-base/correction-replaces
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      header comment "SPEC DIVERGENCE — `valid_to` in succession branch", lines 64-70
+    evidence: >-
+      //   BR-27 succession step says `valid_to = $newValidFrom (or now()::date
+      //   if the new row has no valid_from)`.
+    cost: >-
+      The closing-date rule is restated in prose with a fallback described as "per the task contract", which is not a node. It is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. closeVigentForSuccession holds the fact.
+    node: rules/knowledge-base/succession-closing-date
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      docstring on SUCCESSION_MARKERS, line 82
+    evidence: >-
+      /** A textual succession marker — case-insensitive substring on any fragment. */
+    cost: >-
+      The matching rule (case-insensitive, any cited fragment) is restated in prose over the array and over hasSuccessionSignal, which hold it.
+    kind: restates
+    correction: >-
+      Remove the docstring. hasSuccessionSignal holds the fact through `f.toLowerCase()` and `lower.includes(m)`.
+    node: rules/knowledge-base/succession-signal
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      docstrings on status_for_new_row in ConsolidateLinkArgs and ConsolidateAttributeArgs, lines 126 and 142
+    evidence: >-
+      /** `'active'` if confidence ≥ 0.75, else `'uncertain'` (BR-17). */
+    cost: >-
+      The status threshold is stated twice in prose in a file that only passes the status through. If the node's threshold moves, the comments keep the old figure.
+    kind: restates
+    correction: >-
+      Remove the docstrings. The threshold is held in src/modules/ingestion/validation/confidence.ts as `CONFIDENCE_UNCERTAIN_UPPER = 0.75`, and the status is derived in propose-link.service.ts and propose-attribute.service.ts (`route.kind === "active" ? "active" : "uncertain"`).
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      docstring on promoteFragmentsToAccepted, lines 243-251
+    evidence: >-
+      * §6.6 state machine: an InformationFragment cited by an accepted
+      * consolidation (a `Provenance` row was just created) transitions
+      * `proposed -> accepted`. Scoped to `status = 'proposed'` so the write is
+    cost: >-
+      The proposed-to-accepted rule is restated in prose, with a citation to a §6.6 that is not the node, beside the UPDATE that holds it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The `UPDATE information_fragment SET status = 'accepted' ... AND status = 'proposed'` holds the fact.
+    node: rules/knowledge-base/provenance-accepts-proposed-fragment
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      docstring on closeVigentForSuccession, lines 266-291
+    evidence: >-
+      * EXCEPTION — intra-day collapse: validity is day-granular (`date`, §5.1) and
+      * `valid_from < valid_to` is strict (CHECK + temporal.ts). When the vigent row's
+      * own `valid_from` is on/after `closeDate` (a same-effective-date succession),
+    cost: >-
+      The rule that a succession on or before the old start supersedes without a validity end is restated in a long docstring that also cites an acceptance scenario and an amendment. Two homes of the rule can diverge silently.
+    kind: restates
+    correction: >-
+      Remove the docstring. The two CASE expressions in the UPDATE hold the fact, and the amendment rationale belongs in the decision log.
+    node: rules/knowledge-base/succession-before-previous-start
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLink, the attempt loop and the final throw, lines 443-474, and its mirror in consolidateAttribute, lines 710-736
+    evidence: >-
+      // Two attempts max (BR-27 / task contract).
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+      ...
+      if (attempt === 2) {
+        throw new ValidationFailure(
+          "SYSTEM_INTERNAL_ERROR",
+          "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
+    cost: >-
+      The code retries a racing consolidation once and then answers a proposal with SYSTEM_INTERNAL_ERROR. The specification's ingestion contract lists no such refusal for propose-link or propose-attribute, and no node holds the retry count. The behavior lives only here, so anyone reading the contract will not find it. The count and the second-failure answer are the code's own decision.
+    kind: unstated
+    correction: >-
+      Give the concurrent-write retry and its second-failure answer a home in the ingestion contract's refusals for propose-link and propose-attribute, or in a rule.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLinkOnce, the `reaffirmation` condition, lines 549-552
+    evidence: >-
+      const reaffirmation =
+        sameTarget &&
+        args.change_hint === "none" &&
+        (!functional || sameValidFrom);
+      ---
+      node: "when its change hint is not correction and, for a type that does not allow multiple current assertions, its change hint is none and it states the same validity start."
+    cost: >-
+      For a link type that allows multiple current links, a proposal with change hint succession and the same target is re-affirmation under the node. The code does not re-affirm it. It skips the correction and succession branches, falls through to (e), and inserts a second current row. The dup-guard then fails, and after the retry the proposal is answered with SYSTEM_INTERNAL_ERROR instead of consolidating. The comment at lines 619-627 describes this as intended.
+    kind: contradicts
+    correction: >-
+      For multi-current types the re-affirmation test should require only the same target and a change hint other than correction. The `none` requirement and the validity-start equality apply only to functional types.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLinkOnce correction branch, lines 578-582, and consolidateAttributeOnce correction branch, lines 800-804
+    evidence: >-
+      return {
+        outcome: "accepted",
+        link_id: newRow.id,
+        superseded_link_id: vigent.id,
+      };
+    cost: >-
+      The code reports a correction to the caller as outcome `accepted`, while recording a superseded predecessor. No node says what outcome a correction carries. The contract lists accepted, consolidated, superseded_previous and disputed, and shows the superseded identity only with superseded_previous. The label is the code's own decision, justified only by a comment citing BR-25.
+    kind: unstated
+    correction: >-
+      Say in correction-replaces, or in the ingestion contract's propose-link and propose-attribute answers, which outcome a correction reports and whether it carries the superseded identity.
+    node: rules/knowledge-base/correction-replaces
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateAttributeOnce re-affirmation condition, lines 777-781, and the closing comment, lines 852-854
+    evidence: >-
+      if (
+        sameValue &&
+        sameValidFrom &&
+        args.change_hint === "none"
+      ) {
+      ...
+      // Multi-valued vigent row with same value would have been caught by
+      // re-affirmation; fall through to accepted-new (different valid_from
+      // on a multi-valued attribute is coexistence).
+    cost: >-
+      For an attribute key that allows multiple current values, a proposal with the same value is re-affirmation under the node. The node requires no equal validity start and no change hint of none, only that the hint is not correction. The code inserts a new row instead of adding provenance, which breaks "re-affirmation consolidates, never duplicates". The comment calls this coexistence, while the node holds one current attribute per value.
+    kind: contradicts
+    correction: >-
+      Apply the `none` hint and equal-validity-start conditions to functional keys only. For multi-current keys, re-affirm on the same value unless the hint is correction.
+    node: rules/knowledge-base/reaffirmation-consolidates
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file handles persisted assertions only; `export async function consolidateLink(` takes no document content or prompt
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no language model call; the exports are `consolidateLink`, `consolidateAttribute`, `hasSuccessionSignal` and `__testing__`
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file has no transport code; results are the plain `ConsolidateLinkResult` and `ConsolidateAttributeResult` shapes
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only throws `ValidationFailure("SYSTEM_INTERNAL_ERROR", ...)` on a second dup-guard hit, which the contract's propose-link and propose-attribute refusals do not list; it declares no operation
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing filter appears; the file only runs `UPDATE information_fragment SET status = 'accepted'`
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias is touched in the file
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives `attrKeyInfo: AttributeKeyRow` from ../catalog/catalog.js and reads only `attrKeyInfo.allows_multiple_current` and `attrKeyInfo.id`; it does not declare the attribute key
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      the change_hint members of ConsolidateLinkArgs (line 124) and ConsolidateAttributeArgs (line 140)
+    evidence: >-
+      readonly change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed-ingestion concept appears in the file
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item appears in the file
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed item kind appears in the file
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      `ConsolidateOutcome` is `"accepted" | "consolidated" | "superseded_previous" | "disputed"`, not this enumeration
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity match or similarity handling appears in the file
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only reads fragment ids and texts as inputs and runs `UPDATE information_fragment SET status = 'accepted'`; it does not declare the fragment
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool name appears in code; propose_link and propose_attribute appear only in comments
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads and inserts `knowledge_link` rows (`INSERT INTO knowledge_link`) but does not declare the entity; `VigentLinkRow` is a partial projection
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      nodes appear only as `source_node_id` and `target_node_id` values
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives `linkTypeInfo: LinkTypeRow` from ../catalog/catalog.js and reads only `allows_multiple_current` and `id`
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link type rule is read in the file
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file uses `runCtx.llmRunId` only as `created_by_run_id`
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      no alias appears in the file
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file reads and inserts `node_attribute` rows (`INSERT INTO node_attribute`) but does not declare the entity; `VigentAttributeRow` is a partial projection
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node resolution appears in the file
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node type appears in the file
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives an already validated proposal as `ConsolidateLinkArgs` or `ConsolidateAttributeArgs`, and its own comment says "5-layer validation already passed"; it does not itself judge or declare the proposal
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no raw chunk appears in the file
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      no raw information appears in the file
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run status appears in the file
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run summary appears in the file
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      no tool call is recorded in the file; tool_call.result appears only in a comment
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the valid_from_basis members of ConsolidateLinkArgs (line 123) and ConsolidateAttributeArgs (line 139)
+    evidence: >-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      `ConsolidateOutcome` is `"accepted" | "consolidated" | "superseded_previous" | "disputed"`, a four-value subset; the enumeration is not declared
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the value_type member of ConsolidateAttributeArgs, line 134
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node list or merge handling appears in the file
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node list appears in the file
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no affected-node list appears in the file
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file takes an already resolved `attribute_key_id` and checks nothing about node types
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file's header comment says "5-layer validation already passed" and runs no checks
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file never reads allowed values; `AttributeKeyRow` is read only for `allows_multiple_current` and `id`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes `args.value` unparsed into node_attribute
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file writes `args.confidence` and applies no floor; the floor sits in validation/confidence.ts as `CONFIDENCE_FLOOR`
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `args.valid_from_basis` through unchecked
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      no similarity appears in the file
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk appears in the file
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk appears in the file
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunk appears in the file
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only records provenance for `args.fragment_ids` and checks no anchoring; that check sits in propose-link.service.ts ("not anchored to the run's source chunks")
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no existence of fragments
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no run membership of fragments
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file does not close runs
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      the dispute branches: consolidateLinkOnce lines 631-648 and consolidateAttributeOnce lines 834-850
+    evidence: >-
+      UPDATE knowledge_link SET status = 'disputed'::assertion_status WHERE id = $1 ... insertLinkRow(client, args, runCtx, { status: "disputed", supersedes_link_id: null })
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      the branch order in consolidateLinkOnce (lines 526-659) and consolidateAttributeOnce (lines 772-863)
+    evidence: >-
+      if (reaffirmation) { ... } if (args.change_hint === "correction") { ... } if (functional && !sameTarget && (args.change_hint === "succession" || hasSuccessionSignal(fragmentTexts))) { ... } dispute ... // (e) Accepted (new)
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      insertLinkProvenance (lines 215-227) and insertAttributeProvenance (lines 229-241), called in every branch
+    evidence: >-
+      INSERT INTO provenance (link_id, fragment_id) SELECT $1, f FROM unnest($2::uuid[]) AS f ON CONFLICT DO NOTHING
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      no hashing appears in the file
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      no content hash appears in the file
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no content appears in the file
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      the correction branches: consolidateLinkOnce lines 562-583 and consolidateAttributeOnce lines 787-805
+    evidence: >-
+      SET superseded_at = now(), status = 'superseded'::assertion_status WHERE id = $1 ... supersedes_link_id: vigent.id
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only mentions that the errata signal was "already verified by validateTemporal"; no code checks it
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      the vigent-row predicates in the four lock functions, lines 330-341, 357-369, 380-391 and 403-416
+    evidence: >-
+      AND valid_to IS NULL AND superseded_at IS NULL FOR UPDATE
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no date checks; the comment says the correction evidence is "already verified by validateTemporal"
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      no directed ingestion appears in the file
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      no document ingestion appears in the file
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      no email handling appears in the file
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no email handling appears in the file
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call; the transaction is owned by the caller ("this service NEVER calls BEGIN / COMMIT")
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only throws `ValidationFailure("SYSTEM_INTERNAL_ERROR", ...)`; it counts no failures per chunk
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment proposal appears in the file
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment proposal appears in the file
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment proposal appears in the file
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      no fragment is inserted; the file only updates `status = 'proposed'` fragments to accepted
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      fragment text is only read for `hasSuccessionSignal`
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      no intake appears in the file
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      no idempotency key appears in the file
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      no idempotency key appears in the file
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no intake appears in the file
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no type-rule check
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no checks
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file takes an already resolved `linkTypeInfo: LinkTypeRow`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      no link type rule appears in the file
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run transitions appear in the file
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node resolution appears in the file
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no extraction appears in the file
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      no name normalization appears in the file
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      the (e) branches: consolidateLinkOnce lines 654-659 and consolidateAttributeOnce lines 858-863
+    evidence: >-
+      const newRow = await insertLinkRow(client, args, runCtx, { status: args.status_for_new_row, supersedes_link_id: null }); ... return { outcome: "accepted", link_id: newRow.id };
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only passes `status: args.status_for_new_row` through, and 0.75 appears only in the docstrings at lines 126 and 142; the threshold sits in validation/confidence.ts as `CONFIDENCE_UNCERTAIN_UPPER = 0.75` and the status in propose-link.service.ts
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node creation appears in the file
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node creation appears in the file
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node name appears in the file
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      no node type appears in the file
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file keeps the invariant through branching and the named partial index, but declares none; `isDupGuardViolation(err, "node_attribute_current_dup_guard")` only recovers from the index
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      the invariant sits in the index named in `isDupGuardViolation(err, "node_attribute_current_dup_guard")`, defined outside the file; the multi-current fall-through at lines 852-854 can violate it
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file keeps the invariant through branching and the named partial index, but declares none; `isDupGuardViolation(err, "knowledge_link_current_dup_guard")` only recovers from the index
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      the invariant sits in the index named in `isDupGuardViolation(err, "knowledge_link_current_dup_guard")`, defined outside the file
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      no original input appears in the file
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      no orphan computation appears in the file
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no paging appears in the file
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      no prompt version appears in the file
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no confidence range
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      the scope selection in consolidateLinkOnce lines 510-523 and consolidateAttributeOnce lines 756-770
+    evidence: >-
+      if (functional) { vigent = await lockVigentLinkBySourceAndType(...) } else { vigent = await lockVigentLinkByTriple(...) }
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no run status
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file runs no checks
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      promoteFragmentsToAccepted, lines 252-264, called from both provenance inserters
+    evidence: >-
+      UPDATE information_fragment SET status = 'accepted' WHERE id = ANY($1::uuid[]) AND status = 'proposed'
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the re-affirmation branches, consolidateLinkOnce lines 549-556 and consolidateAttributeOnce lines 777-784, which hold the functional-type condition and depart from the node for multi-current types (findings above)
+    evidence: >-
+      const reaffirmation = sameTarget && args.change_hint === "none" && (!functional || sameValidFrom); ... sameValue && sameValidFrom && args.change_hint === "none"
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      no reception time appears in the file
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call; on error it only runs `ROLLBACK TO SAVEPOINT` and re-throws
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no validity start availability
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file receives the resolved `valid_from` and basis in its args; the fallback sits upstream, where propose-link.service.ts passes `resolvedTemporal.valid_from`
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file's `attempt` counter concerns dup-guard retries, not run retries
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      no run retry appears in the file
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no basis
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      no entity resolution appears in the file
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      closeVigentForSuccession, lines 292-316
+    evidence: >-
+      valid_to = CASE WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr} THEN valid_to ELSE ${closeExpr} END, superseded_at = CASE WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr} THEN now() ELSE superseded_at END
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      the succession branches: consolidateLinkOnce lines 588-614 and consolidateAttributeOnce lines 808-831
+    evidence: >-
+      functional && !sameTarget && (args.change_hint === "succession" || hasSuccessionSignal(fragmentTexts)) ... closeVigentForSuccession(...) ... supersedes_link_id: vigent.id
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      closeVigentForSuccession, lines 298-313
+    evidence: >-
+      const closeExpr = closeDate !== null ? "$2::date" : "now()::date"; ... ELSE ${closeExpr}
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      SUCCESSION_MARKERS and hasSuccessionSignal, lines 83-106
+    evidence: >-
+      "deixou de", "passou a", "novo", "nova", "substituiu", "substituido", "substituido por", "succeeded", "replaced" ... const lower = f.toLowerCase(); ... if (lower.includes(m)) return true;
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      no summary appears in the file
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      no summary appears in the file
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      no paging appears in the file
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      no listing appears in the file
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file records no tool call or validation outcome; it only returns `ConsolidateOutcome`
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file checks no validity ordering; its comment says the CHECK and temporal.ts enforce it
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      no email handling appears in the file
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      no chunking appears in the file
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      no intake appears in the file
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file parses no attribute value
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      the branch order in consolidateLinkOnce, lines 549-649
+    evidence: >-
+      reaffirmation requires `args.change_hint === "none"`, succession requires `!sameTarget`, so a same-target proposal with hint succession reaches `UPDATE knowledge_link SET status = 'disputed'::assertion_status` and `insertLinkRow(..., { status: "disputed", supersedes_link_id: null })`
+looked_past: >-
+  The hasSuccessionSignal and __testing__ exports, and the handling of a duplicated SUCCESSION_MARKERS entry ("substituido por" contained in "substituido"), are code-quality matters, not a domain fact.

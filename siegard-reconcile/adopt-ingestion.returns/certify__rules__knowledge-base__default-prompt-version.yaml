@@ -1,0 +1,34 @@
+certified:
+  - node: rules/knowledge-base/default-prompt-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: recommends v4 for new runs (DEFAULT_PROMPT_VERSION === 'v4')
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: dispatches 'v4' → v4 module with PROMPT_VERSION === 'v4'
+      - file: src/__tests__/unit/ingestion/ingest-document-handler.spec.ts
+        name: defaults model + prompt_version when the caller omits them
+    why: >-
+      Together the tests prove that an ingest_document call with no prompt version
+      puts DEFAULT_PROMPT_VERSION into the body it hands to intake, that
+      DEFAULT_PROMPT_VERSION is "v4", and that the registry maps "v4" to the v4
+      module. The fact says more: the ingestion runs under v4. In the handler test
+      both the intake (ingestRaw) and the extraction (runExtraction) are mocks.
+      Nothing in the set checks that the run created from that body records v4
+      as its prompt version, or that extraction for that run uses the v4 prompt.
+      Suppose intake dropped or replaced the requested version, or extraction chose
+      its prompt some other way than the run's recorded version. Then an ingestion
+      with no prompt version would stop running under v4 and all three tests would
+      still pass. The handler test also compares against the DEFAULT_PROMPT_VERSION
+      symbol, not the literal "v4", so its link to v4 depends entirely on the
+      registry test. The set also covers only the ingest_document entry point. No
+      other document-ingestion path is tested for what it does when no prompt
+      version is given.
+    remainder: testable
+    remainder_why: >-
+      Input: one document ingestion with no prompt version, with real intake and
+      the extraction orchestrator driven against a fake LLM provider. Expected
+      result: the run it creates records prompt_version "v4", and the system prompt
+      sent to the provider is the v4 system prompt. The same assertion is needed
+      for each other document-ingestion entry point that accepts an omitted prompt
+      version.

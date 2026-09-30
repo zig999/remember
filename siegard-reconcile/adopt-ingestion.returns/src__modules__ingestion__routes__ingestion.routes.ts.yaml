@@ -1,0 +1,927 @@
+findings:
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      header comment lines 7-17 and the route registrations from line 142 ("/raw-information", "/llm-runs/:llmRunId/retry", "/llm-runs/:llmRunId/propose-fragment" and the rest)
+    evidence: >-
+      //   - POST /api/v1/ingest/raw-information
+      //   - GET  /api/v1/ingest/llm-runs/:llmRunId/tool-calls
+      //   - POST /api/v1/ingest/llm-runs/:llmRunId/propose-fragment   (TC-13)
+    cost: >-
+      The contract publishes the REST operations but no node states their addresses, so the path scheme exists only in this file and its mount point. A client author who looks in the specification for where to call intake, retry or the propose mirrors finds nothing. If the paths change, no node moves with them. A grep over the specification root for "/api/v1" and "raw-information/" returned no match.
+    kind: unstated
+    correction: >-
+      Give the published ingestion contract the address of each REST operation, or state the path scheme in a node that binds this file.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      header comment lines 24-44 (TC-13 specifics, points 2 and 4)
+    evidence: >-
+      //      distinguishes 404 (`RESOURCE_NOT_FOUND`, llm_run row absent) from 409
+      //      (`BUSINESS_RUN_NOT_RUNNING`, row present but `status != 'running'`).
+      //   4. Return HTTP 200 for any reachable handler. The `ok: true/false` flag on
+      //      the body is the outcome indicator — a layered-validation rejection
+      //      (ValidationFailure) is a *business result*, not a transport error
+    cost: >-
+      The prose repeats the contract's answers: 404 RESOURCE_NOT_FOUND, 409 BUSINESS_RUN_NOT_RUNNING, and HTTP 200 with `{ ok: false, error }` for business refusals. If the contract changes, this comment goes on stating the old answer. It also asserts MCP parity ("REST and MCP now emit the SAME namespaced code") that this file cannot show. The pair conforms, and the prose only adds a second place to keep in step.
+    kind: restates
+    correction: >-
+      Remove the comment block. The code that holds these answers is `handleProposeMirror` in this file (the `run.status !== "running"` branch and the catch clauses that send 404 and 409), and the `ok: false` HTTP 200 answer in the same function.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      line 125-126, POST_INGEST_BODY_LIMIT, applied to app.post("/raw-information") at line 144
+    evidence: >-
+      /** Body limit override for the POST route — 11 MiB per `ingestion.back.md §1`. */
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
+    cost: >-
+      The number 11 MiB is a size limit on intake that the code applies and no node holds. It is measured in bytes on the HTTP body, and it cites a back-spec rather than a node. The nodes bound content and original input at 10,485,760 UTF-16 code units each, and answer over-length with HTTP 422 VALIDATION_INVALID_FORMAT. A request carrying valid multi-byte content or both fields near their limits can exceed 11 MiB and be refused by the transport before the contract's answer applies. Nobody reading the specification would learn that a second, byte-based ceiling exists. A grep over the specification root for "11 MiB", "bodyLimit" and "413" returned no match.
+    kind: unstated
+    correction: >-
+      Decide in the specification whether intake has a request-size ceiling beyond content-length and original-input-length, and what it answers. Then give that a node the file is bound to, or drop the override.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      comment lines 288-289 in the run route
+    evidence: >-
+      // Body is optional in v1 — parse with a strict default so unknown
+      // fields surface as 422.
+    cost: >-
+      The comment restates the run-extraction refusal, "a body with any field" answers HTTP 422 VALIDATION_INVALID_FORMAT. The code holds it in `RunLlmExtractionRequestSchema = z.object({}).strict().default({})` and `RunLlmExtractionRequestSchema.parse(request.body ?? {})`. The comment is a second home for the rule and can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      comment block lines 409-427 above the propose-* mirrors
+    evidence: >-
+      //   2. Opens a single transaction (BR-19) and within it loads the llm_run
+      //      row to distinguish 404 (unknown id) from 409 (status != 'running').
+      //   4. Returns the MCP envelope verbatim with HTTP 200; any layered-
+      //      validation rejection (ValidationFailure) is mapped to an
+      //      `{ ok: false, error: { code, message, details } }` envelope, still
+      //      HTTP 200, per BR-28.
+    cost: >-
+      The block restates the propose-* contract answers: the 404 and 409 split, and business refusals as HTTP 200 with `{ ok: false, error }`. It also restates the proposal-run-checks-first ordering. The code holds all of it in the same file, in `handleProposeMirror`. The comment sends the reader to BR-28 and BR-19 in a back-spec rather than to the nodes.
+    kind: restates
+    correction: >-
+      Remove the comment block. The code that holds these facts stays in `handleProposeMirror`.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      docstring of handleProposeMirror, lines 484-497
+    evidence: >-
+      *   - `ResourceNotFoundError` -> HTTP 404 with `RESOURCE_NOT_FOUND` envelope.
+      *   - `RunNotRunningError`    -> HTTP 409 with `BUSINESS_RUN_NOT_RUNNING` envelope.
+      *   - `ValidationFailure`     -> HTTP 200 with `{ ok: false, error: ... }`
+    cost: >-
+      The docstring is a third statement of the same contract answers. The catch clauses below it (`return reply.status(404).send({`, `return reply.status(409).send({`, `return reply.status(200).send(err.envelope)`) hold them. If the contract moves, this prose keeps the old codes.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement of the error mapping.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only starts extraction and builds no prompt: `const body = await runLlmExtraction(`.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file starts extraction and does not constrain what the model may call: `const body = await runLlmExtraction(`.
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      the REST half, in the catch clauses of handleProposeMirror (lines 544-571) and of the read, run and retry routes. Each sends `err.code` from the shared error classes. The MCP half is outside this file.
+    evidence: >-
+      if (err instanceof RunNotRunningError) {
+            return reply.status(409).send({
+              ok: false,
+              error: {
+                code: err.code,
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      registerIngestionRoutes (lines 138-482) and handleProposeMirror (lines 498-573). They cover the REST-only operations (intake, source and chunk reads, tool-call listing, run-extraction, retry-llm-run) and the REST side of the four proposals and the run read. The 11 MiB body limit (line 126) is not in the contract, and the run read's `{ ok: true, result }` wrapper is not visible here.
+    evidence: >-
+      app.post(
+          "/llm-runs/:llmRunId/retry", ... if (err instanceof RunNotRetryableError) {
+              return reply.status(409).send({
+      and: return reply.status(200).send(envelope);
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers no accepted-fragment listing. Its only listing is `const body = await listToolCallsByLlmRun(client, {`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });` delegates all alias handling.
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });` delegates the catalog to the service.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const input = ProposeLinkInputSchema.parse(request.body);` leaves the vocabulary to the DTO.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeFragmentService(client, input, runCtx);`
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no tool vocabulary. It only names route segments such as `"/llm-runs/:llmRunId/propose-fragment"`.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog is only forwarded: `const catalog = deps.catalog;` then `{ catalog, now }`.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog is only forwarded: `const catalog = deps.catalog;` then `{ catalog, now }`.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads the aggregate: `const run = await findLlmRunById(client, llmRunId);`.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The catalog is only forwarded: `const catalog = deps.catalog;`.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file starts extraction and names no prompt version: `const body = await runLlmExtraction(`.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The proposal shapes are parsed by DTO schemas declared elsewhere: `const input = ProposeNodeInputSchema.parse(request.body);`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await listChunksByRawInformationId(client, params.rawInformationId);` reads chunks through the service.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getRawInformationById(client, params.rawInformationId);`
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file compares against a status literal and declares no enumeration: `if (run.status !== "running") {`.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await retryLlmRun(client, params.llmRunId);` forwards the service's summary.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await listToolCallsByLlmRun(client, {` reads tool calls through the service.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file maps no validation outcome. `throw new ProposeMirrorEnvelopeReject({ ok: false, error: {` carries only the error envelope.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getLlmRunById(client, params.llmRunId);`
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getLlmRunById(client, params.llmRunId);`
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getLlmRunById(client, params.llmRunId);`
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The rule is left to the DTO schemas: `const input = ProposeLinkInputSchema.parse(request.body);`.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);` leaves chunking to the service.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);` leaves chunking to the service.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await listChunksByRawInformationId(client, params.rawInformationId);` leaves the order to the service.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);` leaves chunking to the service.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);` leaves chunking to the service.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await runLlmExtraction(` leaves the closing to the orchestrator.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound is not enforced in this file. It parses `const body = IngestRawInformationRequestSchema.parse(request.body);` and sets only the byte-based `bodyLimit: POST_INGEST_BODY_LIMIT`, which no node holds.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No document-ingestion route is registered. The intake route only parses `IngestRawInformationRequestSchema`.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion route is registered. The last route is `"/llm-runs/:llmRunId/propose-attribute"`.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No one-shot document route is registered. Intake `const result = await ingestRawInformation(client, body);` and extraction `runLlmExtraction(` are separate routes.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call itself. It delegates to the propose services and rolls the whole transaction back on a layered-validation failure: `throw new ProposeMirrorEnvelopeReject({`.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps the failure to HTTP 500 and does not count errors. The mapping is `if (err instanceof ExtractionFatalError) {
+            return reply.status(500).send({`.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps the refusal and does not check the status. The mapping is `if (err instanceof RunNotRunnableError) {
+            return reply.status(409).send({`.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeFragmentService(client, input, runCtx);`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeFragmentService(client, input, runCtx);`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeFragmentService(client, input, runCtx);`
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeFragmentService(client, input, runCtx);`
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound is left to the DTO: `const input = ProposeFragmentInputSchema.parse(request.body);`.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);` (the route only forwards `result.status` and `result.body`).
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });` (the file only supplies the clock: `const now: () => Date = deps.now ?? (() => new Date());`).
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps the refusal and leaves the transitions to the service: `const body = await retryLlmRun(client, params.llmRunId);`.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await runLlmExtraction(`
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound is left to the DTO: `const input = ProposeNodeInputSchema.parse(request.body);`.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The bound is left to the DTO: `const body = IngestRawInformationRequestSchema.parse(request.body);`.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await retryLlmRun(client, params.llmRunId);`
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers no search or accepted-fragment listing. Its only listing is `const query = ListToolCallsQuerySchema.parse(request.query);`.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps the failure to HTTP 500 and does not check the version: `if (err instanceof ExtractionFatalError) {`.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The range is left to the DTO: `const input = ProposeLinkInputSchema.parse(request.body);`.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      handleProposeMirror, lines 518-520, inside the transaction and before the service call
+    evidence: >-
+      if (run.status !== "running") {
+              throw new RunNotRunningError(llmRunId, run.status);
+            }
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      each propose route parses params and body first (lines 432-433, 447-448, 458-459, 469-470). handleProposeMirror then loads the run, refuses if absent, refuses if not running, and only then calls the service (lines 514-524).
+    evidence: >-
+      const params = LlmRunIdParamSchema.parse(request.params);
+            const input = ProposeNodeInputSchema.parse(request.body);
+      ...
+      const run = await findLlmRunById(client, llmRunId);
+            if (run === null) {
+              throw new ResourceNotFoundError("llm_run", llmRunId);
+            }
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions route is registered. The routes are raw-information, chunks, llm-runs, run, retry and propose-*.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions route is registered. The routes are raw-information, chunks, llm-runs, run, retry and propose-*.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions route is registered. The routes are raw-information, chunks, llm-runs, run, retry and propose-*.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No recent-ingestions route is registered. The routes are raw-information, chunks, llm-runs, run, retry and propose-*.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call. On a layered-validation failure it rolls the whole transaction back: `throw new ProposeMirrorEnvelopeReject({`.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await retryLlmRun(client, params.llmRunId);`
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await retryLlmRun(client, params.llmRunId);`
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeNodeService(client, input, runCtx, { catalog });`
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getLlmRunById(client, params.llmRunId);`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await getLlmRunById(client, params.llmRunId);`
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await listToolCallsByLlmRun(client, {` leaves the order to the service.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The defaults come from the DTO: `const query = ListToolCallsQuerySchema.parse(request.query);` and `limit: query.limit,` `offset: query.offset,`.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const body = await listToolCallsByLlmRun(client, {` leaves the total to the service.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file assigns no validation outcome to a tool call. It returns the service envelope: `return reply.status(200).send(envelope);`.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      `const result = await ingestRawInformation(client, body);`
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The route forwards the service result without looking at it: `return reply.status(result.status).send(result.body);`.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeAttributeService(client, input, runCtx, { catalog, now });`
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      `return await proposeLinkService(client, input, runCtx, { catalog, now });`
+looked_past: >-
+  Whether the total rollback on ValidationFailure in handleProposeMirror discards the refused proposal's tool call (every-proposal-audited, refused-proposal-records-only-its-tool-call) depends on service files outside this set, and so does the conditional mounting of the run and propose-node/link/attribute routes on deps.catalog and deps.env.

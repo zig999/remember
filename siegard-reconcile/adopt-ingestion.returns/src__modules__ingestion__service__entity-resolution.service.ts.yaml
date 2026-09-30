@@ -1,0 +1,948 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The docblock of MATCH_STRONG (lines 26-32) and the docblock of decideFromCandidates (lines 249-257).
+    evidence: >-
+      "Trigram-similarity ceiling above which a SINGLE candidate is taken as a strong match (reuse the existing node). BR-25 / A12." and "Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no other candidate has `sim >= MATCH_FLOOR`." The code holds the same fact in this file: `export const MATCH_STRONG = 0.85;` and `if (strong.length === 1 && aboveFloor.length === 1) {`.
+    cost: >-
+      The strong-match rule is written a second time in prose. The prose also says the value is "not configurable per call - see BR-25 description in the back spec". When the node moves, `--check` does not reach this comment. A reader is then sent to a back-spec rule instead of to the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The constant and the branch already hold the fact, and the node is the place to read it.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The docblock of MATCH_FLOOR (lines 34-41), the resolveOrCreateNode docblock, step 4, ambiguous bullet (lines 97-99), the comment above the entity_match_review loop (lines 196-199), and the decideFromCandidates docblock (lines 255-261).
+    evidence: >-
+      "Candidates with `sim < MATCH_FLOOR` do not feed the decision and do not produce `entity_match_review` rows. BR-25 / A12." and "Ambiguous -> INSERT a new node with `status = 'needs_review'`, one `entity_match_review` row per candidate with `sim >= MATCH_FLOOR`". The code holds the same fact in this file: `export const MATCH_FLOOR = 0.55;`, the `decision.kind === "ambiguous"` branch, and the loop `for (const cand of decision.candidates)`.
+    cost: >-
+      The ambiguity rule, its 0.55 floor and the one-review-per-candidate pairing are restated in four prose places. The comments cite a "TC constraint" and BR-25 as their authority. Those citations point away from the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The floor constant and the ambiguous branch hold the fact.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The constant TRIGRAM_CANDIDATE_LIMIT (line 47), interpolated as `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}` in the candidate query (line 165).
+    evidence: >-
+      `const TRIGRAM_CANDIDATE_LIMIT = 10;` and `ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}`. The node says "records an entity match review pairing it with each such node and its similarity", where "such node" means every active node of the type at a similarity of 0.55 or more.
+    cost: >-
+      With more than ten active nodes of the type at or above 0.55, only the ten most similar get an entity match review. The rest are silently left unpaired, so the curation queue is incomplete. The cap of ten is a business-visible number that appears only in this file. A reader who checks the node will not find it.
+    kind: contradicts
+    correction: >-
+      Either the node states the cap on candidates, or the query drops the cap so that every node at 0.55 or more is paired. That choice belongs to the analysis.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The resolveOrCreateNode docblock, step 2 (lines 90-91).
+    evidence: >-
+      "Tries exact `alias_norm = norm(name)` match against active nodes of `nodeTypeId`. Hit -> reuse; resolution = `matched_existing`." The code holds the same fact: `WHERE na.alias_norm = norm($1::text)
+        AND kn.node_type_id = $2
+        AND kn.status = 'active'`.
+    cost: >-
+      The exact-alias rule is stated a second time in prose. If the node changes, the docblock keeps the old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the step from the docblock.
+    node: rules/knowledge-base/exact-alias-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The resolveOrCreateNode docblock, step 3 (lines 92-94).
+    evidence: >-
+      "fetches up to 10 trigram candidates via the GIN `node_alias_norm_trgm_idx` (`%` operator), each carrying its max `similarity` against the proposed name." The code holds the same fact: `MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim`.
+    cost: >-
+      The similarity definition is restated in prose. The same sentence carries the cap of 10, which the node does not hold.
+    kind: restates
+    correction: >-
+      Remove the step from the docblock.
+    node: rules/knowledge-base/candidate-similarity
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The resolveOrCreateNode docblock, Novel bullet (lines 100-101), and the decideFromCandidates docblock, Novel bullet (line 257).
+    evidence: >-
+      "Novel -> INSERT a new node with `status = 'active'`, resolution = `created_new`." and "Novel: every candidate has `sim < MATCH_FLOOR` (empty set included)." The code holds the same fact: `if (aboveFloor.length === 0) {
+        return { kind: "novel" };` and `VALUES ($1, $2, 'active')`.
+    cost: >-
+      The rule for creating an active node when no candidate reaches the floor is stated a second time in prose, with no link to the node.
+    kind: restates
+    correction: >-
+      Remove the bullets.
+    node: rules/knowledge-base/no-candidate-creates-active-node
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The resolveOrCreateNode docblock, step 5 (lines 102-104), and the docblock of attachCanonicalAndAliases (lines 284-287).
+    evidence: >-
+      "Attach the canonical name as the first alias (`kind = 'canonical'`) plus any LLM-supplied aliases (`kind = 'alias'`) to a newly created node." The code holds the same fact: `VALUES ($1, $2, 'canonical', $3)` in attachCanonicalAndAliases, followed by the call to `attachAliases`.
+    cost: >-
+      The alias-holding rule for a new node is stated a second time in prose. When the node moves, the prose keeps the old rule.
+    kind: restates
+    correction: >-
+      Remove the docblock text and the step.
+    node: rules/knowledge-base/new-node-aliases
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The advisory lock taken before the first node_alias read (lines 114-128).
+    evidence: >-
+      `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, with the lock key built as `CAST($1::text AS text) || E'\\x1F' || norm($2::text)`. The comment reads "two concurrent `propose_node` calls for the same `(node_type, norm(name))` must NOT race on the resolve-or-create branch."
+    cost: >-
+      The rule that concurrent proposals of one name and node type are serialized, so that they resolve to one node, lives only in this file and its comments. No node holds it. A reader looking for it in the specification does not find it.
+    kind: unstated
+    correction: >-
+      The analysis should give the serialization of concurrent node proposals for the same node type and normalized name a node. Node resolution is the natural home.
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The comment in the exact-match branch (lines 145-146).
+    evidence: >-
+      "Canonical name not re-inserted on match (already present by virtue of alias_norm hit). LLM-supplied aliases still attempt insert." The code holds the same fact: the branch calls `attachAliases` with `aliases: args.aliases`, not `attachCanonicalAndAliases`.
+    cost: >-
+      The rule that a matched node gains only aliases is stated a second time in prose, next to the code that implements it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/matched-node-gains-only-aliases
+read:
+  - node: constraints/document-content-is-data
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states nothing about how a document's content reaches a language model. Its only entry points are `export async function resolveOrCreateNode(client: PoolClient, args: ResolveOrCreateNodeArgs)` and `export function decideFromCandidates`.
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states nothing about how the extracting model acts. It only resolves or creates a knowledge node inside a transaction it is handed (`client: PoolClient`).
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is transport-agnostic. It returns `{ node_id, resolution }` and holds no REST or MCP construct.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no operation, answer or refusal of the contract. It returns `Promise<ResolveOrCreateNodeResult>` to the propose-node service, which the file set does not include.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mentions no accepted-fragment listing. Its only queries touch `node_alias`, `knowledge_node` and `entity_match_review`.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      The two alias kinds written by attachCanonicalAndAliases and attachAliases (lines 299-301 and 326-328).
+    evidence: >-
+      `VALUES ($1, $2, 'canonical', $3)` and `VALUES ($1, $2, 'alias', $3)`
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's queries never touch attribute keys: `FROM node_alias na JOIN knowledge_node kn ON kn.id = na.node_id`.
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's arguments are `nodeTypeId`, `name`, `aliases`, `llmRunId` and `catalog`. It has no change hint.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed-ingestion construct in the file. It is a pure entity-resolution helper, `resolveOrCreateNode`.
+  - node: domain/knowledge-base/directed-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      No directed item is handled. The only inputs are `ResolveOrCreateNodeArgs`.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      No item kinds appear in the file. The only discriminated union is `Decision` with kinds `strong_unique`, `ambiguous` and `novel`.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file returns `resolution: "matched_existing"`, `"needs_review"` or `"created_new"`. It computes no directed item status.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      The insert into entity_match_review inside the ambiguous branch (lines 200-207).
+    evidence: >-
+      `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (node_id, candidate_node_id) DO NOTHING`
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      No information fragment is read or written. The file's queries touch only `node_alias`, `knowledge_node` and `entity_match_review`.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool name is recorded. The file has no tool-call construct.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link is read or written in the file.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      The inserts of a knowledge node with canonical name, node type and status in the ambiguous and novel branches (lines 188-193 and 220-225).
+    evidence: >-
+      `INSERT INTO knowledge_node (node_type_id, canonical_name, status)
+           VALUES ($1, $2, 'needs_review')` and `VALUES ($1, $2, 'active')`
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type is read in the file.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      No link type rule is read in the file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only carries the run's identity as `llmRunId`, written to `node_alias.created_by_run_id`. It holds no run rule.
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      The inserts into node_alias in attachCanonicalAndAliases and attachAliases (lines 298-303 and 325-330).
+    evidence: >-
+      `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id)
+         VALUES ($1, $2, 'canonical', $3)
+         ON CONFLICT DO NOTHING`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      nowhere
+    evidence: >-
+      No attribute is read or written in the file.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      The three resolutions returned by resolveOrCreateNode (lines 150, 183, 216, 233).
+    evidence: >-
+      `resolution: "matched_existing"`, `resolution: "needs_review"`, `resolution: "created_new"`
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file receives an already-resolved `nodeTypeId` and only filters by it: `AND kn.node_type_id = $2`. It holds no catalog rule of node types.
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file takes the pieces of a node proposal as `ResolveOrCreateNodeArgs`. It holds no proposal-level construct such as kind, confidence or evidence.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk appears in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      No raw information appears in the file.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run status is read or written in the file.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      No run summary appears in the file.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      No tool call is recorded in the file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      No validity basis appears in the file.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no validation outcome. It returns only `resolution`.
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      No value type appears in the file.
+  - node: rules/knowledge-base/affected-nodes-follow-merges
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes and follows no merge.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes. It only returns `node_id` and `resolution`.
+  - node: rules/knowledge-base/affected-nodes-only-when-completed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states no run-status rule.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      The ambiguous branch of resolveOrCreateNode (lines 186-217) and the returned candidates of decideFromCandidates (lines 266-281). A finding is filed against the cap of ten candidates.
+    evidence: >-
+      `if (decision.kind === "ambiguous") {` ... `VALUES ($1, $2, 'needs_review')` ... `for (const cand of decision.candidates) {` ... `return { kind: "ambiguous", candidates: aboveFloor };` with `export const MATCH_FLOOR = 0.55;`
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no attribute proposal check.
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no attribute proposal check.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no attribute value check.
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no attribute value parsing.
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence argument. `ResolveOrCreateNodeArgs` carries `nodeTypeId`, `name`, `aliases`, `llmRunId` and `catalog`.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity basis check.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      The candidate query computing the highest trigram similarity per node (lines 156-167).
+    evidence: >-
+      `SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim
+           FROM node_alias na`
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is produced in the file.
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is produced in the file.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunk is listed in the file.
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/chunks-never-cross-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file cites no fragments.
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file cites no fragments.
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file cites no fragments.
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no run.
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link or attribute assertion.
+  - node: rules/knowledge-base/consolidation-precedence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link or attribute assertion.
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no content hash.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no raw information.
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no content length check.
+  - node: rules/knowledge-base/contentless-blocks-single-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no correction check.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no date check.
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed attribute.
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed attribute.
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed item.
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed item.
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed ingestion.
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no fragment.
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence.
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file opens no run.
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no directed item status. It only returns the node resolution.
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed reference.
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no pinned-identity path. Every call goes through the advisory lock and the exact and trigram scans.
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed reference.
+  - node: rules/knowledge-base/directed-requires-fragment-and-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no directed ingestion.
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file completes no run.
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no source content.
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no label.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no original input.
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file ingests no document.
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email is parsed in the file.
+  - node: rules/knowledge-base/email-quote-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email is parsed in the file.
+  - node: rules/knowledge-base/every-proposal-audited
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no tool call. Auditing is left to its caller.
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      The exact alias_norm lookup and its early return (lines 130-151).
+    evidence: >-
+      `WHERE na.alias_norm = norm($1::text)
+            AND kn.node_type_id = $2
+            AND kn.status = 'active'` ... `return { node_id: nodeId, resolution: "matched_existing" };`
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file anchors no fragment.
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file closes no run.
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file counts no errors.
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunks.
+  - node: rules/knowledge-base/extraction-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no run status.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no fragment proposal.
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no fragment proposal.
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no fragment proposal.
+  - node: rules/knowledge-base/fragment-recorded-proposed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no fragment.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no fragment text.
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file ingests no content.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no idempotency key.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no run.
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no raw information, chunks or run.
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link proposal.
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link proposal.
+  - node: rules/knowledge-base/link-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link proposal.
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no link type rule.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file changes no run status.
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      The two matched_existing branches, which call attachAliases and not attachCanonicalAndAliases (lines 143-150 and 177-183).
+    evidence: >-
+      `await attachAliases(client, {
+          nodeId,
+          // Canonical name not re-inserted on match (already present by virtue of
+          // alias_norm hit). LLM-supplied aliases still attempt insert.
+          aliases: args.aliases,` and, in the strong branch, `await attachAliases(client, {
+          nodeId,
+          aliases: args.aliases,`
+  - node: rules/knowledge-base/model-refusal-skips-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no chunks.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      The file calls the database norm() function on every name comparison. The function itself is defined outside the file.
+    evidence: >-
+      `WHERE na.alias_norm = norm($1::text)` and `na.alias_norm % norm($1::text)` and `norm($2::text)` in the lock key.
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no confidence.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases, called from the ambiguous and novel branches (lines 289-309, 210-215 and 227-232).
+    evidence: >-
+      `VALUES ($1, $2, 'canonical', $3)` for `args.canonicalName`, followed by `await attachAliases(client, { nodeId: args.nodeId, aliases: args.aliases, runId: args.runId })` which inserts `'alias'`.
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      The novel decision and the created_new branch (lines 219-233 and 269-271).
+    evidence: >-
+      `if (aboveFloor.length === 0) {
+        return { kind: "novel" };
+      }` and `VALUES ($1, $2, 'active')` ... `return { node_id: nodeId, resolution: "created_new" };`
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no length. The comment says the name is "already trimmed by Zod", so any length rule is left to the caller.
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file receives an already-resolved `nodeTypeId` ("already validated by BR-14"). It checks no catalog.
+  - node: rules/knowledge-base/one-current-attribute-per-functional-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no attribute.
+  - node: rules/knowledge-base/one-current-attribute-per-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no attribute.
+  - node: rules/knowledge-base/one-current-link-per-functional-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link.
+  - node: rules/knowledge-base/one-current-link-per-target
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link.
+  - node: rules/knowledge-base/original-input-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no original input.
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no fragment.
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file pages nothing.
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      nowhere
+    evidence: >-
+      No pdf is parsed in the file.
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt version appears in the file.
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no confidence.
+  - node: rules/knowledge-base/proposal-meets-current-assertion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no run status.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no run.
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no provenance.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestion.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestion. Its only limit is `TRIGRAM_CANDIDATE_LIMIT`, which is not a recent-ingestions limit.
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestion.
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no ingestion.
+  - node: rules/knowledge-base/reception-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no reception time.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file refuses nothing. It always resolves or creates a node.
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity start.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity start.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file retries no run.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking is done in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No speaker line is parsed in the file.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity start.
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates strong_unique branch and the matched_existing return in resolveOrCreateNode (lines 174-184 and 273-276).
+    evidence: >-
+      `if (strong.length === 1 && aboveFloor.length === 1) {
+        return { kind: "strong_unique", nodeId: strong[0]!.node_id };` with `export const MATCH_STRONG = 0.85;` and `export const MATCH_FLOOR = 0.55;`
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no assertion.
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no fragment text.
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no summary.
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-page-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no tool calls.
+  - node: rules/knowledge-base/tool-call-validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file returns the resolution but sets no validation outcome. That mapping is left to the caller.
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chat or transcript is parsed in the file.
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      No source content is cut into blocks in the file.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no validity dates.
+  - node: scenarios/knowledge-base/email-without-blank-line-is-one-block
+    held_at: >-
+      nowhere
+    evidence: >-
+      No email is parsed in the file.
+  - node: scenarios/knowledge-base/form-feed-only-pdf-is-one-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      No pdf is chunked in the file.
+  - node: scenarios/knowledge-base/held-content-under-another-model
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file ingests no content.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file parses no attribute value.
+  - node: scenarios/knowledge-base/same-target-succession-is-disputed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no link.
+looked_past: >-
+  Left for a code review: the unordered `LIMIT 1` in the exact-alias lookup, the unnormalized fallback lock key on line 124, the unused `catalog` argument, and the rationale comment "tuning belongs to a code change, not a runtime knob", which belongs to the decision log rather than to source.
