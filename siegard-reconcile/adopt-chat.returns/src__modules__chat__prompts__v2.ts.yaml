@@ -1,0 +1,80 @@
+findings:
+  - file: src/modules/chat/prompts/v2.ts
+    where: |-
+      the doc comment above system(), lines 40-44
+    evidence: |-
+      The marker token is inherited from v1 (planted by `v1System()`
+       * at the head of the body) — v2 does NOT re-plant it.
+    cost: |-
+      The comment restates, as prose, the rule that every prompt version begins with the marker. The code holds it: `v1System(catalog)` is the first element of the returned array, and v1.ts plants the marker. Two places now say it, and only the code is checked. Whoever edits one can leave the other wrong.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the node and by the `[v1Body, ...v2Additions]` construction, with the marker planted in v1.ts.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v2.ts
+    where: |-
+      the prompt text emitted by system(), lines 61-64 of the v2Additions array
+    evidence: |-
+      "Quando as ferramentas `start_async_ingestion` e `get_ingestion_status`",
+      "estiverem disponiveis no catalogo, observe os limites abaixo. Se elas",
+    cost: |-
+      The prompt tells the model about an asynchronous ingestion tool and a separate ingestion-status read tool, and that a call returns `status: "running"`. The toolset the specification holds names only "directed ingestion" and no status read. Nothing in the specification governs these tool names or the running-return contract, so the next reader looks for them in the specification and finds only the code.
+    kind: unstated
+    correction: |-
+      Analysis should decide whether the chat toolset includes an asynchronous start and a status read, and give the fact a node. The candidate toolset constraint is the natural home.
+    node: constraints/chat-toolset
+  - file: src/modules/chat/prompts/v2.ts
+    where: |-
+      the prompt text emitted by system(), directives 2 and 3, lines 72-78
+    evidence: |-
+      "2. A ferramenta retorna IMEDIATAMENTE com `status: \"running\"`; a",
+      "   INFORME ao dono que a ingestao foi iniciada E ofereca consultar o",
+      "3. NAO faca polling de `get_ingestion_status` dentro do mesmo turno",
+      "   (sem auto-poll). Reporte o status UMA UNICA VEZ, somente quando o",
+      "   dono pedir explicitamente.",
+    cost: |-
+      These are behavioural rules for the assistant: tell the owner the ingestion started, offer a later status check, never poll within a turn, and report status once and only on request. No node holds them. They live only in the prompt string, where they read as a business decision nobody recorded, and the specification will not show them when someone asks what the assistant does after starting an ingestion.
+    kind: unstated
+    correction: |-
+      Analysis should give the start-notice, no-auto-poll and report-status-once-on-request behaviour a node in the chat rules.
+  - file: src/modules/chat/prompts/v2.ts
+    where: |-
+      the prompt text emitted by system(), closing paragraph, lines 80-82
+    evidence: |-
+      "Ao chamar `start_async_ingestion`, NAO repita o argumento `content` na",
+      "sua resposta em linguagem natural — `content` e grande e e gravado",
+      "apenas para auditoria (`chat_tool_call.arguments`).",
+    cost: |-
+      The prompt instructs the assistant never to echo the ingested content in its reply, and says the content is recorded for audit only in the tool call's arguments. No node holds the echo prohibition. The nearest node bounds the tool-start event summary and does not govern the assistant's reply text. The tool-call entity records arguments but says nothing about an audit-only purpose. The rule exists only in the prompt.
+    kind: unstated
+    correction: |-
+      Analysis should decide whether the assistant is barred from repeating ingested content in its reply, and give that a node. The tool-call entity's responsibility would also have to say if recording arguments for audit is intended.
+read:
+  - node: domain/chat/chat-prompt-version
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares only one value of the enumeration, not its shape: `export const PROMPT_VERSION = "v2" as const;`. The set v1 to v4 is not declared in this file.
+  - node: domain/chat/tool-call
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares no tool-call shape. It only mentions the recorded field in emitted prompt text: "apenas para auditoria (`chat_tool_call.arguments`)."
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: |-
+      the return of system(), which puts v1System's body first, line 84
+    evidence: |-
+      const v1Body = v1System(catalog);
+      ...
+      return [v1Body, ...v2Additions].join("\n");
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: |-
+      nowhere
+    evidence: |-
+      The rule applies from v3 on, and this is v2. The file ignores the catalog itself and only forwards it: "const v1Body = v1System(catalog);".
+looked_past: |-
+  The header and inline comments cite chat.back.md BR numbers and claims about an env flag and marker stability, but they are prose only and outside this judgment. The directive that the assistant ingests only on the owner's explicit request and treats document content as data is emitted text that agrees with the candidate rules assistant-writes-only-on-owner-request and chat-content-is-data, so it is no finding.
+candidates_opened:
+  - constraints/chat-toolset
+  - constraints/chat-content-is-data
+  - rules/chat/assistant-writes-only-on-owner-request

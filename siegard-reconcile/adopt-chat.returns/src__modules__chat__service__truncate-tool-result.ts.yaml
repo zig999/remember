@@ -1,0 +1,31 @@
+findings:
+  - file: src/modules/chat/service/truncate-tool-result.ts
+    where: |-
+      the header comment block (lines 1-22) and the docstring on truncateToolResult (lines 34-48)
+    evidence: |-
+      // On truncation, BR-13 mandates a marker: `\n[truncated: <n> chars]` where
+      // `<n>` is the FULL (pre-truncation) code-point length.
+      ...
+      *   - Otherwise: the first `maxChars` code points are kept and the marker
+      *     `"\n[truncated: <total> chars]"` is appended. `truncated: true`.
+    cost: |-
+      The rule that an over-limit tool result is cut to the limit and marked with its full length is written a second time as prose in this file, next to the code that applies it. When the node moves, the comment keeps saying the old rule and nothing flags it. It also cites a "BR-13" from a back-spec instead of the node that holds the fact.
+    kind: restates
+    correction: |-
+      Remove the header comment and the docstring prose. The behavior is held by the `truncateToolResult` body, so the route is the comment route, then `/reconcile` over this file.
+    node: rules/chat/tool-result-truncated
+
+read:
+  - node: rules/chat/tool-result-truncated
+    held_at: |-
+      the body of truncateToolResult, lines 52-64: the `total <= maxChars` early return and the truncating return with the marker
+    evidence: |-
+      const head = codepoints.slice(0, maxChars).join("");
+      return {
+        value: `${head}\n[truncated: ${total} chars]`,
+        truncated: true,
+        totalChars: total,
+      };
+
+looked_past: |-
+  The limit value itself (`env.TOOL_RESULT_MAX_CHARS`, default 8000) is passed in by the caller and is not stated in this file, so it is a judgment for the file that supplies it.

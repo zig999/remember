@@ -1,0 +1,62 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/index.ts
+    where: |-
+      the header comment, lines 21-23, and the docblock above DEFAULT_CHAT_SUMMARY_PROMPT_VERSION, lines 56-61
+    evidence: |-
+      // `v2` is the incremental fold (BR-46, default — selected by BR-33 v2.9).
+      // `v1` is the legacy single-input summariser of v2.0 (registered for back-
+      // compat tests but NOT reachable via BR-33 v2.9).
+      ...
+       * Recommended default for NEW deployments — used when env is unset. v2.9
+       * makes `v2` the default (incremental fold).
+    cost: |-
+      The default-version rule is said a second time in prose next to the constant that holds it. If the default moves, the node and the constant can change while these comments go on naming v2 as the default. The prose also says v1 is unreachable, which no node says. The next reader will take that for a decision the business made.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the default at `export const DEFAULT_CHAT_SUMMARY_PROMPT_VERSION: string = v2.PROMPT_VERSION;`.
+    node: rules/chat/default-summary-prompt-version
+  - file: src/modules/chat/prompts/chat-summary/index.ts
+    where: |-
+      the header comment point 2, lines 14-19, and the docblock above selectChatSummaryPromptModule, lines 86-90
+    evidence: |-
+      //   2. Boot-time fast failure — an unknown `CHAT_SUMMARY_PROMPT_VERSION` is a
+      //      configuration error, NEVER a silent fallback.
+      ...
+       * Resolve a chat-summary prompt module by version string. Throws
+       * `UnknownChatSummaryPromptVersionError` for an unregistered version (BR-46
+       * — fail loud, never silently substitute a different prompt).
+    cost: |-
+      The rule that the version must be one the system holds is also written as prose beside the throwing branch. Two homes drift apart silently when the node moves. The prose is not bound to the node.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the refusal in `if (module === undefined) { throw new UnknownChatSummaryPromptVersionError(promptVersion); }`.
+    node: rules/chat/summary-prompt-version-known
+read:
+  - node: domain/chat/summary-prompt-version
+    held_at: |-
+      the REGISTRY constant, lines 64-67, which admits exactly the two versions v1 and v2 supplied by ./v1.js and ./v2.js
+    evidence: |-
+      const REGISTRY: Readonly<Record<string, ChatSummaryPromptModule>> = {
+        [v1.PROMPT_VERSION]: v1.v1Module,
+        [v2.PROMPT_VERSION]: v2.v2Module,
+      };
+  - node: rules/chat/default-summary-prompt-version
+    held_at: |-
+      DEFAULT_CHAT_SUMMARY_PROMPT_VERSION, line 62
+    evidence: |-
+      export const DEFAULT_CHAT_SUMMARY_PROMPT_VERSION: string = v2.PROMPT_VERSION;
+  - node: rules/chat/rolling-summary-refresh
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file only registers prompt modules and resolves them by version: `export function selectChatSummaryPromptModule(promptVersion: string): ChatSummaryPromptModule`. Nothing here decides when a turn refolds the summary or reads the enabled flag, the recent window or the older messages. Those appear only in comments citing BR-33.
+  - node: rules/chat/summary-prompt-version-known
+    held_at: |-
+      the guard in selectChatSummaryPromptModule, lines 94-97
+    evidence: |-
+      const module = REGISTRY[promptVersion];
+      if (module === undefined) {
+        throw new UnknownChatSummaryPromptVersionError(promptVersion);
+      }
+looked_past: |-
+  The comments also claim that v1 is unreachable from the refresh flow, that the route registrar runs a boot probe, and that no cache_control is set on this path. Code here holds none of those, so they are prose for the comment route, and the thrown error message states the node's refusal truly.

@@ -1,0 +1,89 @@
+findings:
+  - file: src/modules/chat/service/context-builder.ts
+    where: >-
+      the module header comment, lines 11-14, and the `recentLimit` doc comment, lines 93-100
+    evidence: |-
+      //   2. The last `env.CHAT_RECENT_WINDOW` REAL TURNS via
+      //      `repository.listRecentRealTurns` (BR-31 v2.9 — turn-based, not row-
+      //      based; returns every row of each selected turn including scaffolding,
+      //      already sorted ASC by the repo).
+      ...
+      * row-based; typically `env.CHAT_RECENT_WINDOW`, default 6). A real turn is
+      * one user `chat_message` row with `idempotency_key IS NOT NULL`; the
+      * repository returns ALL rows of each selected turn
+    cost: |-
+      The window rule is written as prose here, with its definition of a real turn and the default of 6. The code that enforces it is in another file, `backend/src/modules/chat/repository/chat.repository.ts`. There, `listRecentRealTurns` selects on `role = 'user' AND idempotency_key IS NOT NULL ... OFFSET $2` and returns the rows from that boundary on. A reader who changes the window rule can be misled into treating this comment as its home. The node does not bind this prose, so it would not be refreshed when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in chat.repository.ts already holds the rule, and the node holds the statement.
+    node: rules/chat/model-context-window
+  - file: src/modules/chat/service/context-builder.ts
+    where: >-
+      the comment above the `sanitizeAnthropicSequence(windowMessages)` call, lines 201-209
+    evidence: |-
+      // v2.2 (faithful multi-row persistence): the COUNT-bounded recent window can
+      // begin or end in the MIDDLE of a tool-bearing turn (a leading
+      // `user[tool_result]` whose `assistant[tool_use]` fell outside the window, a
+      // trailing dangling `assistant[tool_use]`, or an empty-content row). Trim
+      // those boundary artefacts so the replayed sequence is valid by construction
+    cost: |-
+      The prose restates which messages are dropped from the history: empty rows, leading assistant and tool-result messages, and trailing tool requests. The code that does it is `sanitizeAnthropicSequence` in `backend/src/modules/chat/service/message-sequence.ts`: `messages.filter((m) => hasBlocks(m.content))`, the front trim and the tail trim. This file holds none of that. If the rule changes, the comment becomes a second home that nothing checks.
+    kind: restates
+    correction: >-
+      Remove the prose. `message-sequence.ts` already holds the rule, and the node holds the statement.
+    node: rules/chat/model-context-well-formed
+read:
+  - node: constraints/chat-reads-are-consistent
+    held_at: >-
+      the `withReadOnly(input.pool, ...)` call that wraps the history read in buildModelContext, line 169
+    evidence: |-
+      const recent: MessageRow[] = await withReadOnly(input.pool, (client) =>
+        repo.listRecentRealTurns(client, input.conversation.id, input.recentLimit)
+      );
+  - node: domain/chat/message-role
+    held_at: nowhere
+    evidence: |-
+      This file declares no enumeration of roles. It only forwards the value: `role: row.role,`. The shape is declared through the imported `MessageRow` type, in the repository file.
+  - node: rules/chat/model-context-owner-time
+    held_at: >-
+      the BlockB construction and the `system` array in buildModelContext, lines 160-167. They run on every call, which is one per turn.
+    evidence: |-
+      const blockB: Anthropic.Messages.TextBlockParam = {
+        type: "text",
+        text: renderDatetimeBlockB(input.now, input.ownerTz),
+      };
+      const system: ReadonlyArray<Anthropic.Messages.TextBlockParam> = [
+        blockA,
+        blockB,
+      ];
+  - node: rules/chat/model-context-rolling-summary
+    held_at: >-
+      the `summary_rolling !== null` branch, lines 175-189, and the `SUMMARY_ROLLING_PREFIX` constant, lines 56-57. The summary message is pushed onto `messages` before the window messages.
+    evidence: |-
+      export const SUMMARY_ROLLING_PREFIX =
+        "[contexto da conversa anterior, sintetizado]\n\n" as const;
+      ...
+      if (input.conversation.summary_rolling !== null) {
+        messages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: SUMMARY_ROLLING_PREFIX + input.conversation.summary_rolling,
+            },
+          ],
+        });
+      }
+      ...
+      messages.push(...sanitizeAnthropicSequence(windowMessages));
+  - node: rules/chat/model-context-well-formed
+    held_at: nowhere
+    evidence: |-
+      This file only delegates and passes the content through verbatim: `messages.push(...sanitizeAnthropicSequence(windowMessages));` and `content: row.content as Anthropic.Messages.MessageParam["content"],`. The filtering itself is in `message-sequence.ts`.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: |-
+      This file only forwards K: `repo.listRecentRealTurns(client, input.conversation.id, input.recentLimit)`. The message selection is in the repository's `listRecentRealTurns`.
+looked_past: >-
+  The `cache_control: { type: "ephemeral" }` on the first system block and its absence on the second is a provider prefix-caching choice that no node holds, so I treated it as an implementation detail and not as a domain fact. The prose-only statements, such as "Must be >= 1" for `recentLimit` and the "Renamed from `systemPrompt` at v2.9" history, are not code facts and belong to the comment route.
+candidates_opened: []

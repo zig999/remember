@@ -1,0 +1,171 @@
+findings:
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      the header comment, lines 25-32 (repeated at lines 209-211 in pickLinkWire and 533-534 in normalizeIngestDirected)
+    evidence: |-
+      // name is missing from the snapshot (a stale catalog cache vs a brand-new
+      // link-type, or a developer error in tool payload shape), the normalizer
+      // falls back to `is_temporal: false` rather than crashing
+    cost: |-
+      The fallback is written out in prose in three places as well as held in code. A reader can take the comment for the rule and edit it, or change the code and leave the comments saying something else.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the fact in `const is_temporal = linkTypeRow?.is_temporal ?? false;` at lines 212 and 535.
+    node: rules/chat/graph-delta-link-temporal
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      the header comment, lines 39-42, and the doc comments of normalizeTraverse (lines 243-245) and pickNodeWire (lines 171-172)
+    evidence: |-
+      // A guard miss returns an empty delta (`{nodes:[], links:[]}`)
+      // rather than throwing, so a broken tool result never crashes the SSE stream.
+    cost: |-
+      The rule for dropping incomplete entries, and the answer to an unreadable result, are stated in prose next to the code that holds them. Prose does not change when the node does.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the drop in the `typeof ... !== "string"` and `isNodeStatus(status)` checks of pickNodeWire and pickLinkWire. The empty-delta answer is held in the `!isRecord(result)` branches of normalizeTraverse, normalizeGetNode, normalizeListNodes and normalizeSearch.
+    node: rules/chat/graph-delta-drops-incomplete
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      the comment above ACCEPTED_DIRECTED_STATUSES, lines 116-123
+    evidence: |-
+      * The three dropped families (`rejected`, `error`, `dependency_failed`) never
+      * appear in the frame — the graph only shows what was actually persisted.
+    cost: |-
+      The "taken outcome" filter for directed links is narrated in a second place. The set in code and the comment can drift apart without anyone noticing.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the filter in `ACCEPTED_DIRECTED_STATUSES` and in the `ACCEPTED_DIRECTED_STATUSES.has(entry.status)` checks, lines 491 and 503.
+    node: rules/chat/graph-delta-directed-links
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      the doc comment of normalizeIngestDirected, lines 404-412 (the inline comment at line 479 repeats it)
+    evidence: |-
+      *   1. **Nodes** — every entry of `run.affected_nodes` becomes a
+      *      `GraphNodeWire` with `status: "active"` forced.
+    cost: |-
+      The rule that directed nodes enter as active is justified in prose by reference to BR-43. The justification is not a node and could be mistaken for the authority for the rule.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact in `status: "active"` inside the push in normalizeIngestDirected, line 480.
+    node: rules/chat/graph-delta-directed-nodes-active
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      normalizeIngestDirected, line 460, in the envelope guard
+    evidence: |-
+      export function normalizeIngestDirected(
+        result: unknown,
+        catalog: CatalogSnapshot
+      ): GraphDeltaWire | null {
+        if (!isRecord(result)) return null;
+    cost: |-
+      The node says an unreadable tool result yields a graph delta with no nodes and no links, whatever the tool. Here the directed-ingestion arm yields no delta at all. The decision-log entry on this rule records that only the directed arm diverged. The four other arms return `{ nodes: [], links: [] }` on the same condition. The code and the node disagree, and the code states the opposite rule.
+    kind: contradicts
+    correction: |-
+      Return `{ source_tool: "ingest_directed", nodes: [], links: [] }` when the result is not readable. The comment block at lines 444-448 that asserts the null behavior would go with it.
+    node: rules/chat/graph-delta-unreadable-result
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: |-
+      normalizeToolResult, the ingest_directed arm (lines 597-601) taking the null from normalizeIngestDirected
+    evidence: |-
+      if (toolName === "ingest_directed") {
+        return Promise.resolve(normalizeIngestDirected(result, catalog));
+      }
+    cost: |-
+      The node says a successful result of directed ingestion is followed by a graph delta. When normalizeIngestDirected returns null, the dispatcher passes the null on and no delta follows. This is the same null branch as the finding above, seen from the other node's side.
+    kind: contradicts
+    correction: |-
+      This is closed by the same change as the unreadable-result finding. The directed arm returns a delta on every successful result.
+    node: rules/chat/graph-delta-follows-tool-result
+read:
+  - node: domain/chat/graph-delta
+    held_at: |-
+      the `GraphDeltaWire` interface, line 96
+    evidence: |-
+      export interface GraphDeltaWire {
+        readonly source_tool: string;
+        readonly nodes: readonly GraphNodeWire[];
+        readonly links: readonly GraphLinkWire[];
+      }
+  - node: domain/chat/graph-delta-link
+    held_at: |-
+      the `GraphLinkWire` interface, line 76
+    evidence: |-
+      readonly link_type: string;
+      readonly link_type_label?: string;
+      readonly is_temporal: boolean;
+      readonly is_in_effect?: boolean;
+      readonly status?: string;
+      readonly flags?: readonly ("uncertain" | "disputed" | "low_confidence")[];
+  - node: domain/chat/graph-delta-node
+    held_at: |-
+      the `GraphNodeWire` interface, line 68
+    evidence: |-
+      readonly node_type: string;
+      readonly canonical_name: string;
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+  - node: domain/knowledge-base/link-type
+    held_at: |-
+      nowhere
+    evidence: |-
+      This file declares no LinkType shape. It only reads two fields of a shape declared in the knowledge-graph catalog: `const linkTypeRow = catalog.linkTypeByName.get(link_type);` and `linkTypeRow?.is_temporal ?? false`.
+  - node: rules/chat/graph-delta-content
+    held_at: |-
+      normalizeTraverse, normalizeGetNode, normalizeListNodes, normalizeSearch and normalizeIngestDirected, dispatched by normalizeToolResult
+    evidence: |-
+      return { source_tool: "traverse", nodes, links };
+      nodes: picked === undefined ? [] : [picked],
+      return { source_tool: "list_nodes", nodes, links: [] };
+      for (const id of ids) { const node = byId.get(id); if (node !== undefined) nodes.push(node); }
+      return { source_tool: "ingest_directed", nodes, links };
+  - node: rules/chat/graph-delta-directed-links
+    held_at: |-
+      the links loop of normalizeIngestDirected, lines 498-549, with ACCEPTED_DIRECTED_STATUSES at line 125
+    evidence: |-
+      if (!ACCEPTED_DIRECTED_STATUSES.has(entry.status)) continue;
+      const source_node_id = nodeIdByRef.get(source_ref);
+      const target_node_id = nodeIdByRef.get(target_ref);
+      if (source_node_id === undefined || target_node_id === undefined) {
+  - node: rules/chat/graph-delta-directed-nodes-active
+    held_at: |-
+      the `nodes.push` inside normalizeIngestDirected, line 475
+    evidence: |-
+      nodes.push({
+        id,
+        node_type,
+        canonical_name,
+        // Forced: directed items are stated-by-construction (BR-43 v2.8).
+        status: "active",
+      });
+  - node: rules/chat/graph-delta-drops-incomplete
+    held_at: |-
+      pickNodeWire (line 174), pickLinkWire (line 189), and the skips in normalizeIngestDirected (lines 470-474)
+    evidence: |-
+      if (typeof id !== "string") return undefined;
+      if (typeof canonical_name !== "string") return undefined;
+      if (!isNodeStatus(status)) return undefined;
+  - node: rules/chat/graph-delta-follows-tool-result
+    held_at: |-
+      GRAPH_TOOL_NAMES (line 103) and the dispatcher normalizeToolResult (line 579). The directed arm can return null instead of a delta, as the findings say.
+    evidence: |-
+      const GRAPH_TOOL_NAMES = new Set<string>([
+        "traverse",
+        "get_node",
+        "list_nodes",
+        "search",
+        "ingest_directed",
+      ]);
+  - node: rules/chat/graph-delta-link-temporal
+    held_at: |-
+      pickLinkWire, line 212, and normalizeIngestDirected, line 535
+    evidence: |-
+      const is_temporal = linkTypeRow?.is_temporal ?? false;
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: |-
+      the `!isRecord(result)` branches of normalizeTraverse, normalizeGetNode, normalizeListNodes and normalizeSearch. The directed arm diverges, as the finding says.
+    evidence: |-
+      if (!isRecord(result)) {
+        return { source_tool: "traverse", nodes: [], links: [] };
+      }
+      versus, in normalizeIngestDirected: if (!isRecord(result)) return null;
+looked_past: |-
+  Comment-only statements (search-result de-duplication and dropping of nodes deleted between search and hydration, the boundary note about importing from knowledge-graph, and the plan and BR references) are prose no node holds, and they are for the comment route.

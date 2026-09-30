@@ -1,0 +1,54 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the `system` prompt, rule 2 (line 58), and the closing "Tarefa" lines of `buildUserTurn` (line 212)
+    evidence: |-
+      "2. Maximo ~8 frases (soft cap; o BFF rejeita saidas > 2000 caracteres).",
+      "contradicoes em uma narrativa unica; mantenha pt-BR; maximo ~8 frases.",
+    cost: |-
+      The prompt sent to the model sets a sentence budget for the rolling summary, and no node holds it. The summary-length node holds only the 1 to 2000 character bound. A reader who looks in the specification for how long a summary is meant to be finds characters only. A change to the budget would be made in the prompt text and would bypass the nodes.
+    kind: unstated
+    correction: |-
+      Give the approximate sentence budget of a rolling summary a node, or decide in the specification that the prompt does not state one. The natural home is the rolling-summary-length rule, or a sibling rule beside it.
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the `system` prompt, "O que preservar / foldar" list (line 51)
+    evidence: |-
+      "- pontos em aberto — marcar explicitamente como 'pendente: ...';",
+    cost: |-
+      The prompt tells the model to record unresolved questions with a literal `pendente:` marker. That is a rule about what a rolling summary must carry beyond the salient facts, and no node holds it. The fold rule says only that salient facts are kept and folded in. The marker convention therefore exists only in this prompt text.
+    kind: unstated
+    correction: |-
+      Give the convention for carrying open points, with its `pendente:` marker, a node under rules/chat. Otherwise drop it from the prompt.
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the constant `TOOL_ARGS_INLINE_MAX` and `summariseToolUseArgs` (lines 97 to 115)
+    evidence: |-
+      const TOOL_ARGS_INLINE_MAX = 200;
+      ...
+      return serialised.slice(0, TOOL_ARGS_INLINE_MAX) + "...<truncated>";
+    cost: |-
+      The 200-character limit on a tool's arguments shown in the summariser's input is a domain value no node holds. The only nearby node, rules/chat/tool-start-summary-bounded, governs tool-start events and not the summary input. A reader who finds that node will take the two 200s for one rule, or will not find this one at all. Changing either leaves the other unchanged.
+    kind: unstated
+    correction: |-
+      Give the bound on tool-argument text fed to the rolling-summary refold a node, for example a rule under rules/chat. Do not fold it into tool-start-summary-bounded, which constrains other entities.
+read:
+  - node: domain/chat/summary-prompt-version
+    held_at: nowhere
+    evidence: |-
+      This file exports only the one literal `export const PROMPT_VERSION = "v2" as const;` and imports the shape with `import type { ChatSummaryPromptModule } from "./index.js";`. It declares no enumeration holding v1 and v2.
+  - node: rules/chat/rolling-summary-folds
+    held_at: >-
+      the `system` prompt literal (lines 41 to 67) and the `buildUserTurn` composed text (lines 203 to 213). These are emitted text that agrees with the node.
+    evidence: |-
+      "pt-BR que PRESERVE os fatos salientes do resumo anterior e FOLDE os fatos",
+      "das mensagens novas na mesma narrativa.",
+      and in `buildUserTurn`: "Tarefa: atualize o resumo anterior incorporando as mensagens novas.",
+  - node: rules/chat/rolling-summary-length
+    held_at: nowhere
+    evidence: |-
+      The file enforces no bound. It only tells the model about the cap: "2. Maximo ~8 frases (soft cap; o BFF rejeita saidas > 2000 caracteres)." That is emitted text agreeing with the node's upper bound. The enforcing code is outside this file, as a comment in `renderPrev` admits: "already enforces the 2000-char output cap on the FINAL `summary_new`".
+looked_past: >-
+  The file's header and inline comments cite BR-33, BR-46 and BR-47 and restate caching, determinism and truncation behavior. That is prose for the comment route and not a finding here.
+candidates_opened:
+  - rules/chat/tool-start-summary-bounded

@@ -1,0 +1,380 @@
+findings:
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above listConversations, lines 353-357
+    evidence: |-
+      // BR-35: cursor-paginated DESC list. `cursor` is the (created_at, id) pair of
+      // the previous page's last row. The composite key tuple comparison `(a, b) <
+      // (c, d)` lets the query plan walk `idx_chat_conversation_created_at_id_desc`
+    cost: |-
+      The newest-first order and the strictly-after continuation are stated in prose as well as held by the query. A later change to the node leaves a second, unbound statement of the order in this file.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the code in this file: `ORDER BY created_at DESC, id DESC` and the `(created_at, id) < (...)` condition.
+    node: rules/chat/conversation-listing-order
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above updateConversation, lines 397-401
+    evidence: |-
+      // BR-36: PATCH semantics. `undefined` in the patch means "do not change",
+      // `null` means "set NULL", any other value sets the column literally.
+    cost: |-
+      The rule that an update touches only the fields it names, and that a field named empty is cleared, is restated in prose beside the code that holds it. Two homes will drift.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `hasOwnProperty` branches in updateConversation.
+    node: rules/chat/conversation-update-partial
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above setTitleIfNull, lines 467-469
+    evidence: |-
+      // BR-34: idempotent — only writes when `title IS NULL`. Returns the value
+      // written, or NULL when nothing was written (concurrent set won, or title was
+      // already non-null).
+    cost: |-
+      The never-overwrite rule for a distilled title is restated in prose next to the `AND title IS NULL` guard that holds it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `AND title IS NULL` predicate in setTitleIfNull.
+    node: rules/chat/distilled-title-never-overwrites
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above insertIterationPair, lines 557-569
+    evidence: |-
+      // BR-29 step 6.d (v2.2 — faithful multi-row persistence): persist ONE
+      // tool-bearing iteration as the atomic pair of rows that reproduces the
+      // Anthropic message sequence — an INTERMEDIATE assistant row carrying
+      // `[text?, tool_use]` (stop_reason NULL → not a terminal row) immediately
+      // followed by a SYNTHETIC user row carrying `[tool_result]`
+    cost: |-
+      The two-message, request-first rule for a tool-using model call is restated in prose. The code holds it in two sequential INSERTs stamped with clock_timestamp(), so the prose is a second home that can drift from the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the two sequential INSERT statements in insertIterationPair.
+    node: rules/chat/iteration-recorded
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      listRecentMessages, lines 632-654
+    evidence: |-
+      // BR-31: context reconstruction. Walks the `(conversation_id, created_at)`
+      // index DESC, then reverses to ASC so Anthropic gets messages[] in
+      // chronological order.
+      ...
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC, id DESC
+          LIMIT $2
+    cost: |-
+      The code selects a context window as the last N message rows. The specification holds a different window, from the K-th most recent owner-written message on. The row-count window exists only here, so a reader who looks in the specification for what the model is given will not find it. The file marks it as kept for back-compat.
+    kind: unstated
+    correction: |-
+      Either give the row-count window a node, or retire the function so the only window is the one the model-context-window node holds. That decision is for the specification's analysis.
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above listRecentRealTurns, lines 656-673
+    evidence: |-
+      // BR-31 v2.9: turn-based recent-window selection. Two-phase plan, both phases
+      // scoped to ONE conversation and bounded:
+      //   Phase 1 — DESC scan over the `(conversation_id, created_at, id)` index
+      //     filtered on the REAL-turn anchor predicate
+      //     `role='user' AND idempotency_key IS NOT NULL`, LIMIT `turn_count`.
+    cost: |-
+      The K-th-owner-message window is restated in prose. The code holds it in the boundary CTE with `LIMIT 1 OFFSET $2`, and the prose is a second home that can drift.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the boundary CTE and the `created_at >= COALESCE(...)` filter in listRecentRealTurns.
+    node: rules/chat/model-context-window
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the query of listMessagesPaginated, lines 791-804
+    evidence: |-
+      WHERE conversation_id = $1${beforeClause}${displayFilter}
+            ORDER BY created_at ASC, id ASC
+            LIMIT ${limitParam}
+      ...
+        const hasMore = rows.length > limit;
+        const items = hasMore ? rows.slice(0, limit) : rows;
+    cost: |-
+      The node says a page is the most recent messages created before its moment. This query orders ascending and keeps the first `limit` rows, so each page is the oldest messages before the moment. When more exist, the page is cut from the old end. A next-page moment taken from the oldest item of that page selects nothing older, so a long conversation cannot be paged back to its newest messages. The decision log records this same defect against the node.
+    kind: contradicts
+    correction: |-
+      Select the most recent `limit` messages before the moment (descending scan with the limit), then answer them oldest first, so that hasMore means older messages remain.
+    node: rules/chat/message-listing-pages-backwards
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment and displayFilter in listMessagesPaginated, lines 779-789
+    evidence: |-
+      // v2.2: this is the human-facing conversation view (SPA). It returns ONLY
+      // the DISPLAY rows — real user turns (`idempotency_key IS NOT NULL`) and
+      // TERMINAL assistant answers (`stop_reason IS NOT NULL`).
+    cost: |-
+      The owner-messages-and-turn-ending-answers filter is restated in prose beside the `displayFilter` constant that holds it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `displayFilter` string in listMessagesPaginated.
+    node: rules/chat/message-listing-shows-exchanges
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      listOlderMessagesForSummary, lines 806-844
+    evidence: |-
+      // BR-33: input for the rolling-summary distillation. Returns messages OLDER
+      // than the last `exclude_recent` rows in chronological ASC order.
+      ...
+            AND created_at < (
+              SELECT created_at
+                FROM chat_message
+               WHERE conversation_id = $1
+               ORDER BY created_at DESC, id DESC
+               LIMIT 1 OFFSET $2
+    cost: |-
+      The code defines a summary input as every message older than the last N rows, with no overlap cap and no start on an owner-written message. The specification holds a bounded overlap that starts at an owner-written message. The row-count slice exists only here, so the next reader will not find it in the specification.
+    kind: unstated
+    correction: |-
+      Either give the row-count slice a node, or retire the function in favour of the bounded overlap slice that rules/chat/rolling-summary-overlap holds.
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above listOlderMessagesForSummaryBounded, lines 846-868
+    evidence: |-
+      // BR-33 v2.9 step 2: bounded overlap slice. Returns the rows OLDER than the
+      // K-real-turn boundary (same pivot as `listRecentRealTurns` /
+      // `countRealTurnsOlderThanRecentWindow`), capped at the most recent
+      // `overlap_m` rows, with the START cut on a REAL-TURN ANCHOR
+    cost: |-
+      The overlap-slice rule is restated at length in prose. The code holds it in the older_tail and anchor_start CTEs, so the prose is a second home that can drift from the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the boundary, older_tail and anchor_start CTEs in listOlderMessagesForSummaryBounded.
+    node: rules/chat/rolling-summary-overlap
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: |-
+      the comment above upsertConversationGraphView, lines 1129-1130
+    evidence: |-
+      // BR-42: upsert the last-presented graph snapshot. ON CONFLICT overwrites
+      // (single-row-per-conversation memento). Returns the updated_at timestamp.
+    cost: |-
+      The replace-on-save rule is restated in prose beside the ON CONFLICT clause that holds it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `ON CONFLICT (conversation_id) DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = now()` clause.
+    node: rules/chat/graph-view-replaced-on-save
+read:
+  - node: contracts/chat/conversations
+    held_at: |-
+      Only the persistence beneath the operations: ConversationRow, MessageRow, ToolCallRow, ConversationUsage and the queries that feed them. The HTTP surface (statuses, refusals, stream frames) is nowhere in this file.
+    evidence: |-
+      export interface ConversationRow {
+        readonly id: string;
+        readonly title: string | null;
+        readonly summary_rolling: string | null;
+        readonly archived_at: string | null;
+        readonly created_at: string;
+        readonly updated_at: string;
+      }
+  - node: domain/chat/assistant-stop-reason
+    held_at: |-
+      the AssistantStopReason union type, lines 49-57
+    evidence: |-
+      export type AssistantStopReason =
+        | "end_turn"
+        | "max_tokens"
+        | "stop_sequence"
+        | "max_iterations"
+        | "turn_timeout"
+        | "cancelled"
+        | "provider_error"
+        | "internal_error";
+  - node: domain/chat/conversation
+    held_at: |-
+      the ConversationRow interface, lines 38-45, and deleteConversation, which relies on the DDL cascade
+    evidence: |-
+      `DELETE FROM chat_conversation WHERE id = $1`
+  - node: domain/chat/conversation-usage
+    held_at: |-
+      the ConversationUsage interface, lines 96-101, and getConversationUsage
+    evidence: |-
+      export interface ConversationUsage {
+        readonly messages: number;
+        readonly tokens_in: number;
+        readonly tokens_out: number;
+        readonly tool_calls: number;
+      }
+  - node: domain/chat/message
+    held_at: |-
+      the MessageRow interface, lines 59-71
+    evidence: |-
+      export interface MessageRow {
+        readonly id: string;
+        readonly conversation_id: string;
+        readonly role: ChatMessageRole;
+        readonly content: unknown[];
+        readonly stop_reason: string | null;
+        readonly idempotency_key: string | null;
+  - node: domain/chat/message-listing
+    held_at: |-
+      the `input: { limit: number; before: string | null }` parameter of listMessagesPaginated, lines 764-768
+    evidence: |-
+      input: { limit: number; before: string | null }
+  - node: domain/chat/message-role
+    held_at: |-
+      the ChatMessageRole type, line 47
+    evidence: |-
+      export type ChatMessageRole = "user" | "assistant";
+  - node: domain/chat/tool-call
+    held_at: |-
+      the ToolCallRow interface, lines 73-84
+    evidence: |-
+      export interface ToolCallRow {
+        readonly id: string;
+        readonly conversation_id: string;
+        readonly message_id: string | null;
+        readonly tool_name: string;
+        readonly arguments: unknown;
+        readonly result: unknown | null;
+        readonly is_error: boolean;
+        readonly error_message: string | null;
+        readonly duration_ms: number;
+  - node: rules/chat/assistant-answer-recorded
+    held_at: |-
+      insertAssistantMessage, lines 601-630
+    evidence: |-
+      `INSERT INTO chat_message
+             (conversation_id, role, content, stop_reason, model,
+              tokens_in, tokens_out, latency_ms)
+           VALUES ($1, 'assistant', $2::jsonb, $3, $4, $5, $6, $7)`
+  - node: rules/chat/conversation-listing-excludes-archived
+    held_at: |-
+      the `includeArchived` branch of listConversations, lines 374-376
+    evidence: |-
+      if (!includeArchived) {
+          conds.push(`archived_at IS NULL`);
+        }
+  - node: rules/chat/conversation-listing-order
+    held_at: |-
+      the ORDER BY and the tuple comparison in listConversations, lines 370-387
+    evidence: |-
+      conds.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
+      ...
+      ORDER BY created_at DESC, id DESC
+  - node: rules/chat/conversation-update-partial
+    held_at: |-
+      the hasOwnProperty branches of updateConversation, lines 410-417
+    evidence: |-
+      if (Object.prototype.hasOwnProperty.call(patch, "archived_at")) {
+          params.push(patch.archived_at ?? null);
+          sets.push(`archived_at = $${params.length}::timestamptz`);
+        }
+  - node: rules/chat/conversation-usage-counts
+    held_at: |-
+      the single statement of getConversationUsage, lines 1049-1057
+    evidence: |-
+      (SELECT COALESCE(sum(tokens_in),  0)::int FROM chat_message
+               WHERE conversation_id = $1 AND role = 'assistant')                     AS tokens_in
+  - node: rules/chat/distilled-title-never-overwrites
+    held_at: |-
+      setTitleIfNull, lines 470-484
+    evidence: |-
+      UPDATE chat_conversation
+              SET title = $1
+            WHERE id = $2
+              AND title IS NULL
+            RETURNING title
+  - node: rules/chat/graph-view-replaced-on-save
+    held_at: |-
+      upsertConversationGraphView, lines 1131-1146
+    evidence: |-
+      ON CONFLICT (conversation_id) DO UPDATE
+             SET snapshot   = EXCLUDED.snapshot,
+                 updated_at = now()
+  - node: rules/chat/idempotency-match
+    held_at: |-
+      nowhere. The file only locates the recorded message under its key. The comparison of text and model is not made here.
+    evidence: |-
+      WHERE conversation_id = $1
+              AND idempotency_key = $2
+              AND role = 'user'
+            LIMIT 1
+  - node: rules/chat/iteration-recorded
+    held_at: |-
+      insertIterationPair, lines 570-598
+    evidence: |-
+      VALUES ($1, 'assistant', $2::jsonb, $3, clock_timestamp())
+      ...
+      VALUES ($1, 'user', $2::jsonb, clock_timestamp())
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: |-
+      nowhere. listMessagesPaginated pages the oldest messages before the moment, not the most recent ones.
+    evidence: |-
+      ORDER BY created_at ASC, id ASC
+            LIMIT ${limitParam}
+      ...
+      const items = hasMore ? rows.slice(0, limit) : rows;
+  - node: rules/chat/message-listing-shows-exchanges
+    held_at: |-
+      the displayFilter constant and ORDER BY of listMessagesPaginated, lines 787-796
+    evidence: |-
+      " AND ((role = 'user' AND idempotency_key IS NOT NULL)" +
+      " OR (role = 'assistant' AND stop_reason IS NOT NULL))"
+  - node: rules/chat/model-context-window
+    held_at: |-
+      the boundary CTE and the created_at filter of listRecentRealTurns, lines 690-711
+    evidence: |-
+      WHERE conversation_id = $1
+                AND role = 'user'
+                AND idempotency_key IS NOT NULL
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1 OFFSET $2
+  - node: rules/chat/owner-message-recorded-first
+    held_at: |-
+      insertUserMessage, lines 495-512
+    evidence: |-
+      `INSERT INTO chat_message
+             (conversation_id, role, content, idempotency_key, model)
+           VALUES ($1, 'user', $2::jsonb, $3, $4)`
+  - node: rules/chat/owner-written-message
+    held_at: |-
+      insertUserMessage, which writes the key, and insertIterationPair, whose user row writes none
+    evidence: |-
+      `INSERT INTO chat_message
+             (conversation_id, role, content, created_at)
+           VALUES ($1, 'user', $2::jsonb, clock_timestamp())`
+  - node: rules/chat/rolling-summary-overlap
+    held_at: |-
+      the older_tail and anchor_start CTEs of listOlderMessagesForSummaryBounded, lines 894-908
+    evidence: |-
+      older_tail AS (
+             SELECT id, created_at, role, idempotency_key
+               FROM chat_message
+              WHERE conversation_id = $1
+                AND created_at < (SELECT at FROM boundary)
+              ORDER BY created_at DESC, id DESC
+              LIMIT $3
+  - node: rules/chat/rolling-summary-refresh
+    held_at: |-
+      the trigger predicate in countRealTurnsOlderThanRecentWindow, lines 741-757. Enablement and the refold itself are not in this file.
+    evidence: |-
+      AND role = 'user'
+              AND idempotency_key IS NOT NULL
+              AND created_at < (
+  - node: rules/chat/title-distillation
+    held_at: |-
+      getFirstUserAndAssistant, lines 947-973. Enablement and the distillation itself are not in this file.
+    evidence: |-
+      WHERE conversation_id = $1 AND role = 'assistant'
+              AND stop_reason IS NOT NULL
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+  - node: rules/chat/tool-call-recorded
+    held_at: |-
+      insertToolCall and attachToolCallsToMessage, lines 979-1027
+    evidence: |-
+      UPDATE chat_tool_call
+              SET message_id = $1
+            WHERE id = ANY($2::uuid[])
+  - node: rules/chat/turn-ending-message
+    held_at: |-
+      insertAssistantMessage, which writes stop_reason, and insertIterationPair, whose assistant row writes none
+    evidence: |-
+      `INSERT INTO chat_message
+             (conversation_id, role, content, model, created_at)
+           VALUES ($1, 'assistant', $2::jsonb, $3, clock_timestamp())`
+looked_past: |-
+  Two things I left out as code review: the `turn_count <= 0` and `overlap_m <= 0` defensive early returns, and countUserTurns, which counts owner-written messages the way the owner-written-message rule already defines them.

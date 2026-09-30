@@ -1,0 +1,83 @@
+findings:
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      decodeCursor, the shape check at lines 99-106 and the return at line 108
+    evidence: |-
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        typeof (parsed as { created_at?: unknown }).created_at !== "string" ||
+        typeof (parsed as { id?: unknown }).id !== "string"
+      ) {
+        throw new InvalidCursorError("expected shape { created_at, id }");
+      }
+    cost: |-
+      The contract refuses a cursor that "does not decode to a creation time and a well-formed conversation identity" with a 422. This check accepts any two strings as created_at and id, and decodeCursor returns them unchecked. A cursor whose fields are not a timestamp or a UUID is not refused here. It reaches the repository, which is not in this file set, so the answer for it may not be the contract's 422. A reader looking for where the cursor is validated finds only a type check.
+    kind: contradicts
+    correction: |-
+      decodeCursor would have to refuse a created_at that is not a creation time and an id that is not a well-formed identifier. Alternatively, the well-formedness check has to sit in a file the node is bound to.
+    node: contracts/chat/conversations
+read:
+  - node: constraints/chat-reads-are-consistent
+    held_at: >-
+      getConversationUsage, the single withReadOnly callback that wraps both the existence read and the aggregation. The list and get reads also each run in withReadOnly.
+    evidence: |-
+      return withReadOnly(pool, async (client) => {
+        const exists = await repo.getConversationById(client, id);
+        if (exists === null) throw new ConversationNotFoundError(id);
+        return repo.getConversationUsage(client, id);
+      });
+  - node: contracts/chat/conversations
+    held_at: >-
+      In part. Held here:
+      - The 404 mapping in getConversation, updateConversation, deleteConversation and getConversationUsage, through ConversationNotFoundError.
+      - The invalid-cursor 422 (InvalidCursorError with param "cursor"), although decodeCursor is weaker than the node, as the finding says.
+      - The next_cursor construction in listConversations.
+      Route-level checks, the response envelopes and the other operations are not in this file.
+    evidence: |-
+      if (row === null) throw new ConversationNotFoundError(id);
+      public readonly statusCode = 422;
+      public readonly code = "VALIDATION_INVALID_FORMAT" as const;
+      public readonly param = "cursor" as const;
+      page.hasMore && last !== undefined
+        ? encodeCursor(last.created_at, last.id)
+        : null;
+  - node: domain/chat/conversation
+    held_at: nowhere
+    evidence: |-
+      The row shape is only imported: import type { ConversationListPage, ConversationRow, ConversationUsage } from "../repository/chat.repository.js";. This file declares only CreateConversationInput and UpdateConversationInput, which carry title and archived_at as inputs. It does not declare the conversation's shape.
+  - node: domain/chat/conversation-listing
+    held_at: >-
+      The ListConversationsInput interface, which declares limit, cursor and includeArchived.
+    evidence: |-
+      export interface ListConversationsInput {
+        readonly limit: number;
+        readonly cursor: string | null;
+        readonly includeArchived: boolean;
+      }
+  - node: rules/chat/conversation-listing-order
+    held_at: >-
+      In part, in listConversations. The next cursor is built from the last row of the page, so the following page continues after that row. The newest-first ordering itself is not stated in this file.
+    evidence: |-
+      const nextCursor =
+        page.hasMore && last !== undefined
+          ? encodeCursor(last.created_at, last.id)
+          : null;
+  - node: rules/chat/conversation-request-check-order
+    held_at: >-
+      In part. getConversationUsage checks existence inside its transaction, and listConversations decodes the cursor before any database read. The disabled-chat check is not in this file.
+    evidence: |-
+      const decoded = input.cursor === null ? null : decodeCursor(input.cursor);
+      const exists = await repo.getConversationById(client, id);
+      if (exists === null) throw new ConversationNotFoundError(id);
+  - node: rules/chat/conversation-update-partial
+    held_at: >-
+      The UpdateConversationInput interface, whose optional fields carry the partial-update shape. The patch is forwarded unchanged to repo.updateConversation. Applying the rule (only named fields change, an empty field is cleared, a named archiving time is stamped as given) is not in this file.
+    evidence: |-
+      export interface UpdateConversationInput {
+        readonly title?: string | null;
+        readonly archived_at?: string | null;
+      }
+      repo.updateConversation(client, id, patch)
+looked_past: >-
+  The header and docstring comments restate the listing limit range and default, the body invariants and the cascade delete, but no code in this file holds them. The getConversationUsage docstring says the two reads "share no transaction boundary", yet the code runs both inside one withReadOnly. These are prose for the comment route, not findings.

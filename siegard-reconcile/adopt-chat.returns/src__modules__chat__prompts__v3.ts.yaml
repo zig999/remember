@@ -1,0 +1,87 @@
+findings:
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, lines 98-129, which names `start_async_ingestion` (line 101) and `get_ingestion_status` (lines 105, 110)
+    evidence: |-
+      "Apos `start_async_ingestion`, informe ao dono que a ingestao foi iniciada",
+      ...
+      "1. Chame `get_ingestion_status` UMA UNICA VEZ para confirmar que a",
+    cost: |-
+      The prompt tells the assistant to call two tools that the assistant's toolset does not list. The toolset names the node read, traversal, histories, node listing, catalog listings, search, provenance reads and directed ingestion. It has no asynchronous start and no ingestion-status read. Each turn sends the model an instruction to use tools the specification says it does not have. Whoever reads the toolset node will not find that this prompt depends on these two.
+    kind: contradicts
+    correction: |-
+      Either the specification's chat toolset gains the asynchronous start and the run-status read, or the playbook stops naming tools outside the toolset. Which of the two is decided is a person's call.
+    node: constraints/chat-toolset
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 1, lines 81-85
+    evidence: |-
+      "1. A ferramenta `search` e LEXICA E TEM SEMANTICA `AND` sobre o texto",
+      "   completo de UM mesmo no. Buscar UM NOME ESPECIFICO POR CHAMADA.",
+      "   NUNCA concatene varios nomes proprios numa unica chamada `search`",
+      "   (ex.: `search('Rodrigo Maria Joao')`) — quando os nomes vivem em nos",
+      "   distintos o resultado e SEMPRE zero acertos, e voce nao vai notar.",
+    cost: |-
+      The prompt states a retrieval behaviour as fact. It says search has AND semantics over one node's full text and always returns zero hits for names that live in different nodes. The specification holds only that retrieval is lexical and that a query must parse to at least one term. Changing search semantics would leave this instruction to the model quietly wrong. Nobody looking in the specification would find it there.
+    kind: unstated
+    correction: |-
+      A node holding the search's term-combination semantics, and a node holding the assistant's rule of one name per search call, would need to exist. The search-query nodes under rules/knowledge-base would be the place for the first.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 2, lines 86-90
+    evidence: |-
+      "2. `list_nodes` DEVE ser chamada COM um filtro `node_type` quando voce",
+      "   precisa enumerar uma categoria (\"o que existe em X\"). NUNCA use",
+      "   `list_nodes` SEM `node_type` para responder \"o que foi ingerido\"",
+    cost: |-
+      This is a rule about how the assistant may use the node listing: it must carry a node-type filter for category enumeration, and never be unfiltered for "what was ingested". No node holds it. The specification says only that the listing narrows by node type, name prefix and status, and that it orders by canonical name. The constraint on the assistant lives only in the prompt text, so a change to the listing's defaults would leave it stale and unnoticed.
+    kind: unstated
+    correction: |-
+      A chat-rule node stating when the assistant must filter the node listing by node type would need to exist.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, steps 1-4, lines 105-128
+    evidence: |-
+      "2. Quando `status === \"completed\"`, ANTES de qualquer outra ferramenta,",
+      "   leia o campo `result.affected_nodes` (TC-5 — array de",
+      ...
+      "3. Cite a fonte: o campo `raw_information_id` retornado por",
+      "   `get_ingestion_status` identifica o documento ingerido — mencione-o",
+      "   ao dono.",
+    cost: |-
+      The prompt carries a procedure that no node holds: check the run status once, read affected nodes first, fall back to search or a filtered listing, cite the raw information, and refuse the answer when in doubt. Only the fact that a completed run lists its affected nodes is held, by rules/knowledge-base/affected-nodes-only-when-completed. The ordering and the citation duty exist only as emitted prompt text. The next reader looking in the specification for how the assistant reports an ingestion will not find it.
+    kind: unstated
+    correction: |-
+      A chat-rule node giving the assistant's post-ingestion reporting procedure would need to exist.
+read:
+  - node: constraints/chat-toolset
+    held_at: >-
+      nowhere
+    evidence: |-
+      The file does not declare the toolset. It names tools in prompt text: "ferramentas. O catalogo cresce por migracao + restart" and "`list_node_types`, `list_link_types`", and also names `start_async_ingestion` and `get_ingestion_status`, which the node does not list.
+  - node: domain/chat/chat-prompt-version
+    held_at: >-
+      nowhere
+    evidence: |-
+      export const PROMPT_VERSION = "v3" as const;
+      The file names its own member value only. It declares no enumeration of versions.
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      system(), lines 221-229; the returned array puts the v2 body (which carries v1's marker) first
+    evidence: |-
+      const v2Body = v2System(catalog);
+      ...
+      return [
+        v2Body,
+        block4A,
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      renderOntologyBlock(), lines 153-205, emitted by system() as block4A
+    evidence: |-
+      parts.push(`- ${nodeType.name}: ${nodeType.description}`);
+      ...
+      const pair = `${source.name} -> ${target.name}`;
+      ...
+      ? ` [dominio fechado: ${[...domain].sort().join(" | ")}]`
+looked_past: >-
+  The long header and inline comments restate BR-18, BR-20, BR-30 and the cache-control invariant as prose, which is the comment route's concern and not a finding here.

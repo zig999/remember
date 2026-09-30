@@ -1,0 +1,375 @@
+findings:
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      MAX_TOKENS_PER_ITERATION constant (line 111) and its use in the messages.stream request (line 441)
+    evidence: |-
+      const MAX_TOKENS_PER_ITERATION = 4096;
+      ...
+      max_tokens: MAX_TOKENS_PER_ITERATION,
+    cost: |-
+      The ceiling on output tokens per model call is a number the code applies to every turn, and no node in the specification holds it. A reader who looks for it in the specification will not find it. Changing it changes how long an answer can be before it stops as max_tokens, and that change would never be recorded as a decision.
+    kind: unstated
+    correction: |-
+      Give the per-model-call output token ceiling a node, for example alongside rules/chat/turn-model-call-limit, or decide that it is configuration and say so in the specification.
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      the failure envelopes handed to the assistant: the unknown-tool branch (lines 649-656), the timeout resolve in raceToolHandler (lines 928-934) and synthesiseInternalErrorEnvelope (lines 978-986)
+    evidence: |-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "unknown tool name",
+      ...
+      code: "SYSTEM_SERVICE_UNAVAILABLE",
+      message: "tool timeout",
+      ...
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: errMessage(err) ?? "tool handler threw",
+    cost: |-
+      The node says only that a failure is handed to the assistant and the turn continues. The error codes and messages the assistant receives for an unknown tool, a timed-out tool and a throwing handler exist only in this code. The thrown error's own message is also passed to the model unfiltered. Changing any of them changes what the model is told, and nobody would find that decision in the specification.
+    kind: unstated
+    correction: |-
+      Let rules/chat/tool-failure-continues-turn, or a node it constrains, state which code and message each of the three failures hands the assistant, and whether a handler's own exception text is passed on.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      the content filter in terminateError (lines 832-843)
+    evidence: |-
+      content: iterationBlocks.filter(
+        (b) =>
+          typeof b === "object" &&
+          b !== null &&
+          (b as { type?: unknown }).type === "text"
+      ),
+    cost: |-
+      The rule that a turn closing in error keeps only its text blocks, and drops any tool request in progress, is applied here and no node holds it. The recorded closing message of a failed turn therefore depends on a filter in a service file. Nobody looking at the recording rules will find it.
+    kind: unstated
+    correction: |-
+      State in rules/chat/assistant-answer-recorded, or in a rule beside it, what content the closing assistant message of a turn that ended in error carries.
+    node: rules/chat/assistant-answer-recorded
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above runTurnIterable (lines 257-262) and the section header above terminate (line 787)
+    evidence: |-
+      * structural invariant of BR-24 ("exactly one terminal event per turn") is
+      * enforced by `try { ... } finally { ... }` rather than by repeated yield
+    cost: |-
+      The comment restates the rule that every turn ends with exactly one done or error event, while the terminate and terminateError generators hold it in this file. Two places now state the rule. If the rule moves, the comment still cites it as settled.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the terminate and terminateError generators and the catch branch of runTurnGenerator in this file.
+    node: rules/chat/turn-ends-once
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above the turn-timeout controller (lines 275-276)
+    evidence: |-
+      // BR-16: turn-timeout `AbortController`. The reason argument is inspected
+      // on cancel to distinguish "client closed" from "wall-clock expired".
+    cost: |-
+      The comment restates that an expired turn time ends the turn as a timeout. The setTimeout on TURN_TIMEOUT_MS and the turn_timeout stop reason hold that in this file, so the comment is a second home for it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the setTimeout on `ctx.env.TURN_TIMEOUT_MS` and by the `reason === TURN_TIMEOUT_REASON ? "turn_timeout" : "cancelled"` branches in this file.
+    node: rules/chat/turn-time-limit
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment inside externalAbortListener (lines 287-289)
+    evidence: |-
+      // Client-cancel: forward to the turn controller WITHOUT a reason (so
+      // we can distinguish from timeout via `.reason`).
+    cost: |-
+      The comment restates that a cancelled turn or a closed connection ends as cancelled. The abort forwarding and the "cancelled" stop reason hold it in this file, so the comment is a second home for it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by externalAbortListener and the `"cancelled"` branches in this file.
+    node: rules/chat/turn-cancel
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above inLoopHistory (lines 301-305)
+    evidence: |-
+      // BR-08 + BR-20: gather text deltas for the assistant turn fed back on the
+      // next iteration. We accumulate the FILTERED text (after the output guard
+      // dropped any marker-containing delta) so a leak never round-trips back
+      // into the model.
+    cost: |-
+      The comment restates that assistant text carrying the system prompt's marker is neither streamed nor kept. The inspectDelta call that returns before the enqueue holds the fact in this file. The comment is a second statement that can drift from the node.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by `const decision = inspectDelta(delta, ctx.logger); if (decision.drop) return;` in the stream.on("text") handler in this file, with the marker test itself in output-guard.ts.
+    node: rules/chat/assistant-text-withholds-system-prompt
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above inLoopHistory (line 306) and comment in the tool-use branch (lines 613-614)
+    evidence: |-
+      // BR-22: tool_choice is unconditional `auto` + parallel tool use disabled.
+      ...
+      // BR-22 disables parallel tool use, so toolUseBlocks.length is at
+      // most 1; we still iterate to be safe.
+    cost: |-
+      The comments restate that at most one tool is called per model call. The `disable_parallel_tool_use: true` request option holds it in this file, so the rule has a second statement in prose.
+    kind: restates
+    correction: |-
+      Remove both comments. The fact is held by `tool_choice: { type: "auto", disable_parallel_tool_use: true }` in the stream request in this file.
+    node: rules/chat/turn-one-tool-at-a-time
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above invocationContext (lines 353-361)
+    evidence: |-
+      // TC-02 / BR-34 (Path 1) — assemble the transport-neutral invocation_context
+      // ONCE per turn. The same record is forwarded to every tool handler via
+      // `raceToolHandler` (generic — no per-tool branch at the dispatch site).
+    cost: |-
+      The comment restates that every tool receives the owner's message of the turn and where it came from. The invocationContext object and the raceToolHandler forwarding hold that in this file. The comment is a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the invocationContext construction and the `raceToolHandler(tool.handler, block.input, ctx.env.TOOL_TIMEOUT_MS, invocationContext)` call in this file.
+    node: rules/chat/tool-invocation-carries-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment opening the outer loop (lines 379-381)
+    evidence: |-
+      // BR-15: enforce ceiling BEFORE opening iteration N+1. The check fires
+      // when we are about to open a new iteration AFTER the ceiling has
+      // already been reached, so the SSE sequence is `... tool_result -> done`.
+    cost: |-
+      The comment restates the model-call limit and the point where it ends the turn. The `iteration > ctx.env.MAX_ITERATIONS` check holds it in this file, so two statements of the limit can disagree.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by `if (iteration > ctx.env.MAX_ITERATIONS)` and its terminate with "max_iterations" in this file.
+    node: rules/chat/turn-model-call-limit
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above the per-tool race (lines 658-659)
+    evidence: |-
+      // BR-17: per-tool wall-clock race. Failure (timeout) feeds an
+      // envelope back to the model and DOES NOT end the turn.
+    cost: |-
+      The comment restates that a failing tool hands its failure to the assistant and the turn continues. The raceToolHandler call and the continue of the loop hold it in this file, so the rule has a second home in prose.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by raceToolHandler and the synthetic failure envelopes in this file.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above the truncation (line 695)
+    evidence: |-
+      // BR-13: truncate the JSON-serialised body before feeding back.
+    cost: |-
+      The comment restates that a tool result is cut before it reaches the assistant. The truncateToolResult call holds it in this file, with the cut and its marker in truncate-tool-result.ts.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by `truncateToolResult(bodyJson, ctx.env.TOOL_RESULT_MAX_CHARS)` in this file.
+    node: rules/chat/tool-result-truncated
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment above the iteration_end yield (lines 715-720)
+    evidence: |-
+      // v2.2 (BR-29 step 6.d): emit the per-iteration persistence pair. The
+      // route persists `assistant_content` (this iteration's guarded text +
+      // tool_use blocks) and `tool_results` as TWO atomic chat_message rows
+    cost: |-
+      The comment restates that a tool-using model call is recorded as two messages, the request first. The iteration_end event carries the pair, so the comment is a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The payload is held by the `iteration_end` yield with `assistant_content` and `tool_results` in this file. The rows themselves are written by the route in conversations.routes.ts.
+    node: rules/chat/iteration-recorded
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment in the catch of runTurnGenerator (lines 747-748)
+    evidence: |-
+      // BR-23 in-stream: any uncaught exception in the loop is mapped to a
+      // SYSTEM_INTERNAL_ERROR SSE error frame.
+    cost: |-
+      The comment restates that any failure other than a provider failure ends as an internal error. The catch branch and its "internal_error" synthetic stop reason hold it in this file. The comment is a second statement of the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the catch branch calling `terminateError(ctx, "SYSTEM_INTERNAL_ERROR", "chat encountered an internal error", ..., "internal_error", ...)` in this file.
+    node: rules/chat/turn-failure-stop-reason
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: |-
+      comment in mapStopReason default branch (lines 1127-1130)
+    evidence: |-
+      // Any other stop reason (refusal, pause_turn, null, ...) collapses
+      // to `end_turn` for the chat SSE — the model is signalling it has
+      // nothing more to say.
+    cost: |-
+      The comment restates that any other model stop reason ends as end-turn. The switch in mapStopReason holds it in this file, so the rule is stated twice and only one copy is behavior.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact is held by the `default: return "end_turn";` branch of mapStopReason in this file.
+    node: rules/chat/turn-model-stop-reason
+read:
+  - node: contracts/chat/conversations
+    held_at: |-
+      in part: the llm_start, text_delta, tool_start, tool_result, done and error yields in runTurnGenerator, terminate and terminateError, whose frame fields and in-stream error codes and messages match the send-message answer
+    evidence: |-
+      yield { type: "llm_start", iteration } as const;
+      ...
+      yield { type: "text_delta", delta: item.delta } as const;
+      ...
+      "BUSINESS_CHAT_PROVIDER_UNAVAILABLE",
+      "chat provider is temporarily unavailable",
+      ...
+      "SYSTEM_INTERNAL_ERROR",
+      "chat stream produced no final message",
+      ...
+      "SYSTEM_INTERNAL_ERROR",
+      "chat encountered an internal error",
+  - node: domain/chat/turn-event-kind
+    held_at: |-
+      nowhere; the ChatEvent shape is declared in types.ts and this file only yields its members
+    evidence: |-
+      import type {
+        ChatAgentService,
+        ChatAgentServiceDeps,
+        ChatEvent,
+  - node: rules/chat/assistant-text-withholds-system-prompt
+    held_at: |-
+      the stream.on("text") handler, where a dropped delta is never enqueued, so it is neither yielded nor pushed into iterationBlocks
+    evidence: |-
+      const decision = inspectDelta(delta, ctx.logger);
+      if (decision.drop) return;
+      enqueue({ kind: "delta", delta });
+  - node: rules/chat/chat-prompt-version-known
+    held_at: |-
+      nowhere; the file only calls selectChatPromptModule, and the check of the version is in prompts/index.ts
+    evidence: |-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION);
+  - node: rules/chat/iteration-recorded
+    held_at: |-
+      in part: the iteration_end yield in runTurnGenerator that carries the assistant's request and the tool results for the route to record; the rows are written by the route
+    evidence: |-
+      yield {
+        type: "iteration_end",
+        iteration,
+        assistant_content: iterationBlocks.slice(),
+        tool_results: toolResultBlocks.slice(),
+      } as const;
+  - node: rules/chat/tool-call-recorded
+    held_at: |-
+      in part: the tool_result yield in runTurnGenerator, which carries each tool call's arguments, result and duration to the route; no assistant message identity is named here and the recording is the route's
+    evidence: |-
+      yield {
+        type: "tool_result",
+        tool: toolName,
+        ok: toolEnvelope.ok,
+        arguments: block.input,
+        result: toolEnvelope.ok ? (toolEnvelope.result ?? null) : null,
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: |-
+      the unknown-tool envelope branch and raceToolHandler, which converts a timeout or a thrown handler into a failure envelope; the loop then pushes the tool_result block and continues
+    evidence: |-
+      if (tool === undefined) {
+        toolEnvelope = {
+          ok: false,
+      ...
+      (err) => synthesiseInternalErrorEnvelope(err)
+      ...
+      // Loop — open the next iteration.
+      continue;
+  - node: rules/chat/tool-invocation-carries-turn
+    held_at: |-
+      the invocationContext construction and its forwarding through raceToolHandler; the keys are omitted when the route threaded no value
+    evidence: |-
+      if (ctx.input.current_user_turn !== undefined) {
+        out.source_excerpt = ctx.input.current_user_turn;
+      }
+      if (ctx.input.invocation_pointer !== undefined) {
+        out.pointer = ctx.input.invocation_pointer;
+      }
+  - node: rules/chat/tool-result-truncated
+    held_at: |-
+      the truncateToolResult call on the serialised envelope before it is pushed as the tool_result content; the cut and the marker are in truncate-tool-result.ts
+    evidence: |-
+      const truncated = truncateToolResult(
+        bodyJson,
+        ctx.env.TOOL_RESULT_MAX_CHARS
+      );
+  - node: rules/chat/turn-cancel
+    held_at: |-
+      externalAbortListener forwarding the route's abort signal into turnController, and the abort branches that choose the cancelled stop reason
+    evidence: |-
+      const stopReason: DoneStopReason =
+        reason === TURN_TIMEOUT_REASON ? "turn_timeout" : "cancelled";
+  - node: rules/chat/turn-ends-once
+    held_at: |-
+      terminate and terminateError, each yielding one closing frame, with every exit of runTurnGenerator returning right after a yield* of one of them
+    evidence: |-
+      yield* terminate(
+        ctx,
+        mappedStop,
+        lastModel,
+        turnTimer,
+        externalAbortListener,
+        iterationBlocks
+      );
+      return;
+  - node: rules/chat/turn-failure-stop-reason
+    held_at: |-
+      the provider-error branch after a non-abort stream error, and the catch branch of runTurnGenerator for any other cause
+    evidence: |-
+      "provider_error",
+      iterationBlocks
+      ...
+      "chat encountered an internal error",
+      turnTimer,
+      externalAbortListener,
+      "internal_error",
+  - node: rules/chat/turn-limit-before-cancel
+    held_at: |-
+      the max-iterations check, which sits before the aborted check at the top of the outer loop
+    evidence: |-
+      iteration += 1;
+      if (iteration > ctx.env.MAX_ITERATIONS) {
+        yield* terminate(
+          ctx,
+          "max_iterations",
+  - node: rules/chat/turn-model-call-limit
+    held_at: |-
+      the iteration counter and its comparison with MAX_ITERATIONS before each model call
+    evidence: |-
+      iteration += 1;
+      if (iteration > ctx.env.MAX_ITERATIONS) {
+  - node: rules/chat/turn-model-stop-reason
+    held_at: |-
+      mapStopReason, which maps the three named reasons to themselves and every other reason to end_turn
+    evidence: |-
+      case "end_turn":
+        return "end_turn";
+      case "max_tokens":
+        return "max_tokens";
+      case "stop_sequence":
+        return "stop_sequence";
+      default:
+  - node: rules/chat/turn-one-tool-at-a-time
+    held_at: |-
+      the tool_choice option of the messages.stream request
+    evidence: |-
+      tool_choice: { type: "auto", disable_parallel_tool_use: true },
+  - node: rules/chat/turn-reports-last-model
+    held_at: |-
+      lastModel, initialised from the requested model and replaced by each final message's model, passed to terminate
+    evidence: |-
+      let lastModel = ctx.input.model;
+      ...
+      lastModel = finalMessage.model ?? lastModel;
+  - node: rules/chat/turn-time-limit
+    held_at: |-
+      the setTimeout on TURN_TIMEOUT_MS that aborts turnController with the turn_timeout reason, and the branches that turn that reason into the turn_timeout stop reason
+    evidence: |-
+      const turnTimer = setTimeout(() => {
+        turnController.abort(TURN_TIMEOUT_REASON);
+      }, turnTimeoutMs);
+  - node: rules/chat/turn-tokens-summed
+    held_at: |-
+      ctx.accumulator.addTokens after every final message, and the snapshot read in terminate
+    evidence: |-
+      ctx.accumulator.addTokens(
+        finalMessage.usage?.input_tokens ?? 0,
+        finalMessage.usage?.output_tokens ?? 0
+      );
+looked_past: |-
+  The file also states a prompt-caching cache_control breakpoint, a permissive fallback input schema for tools, the pino log events and tool descriptors built from Zod schemas, none of which states a domain fact, and a comment claiming a fail-loud check of CHAT_PROMPT_VERSION whose code lives in prompts/index.ts outside this file set.
+candidates_opened:
+  - domain/chat/turn
+  - rules/chat/turn-ending-message
+  - rules/chat/assistant-answer-recorded
+  - rules/chat/model-context-well-formed

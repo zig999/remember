@@ -1,0 +1,28 @@
+findings:
+  - file: src/modules/chat/service/output-guard.ts
+    where: >-
+      the file-header comment, lines 1-26, and the JSDoc above inspectDelta, lines 46-57
+    evidence: |-
+      // Purpose: before the agentic loop yields a `ChatEvent.text_delta`, it asks
+      // the guard "is the system-prompt marker present in this delta?". If yes, the
+      // delta is dropped — not yielded, not aggregated into the assistant turn that
+      // will be fed back on the next iteration.
+    cost: |-
+      The node's rule (marker-bearing assistant text is neither streamed nor kept) is restated in prose here, beside the branch that holds it. If the node moves, the comment keeps saying the old rule, and a reader will take it for a second authority. The code that holds the fact is the `delta.includes(CHAT_PROMPT_MARKER_V1)` branch returning `{ drop: true }` in this file.
+    kind: restates
+    correction: |-
+      Remove the header comment and the explanatory comments. The fact is already held by the node and by the branch in inspectDelta. Follow the comment route (removal, then `/reconcile` over this file).
+    node: rules/chat/assistant-text-withholds-system-prompt
+read:
+  - node: rules/chat/assistant-text-withholds-system-prompt
+    held_at: |-
+      inspectDelta, the `if (delta.length > 0 && delta.includes(CHAT_PROMPT_MARKER_V1))` branch returning `{ drop: true }`, lines 61-69. This file holds only the detection and the drop decision. Not yielding and not aggregating the text is the caller's act, and this file does not perform it.
+    evidence: |-
+      if (delta.length > 0 && delta.includes(CHAT_PROMPT_MARKER_V1)) {
+        ...
+        return { drop: true };
+      }
+      return { drop: false };
+looked_past: >-
+  The pino WARN line (event name "chat.output_guard_drop", the marker_version field, the fixed message) and the `MARKER_VERSION = "v1"` constant are observability detail, not a domain fact; the comments' claims about scrubbing a union of markers in future prompt versions appear only in prose.
+candidates_opened: []

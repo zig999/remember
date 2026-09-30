@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/chat/service/tool-catalog.ts
+    where: |-
+      the header comment block, lines 20-24 ("Why `undefined` on a `query`-portion miss?")
+    evidence: |-
+      // Why `undefined` on a `query`-portion miss? BR-05: "if any of the 13 query
+      // names is missing at resolution time, the resolver returns `undefined` and
+      // the route is not registered". A missing query tool is a deployment bug —
+      // the route registrar logs a single ERROR with the diff and does NOT serve a
+      // degraded chat surface.
+    cost: |-
+      The rule that chat does not run on a partial query toolset is written out a second time as prose. The code already holds it in buildChatToolCatalog (`if (missingQuery.length > 0) { ... return undefined; }`). The prose cites a back-spec rule number as its authority. When the node moves, this comment goes stale without anything flagging it.
+    kind: restates
+    correction: |-
+      Remove the comment. The fact stays held by the `missingQuery` branch of buildChatToolCatalog, which returns `undefined`.
+    node: rules/chat/chat-toolset-requires-every-query-tool
+  - file: src/modules/chat/service/tool-catalog.ts
+    where: |-
+      the header comment lines 1-6 and the doc comments on CHAT_TOOL_NAMES (lines 37-38) and CHAT_INGEST_TOOL_NAMES (lines 57-63)
+    evidence: |-
+      // Lazy tool-catalog resolver — looks up the read-only `query`-toolset tools
+      // in the in-process `McpServer` registry (BR-05 v2.4) AND, when the feature
+      // flag `env.CHAT_INGEST_ENABLED === true`, one additional `ingest`-toolset
+      // tool (`ingest_directed` — BR-44 v2.8).
+      /** The 13 read-only `query`-toolset tools the chat agentic loop is always
+       *  allowed to call (BR-05 v2.4 step 1). */
+    cost: |-
+      The composition of the assistant's toolset appears again as prose, with its own count ("13") and its own citations. The code holds it in the `CHAT_TOOL_NAMES` and `CHAT_INGEST_TOOL_NAMES` arrays and in the `ingestFlag` branch. If the toolset changes, the prose keeps saying the old count.
+    kind: restates
+    correction: |-
+      Remove the comments. The toolset stays held by the `CHAT_TOOL_NAMES` and `CHAT_INGEST_TOOL_NAMES` declarations and the `if (ingestFlag)` resolution branch.
+    node: constraints/chat-toolset
+read:
+  - node: constraints/chat-toolset
+    held_at: |-
+      the CHAT_TOOL_NAMES array (lines 39-55), the CHAT_INGEST_TOOL_NAMES array (line 63), and the `if (ingestFlag)` resolution block of buildChatToolCatalog (lines 160-192)
+    evidence: |-
+      export const CHAT_TOOL_NAMES = [ "get_node", "traverse", "get_history_link", "get_history_attribute", "get_history_attribute_key", "list_nodes", "list_node_types", "list_link_types", "list_attribute_keys", "search", "get_provenance_link", "get_provenance_attribute", "get_provenance_fragment" ] as const;
+      export const CHAT_INGEST_TOOL_NAMES = ["ingest_directed"] as const;
+      if (ingestFlag) { ... const tool = mcp.getTool(CHAT_INGEST_TOOLSET, name); ... if (missingIngest.length > 0) { logger?.error(...) } else { resolved[name] = resolvedIngest[name]!; } }
+  - node: rules/chat/chat-toolset-requires-every-query-tool
+    held_at: |-
+      the `missingQuery` branch of buildChatToolCatalog, lines 151-156
+    evidence: |-
+      if (missingQuery.length > 0) {
+        CACHED = undefined;
+        CACHED_FOR_INGEST_FLAG = ingestFlag;
+        return undefined;
+      }
+looked_past: |-
+  I saw the log event name `chat.tool_catalog_partial_resolution`, the memoization and sticky-cache mechanics, and the appended ordering of the ingest entry for a stable `tools[]` hash. All three are implementation behavior rather than a domain fact of these nodes, so I left them to a code review.

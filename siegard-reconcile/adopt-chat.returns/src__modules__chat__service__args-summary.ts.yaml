@@ -1,0 +1,52 @@
+findings:
+  - file: src/modules/chat/service/args-summary.ts
+    where: |-
+      the header comment, lines 1-38 (contracts 1 and 2 and the v2.4 redaction invariant), and the docstring on buildArgsSummary
+    evidence: |-
+      //   1. NEVER include raw `value` / `text` column contents or document bodies.
+      //   2. Bounded length — `<= 200` code points (matches the openapi.yaml
+      // `start_async_ingestion` MUST NEVER include the raw `content` payload — only
+      // its code-point length.
+    cost: |-
+      The 200-character bound and the rule that an ingestion's content never reaches a tool-start summary are stated a second time in prose. The code already enforces both: `clampToMax` with `ARGS_SUMMARY_MAX_CHARS = 200`, and the `start_async_ingestion` case that emits only `content_len`. A reader who changes the node will find a comment still claiming the old bound and has to work out which one is authoritative.
+    kind: restates
+    correction: |-
+      Remove the comment block and the docstring prose that restate the bound and the redaction invariant. The behavior stays as it is, and the node already binds it.
+    node: rules/chat/tool-start-summary-bounded
+  - file: src/modules/chat/service/args-summary.ts
+    where: |-
+      the constant SEARCH_QUERY_MAX_CHARS (line 44) and its use in the `search` case (line 77)
+    evidence: |-
+      const SEARCH_QUERY_MAX_CHARS = 60;
+      const parts: string[] = [`query="${truncateCodepoints(query, SEARCH_QUERY_MAX_CHARS)}"`];
+    cost: |-
+      The 60-character cut of a search query shown to the SPA is a threshold that only this file states. It is a value the owner sees in every search tool-start frame. The node holds only the 200-character total, so anyone looking in the specification for how much of a query the owner sees will not find it.
+    kind: unstated
+    correction: |-
+      Analysis should give the per-tool summary content a node, or extend rules/chat/tool-start-summary-bounded with the search query bound. The source has no decision log or bind to point to for this value.
+    node: rules/chat/tool-start-summary-bounded
+  - file: src/modules/chat/service/args-summary.ts
+    where: |-
+      the per-tool formats in formatByTool (lines 64-163) and fallbackSummary (lines 165-170)
+    evidence: |-
+      return `source_type=${sourceType} content_len=${contentLen}`;
+      return `${Object.keys(input as Record<string, unknown>).length} keys`;
+      return `node_type=${nodeType} limit=${limit}`;
+    cost: |-
+      The text the owner sees for each tool call is decided only here. That covers which arguments are shown per tool, the `key=value` layout, `content_len` as the only trace of an ingestion's content, the empty string for the catalogue-listing tools, and the `N keys` fallback. The specification says only that the summary is bounded and carries no ingestion content, so the next reader cannot find what a tool-start summary says, or that the `N keys` fallback exists.
+    kind: unstated
+    correction: |-
+      Analysis should give the per-tool summary shapes and the fallback a node. The source cannot cite it.
+    node: rules/chat/tool-start-summary-bounded
+read:
+  - node: rules/chat/tool-start-summary-bounded
+    held_at: |-
+      buildArgsSummary through clampToMax (lines 55-58 and 207-211) for the 200-character bound. The `start_async_ingestion` case in formatByTool (lines 142-150) for the no-ingestion-content half.
+    evidence: |-
+      export const ARGS_SUMMARY_MAX_CHARS = 200;
+      if (codepoints.length <= ARGS_SUMMARY_MAX_CHARS) return s;
+      return codepoints.slice(0, ARGS_SUMMARY_MAX_CHARS).join("");
+      const contentLen = [...content].length;
+      return `source_type=${sourceType} content_len=${contentLen}`;
+looked_past: |-
+  Two things in the file were seen and left unreported as another judgment's: the code-point truncation helpers, and the doc-comment reference to the 13 names in CHAT_TOOL_NAMES.

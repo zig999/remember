@@ -1,0 +1,48 @@
+findings:
+  - file: src/modules/chat/service/errors.ts
+    where: |-
+      ConversationNotFoundError, constructor (line 86), as rendered by mapChatError (lines 180-185)
+    evidence: |-
+      super(`conversation ${conversationId} not found`);
+      ...
+      if (err instanceof ConversationNotFoundError) {
+        return mapped(err.statusCode, "warn", {
+          code: err.code,
+          message: err.message,
+        });
+      }
+      The node's answer for the missing conversation is: HTTP 404, error code RESOURCE_NOT_FOUND with message "conversation not found" and `details: { id }`.
+    cost: |-
+      The error text this file emits says "conversation <id> not found", and the contract says "conversation not found". The envelope this mapper builds has no `details: { id }`. A client that matches the contract's message, or reads `details.id`, gets a different message and no details. The contract's wording cannot be trusted as what the wire carries.
+    kind: contradicts
+    correction: |-
+      The message would have to be the constant "conversation not found", with the identity carried in `details: { id }` as the node states. Alternatively the node changes through the analysis route if the interpolated message is the intended behavior.
+    node: contracts/chat/conversations
+  - file: src/modules/chat/service/errors.ts
+    where: |-
+      the file header comment (lines 1-33) and the docstrings of ChatDisabledError, ChatProviderUnavailableError, ConversationNotFoundError, ConversationArchivedError, TurnInProgressError and IdempotencyMismatchError
+    evidence: |-
+      //   - BUSINESS_CHAT_DISABLED             (503) — kill-switch on (BR-14).
+      //   - BUSINESS_CONVERSATION_ARCHIVED     (409) — write attempt on an archived
+      // `BUSINESS_CHAT_PROVIDER_UNAVAILABLE` may appear as an in-stream SSE `error`
+      // frame when the provider fails mid-stream
+      The message tells the caller how to recover (un-archive via PATCH).
+    cost: |-
+      The same error codes, statuses and in-stream versus pre-stream rules appear a second time in prose. When the contract moves, nothing checks these comments, and a reader can take them as a second statement of the contract. The code in this file already holds these facts: the `statusCode` and `code` fields on each class, and `mapChatError`.
+    kind: restates
+    correction: |-
+      Remove the comments and docstrings that restate the node's codes, statuses and messages. The fact stays in the classes and in contracts/chat/conversations.
+    node: contracts/chat/conversations
+read:
+  - node: contracts/chat/conversations
+    held_at: |-
+      the error classes (ChatDisabledError, ChatProviderUnavailableError, ConversationNotFoundError, ConversationArchivedError, TurnInProgressError, IdempotencyMismatchError) and mapChatError, lines 42-203. The codes, statuses and messages agree with the node's refusals, except the not-found message and its missing `details`.
+    evidence: |-
+      public readonly statusCode = 503;
+      public readonly code = "BUSINESS_CHAT_DISABLED" as const;
+      super("chat surface is disabled by CHAT_ENABLED=false");
+      public readonly code = "BUSINESS_TURN_IN_PROGRESS" as const;
+      super("another turn is currently in progress on this conversation");
+      "Idempotency-Key matches an existing request with different content or model"
+looked_past: |-
+  The warn and error log levels that mapChatError assigns to each error are operational choices no node states, and I left them for another judgment.

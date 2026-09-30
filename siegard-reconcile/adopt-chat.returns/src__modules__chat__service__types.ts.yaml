@@ -1,0 +1,49 @@
+read:
+  - node: contracts/chat/conversations
+    held_at: |-
+      nowhere
+    evidence: |-
+      The file declares no HTTP status, refusal code, message or operation. The nearest construct is the event union, which carries the stream's frame names and fields: `| { readonly type: "llm_start"; readonly iteration: number }`. The union is bound to the stream-frame names of send-message. The HTTP answers themselves are not declared here.
+  - node: domain/chat/assistant-stop-reason
+    held_at: |-
+      The two union types `DoneStopReason` and `ErrorSyntheticStopReason` (lines 44-57). Together they declare the node's eight values in the wire's underscore spelling.
+    evidence: |-
+      export type DoneStopReason =
+        | "end_turn"
+        | "max_tokens"
+        | "stop_sequence"
+        | "max_iterations"
+        | "turn_timeout"
+        | "cancelled";
+      export type ErrorSyntheticStopReason = "provider_error" | "internal_error";
+  - node: domain/chat/turn
+    held_at: |-
+      nowhere
+    evidence: |-
+      No construct declares the Turn shape of content, model, idempotency_key, stop_reason, tokens_in and tokens_out. `ChatRunInput` carries `readonly model: string;` and `readonly current_user_turn?: string;`. It has no idempotency_key and is the loop's input. `done` carries `stop_reason`, `tokens_in` and `tokens_out`. The Turn is not declared as a whole or in part under its own shape.
+  - node: domain/chat/turn-event-kind
+    held_at: |-
+      The `type` discriminants of the `ChatEvent` union (lines 69-130). They declare llm_start, text_delta, tool_start, tool_result, graph_delta, done and error.
+    evidence: |-
+      | { readonly type: "llm_start"; readonly iteration: number }
+      | { readonly type: "text_delta"; readonly delta: string }
+      | { readonly type: "tool_start"; readonly tool: string; readonly args_summary: string }
+      | { readonly type: "graph_delta"; readonly source_tool: string; ...
+      | { readonly type: "done"; ...
+      | { readonly type: "error"; ...
+  - node: rules/chat/tool-call-recorded
+    held_at: |-
+      nowhere
+    evidence: |-
+      The `tool_result` variant only carries the payload that a tool-call row holds: `readonly arguments: unknown; readonly result: unknown | null; readonly is_error: boolean; readonly error_message: string | null; readonly duration_ms: number;`. Nothing in the file records a tool call or names the assistant message of its model call. The recording is behavior outside this file.
+  - node: rules/chat/tool-invocation-carries-turn
+    held_at: |-
+      nowhere
+    evidence: |-
+      `ChatRunInput` only declares the carrier fields, `readonly current_user_turn?: string;` and `readonly invocation_pointer?: { readonly conversation_id: string; readonly message_id: string; };`. Nothing in the file hands them to a tool. A file that only passes a value along does not hold the rule.
+looked_past: |-
+  Comments in the file restate facts held elsewhere and owe only their removal under the comment route: the exactly-one-terminal-frame guarantee, the forwarding of the verbatim turn to tool handlers, the persistence of tool calls and iterations, and citations of chat.back.md BR numbers. I did not open the code files that hold those facts, so I did not file them as `restates`. The `iteration_end` variant, the tool-call payload fields and the graph_delta shape belong to candidate nodes (rules/chat/iteration-recorded, domain/chat/tool-call, domain/chat/graph-delta), not to an unstated fact.
+candidates_opened:
+  - rules/chat/iteration-recorded
+  - domain/chat/tool-call
+  - domain/chat/graph-delta

@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/v1.ts
+    where: >-
+      the system constant, lines 28-31 (the persona and length line of the prompt sent to the model)
+    evidence: |-
+      "Voce e um compactador de conversas. Receba o trecho mais antigo de uma",
+        "conversa em pt-BR e produza um RESUMO COMPACTO em pt-BR (no maximo 8",
+        "frases) que preserve:",
+    cost: |-
+      The prompt tells the model a summary holds "no maximo 8 frases". No node holds a sentence cap. The only length rule in the specification is the 2000-character invariant, which is in characters and says nothing about sentences. The cap therefore lives only in this prompt text. A reader who looks in the specification for how long a rolling summary may be finds 2000 characters and never learns of the 8-sentence limit the model is told.
+    kind: unstated
+    correction: |-
+      Give the summary prompt's length and shape instruction a home. That is either a node beside rules/chat/rolling-summary-length or an extension of it, or the cap is removed from the prompt.
+  - file: src/modules/chat/prompts/chat-summary/v1.ts
+    where: >-
+      rule 3 of the system constant, lines 40-41
+    evidence: |-
+      "3. Nao use marcadores de cabecalho nem listas com bullets — apenas",
+        "   paragrafos curtos.",
+    cost: |-
+      The prompt requires a summary in prose paragraphs, with no headers and no bullets. No node states what form a rolling summary takes. The form the stored summary must have is therefore decided only in prompt text.
+    kind: unstated
+    correction: |-
+      Decide the summary's required form in a node, or drop the instruction from the prompt.
+  - file: src/modules/chat/prompts/chat-summary/v1.ts
+    where: >-
+      buildUserTurn, lines 57-62
+    evidence: |-
+      export function buildUserTurn(
+        _summary_prev: string | null,
+        new_messages: ReadonlyArray<Anthropic.Messages.MessageParam>
+      ): Anthropic.Messages.MessageParam[] {
+        return new_messages.slice();
+      }
+    cost: |-
+      The node says "A refold keeps the previous rolling summary's salient facts and folds in those of the older messages." This version's refold discards the previous summary. Any conversation refolded under v1 loses its earlier summarised facts. v1 is an enumerated prompt version, and its non-folding behaviour is stated only in this file.
+    kind: contradicts
+    correction: |-
+      Either v1 folds the previous summary in like the node requires, or the specification states that a version which does not fold is a permitted version and gives that exception a node.
+    node: rules/chat/rolling-summary-folds
+read:
+  - node: domain/chat/summary-prompt-version
+    held_at: nowhere
+    evidence: |-
+      export const PROMPT_VERSION = "v1" as const;
+      This file passes along the single value "v1". The enumeration of versions (v1, v2) is not declared here. Its shape is declared in the registry file that defines ChatSummaryPromptModule.
+looked_past: >-
+  The header comment's claims that v1 is never selected by the production refresh path and that it is registered only for unit tests are prose with no code behind them here, and the retained-for-tests design is a code-review matter.
+candidates_opened:
+  - rules/chat/rolling-summary-length
+  - rules/chat/rolling-summary-folds

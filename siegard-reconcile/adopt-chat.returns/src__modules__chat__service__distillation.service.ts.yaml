@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      the file-header comment (lines 9-22) and the docstrings and inline comments of maybeRefreshSummary (lines 192-195, 322-324) and maybeDistillTitle (lines 361-362, 429)
+    evidence: |-
+      // CRITICAL CONTRACT (chat.back.md §1.1 + §7 "Fallback" column):
+      //   - Both functions return `Promise<void>` and NEVER throw. The caller does
+      //     NOT await them. Any error inside is caught and logged WARN with a
+      //     fixed log shape
+    cost: |-
+      The rule that a failed distillation leaves the conversation unchanged sits in prose here as well as in the node. A reader who changes the rule has a second place to keep in step. The code already holds it in the `catch (err)` blocks that log and return without writing, so the comment adds nothing.
+    kind: restates
+    correction: |-
+      Remove the prose. The behavior is held by the `catch` blocks in maybeRefreshSummary and maybeDistillTitle, and the node already states the rule.
+    node: rules/chat/distillation-failure-changes-nothing
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      the docstring above SUMMARY_MAX_CHARS (lines 49-56) and step 4 of the maybeRefreshSummary docstring (lines 180-184)
+    evidence: |-
+      * `chat_conversation.summary_rolling`. Output longer than this is REFUSED:
+      * `summary_prev` stays unchanged for this refresh and the function logs
+      * WARN `chat.summary_refresh_overflow`.
+    cost: |-
+      The 2000-character cap is written in prose twice more, beside the node and beside `const SUMMARY_MAX_CHARS = 2000`. If the node's bound moves, these comments keep stating the old number.
+    kind: restates
+    correction: |-
+      Remove the prose. The bound is held by `SUMMARY_MAX_CHARS` and the `summary_new.length > SUMMARY_MAX_CHARS` refusal in this file.
+    node: rules/chat/rolling-summary-length
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      the maybeRefreshSummary docstring, policy steps 1-5 (lines 154-191)
+    evidence: |-
+      * BR-33 v2.9 — refresh `chat_conversation.summary_rolling` via INCREMENTAL
+      * FOLD when at least one real turn has fallen out of the recent window.
+    cost: |-
+      The refresh policy is narrated a second time in a docstring that names BR-33 and back-spec step numbers. A change to the policy node leaves the docstring describing the old gate. The code already holds the gate in `env.CHAT_SUMMARY_ENABLED`, `overflowCount === 0` and the fold call.
+    kind: restates
+    correction: |-
+      Remove the docstring's restated policy. The behavior is held by the gate and fold code in maybeRefreshSummary.
+    node: rules/chat/rolling-summary-refresh
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      the maybeDistillTitle docstring, policy steps 1-3 and 7 (lines 343-363)
+    evidence: |-
+      * BR-34 — derive a short title for a conversation that has none.
+      *   2. If `env.CHAT_TITLE_ENABLED === false`: return.
+      *   3. `repository.getFirstUserAndAssistant(conversation_id)` under
+      *      `withReadOnly`; if either side is null: return (the conversation
+      *      doesn't yet have a completed turn).
+    cost: |-
+      The title-distillation policy is stated in a docstring beside the code that applies it. A change to the node leaves a stale account in the file, and readers look in the comment instead of the specification.
+    kind: restates
+    correction: |-
+      Remove the docstring's restated policy. The code holds it in the `CHAT_TITLE_ENABLED` check and the `pair.user === null || pair.assistant === null` return.
+    node: rules/chat/title-distillation
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      maybeDistillTitle docstring steps 1 and 6 (lines 348-349, 357-358)
+    evidence: |-
+      *   1. `repository.getConversationById(conversation_id)` under `withReadOnly`;
+      *      if `title IS NOT NULL` OR row absent: return.
+      *   6. `repository.setTitleIfNull(conversation_id, title)` under
+      *      `withTransaction` — the `IF NULL` guard makes the operation idempotent.
+    cost: |-
+      The no-overwrite rule is restated in prose. The code holds it in `if (conversation.title !== null) return;` and the call to `repo.setTitleIfNull`, so the comment is only a second place to keep current.
+    kind: restates
+    correction: |-
+      Remove the prose. The rule is held by the `conversation.title !== null` guard in this file and by `repo.setTitleIfNull`, which is called from this file.
+    node: rules/chat/distilled-title-never-overwrites
+  - file: src/modules/chat/service/distillation.service.ts
+    where: |-
+      maybeDistillTitle docstring step 5 (line 356) and the comment above the length guard (lines 410-412)
+    evidence: |-
+      *   5. Trim; if empty OR length > 80: silently drop (BR-34 step 5).
+      // BR-34 step 5 — silently drop on empty or over-length output. The model
+      // is expected to obey the 80-char ceiling baked into the prompt; the
+      // guard is defensive.
+    cost: |-
+      The 1-to-80 title bound is written in two comments as well as in the node and in `TITLE_MAX_LENGTH = 80`. A change to the bound leaves the comments stating the old number.
+    kind: restates
+    correction: |-
+      Remove both comments. The bound is held by `TITLE_MAX_LENGTH` and the `candidate === "" || candidate.length > TITLE_MAX_LENGTH` guard in this file.
+    node: rules/chat/distilled-title-length
+read:
+  - node: rules/chat/distillation-failure-changes-nothing
+    held_at: |-
+      the `catch (err)` blocks ending maybeRefreshSummary and maybeDistillTitle, plus the early returns that precede every write
+    evidence: |-
+      } catch (err) {
+          logger.warn(
+            {
+              event: "chat.summary_refresh_failure",
+  - node: rules/chat/distilled-title-length
+    held_at: |-
+      `TITLE_MAX_LENGTH` and the guard in maybeDistillTitle, line 413
+    evidence: |-
+      const TITLE_MAX_LENGTH = 80;
+      const candidate = extractText(response).trim();
+      if (candidate === "" || candidate.length > TITLE_MAX_LENGTH) return;
+  - node: rules/chat/distilled-title-never-overwrites
+    held_at: |-
+      the `conversation.title !== null` return and the `repo.setTitleIfNull` write in maybeDistillTitle
+    evidence: |-
+      if (conversation.title !== null) return;
+      repo.setTitleIfNull(client, conversationId, candidate)
+  - node: rules/chat/rolling-summary-length
+    held_at: |-
+      `SUMMARY_MAX_CHARS` and the refusal guard in maybeRefreshSummary, lines 288-298
+    evidence: |-
+      const SUMMARY_MAX_CHARS = 2000;
+      const summary_new = extractText(response).trim();
+      if (summary_new === "") return;
+      if (summary_new.length > SUMMARY_MAX_CHARS) {
+  - node: rules/chat/rolling-summary-overlap
+    held_at: |-
+      the file only forwards the configured overlap to the repository slicer, `repo.listOlderMessagesForSummaryBounded(...)` in maybeRefreshSummary. The cut on an owner-written start is made in the repository, not here.
+    evidence: |-
+      repo.listOlderMessagesForSummaryBounded(
+        client,
+        conversationId,
+        env.CHAT_RECENT_WINDOW,
+        env.CHAT_SUMMARY_OVERLAP_M
+      )
+  - node: rules/chat/rolling-summary-refresh
+    held_at: |-
+      the gate and fold in maybeRefreshSummary, lines 208-283
+    evidence: |-
+      if (!env.CHAT_SUMMARY_ENABLED) return;
+      if (overflowCount === 0) return;
+      const composedMessages = mod.buildUserTurn(summary_prev, newMessages);
+  - node: rules/chat/summary-prompt-version-known
+    held_at: |-
+      nowhere. This file passes `env.CHAT_SUMMARY_PROMPT_VERSION` to `selectChatSummaryPromptModule`. The set of known versions and the refusal of an unknown one are not declared in this file.
+    evidence: |-
+      const mod = selectChatSummaryPromptModule(env.CHAT_SUMMARY_PROMPT_VERSION);
+  - node: rules/chat/title-distillation
+    held_at: |-
+      the gate and call in maybeDistillTitle, lines 371-407
+    evidence: |-
+      if (!env.CHAT_TITLE_ENABLED) return;
+      const pair = await withReadOnly(pool, (client) =>
+        repo.getFirstUserAndAssistant(client, conversationId)
+      );
+      if (pair.user === null || pair.assistant === null) return;
+looked_past: |-
+  The docstring says `max_tokens: 512` while the code passes `SUMMARY_MAX_TOKENS = 600`, and that value (like `TITLE_MAX_TOKENS = 64`) is a model-call tuning parameter and not a node fact, so I left both to a code or comment review.

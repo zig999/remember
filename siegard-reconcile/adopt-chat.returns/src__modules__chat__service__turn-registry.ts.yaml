@@ -1,0 +1,31 @@
+findings:
+  - file: src/modules/chat/service/turn-registry.ts
+    where: |-
+      the header comment, lines 1-30, and the docstring of register(), lines 37-40
+    evidence: |-
+      // chat.back.md v2.0.0 §1.1 / BR-28: "At most ONE in-flight turn per
+      // conversation is enforced by an in-process registry
+      // (`Map<conversation_id, AbortController>`), keyed by conversation id".
+    cost: |-
+      The one-turn-in-flight rule is stated a second time as prose beside the code that holds it. The prose cites a back-spec clause, BR-28, as its authority. A reader can take the comment for the place the rule was decided. If the node moves, nothing binds the comment to it, so the comment and the node can drift apart without anyone noticing.
+    kind: restates
+    correction: |-
+      Remove the comment prose. The Map declaration holds the fact, so the pair conforms. The file-to-node link belongs in the trace.
+    node: rules/chat/one-turn-in-flight
+
+read:
+  - node: rules/chat/one-turn-in-flight
+    held_at: |-
+      line 35, the declaration of the module-scoped registry. It is a Map keyed by conversation id with a single AbortController per key. Its operations are register() at line 41, get() at line 57 and release() at line 66.
+    evidence: |-
+      const registry: Map<string, AbortController> = new Map();
+
+      export function register(
+        conversationId: string,
+        controller: AbortController
+      ): void {
+        registry.set(conversationId, controller);
+      }
+
+looked_past: |-
+  The comments naming the 409 BUSINESS_TURN_IN_PROGRESS and 404 RESOURCE_NOT_FOUND outcomes, and the caller-side check-before-register ordering, are prose only and no code in this file emits or enforces them. register() overwrites silently and leaves the single-flight guard to its callers. That guard is in other files, outside this file set.

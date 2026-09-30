@@ -1,0 +1,165 @@
+findings:
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: |-
+      buildChatTurnRequestSchema and ChatMessageSchema, lines 27-58 (the v1 carry-over block)
+    evidence: |-
+      .min(1, "messages must contain at least 1 entry")
+      .max(
+        opts.maxHistoryMessages,
+        `messages must contain at most ${opts.maxHistoryMessages} entries`
+      ),
+      ...
+      .refine((v) => v.messages[0]?.role === "user", {
+        message: "first message must have role=user",
+        path: ["messages", 0, "role"],
+      });
+    cost: |-
+      The file exports a request shape that carries a history bound and a first-message-must-be-user rule. No node holds either. The contract's send-message operation takes one content string and a model, and the chat contract says the surface is carried by REST alone. The next reader who wants to know what a chat turn may carry would find a stateless multi-message contract here and nowhere in the specification. The schema is unused, per its own comment.
+    kind: unstated
+    correction: |-
+      Either remove the unused v1 export, or have the analysis give the v1 stateless turn shape a node if it is still meant to exist. The specification's send-message operation does not include it.
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: |-
+      UpdateConversationRequest .refine message, lines 89-99
+    evidence: |-
+      message:
+        "VALIDATION_REQUIRED_FIELD: at least one of title or archived_at must be present",
+      ...
+      // The `.refine` failure renders as `VALIDATION_INVALID_FORMAT` via the
+      // global ZodError handler.
+    cost: |-
+      The node answers a conversation update that names no field with HTTP 422, code VALIDATION_REQUIRED_FIELD, and the message "at least one of title or archived_at must be present". For a body that is an object naming neither field, this schema fails the refine and, by its own comment, renders VALIDATION_INVALID_FORMAT. It also puts the code name inside the message text, with a prefix the node does not give. A client that branches on the code for an empty update would see a different code depending on whether the body was absent or was `{}`.
+    kind: contradicts
+    correction: |-
+      The refusal for an update naming no field must answer VALIDATION_REQUIRED_FIELD with the node's message text. The schema's refine cannot do this alone while it renders through the ZodError handler.
+    node: contracts/chat/conversations
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: |-
+      comment above SaveGraphViewRequest, lines 179-184
+    evidence: |-
+      * Size cap on nodes/links (max 2000 each) bounds the JSONB blob.
+    cost: |-
+      The 2000 bound is stated in prose beside the code that enforces it. If the rule moves, the comment stays behind as a second, stale home for the number. The code holds it in this file at `.max(2000, "nodes must contain at most 2000 entries")` and `.max(2000, "links must contain at most 2000 entries")`.
+    kind: restates
+    correction: |-
+      Remove the comment. The rule is held by the node and by the schema.
+    node: rules/chat/graph-view-snapshot-bounds
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: |-
+      comment above UpdateConversationRequest, lines 78-83
+    evidence: |-
+      * `PATCH /api/v1/conversations/:id` body. BR-36 — at least one of `title`
+       * or `archived_at` must be present; empty body -> 422
+       * `VALIDATION_REQUIRED_FIELD`. `null` clears `title`, un-archives on
+       * `archived_at`.
+    cost: |-
+      The prose restates a rule the node holds and the `.refine` in this file enforces (`body.title !== undefined || body.archived_at !== undefined`). It also claims the error code for an empty body. That claim diverges from what the schema emits (see the contradicts finding on this file). A reader who trusts the comment will believe the code is VALIDATION_REQUIRED_FIELD.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/chat/conversation-update-names-a-field
+read:
+  - node: contracts/chat/conversations
+    held_at: |-
+      Request-side shapes only: CreateConversationRequest, UpdateConversationRequest, buildSendMessageRequestSchema, ListConversationsQuery, ListMessagesQuery, IdempotencyKeyHeader, ConversationIdParam, SaveGraphViewRequest. Responses, streaming and the refusal codes are not in this file. The update-names-a-field refusal is stated differently (see findings).
+    evidence: |-
+      export const CreateConversationRequest = z.object({
+        title: z.string().min(1).max(200).optional(),
+      });
+      ...
+      export const SaveGraphViewRequest = z.discriminatedUnion("version", [
+        GraphViewSnapshotV1,
+        GraphViewSnapshotV2,
+      ]);
+  - node: domain/chat/conversation-listing
+    held_at: |-
+      ListConversationsQuery, which declares limit, cursor and include_archived
+    evidence: |-
+      export const ListConversationsQuery = z.object({
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+        cursor: z.string().optional(),
+        include_archived: z
+  - node: domain/chat/graph-layout
+    held_at: |-
+      the layout_algorithm enumeration in GraphViewSnapshotV2
+    evidence: |-
+      layout_algorithm: z.enum(["force", "tree", "radial"]),
+  - node: domain/chat/graph-view
+    held_at: |-
+      the snapshot shape declared by GraphViewSnapshotBaseFields, GraphViewSnapshotV1, GraphViewSnapshotV2 and SaveGraphViewRequest. The updated_at attribute is not declared here.
+    evidence: |-
+      const GraphViewSnapshotV1 = z.object({
+        version: z.literal(1),
+        ...GraphViewSnapshotBaseFields,
+      });
+  - node: domain/chat/message-listing
+    held_at: |-
+      ListMessagesQuery, which declares limit and before
+    evidence: |-
+      export const ListMessagesQuery = z.object({
+        limit: z.coerce.number().int().min(1).max(200).default(50),
+        before: z.string().datetime().optional(),
+      });
+  - node: domain/chat/message-role
+    held_at: |-
+      ChatRoleSchema
+    evidence: |-
+      export const ChatRoleSchema = z.enum(["user", "assistant"]);
+  - node: domain/chat/turn
+    held_at: |-
+      Partly, in the request shape buildSendMessageRequestSchema (content, model) and in IdempotencyKeyHeader. The stop_reason and token attributes are not declared in this file.
+    evidence: |-
+      return z.object({
+        content: z
+          .string()
+          .min(1, "content must be a non-empty string")
+        ...
+        model: z.string().min(1).optional(),
+      });
+  - node: rules/chat/conversation-listing-excludes-archived
+    held_at: |-
+      the include_archived default in ListConversationsQuery. The filtering itself is not in this file.
+    evidence: |-
+      .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+        .default(false),
+  - node: rules/chat/conversation-listing-limit
+    held_at: |-
+      the limit field of ListConversationsQuery
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+  - node: rules/chat/conversation-title-length
+    held_at: |-
+      the title fields of CreateConversationRequest and UpdateConversationRequest
+    evidence: |-
+      title: z.union([z.string().min(1).max(200), z.null()]).optional(),
+  - node: rules/chat/conversation-update-names-a-field
+    held_at: |-
+      the .refine on UpdateConversationRequest
+    evidence: |-
+      (body) => body.title !== undefined || body.archived_at !== undefined,
+  - node: rules/chat/conversation-update-partial
+    held_at: |-
+      nowhere. The file only admits null for title and archived_at and accepts an ISO datetime. The partial-update and clear-on-empty behavior and the stamping as given are not in this file.
+    evidence: |-
+      title: z.union([z.string().min(1).max(200), z.null()]).optional(),
+      archived_at: z.union([z.string().datetime(), z.null()]).optional(),
+  - node: rules/chat/graph-view-snapshot-bounds
+    held_at: |-
+      GraphViewSnapshotBaseFields, the nodes and links arrays with their id-keyed element schemas
+    evidence: |-
+      nodes: z
+          .array(GraphSnapshotNode)
+          .max(2000, "nodes must contain at most 2000 entries"),
+  - node: rules/chat/message-listing-limit
+    held_at: |-
+      the limit field of ListMessagesQuery
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: |-
+      nowhere. The file only declares the optional `before` datetime. Ordering and page selection are not in this file.
+    evidence: |-
+      before: z.string().datetime().optional(),
+looked_past: |-
+  Comments citing BR numbers and docs/specs paths, and the comment that an `IdempotencyKeyHeader` failure is rendered by the route handler, are prose with no code of their own in this file (the handler lives in another file), so they belong to the comment route and not to this pass.
+candidates_opened: []

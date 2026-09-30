@@ -1,0 +1,76 @@
+findings:
+  - file: src/modules/chat/prompts/index.ts
+    where: |-
+      selectSummaryPromptModule(), lines 141-147 (the prompt text returned for the rolling-summary distillation job)
+    evidence: |-
+      "conversa em pt-BR e produza um RESUMO COMPACTO em pt-BR (no maximo 8",
+      "frases) que preserve:",
+      "- topicos discutidos,",
+      "- decisoes ou conclusoes alcancadas,",
+      "- identificadores e nomes mencionados (pessoas, projetos, datas),",
+      "- pontos em aberto.",
+    cost: |-
+      The summary is capped at 8 sentences and must preserve topics, decisions, identifiers and open points, and no node holds either rule. The only node that bounds a rolling summary (rolling-summary-length) states a 2000-character limit, and rolling-summary-folds says only "salient facts". This file becomes the place the summary's shape was decided, and a reader looking in the specification will not find it. The rules are also stated in text sent to a model, so a change to them never reaches a node or `--check`.
+    kind: unstated
+    correction: |-
+      Analysis would have to decide whether the sentence cap and the list of what a summary preserves are business facts. If they are, they need a node, most likely alongside rules/chat/rolling-summary-length or rules/chat/rolling-summary-folds.
+    node: rules/chat/rolling-summary-length
+  - file: src/modules/chat/prompts/index.ts
+    where: |-
+      selectTitlePromptModule(), lines 174-178 (the REGRAS list in the prompt text returned for the title distillation job)
+    evidence: |-
+      "2. Sem aspas, sem prefixos como 'Titulo:'.",
+      "3. Sem ponto final.",
+      "4. Sem emojis.",
+      "5. Responda APENAS com o titulo, em uma unica linha.",
+    cost: |-
+      The form of a distilled title is fixed here (no quotes, no prefix, no final period, no emoji, a single line) and no node states it. rules/chat/title-distillation gives only the trigger and the source messages, and rules/chat/distilled-title-length gives only the 80-character bound. The next reader who asks what a distilled title looks like will look in the specification and find no answer.
+    kind: unstated
+    correction: |-
+      Analysis would have to decide whether these title-form rules are business facts. If they are, they need a node, most likely as part of rules/chat/title-distillation or a sibling of it.
+    node: rules/chat/title-distillation
+read:
+  - node: domain/chat/chat-prompt-version
+    held_at: |-
+      the REGISTRY record (lines 86-91), which maps exactly the four modules v1, v2, v3 and v4 by their PROMPT_VERSION. The version literals themselves are declared in the v1.ts to v4.ts modules this file imports.
+    evidence: |-
+      const REGISTRY: Readonly<Record<string, ChatPromptModule>> = {
+        [v1.PROMPT_VERSION]: V1,
+        [v2.PROMPT_VERSION]: V2,
+        [v3.PROMPT_VERSION]: V3,
+        [v4.PROMPT_VERSION]: V4,
+      };
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: |-
+      nowhere. This file only forwards the marker of each module. The prompt bodies that must begin with it are built in v1.ts to v4.ts.
+    evidence: |-
+      marker: v4.CHAT_PROMPT_MARKER_V1,
+      system: v4.system,
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: |-
+      nowhere. This file only types the builder as taking the catalog. The ontology block is rendered in the v3 and v4 modules.
+    evidence: |-
+      readonly system: (catalog: CatalogSnapshot) => string;
+  - node: rules/chat/chat-prompt-version-known
+    held_at: |-
+      selectChatPromptModule() and UnknownChatPromptVersionError, lines 98-119
+    evidence: |-
+      const module = REGISTRY[promptVersion];
+      if (module === undefined) {
+        throw new UnknownChatPromptVersionError(promptVersion);
+      }
+  - node: rules/chat/default-chat-prompt-version
+    held_at: |-
+      DEFAULT_CHAT_PROMPT_VERSION, line 84
+    evidence: |-
+      export const DEFAULT_CHAT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+  - node: rules/chat/distilled-title-length
+    held_at: |-
+      the 80-character ceiling stated in the prompt text of selectTitlePromptModule(), line 171. The text states the bound truthfully. The trimmed minimum of one character and the enforcement are not in this file.
+    evidence: |-
+      "pt-BR com NO MAXIMO 80 caracteres.",
+looked_past: |-
+  The comments above selectTitlePromptModule() and the registry say the route handler drops titles over 80 characters and that the registry fails at boot. That is prose, and whether code elsewhere holds it belongs to the comment route and to the judgments of the files that hold it.
+candidates_opened:
+  - rules/chat/rolling-summary-length
+  - rules/chat/title-distillation

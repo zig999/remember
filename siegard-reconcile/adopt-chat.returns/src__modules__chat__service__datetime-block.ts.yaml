@@ -1,0 +1,38 @@
+findings:
+  - file: src/modules/chat/service/datetime-block.ts
+    where: >-
+      ISO_PREFIX (line 20) and the template in renderDatetimeBlockB(), line 37
+    evidence: |-
+      const ISO_PREFIX = "Data/hora atual do dono: " as const;
+      return `${ISO_PREFIX}${iso} (${tz})`;
+    cost: |-
+      The text sent to the model has a fixed shape: a pt-BR label, then the ISO time, then the zone identifier in parentheses. The node says only that the assistant is given the date and time in the owner's zone as ISO-8601 with its offset. No node holds the label wording or the requirement to name the zone id. The shape is held only in this file, and the next reader looking in the specification will not find it.
+    kind: unstated
+    correction: |-
+      Either give the model-context node (or a sibling node) the shape of what the model is told, including whether the zone identifier is named, or drop the extra element.
+    node: rules/chat/model-context-owner-time
+  - file: src/modules/chat/service/datetime-block.ts
+    where: >-
+      the fallbacks in formatIsoWithOffset() (line 85, `let raw = "+00:00"`) and normalizeShortOffset() (lines 112 and 115)
+    evidence: |-
+      let raw = "+00:00";
+      if (raw === "GMT" || raw === "UTC") return "+00:00";
+      if (m === null) return "+00:00";
+    cost: |-
+      When ICU returns an offset shape the regex does not recognise, the code pairs the owner's wall-clock time with "+00:00". That produces a wrong instant. The node requires the time "with its offset", and no node says what to do when the offset cannot be determined. Only this file holds the silent UTC default, so the next reader looking in the specification will not find it.
+    kind: unstated
+    correction: |-
+      Decide in the specification what the assistant is told when the owner's offset cannot be determined. A node can state a default, such as UTC, or a refusal.
+    node: rules/chat/model-context-owner-time
+read:
+  - node: rules/chat/model-context-owner-time
+    held_at: >-
+      renderDatetimeBlockB() and formatIsoWithOffset(), lines 35-94. They render the instant as local wall-clock `YYYY-MM-DDTHH:mm:ss` in the requested zone plus an ISO `±HH:MM` offset. The "with every turn" part is not held in this file; it belongs to the caller.
+    evidence: |-
+      const iso = formatIsoWithOffset(now, tz);
+      return `${ISO_PREFIX}${iso} (${tz})`;
+      const datePart = `${parts.year}-${parts.month}-${parts.day}T${hh}:${parts.minute}:${parts.second}`;
+      return `${datePart}${offsetTail}`;
+looked_past: >-
+  The header comments cite BR-47 and claim `OWNER_TZ` is validated at boot and that `now` is captured once per turn. These are prose only and not code in this file, so I did not report them.
+candidates_opened: []

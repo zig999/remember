@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/chat/service/message-sequence.ts
+    where: |-
+      the header comment (lines 1-23) and the docstring of sanitizeAnthropicSequence (lines 56-69)
+    evidence: |-
+      // `sanitizeAnthropicSequence` trims those boundary artefacts so ANY contiguous
+      // slice of correctly-ordered rows becomes a valid request by construction. It
+      // is intentionally conservative: it only drops from the two ends and removes
+      // empty-content rows; it never reorders or rewrites a block.
+
+       *   1. Drop every empty-content message (any role) — Anthropic rejects them.
+       *   2. Drop from the FRONT while the first message is an `assistant` message
+       *      OR a `user` message carrying a `tool_result` block — i.e. until the
+       *      sequence starts on a clean user turn.
+       *   3. Drop from the BACK while the last message is an `assistant` message
+       *      carrying a `tool_use` block whose paired `tool_result` is absent.
+    cost: |-
+      The same rule is written out in prose here, so a change to the node leaves this text stating the old rule. No binding tracks the prose. The code in this file (the filter and the two trim loops) already holds the fact, so the prose is a second home that owes only its removal.
+    kind: restates
+    correction: |-
+      Remove the header comment and the docstring through the comment route, then run /reconcile over this file. The code in this file holds the fact.
+    node: rules/chat/model-context-well-formed
+  - file: src/modules/chat/service/message-sequence.ts
+    where: |-
+      hasBlocks() and its use in step (1) of sanitizeAnthropicSequence, lines 30-32 and 74
+    evidence: |-
+      function hasBlocks(content: unknown): content is unknown[] {
+        return Array.isArray(content) && content.length > 0;
+      }
+      let arr = messages.filter((m) => hasBlocks(m.content));
+    cost: |-
+      The node leaves out only messages without content and keeps every other message unchanged. The input type, Anthropic's MessageParam, admits a non-empty string as `content`. Such a message has content, but hasBlocks returns false for it, so it is silently dropped from the history given to the assistant. Whether this bites depends on callers outside this file set, which always map rows to block arrays. The code holds the stricter condition "is a non-empty array" where the node says "has content".
+    kind: contradicts
+    correction: |-
+      Either treat a non-empty string `content` as content in the filter, or have the specification state that only block-array content is considered. I cannot say which was decided.
+    node: rules/chat/model-context-well-formed
+read:
+  - node: domain/chat/message-role
+    held_at: nowhere
+    evidence: |-
+      The file declares no shape for the role. It only compares values of Anthropic's type: `if (m.role === "assistant") {` and `if (m.role === "user" && contentHasToolResult(m.content)) {`
+  - node: rules/chat/model-context-well-formed
+    held_at: |-
+      sanitizeAnthropicSequence, lines 70-106: the empty-content filter, the leading-trim loop and the trailing-trim loop
+    evidence: |-
+      let arr = messages.filter((m) => hasBlocks(m.content));
+      if (m.role === "assistant") { start += 1; continue; }
+      if (m.role === "user" && contentHasToolResult(m.content)) { start += 1; continue; }
+      if (m.role === "assistant" && contentHasToolUse(m.content)) { end -= 1; continue; }
+looked_past: |-
+  The comments cite BR-31, BR-33 and chat.back.md v2.2 as the reason the function exists, which is prose and not a fact of these nodes.
