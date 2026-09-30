@@ -13,6 +13,16 @@ scope: knowledge-base
 
 None.
 
+=== constraints/retrieval-is-lexical-only
+---
+statement: Retrieval matches text only lexically and never by embeddings or semantic similarity.
+scope: knowledge-base
+---
+
+## Description
+
+A synonym or paraphrase that shares no characters with what the knowledge base holds is not found; curation is where such a gap is closed.
+
 === constraints/retrieval-is-read-only
 ---
 statement: Every retrieval operation runs inside a read-only transaction.
@@ -24,9 +34,19 @@ fitness: each retrieval operation's database transaction is opened read-only
 
 None.
 
+=== constraints/retrieval-requires-owner-authentication
+---
+statement: Every retrieval operation authenticates the owner before it reads anything.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
 === constraints/retrieval-transports-answer-alike
 ---
-statement: 'The REST and MCP transports answer every retrieval operation they both expose as `{ ok, result }` on success and as `{ ok: false, error: { code, message, details } }` on refusal, with the same error codes.'
+statement: The REST and MCP transports answer every retrieval operation they both expose with the same result on success and the same error code on refusal.
 scope: knowledge-base
 ---
 
@@ -48,17 +68,38 @@ answers:
 - operation: search
   accepted: '`{ ok: true, result }` carrying the page of ranked search items, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
   refusals:
+  - &auth
+    when: The request carries no valid owner authentication.
+    answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
+  - rule: rules/knowledge-base/search-query-not-blank
+    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
+  - rule: rules/knowledge-base/search-query-length
+    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
   - rule: rules/knowledge-base/search-query-must-parse
     answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
   - rule: rules/knowledge-base/search-layer-outside-set-refused
     answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_LAYER, naming the allowed layers
   - rule: rules/knowledge-base/unknown-link-type-refused
     answer: HTTP 422, error code BUSINESS_UNKNOWN_LINK_TYPE
+  - rule: rules/knowledge-base/expansion-depth-bounds
+    answer: HTTP 422, error code BUSINESS_INVALID_TRAVERSE_DEPTH
+  - when: The as-of date is not a calendar date written as year-month-day.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
+  - &limit
+    rule: rules/knowledge-base/page-limit-bounds
+    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
+  - &offset
+    rule: rules/knowledge-base/page-offset-non-negative
+    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
 - operation: read-link-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
+  - *auth
+  - &id-format
+    when: The requested identity is not a well-formed identifier.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - when: No knowledge link is held at the requested identity.
-    answer: HTTP 404 reporting not found
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND
   - &id001
     rule: rules/knowledge-base/provenance-refused-after-compliance-deletion
     answer: HTTP 410, error code BUSINESS_RAW_INFORMATION_DELETED, naming the earliest compliance deletion
@@ -68,21 +109,33 @@ answers:
 - operation: read-attribute-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
+  - *auth
+  - *id-format
   - when: No node attribute is held at the requested identity.
-    answer: HTTP 404 reporting not found
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND
   - *id001
   - *id002
 - operation: read-fragment-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
+  - *auth
+  - *id-format
   - when: No information fragment is held at the requested identity.
-    answer: HTTP 404 reporting not found
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND
   - rule: rules/knowledge-base/provenance-requires-accepted-fragment
     answer: HTTP 404, error code BUSINESS_FRAGMENT_NOT_ACCEPTED
   - *id001
   - *id002
 - operation: list-accepted-fragments
   accepted: '`{ ok: true, result }` carrying the page of accepted fragments, each with its text, confidence, LLM run, creation time and source (raw information, chunk index, source type, reception time, document title)'
+  refusals:
+  - *auth
+  - rule: rules/knowledge-base/listing-requires-a-filter
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the two filters of which one is required
+  - when: A named LLM run or raw information is not a well-formed identifier.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the offending filter
+  - *limit
+  - *offset
 ---
 
 ## Description
@@ -152,11 +205,51 @@ entries:
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
-- location: rules/knowledge-base/search-keeps-compliance-deleted-sources.md
+- location: rules/knowledge-base/search-excludes-compliance-deleted-sources.md
   field: consistency
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/search-excludes-compliance-deleted-sources.md
+  field: statement
+  unstated: 'The first increment''s material showed search surfacing an accepted fragment whose raw information has a compliance deletion, while the documentation says deleted content never recirculates and that compliance deletion marks the fragments deleted; the two decide differently for an accepted fragment of a compliance-deleted source.'
+  decided: Search shows no information fragment whose raw information was deleted for compliance, as an item or as support, replacing the node that said search keeps such fragments.
+  why: The documentation states the business's intent for deleted sources, and the first material only described what the code does.
+- location: rules/knowledge-base/compliance-refusal-takes-precedence.md
+  field: statement
+  unstated: The standing node put the compliance refusal ahead of every other, while the documentation puts the refusal of a fragment that is not accepted ahead of it; the two decide differently for a fragment provenance read of a non-accepted fragment whose source was deleted for compliance.
+  decided: The compliance refusal comes first except against the refusal of a fragment that is not accepted.
+  why: The documentation states this precedence explicitly as the order of the three provenance refusals.
+- location: constraints/retrieval-transports-answer-alike.md
+  field: statement
+  unstated: The standing node had MCP answer in the REST envelope, while the documentation has MCP answer in its own content and error framing with the same payload and the same error codes; the two decide differently for the shape of an MCP success.
+  decided: The two transports carry the same result and the same error code, and the constraint no longer fixes the framing.
+  why: The documentation states repeatedly that the envelope is REST-only and that only the payload and the codes must match.
+- location: domain/knowledge-base/fragment-status.md
+  field: values
+  unstated: The documentation lists four fragment states and leaves out superseded, which the standing node holds; the two decide differently for a fragment that was superseded.
+  decided: The five values stand, superseded included.
+  why: The first increment's material is the newer reading of the states fragments are held in, and the documentation's list predates it.
+- location: domain/knowledge-base/item-kind.md
+  field: values
+  unstated: The system specification lists attribute as a search item kind, while the domain documentation says an attribute is never a search item; the two decide differently for a node attribute matching a search.
+  decided: node, link and fragment, with attribute not a kind.
+  why: The domain documentation states the exclusion deliberately and the standing node already holds it.
+- location: domain/knowledge-base/knowledge-link.md
+  field: attributes.valid_from.type
+  unstated: The material compares a link's validity start with a date without naming its type.
+  decided: date
+  why: The as-of date it is compared with is a calendar date.
+- location: domain/knowledge-base/knowledge-link.md
+  field: attributes.valid_to.type
+  unstated: The material compares a link's validity end with a date without naming its type.
+  decided: date
+  why: The as-of date it is compared with is a calendar date.
+- location: rules/knowledge-base/compliance-deletion-propagates.md
+  field: consistency
+  unstated: The material does not say how this propagation holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
 ---
 
 ## Description
@@ -334,6 +427,10 @@ attributes:
   required: true
 - name: recorded_at
   type: datetime
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
 - name: provenance
   type: provenance
   many: true
@@ -373,6 +470,10 @@ relationships:
 - target: node-alias
   type: composition
   cardinality: 1..*
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: merged-into
 ---
 
 ## Description
@@ -580,7 +681,7 @@ attributes:
 relationships:
 - target: information-fragment
   type: association
-  cardinality: 0..*
+  cardinality: 1..*
   role: provenance
 ---
 
@@ -692,6 +793,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/chunk-match-cites-its-fragment
+---
+type: invariant
+statement: A chunk-layer match that supports an information fragment the search matched is shown as that fragment's excerpt in the fragment's search item.
+constrains:
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/chunk-match-never-surfaces
 ---
 type: invariant
@@ -704,10 +817,38 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/chunk-offsets-count-code-points
+---
+type: invariant
+statement: A raw chunk's start and end offsets count Unicode code points, the start inclusive and the end exclusive.
+constrains:
+- domain/knowledge-base/raw-chunk
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-propagates
+---
+type: policy
+statement: A compliance deletion marks deleted the information fragments of its raw information and every knowledge link and node attribute whose only provenance is one of those fragments.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/information-fragment
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/compliance-refusal-takes-precedence
 ---
 type: policy
-statement: A provenance read whose chain reaches a compliance deletion is refused for that deletion ahead of any other refusal the read would meet.
+statement: A provenance read whose chain reaches a compliance deletion is refused for that deletion ahead of any other refusal the read would meet, except the refusal of a fragment that is not accepted.
 constrains:
 - domain/knowledge-base/provenance
 - domain/knowledge-base/compliance-deletion
@@ -736,6 +877,32 @@ statement: A knowledge link expansion reaches surfaces as a search item only whe
 constrains:
 - domain/knowledge-base/knowledge-link
 - domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expansion-as-of-view
+---
+type: policy
+statement: Expansion under a query that names an as-of date reaches only knowledge links whose validity has no start or starts on or before that date and has no end or ends after it.
+constrains:
+- domain/knowledge-base/search-query
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expansion-current-view
+---
+type: policy
+statement: Expansion under a query that names no as-of date reaches only knowledge links that have no validity end.
+constrains:
+- domain/knowledge-base/search-query
+- domain/knowledge-base/knowledge-link
 ---
 
 ## Description
@@ -779,12 +946,61 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/expansion-in-effect-only
+---
+type: policy
+statement: Expansion under an in-effect-only query reaches no knowledge link whose validity starts after the query's as-of date, or after today when the query names none.
+constrains:
+- domain/knowledge-base/search-query
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expansion-reaches-merged-node-survivor
+---
+type: invariant
+statement: Expansion that reaches a merged knowledge node reaches the knowledge node it was merged into in its place.
+constrains:
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/expansion-restricted-to-named-link-types
 ---
 type: policy
 statement: Expansion under a query that names link types follows only links of those types.
 constrains:
 - domain/knowledge-base/search-query
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expansion-skips-deleted-nodes
+---
+type: invariant
+statement: Expansion never reaches a knowledge node whose status is deleted.
+constrains:
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+---
+type: invariant
+statement: Expansion never reaches a knowledge link whose status is superseded or deleted.
+constrains:
 - domain/knowledge-base/knowledge-link
 ---
 
@@ -799,6 +1015,18 @@ statement: A search that expands does so through the knowledge graph from its ma
 constrains:
 - domain/knowledge-base/search-query
 - domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/fragment-item-summary
+---
+type: invariant
+statement: A fragment search item's summary is the information fragment's text.
+constrains:
+- domain/knowledge-base/search-item
 ---
 
 ## Description
@@ -935,6 +1163,31 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/listing-total-before-pagination
+---
+type: invariant
+statement: An accepted-fragment listing's total counts every entry before the page is cut.
+constrains:
+- domain/knowledge-base/accepted-fragment-filter
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-item-summary
+---
+type: invariant
+statement: A node search item's summary is the knowledge node's canonical name.
+constrains:
+- domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-layer-matches-through-aliases
 ---
 type: policy
@@ -1063,10 +1316,10 @@ constrains:
 
 None.
 
-=== rules/knowledge-base/search-keeps-compliance-deleted-sources
+=== rules/knowledge-base/search-excludes-compliance-deleted-sources
 ---
 type: policy
-statement: Search matches and surfaces information fragments whether or not their raw information was deleted for compliance.
+statement: Search shows no information fragment whose raw information was deleted for compliance, neither as a search item nor as the support of one.
 constrains:
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/compliance-deletion
@@ -1202,6 +1455,23 @@ constrains:
 
 None.
 
+=== scenarios/knowledge-base/listing-for-unknown-source-is-empty
+---
+subject: contracts/knowledge-base/retrieval
+given:
+- no information fragment was produced by the named LLM run or drawn from the named raw information
+when:
+- the owner lists accepted fragments for that source
+then:
+- the listing is accepted
+- the total is 0
+- no entry is listed
+---
+
+## Description
+
+None.
+
 === scenarios/knowledge-base/stop-words-only-query
 ---
 subject: rules/knowledge-base/search-query-must-parse
@@ -1217,3 +1487,20 @@ then:
 ## Description
 
 The query has characters, so it passes the length and blank checks, and still yields no search term.
+
+=== scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+---
+subject: contracts/knowledge-base/retrieval
+given:
+- the knowledge base holds knowledge about "Projeto Apollo" and nothing that shares characters with "Iniciativa Lunar"
+when:
+- the owner searches for "Iniciativa Lunar"
+then:
+- the search is accepted
+- the total is 0
+- no search item is returned
+---
+
+## Description
+
+None.

@@ -6,6 +6,10 @@ attributes:
   required: true
 - name: recorded_at
   type: datetime
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
 - name: provenance
   type: provenance
   many: true

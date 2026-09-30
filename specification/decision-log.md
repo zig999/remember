@@ -60,11 +60,51 @@ entries:
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
-- location: rules/knowledge-base/search-keeps-compliance-deleted-sources.md
+- location: rules/knowledge-base/search-excludes-compliance-deleted-sources.md
   field: consistency
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/search-excludes-compliance-deleted-sources.md
+  field: statement
+  unstated: 'The first increment''s material showed search surfacing an accepted fragment whose raw information has a compliance deletion, while the documentation says deleted content never recirculates and that compliance deletion marks the fragments deleted; the two decide differently for an accepted fragment of a compliance-deleted source.'
+  decided: Search shows no information fragment whose raw information was deleted for compliance, as an item or as support, replacing the node that said search keeps such fragments.
+  why: The documentation states the business's intent for deleted sources, and the first material only described what the code does.
+- location: rules/knowledge-base/compliance-refusal-takes-precedence.md
+  field: statement
+  unstated: The standing node put the compliance refusal ahead of every other, while the documentation puts the refusal of a fragment that is not accepted ahead of it; the two decide differently for a fragment provenance read of a non-accepted fragment whose source was deleted for compliance.
+  decided: The compliance refusal comes first except against the refusal of a fragment that is not accepted.
+  why: The documentation states this precedence explicitly as the order of the three provenance refusals.
+- location: constraints/retrieval-transports-answer-alike.md
+  field: statement
+  unstated: The standing node had MCP answer in the REST envelope, while the documentation has MCP answer in its own content and error framing with the same payload and the same error codes; the two decide differently for the shape of an MCP success.
+  decided: The two transports carry the same result and the same error code, and the constraint no longer fixes the framing.
+  why: The documentation states repeatedly that the envelope is REST-only and that only the payload and the codes must match.
+- location: domain/knowledge-base/fragment-status.md
+  field: values
+  unstated: The documentation lists four fragment states and leaves out superseded, which the standing node holds; the two decide differently for a fragment that was superseded.
+  decided: The five values stand, superseded included.
+  why: The first increment's material is the newer reading of the states fragments are held in, and the documentation's list predates it.
+- location: domain/knowledge-base/item-kind.md
+  field: values
+  unstated: The system specification lists attribute as a search item kind, while the domain documentation says an attribute is never a search item; the two decide differently for a node attribute matching a search.
+  decided: node, link and fragment, with attribute not a kind.
+  why: The domain documentation states the exclusion deliberately and the standing node already holds it.
+- location: domain/knowledge-base/knowledge-link.md
+  field: attributes.valid_from.type
+  unstated: The material compares a link's validity start with a date without naming its type.
+  decided: date
+  why: The as-of date it is compared with is a calendar date.
+- location: domain/knowledge-base/knowledge-link.md
+  field: attributes.valid_to.type
+  unstated: The material compares a link's validity end with a date without naming its type.
+  decided: date
+  why: The as-of date it is compared with is a calendar date.
+- location: rules/knowledge-base/compliance-deletion-propagates.md
+  field: consistency
+  unstated: The material does not say how this propagation holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
 ---
 
 ## Description

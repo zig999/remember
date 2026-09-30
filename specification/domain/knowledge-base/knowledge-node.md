@@ -11,6 +11,10 @@ relationships:
 - target: node-alias
   type: composition
   cardinality: 1..*
+- target: knowledge-node
+  type: reference
+  cardinality: 0..1
+  role: merged-into
 ---
 
 ## Description

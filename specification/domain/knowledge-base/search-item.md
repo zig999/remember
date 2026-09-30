@@ -19,7 +19,7 @@ attributes:
 relationships:
 - target: information-fragment
   type: association
-  cardinality: 0..*
+  cardinality: 1..*
   role: provenance
 ---
 
