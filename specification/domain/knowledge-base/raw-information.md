@@ -13,6 +13,13 @@ attributes:
   type: string
 - name: original_input
   type: string
+- name: content_hash
+  type: string
+  required: true
+- name: document_date
+  type: date
+- name: storage_ref
+  type: string
 relationships:
 - target: raw-chunk
   type: composition

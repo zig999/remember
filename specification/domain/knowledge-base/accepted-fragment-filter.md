@@ -1,12 +1,13 @@
 ---
 type: value-object
 attributes:
-- name: llm_run
-  type: string
 - name: page
   type: page
 relationships:
 - target: raw-information
+  type: reference
+  cardinality: 0..1
+- target: llm-run
   type: reference
   cardinality: 0..1
 ---

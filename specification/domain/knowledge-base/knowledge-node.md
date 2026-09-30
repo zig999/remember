@@ -15,6 +15,9 @@ relationships:
   type: reference
   cardinality: 0..1
   role: merged-into
+- target: node-type
+  type: reference
+  cardinality: '1'
 ---
 
 ## Description

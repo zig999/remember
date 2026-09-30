@@ -5,6 +5,9 @@ attributes:
 - name: alias
   type: string
   required: true
+- name: kind
+  type: alias-kind
+  required: true
 ---
 
 ## Description

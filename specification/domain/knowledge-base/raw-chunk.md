@@ -15,6 +15,8 @@ attributes:
   type: string
 - name: superseded_at
   type: datetime
+- name: chunking_version
+  type: string
 ---
 
 ## Description

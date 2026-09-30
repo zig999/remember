@@ -1,8 +1,25 @@
 classDiagram
+    namespace AttributeKeyAggregate {
+        class AttributeKey {
+            <<AggregateRoot>>
+            +string key
+            +ValueType valueType
+            +boolean isTemporal
+            +boolean allowsMultipleCurrent
+            +boolean requiresValidFrom
+            +string[] allowedValues
+        }
+    }
     namespace ComplianceDeletionAggregate {
         class ComplianceDeletion {
             <<AggregateRoot>>
             +datetime executedAt
+        }
+    }
+    namespace EntityMatchReviewAggregate {
+        class EntityMatchReview {
+            <<AggregateRoot>>
+            +decimal similarity
         }
     }
     namespace InformationFragmentAggregate {
@@ -12,7 +29,6 @@ classDiagram
             +decimal confidence
             +FragmentStatus status
             +datetime createdAt
-            +string llmRun
         }
     }
     namespace KnowledgeLinkAggregate {
@@ -23,6 +39,9 @@ classDiagram
             +date validFrom
             +date validTo
             +Provenance[] provenance
+            +ValidFromBasis validFromBasis
+            +decimal confidence
+            +datetime supersededAt
         }
     }
     namespace KnowledgeNodeAggregate {
@@ -34,19 +53,66 @@ classDiagram
         class NodeAlias {
             <<Entity>>
             +string alias
+            +AliasKind kind
         }
     }
     namespace LinkTypeAggregate {
         class LinkType {
             <<AggregateRoot>>
             +string name
+            +boolean isTemporal
+            +boolean allowsMultipleCurrent
+            +boolean requiresValidFrom
+            +boolean requiresValidToOnChange
+        }
+        class LinkTypeRule {
+            <<Entity>>
+            +date validFrom
+            +date validTo
+        }
+    }
+    namespace LLMRunAggregate {
+        class LLMRun {
+            <<AggregateRoot>>
+            +string model
+            +string promptVersion
+            +RunStatus status
+            +integer attempts
+            +datetime startedAt
+            +datetime finishedAt
+            +string idempotencyKey
+            +RunSummary summary
+            +complete()
+            +fail()
+            +retry()
+        }
+        class ToolCall {
+            <<Entity>>
+            +IngestTool toolName
+            +string arguments
+            +string result
+            +ValidationOutcome validationOutcome
+            +datetime createdAt
         }
     }
     namespace NodeAttributeAggregate {
         class NodeAttribute {
             <<AggregateRoot>>
+            +string value
             +AssertionStatus status
             +Provenance[] provenance
+            +date validFrom
+            +date validTo
+            +ValidFromBasis validFromBasis
+            +decimal confidence
+            +datetime supersededAt
+        }
+    }
+    namespace NodeTypeAggregate {
+        class NodeType {
+            <<AggregateRoot>>
+            +string name
+            +string description
         }
     }
     namespace RawInformationAggregate {
@@ -58,6 +124,7 @@ classDiagram
             +string excerpt
             +string locator
             +datetime supersededAt
+            +string chunkingVersion
         }
         class RawInformation {
             <<AggregateRoot>>
@@ -66,12 +133,19 @@ classDiagram
             +string title
             +string metadata
             +string originalInput
+            +string contentHash
+            +date documentDate
+            +string storageRef
         }
     }
     class AcceptedFragmentFilter {
         <<ValueObject>>
-        +string llmRun
         +Page page
+    }
+    class AliasKind {
+        <<Enumeration>>
+        CANONICAL
+        ALIAS
     }
     class AssertionFlag {
         <<Enumeration>>
@@ -87,6 +161,42 @@ classDiagram
         SUPERSEDED
         DELETED
     }
+    class ChangeHint {
+        <<Enumeration>>
+        NONE
+        SUCCESSION
+        CORRECTION
+    }
+    class DirectedIngestion {
+        <<ValueObject>>
+        +string sourceLabel
+        +DirectedItem[] items
+    }
+    class DirectedItem {
+        <<ValueObject>>
+        +string ref
+        +DirectedItemKind kind
+        +DirectedItemStatus status
+    }
+    class DirectedItemKind {
+        <<Enumeration>>
+        FRAGMENT
+        NODE
+        ATTRIBUTE
+        LINK
+    }
+    class DirectedItemStatus {
+        <<Enumeration>>
+        ACCEPTED
+        CONSOLIDATED
+        SUPERSEDED_PREVIOUS
+        NEEDS_REVIEW
+        UNCERTAIN
+        DISPUTED
+        REJECTED
+        ERROR
+        DEPENDENCY_FAILED
+    }
     class FragmentStatus {
         <<Enumeration>>
         PROPOSED
@@ -95,11 +205,24 @@ classDiagram
         SUPERSEDED
         DELETED
     }
+    class IngestTool {
+        <<Enumeration>>
+        PROPOSE_FRAGMENT
+        PROPOSE_NODE
+        PROPOSE_LINK
+        PROPOSE_ATTRIBUTE
+    }
     class ItemKind {
         <<Enumeration>>
         NODE
         LINK
         FRAGMENT
+    }
+    class NodeResolution {
+        <<Enumeration>>
+        MATCHED_EXISTING
+        CREATED_NEW
+        NEEDS_REVIEW
     }
     class NodeStatus {
         <<Enumeration>>
@@ -113,9 +236,43 @@ classDiagram
         +integer limit
         +integer offset
     }
+    class PromptVersion {
+        <<Enumeration>>
+        V1
+        V2
+        V3
+        V4
+    }
+    class Proposal {
+        <<ValueObject>>
+        +IngestTool kind
+        +decimal confidence
+        +ChangeHint changeHint
+        +date validFrom
+        +date validTo
+        +ValidFromBasis validFromBasis
+    }
     class Provenance {
         <<ValueObject>>
         +datetime recordedAt
+    }
+    class RunStatus {
+        <<Enumeration>>
+        RUNNING
+        COMPLETED
+        FAILED
+    }
+    class RunSummary {
+        <<ValueObject>>
+        +integer accepted
+        +integer consolidated
+        +integer supersededPrevious
+        +integer needsReview
+        +integer uncertain
+        +integer disputed
+        +integer rejected
+        +integer error
+        +integer orphanedFragments
     }
     class SearchItem {
         <<ValueObject>>
@@ -154,15 +311,58 @@ classDiagram
         TRANSCRIPT
         OTHER
     }
+    class ValidFromBasis {
+        <<Enumeration>>
+        STATED
+        DOCUMENT
+        RECEIVED
+    }
+    class ValidationOutcome {
+        <<Enumeration>>
+        ACCEPTED
+        CONSOLIDATED
+        SUPERSEDED_PREVIOUS
+        NEEDS_REVIEW
+        UNCERTAIN
+        DISPUTED
+        REJECTED
+        ERROR
+    }
+    class ValueType {
+        <<Enumeration>>
+        DATE
+        NUMBER
+        TEXT
+        BOOL
+    }
     AcceptedFragmentFilter "0..*" --> "0..1" RawInformation
+    AcceptedFragmentFilter "0..*" --> "0..1" LLMRun
+    AttributeKey "0..*" --> "1" NodeType
     ComplianceDeletion "0..*" --> "1" RawInformation
+    EntityMatchReview "0..*" --> "1" KnowledgeNode : node
+    EntityMatchReview "0..*" --> "1" KnowledgeNode : candidate
     InformationFragment "0..*" -- "1..*" RawChunk : source
+    InformationFragment "0..*" --> "1" LLMRun
     KnowledgeLink "0..*" --> "1" KnowledgeNode : source
     KnowledgeLink "0..*" --> "1" KnowledgeNode : target
     KnowledgeLink "0..*" --> "1" LinkType
+    KnowledgeLink "0..*" --> "1" LLMRun
+    KnowledgeLink "0..*" --> "0..1" KnowledgeLink : supersedes
     KnowledgeNode "1" *-- "1..*" NodeAlias
     KnowledgeNode "0..*" --> "0..1" KnowledgeNode : mergedInto
+    KnowledgeNode "0..*" --> "1" NodeType
+    LinkType "1" *-- "0..*" LinkTypeRule
+    LinkTypeRule "0..*" --> "1" NodeType : source
+    LinkTypeRule "0..*" --> "1" NodeType : target
+    LLMRun "0..*" --> "1" RawInformation
+    LLMRun "1" *-- "0..*" ToolCall
     NodeAttribute "0..*" --> "1" KnowledgeNode
+    NodeAttribute "0..*" --> "1" AttributeKey
+    NodeAttribute "0..*" --> "1" LLMRun
+    NodeAttribute "0..*" --> "0..1" NodeAttribute : supersedes
+    Proposal "0..*" --> "1" LLMRun
+    Proposal "0..*" -- "0..*" InformationFragment : evidence
+    Proposal "0..*" -- "0..*" RawChunk : source
     Provenance "0..*" --> "1" InformationFragment
     RawInformation "1" *-- "1..*" RawChunk
     SearchItem "0..*" -- "1..*" InformationFragment : provenance

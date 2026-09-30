@@ -105,6 +105,234 @@ entries:
   unstated: The material does not say how this propagation holds across the separate records it changes.
   decided: eventual
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- location: domain/knowledge-base/information-fragment.md
+  field: attributes.llm_run.type
+  retired: The fragment's LLM run is now the reference to domain/knowledge-base/llm-run in information-fragment's relationships.
+- location: domain/knowledge-base/llm-run.md
+  field: type
+  unstated: The material does not say whether LLM runs and their tool calls belong to the knowledge base's context or to a context of their own.
+  decided: aggregate-root in the knowledge-base context
+  why: Ingestion writes the raw informations, fragments, nodes, links and attributes the retrieval reads under the same names and meanings, so no translation marks a boundary between them.
+- location: domain/knowledge-base/tool-call.md
+  field: attributes.arguments.type
+  unstated: The material records a tool call's arguments as a free-form object without giving them a shape.
+  decided: string
+  why: Nothing in the material reads inside the arguments; they are kept and shown as recorded.
+- location: domain/knowledge-base/tool-call.md
+  field: attributes.result.type
+  unstated: The material records a tool call's result as a free-form object without giving it a shape.
+  decided: string
+  why: Nothing in the material reads inside the result except the outcome, which the validation outcome already holds.
+- location: domain/knowledge-base/raw-information.md
+  field: attributes.document_date.type
+  unstated: The material reads a document date from a raw information's metadata without naming its type.
+  decided: date
+  why: It is used as a validity start, which is a calendar date.
+- location: domain/knowledge-base/attribute-key.md
+  field: type
+  unstated: The material says an attribute key belongs to one node type without saying whether it changes together with it.
+  decided: aggregate-root referencing its node type
+  why: Node attributes point at their key directly, and a reference only reaches an aggregate root.
+- location: domain/knowledge-base/link-type-rule.md
+  field: type
+  unstated: The material holds link type rules without saying which record owns them.
+  decided: entity inside the link-type aggregate
+  why: A rule is looked up by its link type and has no meaning apart from it.
+- location: domain/knowledge-base/entity-match-review.md
+  field: type
+  unstated: The material records entity match reviews without saying what owns them.
+  decided: aggregate-root
+  why: Each review is worked on its own in the curation queue, apart from the nodes it pairs.
+- location: domain/knowledge-base/proposal.md
+  field: type
+  unstated: The material names four proposal operations without naming what they carry as one concept.
+  decided: value-object, carrying the kind, confidence, change hint, validity dates and basis, the LLM run and what it cites
+  why: Every check and consolidation of the four operations is stated about what is proposed, and a proposal has no identity before it is taken.
+- location: domain/knowledge-base/directed-ingestion.md
+  field: type
+  unstated: The material describes a directed ingestion's request and report without saying whether it has an identity of its own.
+  decided: value-object
+  why: It is recorded only through the raw information and LLM run it produces.
+- location: rules/knowledge-base/name-normalization.md
+  field: statement
+  unstated: The material says entity resolution compares normalized names without saying what normalizing does.
+  decided: Lower-casing, removing accents, trimming and collapsing inner whitespace.
+  why: The material names the normalization as the database's own, and one normalization for every name comparison keeps resolution and alias matching from disagreeing about the same name.
+- location: rules/knowledge-base/affected-nodes-of-a-run.md
+  field: statement
+  unstated: The material collects a run's affected nodes from the nodes its link and attribute proposals join or describe on the directed path, while the extraction path and a rebuild from tool calls count only the nodes its node proposals resolved to; the two decide differently for the target node of a link an extraction accepted.
+  decided: The nodes that landed link and attribute proposals join or describe are affected nodes on every path.
+  why: The collector is built to take those nodes, and only the extraction's results fail to carry them.
+- location: rules/knowledge-base/reaffirmation-consolidates.md
+  field: statement
+  unstated: The material has a multi-valued link re-affirm whatever its validity start while an attribute needs the same start, and a multi-valued proposal with change hint succession that meets a current assertion falls through to a duplicate and a system error; the two decide differently for a multi-valued attribute re-stated with another start.
+  decided: For a type that allows multiple current assertions, a proposal with the same target or value that is not a correction re-affirms; for one that does not, it needs change hint none and the same validity start.
+  why: A multi-valued type holds only one current assertion per target or value, so a second one with the same target or value can only consolidate into it.
+- location: contracts/knowledge-base/ingestion.md
+  field: answers
+  unstated: The material has re-ingesting held content under another model or prompt version look for a run by the new idempotency key and fail with an internal error when none exists.
+  decided: Held content answers HTTP 200 with outcome noop_existing and the run the held raw information already has, whatever model or prompt version the request names.
+  why: Intake is idempotent by content hash, and a request that records nothing has nothing to fail on.
+- location: rules/knowledge-base/every-proposal-audited.md
+  field: statement
+  unstated: The material has MCP proposals record a tool call on every outcome and REST proposals record none; the two decide differently for a proposal carried over REST.
+  decided: Every proposal within a run records its tool call, whichever transport carried it.
+  why: A run's summary is counted from its tool calls, so a proposal without one would vanish from its run's account.
+- location: contracts/knowledge-base/ingestion.md
+  field: answers
+  unstated: The material has a REST proposal refused by validation answer HTTP 200 carrying the refusal, while the shared error registry maps the same codes to 4xx statuses.
+  decided: 'A validation refusal of a REST proposal answers HTTP 200 carrying `{ ok: false, error }` with the refusal''s code.'
+  why: A validation refusal of a proposal is a result its run records, not a failure of the request that carried it.
+- location: contracts/knowledge-base/ingestion.md
+  field: answers
+  unstated: The material has the MCP proposals accept any non-empty text as the LLM run's identity while REST and the MCP run read demand a UUID; the two decide differently for a malformed run identity over MCP.
+  decided: A malformed LLM run identity is refused with VALIDATION_INVALID_FORMAT on both transports.
+  why: An LLM run's identity is a UUID everywhere else the material names one.
+- location: constraints/ingestion-transports-answer-alike.md
+  field: statement
+  unstated: The material has an MCP proposal whose service answered a refusal without raising it return that refusal wrapped in a success, while REST returns the refusal itself.
+  decided: The two transports carry the same result and the same error code for every ingestion operation both expose, so MCP answers such a refusal as a refusal.
+  why: Nothing in the material makes the ingestion transports differ in what they answer, only in how they frame it.
+- location: rules/knowledge-base/required-start-fallback.md
+  field: statement
+  unstated: The material lets a proposal that needs a validity start pass with no start and no basis when its source has a document date, while one whose source has only a reception date takes that date with basis received; the two decide differently for whether a required start may stay empty.
+  decided: It takes the document date with basis document or, failing that, the reception date with basis received.
+  why: A type that requires a validity start is never left without one, and every start carries its justification.
+- location: rules/knowledge-base/attribute-value-parses.md
+  field: statement
+  unstated: The material leaves to the runtime's date parser whether a well-formed but impossible date such as 2024-02-30 is refused.
+  decided: Only a real calendar date is a date value.
+  why: A date attribute names a day, and no such day exists.
+- location: rules/knowledge-base/directed-defaults.md
+  field: statement
+  unstated: The material's directed service accepts a change hint and a validity end for attributes and links, while the directed tool's own schema declares neither, so they never arrive.
+  decided: A directed attribute or link is proposed with change hint none.
+  why: The directed tool is the only way a directed ingestion is made, and it carries no change hint.
+- location: rules/knowledge-base/page-defaults.md
+  field: statement
+  unstated: The standing node gives every page a default limit of 20, while the material's tool-call listing defaults its page to 50; the two decide differently for a tool-call listing that omits its limit.
+  decided: The default of 20 holds for search and the accepted-fragment listing, and the tool-call listing defaults to 50.
+  why: The tool-call listing's default is stated in its own request schema.
+- location: rules/knowledge-base/affected-nodes-of-a-run.md
+  field: consistency
+  unstated: The material does not say how this read holds across the separate records it combines.
+  decided: eventual
+  why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/affected-nodes-follow-merges.md
+  field: consistency
+  unstated: The material does not say how this read holds across the separate records it combines.
+  decided: eventual
+  why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/summary-counts-orphaned-fragments.md
+  field: consistency
+  unstated: The material does not say how this read holds across the separate records it combines.
+  decided: eventual
+  why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/recent-ingestion-latest-run.md
+  field: consistency
+  unstated: The material does not say how this read holds across the separate records it combines.
+  decided: eventual
+  why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- location: rules/knowledge-base/ingestion-records-chunks-and-run.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- location: rules/knowledge-base/retry-rejects-orphaned-fragments.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- location: rules/knowledge-base/ambiguous-candidates-need-review.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- location: rules/knowledge-base/document-ingestion-extracts-new-content.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- location: rules/knowledge-base/current-assertion.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/proposal-meets-current-assertion.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/consolidation-precedence.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/reaffirmation-consolidates.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/correction-replaces.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/succession-closes-previous.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/succession-before-previous-start.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/conflict-disputes.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/new-assertion.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/new-assertion-status-from-confidence.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/consolidation-records-provenance.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/succession-closing-date.md
+  field: consistency
+  unstated: The material does not say how this rule holds across the separate records it changes.
+  decided: eventual
+  why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- location: rules/knowledge-base/one-current-link-per-functional-type.md
+  field: statement
+  unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
+  decided: At most one current assertion that is not disputed; disputed assertions are exempt.
+  why: A dispute exists to hold both conflicting assertions until curation settles it.
+- location: rules/knowledge-base/one-current-link-per-target.md
+  field: statement
+  unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
+  decided: At most one current assertion that is not disputed; disputed assertions are exempt.
+  why: A dispute exists to hold both conflicting assertions until curation settles it.
+- location: rules/knowledge-base/one-current-attribute-per-functional-key.md
+  field: statement
+  unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
+  decided: At most one current assertion that is not disputed; disputed assertions are exempt.
+  why: A dispute exists to hold both conflicting assertions until curation settles it.
+- location: rules/knowledge-base/one-current-attribute-per-value.md
+  field: statement
+  unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
+  decided: At most one current assertion that is not disputed; disputed assertions are exempt.
+  why: A dispute exists to hold both conflicting assertions until curation settles it.
 ---
 
 ## Description

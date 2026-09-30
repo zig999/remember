@@ -13,13 +13,14 @@ attributes:
 - name: created_at
   type: datetime
   required: true
-- name: llm_run
-  type: string
 relationships:
 - target: raw-chunk
   type: association
   cardinality: 1..*
   role: source
+- target: llm-run
+  type: reference
+  cardinality: '1'
 ---
 
 ## Description

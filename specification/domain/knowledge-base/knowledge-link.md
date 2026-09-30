@@ -13,6 +13,12 @@ attributes:
 - name: provenance
   type: provenance
   many: true
+- name: valid_from_basis
+  type: valid-from-basis
+- name: confidence
+  type: decimal
+- name: superseded_at
+  type: datetime
 relationships:
 - target: knowledge-node
   type: reference
@@ -25,6 +31,13 @@ relationships:
 - target: link-type
   type: reference
   cardinality: '1'
+- target: llm-run
+  type: reference
+  cardinality: '1'
+- target: knowledge-link
+  type: reference
+  cardinality: 0..1
+  role: supersedes
 ---
 
 ## Description
