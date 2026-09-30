@@ -1,0 +1,42 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The list-accepted-fragments accepted answer is assembled in listAcceptedFragmentsService: the items mapping (lines 43-56) and the returned page (lines 74-79). The refusals for this operation (owner authentication, required filter, malformed identifiers, page bounds) are not in this file.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+          fragment_id: row.fragment_id,
+          text: row.fragment_text,
+          confidence: Number(row.fragment_confidence),
+          llm_run_id: row.fragment_llm_run_id,
+          created_at: row.fragment_created_at.toISOString(),
+          source: {
+            raw_information_id: row.raw_information_id,
+            chunk_index: row.chunk_index,
+            source_type: toSourceType(row.source_type),
+            received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+          },
+        }));
+      ...
+      return {
+          total,
+          limit: input.limit,
+          offset: input.offset,
+          items,
+        };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      The ListAcceptedFragmentsInput interface (lines 15-20) declares the filter's shape: an optional LLM run, an optional raw information, and the page as limit and offset.
+    evidence: |-
+      export interface ListAcceptedFragmentsInput {
+        readonly llm_run_id?: string;
+        readonly raw_information_id?: string;
+        readonly limit: number;
+        readonly offset: number;
+      }
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      This file only passes the value along: `source_type: toSourceType(row.source_type)`. The imported `toSourceType` comes from ../dto/response.dto.js. The enumeration of the seven values is not declared in this file.
+looked_past: >-
+  The log line's route literal "GET /api/v1/fragments/accepted" and the `if (total > 0)` query skip are transport and performance details, not domain facts any node in this set holds, so I left them to another judgment.

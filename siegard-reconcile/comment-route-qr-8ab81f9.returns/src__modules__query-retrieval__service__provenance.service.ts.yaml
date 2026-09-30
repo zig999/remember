@@ -1,0 +1,45 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The three provenance operations in this file. getProvenanceByLinkService and getProvenanceByAttributeService
+      raise ResourceNotFoundError when the link or attribute is absent. getProvenanceByFragmentService raises
+      ResourceNotFoundError when no fragment is held and FragmentNotAcceptedError when its status is not accepted.
+      finalise() raises RawInformationDeletedError when a tombstone is found and EmptyProvenanceError when the chain
+      has no rows. groupChain() builds the fragment and chunk shape the contract lists. The error codes and HTTP
+      statuses are not declared in this file. They sit with the error classes imported from ./errors.js and
+      ../../knowledge-graph/service/errors.js.
+    evidence: |-
+      if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+      if (tombstone !== null) { ... throw new RawInformationDeletedError(
+        tombstone.raw_information_id,
+        tombstone.performed_at
+      );
+      if (rows.length === 0) { ... throw new EmptyProvenanceError(anchorKind, anchorId);
+      raw_information: { id: c.raw_information_id, source_type: toSourceType(c.source_type), received_at: c.received_at.toISOString(), metadata: c.metadata, original_input: c.original_input ?? null }
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The shape is not declared in this file. The file only reads a row returned by findTombstone and passes
+      tombstone.raw_information_id and tombstone.performed_at to RawInformationDeletedError.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The shape is not declared in this file. The file only checks existence with linkExists(client, linkId) and
+      reads the chain with chainByLink.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The shape is not declared in this file. The file only checks existence with attributeExists(client,
+      attributeId) and reads the chain with chainByAttribute.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The enumeration is not declared in this file. It only forwards the value through toSourceType(c.source_type),
+      imported from ../dto/response.dto.js.
+looked_past: >-
+  The logger.warn and logger.info calls emit log lines with a route template `GET /api/v1/provenance/${anchorKind}s/:id`
+  and event names such as query_retrieval_provenance_tombstone. These are operational telemetry, not a domain fact of
+  any node in the set, so I did not report them.
