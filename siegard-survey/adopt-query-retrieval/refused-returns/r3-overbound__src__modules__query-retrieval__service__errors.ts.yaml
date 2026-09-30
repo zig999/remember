@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      EmptyProvenanceError constructor, the message passed to super(), line 75
+    evidence: >-
+      `provenance chain is empty for ${anchorKind} ${anchorId} (legacy-data inconsistency).`
+    cost: >-
+      The message tells whoever reads the failure that an empty provenance chain comes from legacy data. The specification only says such a read is refused with SYSTEM_INTERNAL_ERROR. It never says where an empty chain comes from. The code therefore holds a claim about cause that looks like a business decision. A later reader would look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Either give the cause of an empty provenance chain a node, in the analysis that owns `rules/knowledge-base/empty-provenance-chain-refused`, or drop the "(legacy-data inconsistency)" claim from the message.
+    node: rules/knowledge-base/empty-provenance-chain-refused
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchQueryError constructor, the `too_long` branch of the message, line 16
+    evidence: >-
+      `"query exceeds 1000 characters"`
+    cost: >-
+      The 1000-character limit is written into a message string in this file. The node holds it and this file is not bound to that fact. If the node's limit moves, this text keeps saying 1000 and nothing reaches it. The message is prose about a value held elsewhere. The check that enforces it is not in this file, so I did not judge that part.
+    kind: restates
+    correction: >-
+      Remove the literal from the message, for example "query is too long", so the limit lives only in the node and in the code that enforces it.
+    node: rules/knowledge-base/search-query-length
+read:
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      InvalidSearchLayerError, the `allowed` field, line 28
+    evidence: >-
+      `public readonly allowed = ["fragment", "node", "chunk"] as const;`
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: >-
+      InvalidSearchQueryError, reason `empty_after_trim`, with code BUSINESS_INVALID_SEARCH_QUERY and status 422. The class carries the refusal, not the trim check.
+    evidence: >-
+      `public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const;` and `reason: "empty_after_trim" | "empty_after_parse" | "too_long"`
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: >-
+      InvalidSearchQueryError, reason `empty_after_parse`, which is the refusal a stop-words-only query meets
+    evidence: >-
+      `reason === "empty_after_parse" ? "query parsed by websearch_to_tsquery is empty"` with `statusCode = 422`
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: >-
+      nowhere. The file declares errors only and says nothing about which tools the language model's query surface exposes.
+    evidence: >-
+      The file holds five error classes (InvalidSearchQueryError, InvalidSearchLayerError, FragmentNotAcceptedError, RawInformationDeletedError, EmptyProvenanceError) and no toolset declaration.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The five error classes, which carry each refusal's status and code. The authentication, VALIDATION_* and RESOURCE_NOT_FOUND refusals, BUSINESS_UNKNOWN_LINK_TYPE and BUSINESS_INVALID_TRAVERSE_DEPTH sit outside this file.
+    evidence: >-
+      `statusCode = 422` / `"BUSINESS_INVALID_SEARCH_QUERY"`, `422` / `"BUSINESS_INVALID_SEARCH_LAYER"`, `404` / `"BUSINESS_FRAGMENT_NOT_ACCEPTED"`, `410` / `"BUSINESS_RAW_INFORMATION_DELETED"`, `500` / `"SYSTEM_INTERNAL_ERROR"`
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere. The file does not touch assertion flags.
+    evidence: >-
+      No `uncertain`, `disputed` or `low-confidence` value appears in the file.
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      FragmentNotAcceptedError carries a `status` string and names the `accepted` value in its message. It does not declare the enumeration.
+    evidence: >-
+      `public readonly status: string;` and `InformationFragment ${fragmentId} is not in 'accepted' status.`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere. The file does not touch chunk attributes.
+    evidence: >-
+      No chunk_index, offset, excerpt or locator appears in the file.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere. The file only carries the identity of a deleted raw information.
+    evidence: >-
+      `public readonly rawInformationId: string;`
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: >-
+      nowhere. The file has no search-item surfacing behavior.
+    evidence: >-
+      No construct in the file relates to search items or layers being surfaced.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: >-
+      nowhere. The file declares the refusal class but not the order of refusals.
+    evidence: >-
+      `export class RawInformationDeletedError extends Error` has no precedence logic.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: >-
+      EmptyProvenanceError, the refusal with status 500 and code SYSTEM_INTERNAL_ERROR
+    evidence: >-
+      `public readonly statusCode = 500;` and `public readonly code = "SYSTEM_INTERNAL_ERROR" as const;`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere. The file does not score anything.
+    evidence: >-
+      No score or hop computation appears in the file.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      nowhere. BUSINESS_INVALID_TRAVERSE_DEPTH is not declared in this file.
+    evidence: >-
+      No depth error class or bound appears in the file.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: >-
+      nowhere. The file does not touch listing.
+    evidence: >-
+      No listing construct appears in the file.
+  - node: rules/knowledge-base/listing-order
+    held_at: >-
+      nowhere. The file does not touch listing order.
+    evidence: >-
+      No ordering construct appears in the file.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      nowhere. The VALIDATION_OUT_OF_RANGE refusal is not declared in this file.
+    evidence: >-
+      No page-limit error class appears in the file.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      RawInformationDeletedError, the refusal with status 410 and code BUSINESS_RAW_INFORMATION_DELETED, carrying the deletion time
+    evidence: >-
+      `public readonly statusCode = 410;`, `public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const;` and `public readonly deletedAt: Date;`
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      FragmentNotAcceptedError, the refusal with status 404 and code BUSINESS_FRAGMENT_NOT_ACCEPTED
+    evidence: >-
+      `public readonly statusCode = 404;` and `public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const;`
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: >-
+      nowhere. The file does not touch search filtering.
+    evidence: >-
+      No search or filtering construct appears in the file.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: >-
+      InvalidSearchLayerError, the refusal with status 422 and code BUSINESS_INVALID_SEARCH_LAYER, naming the offending value and the allowed layers
+    evidence: >-
+      `public readonly code = "BUSINESS_INVALID_SEARCH_LAYER" as const;` and `public readonly invalid: string;`
+  - node: rules/knowledge-base/search-query-length
+    held_at: >-
+      InvalidSearchQueryError, reason `too_long`, with code BUSINESS_INVALID_SEARCH_QUERY and status 422. The length check itself is not in this file.
+    evidence: >-
+      `reason: "empty_after_trim" | "empty_after_parse" | "too_long"`
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: >-
+      InvalidSearchQueryError, reason `empty_after_parse`, with code BUSINESS_INVALID_SEARCH_QUERY and status 422
+    evidence: >-
+      `"empty_after_parse"` in the `reason` union and `public readonly statusCode = 422;`
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere. The file does not rank.
+    evidence: >-
+      No ranking or ordering construct appears in the file.
+looked_past: >-
+  The message text `query parsed by websearch_to_tsquery is empty` names a database function, which is an implementation detail and not a domain fact. I left it for a code review.

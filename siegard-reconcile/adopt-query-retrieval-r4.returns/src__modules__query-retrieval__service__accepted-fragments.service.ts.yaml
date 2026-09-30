@@ -1,0 +1,155 @@
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      ListAcceptedFragmentsInput (lines 15-20) and the filter arguments passed at lines 27-28 and 30-40
+    evidence: |-
+      readonly llm_run_id?: string;
+        readonly raw_information_id?: string;
+      ...
+      const llmRunId = input.llm_run_id ?? null;
+        const rawInformationId = input.raw_information_id ?? null;
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the row-to-item mapping at lines 43-56, which carries text, confidence, llm_run_id and created_at
+    evidence: |-
+      text: row.fragment_text,
+          confidence: Number(row.fragment_confidence),
+          llm_run_id: row.fragment_llm_run_id,
+          created_at: row.fragment_created_at.toISOString(),
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the limit and offset fields of the input (lines 18-19), which are passed on and echoed in the result (lines 74-79)
+    evidence: |-
+      readonly limit: number;
+        readonly offset: number;
+      ...
+      limit: input.limit,
+          offset: input.offset,
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The enumeration's value set is not declared in this file. The file only calls `source_type: toSourceType(row.source_type)`, and the function is imported from ../dto/response.dto.js.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: >-
+      line 30, where the total is counted by a call that receives no limit or offset, separately from the page select at lines 34-40
+    evidence: |-
+      const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
+      ...
+      rows = await selectAcceptedFragments(
+            client,
+            llmRunId,
+            rawInformationId,
+            input.limit,
+            input.offset
+          );
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: >-
+      lines 30-41 and 74-79. A zero count skips the select and returns total 0 with no items, with no refusal branch.
+    evidence: |-
+      let rows: readonly AcceptedFragmentRow[] = [];
+        if (total > 0) {
+      ...
+      return {
+          total,
+          limit: input.limit,
+          offset: input.offset,
+          items,
+        };
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      This service file registers no tool and declares no toolset. It only exports `listAcceptedFragmentsService`, so what the language model's query tool surface exposes is not stated here.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the accepted answer of list-accepted-fragments, at the item mapping (lines 43-56) and the returned page (lines 74-79). The refusals are not held in this file.
+    evidence: |-
+      source: {
+            raw_information_id: row.raw_information_id,
+            chunk_index: row.chunk_index,
+            source_type: toSourceType(row.source_type),
+            received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+          },
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file mentions no search-item warning (uncertain, disputed or low-confidence). It contains only the listing service.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      The file has no status vocabulary and no status comparison. Its selection is delegated to `selectAcceptedFragments(client, llmRunId, rawInformationId, input.limit, input.offset)`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the chunk_index carried into source.chunk_index at line 51. The other raw-chunk attributes are not touched here.
+    evidence: >-
+      chunk_index: row.chunk_index,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      the source block at lines 49-55, which carries the raw information identity, reception time and title
+    evidence: |-
+      raw_information_id: row.raw_information_id,
+      ...
+      received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      The file does no search, has no chunk layer and builds no search items.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      The file performs no provenance read and has no compliance-deletion branch.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      The file performs no provenance read and has no empty-chain check.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file has no graph expansion or hop scoring.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      The file has no expansion depth parameter.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The service carries no exclusion of compliance-deleted sources. Any such predicate would live in the repository calls `countAcceptedFragments` and `selectAcceptedFragments`, which are not in this file.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The service states no ordering. It maps `rows.map((row) => ({` in the order the repository returns them.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      The service states no bound on the limit. It uses `limit: input.limit` as given, so any check sits upstream.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file performs no provenance read.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      The file performs no provenance read and has no status check.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      The file does no search.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      The file has no search layer parameter.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      The file has no search query text.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      The file has no lexical parse.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file ranks no search items.
+looked_past: >-
+  The logger.info call carries a route literal ("GET /api/v1/fragments/accepted") and an event name ("query_retrieval_list_accepted_fragments_ok"), which no node holds; I read them as observability labels and left them to another judgment rather than as a domain fact.

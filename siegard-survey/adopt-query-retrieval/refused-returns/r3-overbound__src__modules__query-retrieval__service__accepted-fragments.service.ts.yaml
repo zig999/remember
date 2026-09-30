@@ -1,0 +1,172 @@
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      ListAcceptedFragmentsInput (lines 15-20) and the null-defaulting of both filters in listAcceptedFragmentsService (lines 27-28), passed together to the count and the select.
+    evidence: |-
+      readonly llm_run_id?: string;
+      readonly raw_information_id?: string;
+      const llmRunId = input.llm_run_id ?? null;
+      const rawInformationId = input.raw_information_id ?? null;
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      The row-to-item mapping at lines 43-56, which carries the fragment's text, confidence, LLM run and creation time.
+    evidence: |-
+      text: row.fragment_text,
+      confidence: Number(row.fragment_confidence),
+      llm_run_id: row.fragment_llm_run_id,
+      created_at: row.fragment_created_at.toISOString(),
+  - node: domain/knowledge-base/page
+    held_at: >-
+      The limit and offset inputs (lines 18-19), passed to the select and echoed in the returned window (lines 74-79).
+    evidence: |-
+      readonly limit: number;
+      readonly offset: number;
+      return {
+        total,
+        limit: input.limit,
+        offset: input.offset,
+        items,
+      };
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      The source_type field of the source block, converted with toSourceType (line 52).
+    evidence: |-
+      source_type: toSourceType(row.source_type),
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: >-
+      Line 30, the total is obtained from countAcceptedFragments, a call that takes no limit or offset. The page is applied only in the separate selectAcceptedFragments call, lines 34-40.
+    evidence: |-
+      const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
+      rows = await selectAcceptedFragments(
+        client,
+        llmRunId,
+        rawInformationId,
+        input.limit,
+        input.offset
+      );
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: >-
+      Lines 32-41 and 74-79. The rows start empty and the select runs only when total is above 0, so a source with no fragments returns total 0 and no items. The function returns normally, so the listing is accepted.
+    evidence: |-
+      let rows: readonly AcceptedFragmentRow[] = [];
+      if (total > 0) {
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: >-
+      nowhere. The file is a service function and registers no tool surface.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+        client: PoolClient,
+        input: ListAcceptedFragmentsInput,
+        logger: Logger
+      ): Promise<AcceptedFragmentList> {
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Only the accepted answer of list-accepted-fragments, in the item mapping (lines 43-56) and the result envelope body (lines 74-79). No refusal of the contract is held in this file: there is no filter-required check, no identifier-format check and no limit or offset bound.
+    evidence: |-
+      source: {
+        raw_information_id: row.raw_information_id,
+        chunk_index: row.chunk_index,
+        source_type: toSourceType(row.source_type),
+        received_at: row.received_at.toISOString(),
+        document_title: row.document_title,
+      },
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      nowhere. The file has no search item and no assertion flag.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      nowhere. The service never reads or writes a fragment status. Any accepted-status filtering is delegated to the repository, which is outside this file.
+    evidence: |-
+      const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      The chunk_index field of the source block (line 51) is the only chunk fact the file carries.
+    evidence: |-
+      chunk_index: row.chunk_index,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      The source block (lines 49-55) carries the raw information's identity, reception time and title. Its source type is carried as described under source-type.
+    evidence: |-
+      raw_information_id: row.raw_information_id,
+      received_at: row.received_at.toISOString(),
+      document_title: row.document_title,
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: >-
+      nowhere. The file does no search.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: >-
+      nowhere. The file has no provenance read.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: >-
+      nowhere. The file has no provenance read.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      nowhere. The file has no graph expansion or scoring.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      nowhere. The file has no expansion depth.
+    evidence: |-
+      export interface ListAcceptedFragmentsInput {
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: >-
+      nowhere in this file. The exclusion, if held, is in the repository queries that this service only calls, and the service itself applies no filter.
+    evidence: |-
+      const total = await countAcceptedFragments(client, llmRunId, rawInformationId);
+  - node: rules/knowledge-base/listing-order
+    held_at: >-
+      nowhere in this file. The service passes rows through in the order the repository select returned them and sorts nothing.
+    evidence: |-
+      const items: AcceptedFragmentItem[] = rows.map((row) => ({
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      nowhere. limit is a plain number with no range check in this file.
+    evidence: |-
+      readonly limit: number;
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      nowhere. The file has no provenance read.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      nowhere. The file has no provenance read.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: >-
+      nowhere. The file does no search.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: >-
+      nowhere. The file does no search.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/search-query-length
+    held_at: >-
+      nowhere. The file does no search.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: >-
+      nowhere. The file does no search.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+  - node: rules/knowledge-base/search-ranking
+    held_at: >-
+      nowhere. The file does no ranking.
+    evidence: |-
+      export async function listAcceptedFragmentsService(
+looked_past: >-
+  The structured-log fields (route "GET /api/v1/fragments/accepted", the event name "query_retrieval_list_accepted_fragments_ok", the filters and counts) are observability labels that state no domain value or refusal, and I left them to the route and logging judgments, while the `total > 0` short-circuit before the select is a performance choice that does not change the node's behavior.
+candidates_opened: []

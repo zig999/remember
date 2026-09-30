@@ -1,0 +1,182 @@
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      finalise(), the tombstone branch that throws RawInformationDeletedError with the deletion's raw information and time
+    evidence: |-
+      const tombstone = await findTombstone(client, rawIds);
+      if (tombstone !== null) {
+      ...
+        throw new RawInformationDeletedError(
+          tombstone.raw_information_id,
+          tombstone.performed_at
+        );
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      groupChain(), the ProvenanceFragment built from each fragment row
+    evidence: |-
+      fragments.push({
+        id: fragment.fragment_id,
+        text: fragment.fragment_text,
+        confidence: Number(fragment.fragment_confidence),
+        status: fragment.fragment_status,
+        chunks: provChunks,
+      });
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      getProvenanceByLinkService(), the existence check and the chain read anchored on a link
+    evidence: |-
+      const exists = await linkExists(client, linkId);
+      if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);
+      const rows = await chainByLink(client, linkId);
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      getProvenanceByAttributeService(), the existence check and the chain read anchored on an attribute
+    evidence: |-
+      const exists = await attributeExists(client, attributeId);
+      if (!exists) throw new ResourceNotFoundError("NodeAttribute", attributeId);
+      const rows = await chainByAttribute(client, attributeId);
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      finalise() and groupChain(), which turn the provenance chain rows into fragments with their chunks
+    evidence: |-
+      const fragments = groupChain(rows);
+      ...
+      return { fragments };
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The file only calls `source_type: toSourceType(c.source_type)`, imported from ../dto/response.dto.js. It declares no source-type vocabulary itself.
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file holds only the three provenance reads and declares no toolset surface or fragment listing.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getProvenanceByLinkService, getProvenanceByAttributeService and getProvenanceByFragmentService, which carry the three provenance reads' accepted shape and domain refusals. The search and list-accepted-fragments operations are not in this file.
+    evidence: |-
+      throw new ResourceNotFoundError("InformationFragment", fragmentId);
+      throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      throw new RawInformationDeletedError(
+      throw new EmptyProvenanceError(anchorKind, anchorId);
+      raw_information: {
+        id: c.raw_information_id,
+        source_type: toSourceType(c.source_type),
+        received_at: c.received_at.toISOString(),
+        metadata: c.metadata,
+        original_input: c.original_input ?? null,
+      },
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file carries no assertion flags (uncertain, disputed, low-confidence). They belong to search items.
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      getProvenanceByFragmentService(), the comparison against the accepted status
+    evidence: |-
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      groupChain(), the ProvenanceChunk mapping of each chunk row
+    evidence: |-
+      id: c.raw_chunk_id,
+      chunk_index: c.chunk_index,
+      offset_start: c.offset_start,
+      offset_end: c.offset_end,
+      excerpt: c.excerpt,
+      locator: c.locator,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      groupChain(), the raw_information object carried by each provenance chunk
+    evidence: |-
+      raw_information: {
+        id: c.raw_information_id,
+        source_type: toSourceType(c.source_type),
+        received_at: c.received_at.toISOString(),
+        metadata: c.metadata,
+        original_input: c.original_input ?? null,
+      },
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      The file has no search-item or chunk-layer matching. It is the provenance read only.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: >-
+      Order of checks. The fragment read refuses a non-accepted fragment first, then finalise() refuses on the tombstone before the empty-chain check.
+    evidence: |-
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+      ...
+      if (tombstone !== null) {
+      ...
+        throw new RawInformationDeletedError(
+      ...
+      if (rows.length === 0) {
+      ...
+        throw new EmptyProvenanceError(anchorKind, anchorId);
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: >-
+      finalise(), the empty-chain branch
+    evidence: |-
+      if (rows.length === 0) {
+      ...
+        throw new EmptyProvenanceError(anchorKind, anchorId);
+      }
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file has no graph expansion or scoring. It is the provenance read only.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or expansion depth.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing or ordering.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      The file has no pagination.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      finalise(), the tombstone lookup over every raw information id in the chain
+    evidence: |-
+      const rawIds = Array.from(new Set(rows.map((r) => r.raw_information_id)));
+      const tombstone = await findTombstone(client, rawIds);
+      if (tombstone !== null) {
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      getProvenanceByFragmentService(), the status guard before the chain is read
+    evidence: |-
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      The file has no search. Its tombstone handling applies to provenance reads only.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      The file has no search layers.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      The file has no search query text.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      The file has no search query parse.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The file has no search items or ranking.
+looked_past: >-
+  The structured log events and the route strings inside their payloads (for example `GET /api/v1/provenance/${anchorKind}s/:id` and `query_retrieval_provenance_tombstone`) are observability choices rather than domain facts, so I left them to other judgments. I did not open the repository or error modules, which sit outside the file set.
