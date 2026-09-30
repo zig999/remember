@@ -1,0 +1,32 @@
+findings:
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: >-
+      runChainSql, the `excerpt` column in both SQL variants (lines 141-142 and 165-166)
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                         FOR rc.offset_end - rc.offset_start) AS excerpt
+    cost: >-
+      The migration declares `raw_chunk."text"` as the chunk's own text, and `offset_start` and `offset_end`
+      as positions in the source. The query therefore offsets the chunk's own text a second time. For any
+      chunk that does not start at offset 0, the provenance excerpt is shifted or empty. That is the text
+      the provenance read exists to show. The rule lives only in this SQL expression, so the next reader
+      looks for it in the specification and finds a rule that says the opposite.
+    kind: contradicts
+    correction: >-
+      Select the chunk's own text as the excerpt, not a slice of it cut by the source offsets. The
+      slicing belongs to nothing in the specification.
+    node: rules/knowledge-base/chunk-excerpt-is-verbatim
+read:
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for knowledge_link. It only checks existence, through `SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists`.
+      It also anchors the chain on `p.link_id` in `chainByLink`. Its row types (FragmentStatusRow, ProvenanceChainRow,
+      TombstoneRow) describe fragments, chunks, raw information and compliance deletions, not the link's own attributes.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for node_attribute. It only checks existence, through `SELECT EXISTS(SELECT 1 FROM node_attribute WHERE id = $1) AS exists`.
+      It also anchors the chain on `p.attribute_id` in `chainByAttribute`. No declaration lists the attribute's own attributes.
+looked_past: >-
+  The header and inline comments cite BR-11, BR-16, BR-17, BR-18 and ingestion BR-34 of the old back-specs, and restate facts of nodes outside this file's set, such as the tombstone short-circuit and the original_input redaction. That is prose, which the comment route answers. The `executed_at AS performed_at` alias and the tombstone query are consistent with rules/knowledge-base/provenance-refused-after-compliance-deletion, so they are not reported.

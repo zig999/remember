@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment above the reason field in RejectItemBodySchema, line 21
+    evidence: >-
+      /** reject_item — reason mandatory (destructive, BR-11). */
+    cost: >-
+      The reason-required rule is stated in prose here with a back-spec id (BR-11), while ReasonRequiredSchema in ./enums.dto.js is what enforces it. A reader can take the comment for the rule's home, and if the node moves the comment goes stale without anything flagging it.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node, and the code holds it through ReasonRequiredSchema in ./enums.dto.js.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment above the someProvided check in CorrectItemBodySchema.superRefine, line 53
+    evidence: >-
+      // BR-18: at least one of value/target_node_id/valid_from/valid_to.
+    cost: >-
+      The rule "a correction must change at least one of the four" is restated in prose with a back-spec id, next to the code that enforces it. The two homes can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The same file holds the fact in the someProvided branch that adds BUSINESS_CORRECTION_NO_CHANGES.
+    node: rules/knowledge-base/correction-changes-something
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment above the two item_kind cross-checks, line 67
+    evidence: >-
+      // Cross-field: value only on attribute, target_node_id only on link.
+    cost: >-
+      The rule that a correction may not change a link's value or an attribute's target node is restated in prose beside the branches that enforce it, so the fact has a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The two VALIDATION_INVALID_FORMAT branches in the same file hold the fact.
+    node: rules/knowledge-base/correction-fits-assertion-kind
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment above the valid_from block, line 87
+    evidence: >-
+      // valid_from change requires valid_from_source.
+    cost: >-
+      The rule that a stated validity start needs a basis is restated in prose beside the branch that enforces it, so the fact has a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The BUSINESS_DATE_UNJUSTIFIED branch on valid_from_source holds the fact.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment above the final valid_from >= valid_to check, line 112
+    evidence: >-
+      // Semi-open invariant on the new pair when both supplied.
+    cost: >-
+      The start-before-end rule for a correction is restated in prose beside the comparison that enforces it, so the fact has a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The BUSINESS_TEMPORAL_INCOHERENT branch on `c.valid_from >= c.valid_to` holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: domain/knowledge-base/corrected-values
+    held_at: >-
+      CorrectedValuesSchema, lines 30-37, and the CorrectedValues type it infers, line 38
+    evidence: >-
+      export const CorrectedValuesSchema = z.object({
+        value: z.string().min(1).optional().nullable(),
+        target_node_id: UuidSchema.optional().nullable(),
+        valid_from: IsoDateSchema.optional().nullable(),
+        valid_to: IsoDateSchema.optional().nullable(),
+        valid_from_source: ValidFromSourceSchema.optional().nullable(),
+        valid_from_fragment_id: UuidSchema.optional().nullable(),
+      });
+looked_past: >-
+  I did not report the superRefine issue messages (BUSINESS_CORRECTION_NO_CHANGES, BUSINESS_DATE_UNJUSTIFIED, VALIDATION_INVALID_FORMAT) being bare codes rather than the wording the operation's refusal table gives, because how those are rendered belongs to the error-mapping judgment on another file. I also did not report the comment on line 13 ("confirm_item — reason optional.") as a finding, because I did not open a node holding that fact.
+candidates_opened:
+  - domain/knowledge-base/corrected-values

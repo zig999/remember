@@ -1,0 +1,66 @@
+findings:
+  - file: 0001_init.sql
+    where: >-
+      the CREATE UNIQUE INDEX node_attribute_current_dup_guard statement, lines 409-413
+    evidence: >-
+      CREATE UNIQUE INDEX node_attribute_current_dup_guard
+        ON node_attribute (node_id, attribute_key_id, value)
+        WHERE valid_to IS NULL AND superseded_at IS NULL;
+    cost: >-
+      The rule says a node holds at most one current node attribute that is not disputed of one key with one value, so disputed assertions are exempt. The index has no status condition. It also counts a disputed row as current. A dispute records a disputed assertion beside the current one, so the database can refuse that insert with a unique violation when the key and value match. The guard then enforces a stricter rule than the one the business decided. Whoever reads the specification would not expect this.
+    kind: contradicts
+    correction: >-
+      Add the exemption to the predicate, for example by excluding status = 'disputed', so the index guards what the rule states. The exemption is one the node holds, and the file does not carry it.
+    node: rules/knowledge-base/one-current-attribute-per-value
+  - file: 0001_init.sql
+    where: >-
+      the CREATE UNIQUE INDEX knowledge_link_current_dup_guard statement, lines 453-456
+    evidence: >-
+      CREATE UNIQUE INDEX knowledge_link_current_dup_guard
+        ON knowledge_link (source_node_id, target_node_id, link_type_id)
+        WHERE valid_to IS NULL AND superseded_at IS NULL;
+    cost: >-
+      The rule says a source node holds at most one current knowledge link that is not disputed of one link type to one target node, so disputed links are exempt. The index has no status condition. A disputed link to the same target, recorded beside the current one, collides with the guard. The guard refuses the dispute state the specification provides for, and the file carries a stricter rule than the node states.
+    kind: contradicts
+    correction: >-
+      Add the disputed exemption to the index predicate so that it matches the rule.
+    node: rules/knowledge-base/one-current-link-per-target
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      CREATE TABLE compliance_deletion, lines 518-524
+    evidence: >-
+      raw_information_id uuid NOT NULL REFERENCES raw_information (id),
+        reason             text NOT NULL,
+        executed_at        timestamptz NOT NULL DEFAULT now(),
+        affected           jsonb NOT NULL DEFAULT '{}'::jsonb
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      CREATE TABLE knowledge_link, lines 429-451, together with the provenance table, lines 468-476, and the assertion_status and valid_from_source enums, lines 134-139. These match the nodes domain/knowledge-base/assertion-status and domain/knowledge-base/valid-from-basis. The table holds the attributes and relationships. The duplicate guard at lines 454-456 is a separate contradiction, reported above.
+    evidence: >-
+      source_node_id     uuid NOT NULL REFERENCES knowledge_node (id),
+        target_node_id     uuid NOT NULL REFERENCES knowledge_node (id),
+        link_type_id       uuid NOT NULL REFERENCES link_type (id),
+        status             assertion_status NOT NULL,
+        valid_from_source  valid_from_source,
+        created_by_run_id  uuid REFERENCES llm_run (id),
+        supersedes_link_id uuid REFERENCES knowledge_link (id),
+        CONSTRAINT knowledge_link_interval_ck
+          CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_from < valid_to)
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      CREATE TABLE node_attribute, lines 376-407, together with the provenance table, lines 468-476, and the assertion_status, valid_from_source and attribute_value_type enums. These match the nodes domain/knowledge-base/assertion-status, domain/knowledge-base/valid-from-basis and domain/knowledge-base/value-type. The table holds the attributes and relationships. The duplicate guard at lines 411-413 is a separate contradiction, reported above.
+    evidence: >-
+      node_id                 uuid NOT NULL REFERENCES knowledge_node (id),
+        attribute_key_id        uuid NOT NULL,
+        value                   text NOT NULL,
+        status                  assertion_status NOT NULL,
+        valid_from_source       valid_from_source,
+        supersedes_attribute_id uuid REFERENCES node_attribute (id),
+        CONSTRAINT node_attribute_basis_ck
+          CHECK (valid_from IS NULL OR valid_from_source IS NOT NULL)
+looked_past: >-
+  The comments in the file header and above the tables restate node facts such as the tombstone and the guards, and the code here holds them too. The `attribute_valid_value` and `entity_match_review` tables and the 1000-character limit on `information_fragment.text` belong to nodes outside this set.
+candidates_opened:
+  - rules/knowledge-base/one-current-attribute-per-value
+  - rules/knowledge-base/one-current-link-per-target

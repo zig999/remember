@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      The `valid_from_source` literal union, declared four times: `ItemLockedRow` (line 195), `CorrectionMutationArgs.correctedValidFromSource` (line 398), `DisputedLinkRow` (line 684) and `DisputedAttributeRow` (line 733).
+    evidence: >-
+      readonly valid_from_source: "stated" | "document" | "received" | null;
+      readonly correctedValidFromSource?: "stated" | "document" | "received" | null;
+    cost: >-
+      The closed vocabulary for what justifies a validity start (stated, document, received) is node `domain/knowledge-base/valid-from-basis`, an enumeration. It is not bound to this file, so this file keeps its own copy of the vocabulary four times over. If the node adds, renames or removes a value, `--check` never reaches this file. The next reader cannot tell whether the node or the union in this file was the decision.
+    kind: contradicts
+    correction: >-
+      Bind `domain/knowledge-base/valid-from-basis` to the file that declares the enumeration, and have this file take its type from there, for example an exported alias, instead of spelling the union four times. Code cannot read the node, so the bind is what closes this.
+    node: domain/knowledge-base/valid-from-basis
+read:
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      The `knowledge_link` branch of `loadItemsForUpdate` (lines 211-227) and `ItemLockedRow` (lines 182-198) carry status, valid_from, valid_to, confidence, valid_from_source, superseded_at and the supersedes link. The link branch of `insertCorrectedRow` (lines 437-472) writes source, target, link type, validity, status, confidence, basis, run reference, supersedes and recorded_at. `copyProvenance` copies the predecessor's provenance onto the successor.
+    evidence: >-
+      `SELECT id, source_node_id, target_node_id, link_type_id, valid_from::text AS valid_from, valid_to::text AS valid_to, status, confidence::text AS confidence, valid_from_source, superseded_at, supersedes_link_id AS supersedes_id FROM knowledge_link`; `INSERT INTO knowledge_link (source_node_id, target_node_id, link_type_id, valid_from, valid_to, status, confidence, valid_from_source, created_by_run_id, supersedes_link_id, recorded_at)`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      The `node_attribute` branch of `loadItemsForUpdate` (lines 228-242) and `ItemLockedRow` carry value, status, validity, confidence, valid_from_source, superseded_at and the supersedes attribute. The attribute branch of `insertCorrectedRow` (lines 473-507) writes the same fields plus the attribute key. `copyProvenance` copies the predecessor's provenance onto the successor.
+    evidence: >-
+      `SELECT id, node_id, attribute_key_id, value_type, value, valid_from::text AS valid_from, valid_to::text AS valid_to, status, confidence::text AS confidence, valid_from_source, superseded_at, supersedes_attribute_id AS supersedes_id FROM node_attribute`; `INSERT INTO node_attribute (node_id, attribute_key_id, value_type, value, valid_from, valid_to, status, confidence, valid_from_source, created_by_run_id, supersedes_attribute_id, recorded_at)`
+looked_past: >-
+  Header and inline comments cite back-spec rules (BR-07, BR-17, BR-18, BR-19, BR-20, BR-26, BR-33), state the accept-action list and the `disputed_queue_count` over-count caveat, and mention the queue grouping in another file. All of that is prose, and the curation rules, contracts and metrics nodes own those facts (for example `rules/knowledge-base/rejection-deletes`, `domain/knowledge-base/curation-metrics` and `domain/knowledge-base/merge-counts`). That is another judgment's, and the route for the prose is its removal.
