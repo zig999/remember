@@ -1,0 +1,68 @@
+findings:
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      QueryRetrievalToolDescriptions.search, line 134, the `expand_depth` (1..3) clause
+    evidence: >-
+      "`in_effect_only`, `include_uncertain`, `expand`, `expand_depth` (1..3), "
+    cost: >-
+      The 1..3 bound is spelled in prose served over `tools/list`, and no code in this file enforces it. The enforcing code is `.min(1).max(3)` in `dto/search.dto.ts`. If the node or the DTO moves, this description keeps saying 1..3, and `--check` never reaches it because it is text and not code.
+    kind: restates
+    correction: >-
+      Remove the range from the description text. The bound is held as code by `expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))` in `backend/src/modules/query-retrieval/dto/search.dto.ts`, which `SearchInputSchema` reuses.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      QueryRetrievalToolDescriptions.search, line 135, the `limit` (max 100) clause
+    evidence: >-
+      "`expand_link_types[]`. Pagination via `limit` (max 100) and `offset`."
+    cost: >-
+      The page-limit ceiling is restated as prose in a description served to MCP callers. The enforcing code is `.min(1).max(100)` in `dto/search.dto.ts`. If the ceiling changes there, the served description goes on advertising 100.
+    kind: restates
+    correction: >-
+      Remove the ceiling from the description text. The bound is held as code by `limit: IntegerQuery.pipe(z.number().int().min(1).max(100))` in `backend/src/modules/query-retrieval/dto/search.dto.ts`.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      QueryRetrievalToolDescriptions.get_provenance_link, get_provenance_attribute and get_provenance_fragment, lines 138-139, 142-143 and 147
+    evidence: >-
+      "for a KnowledgeLink id. 404 if missing; 410 if any underlying raw is " + "tombstoned by a compliance delete."
+    cost: >-
+      The refusal after a compliance deletion is stated three times in description prose. No code in this file refuses anything. The refusal is decided in `service/provenance.service.ts` (`findTombstone(client, rawIds)` and the `tombstone !== null` branch). A reader of the tool list takes the description for the rule's home.
+    kind: restates
+    correction: >-
+      Remove the refusal sentences from the three descriptions. The behavior is held by code in `backend/src/modules/query-retrieval/service/provenance.service.ts`.
+    node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      QueryRetrievalToolDescriptions.get_provenance_fragment, lines 146-147
+    evidence: >-
+      "InformationFragment id. 404 if missing or if the fragment is not in " + "status='accepted'; 410 if any underlying raw is tombstoned."
+    cost: >-
+      The accepted-only condition is restated in description prose. The code that holds it is `if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(...) }` in `service/provenance.service.ts`. If the condition changes there, the tool description stays behind.
+    kind: restates
+    correction: >-
+      Remove the status sentence from the description. The behavior is held by code in `backend/src/modules/query-retrieval/service/provenance.service.ts`.
+    node: rules/knowledge-base/provenance-requires-accepted-fragment
+read:
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      nowhere in this file. The bound is enforced in `dto/search.dto.ts`, outside the file set. This file only forwards `expandDepth: input.expand_depth` and reuses `SearchInputSchema`.
+    evidence: >-
+      `expandDepth: input.expand_depth,` in the `search` handler. The only bound in this file is the description text "`expand_depth` (1..3)", which is prose.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      nowhere in this file. The bound is enforced in `dto/search.dto.ts`, outside the file set. This file only forwards `limit: input.limit` and reuses `SearchQuerySchema`.
+    evidence: >-
+      `limit: input.limit,` in the `search` handler. The only ceiling in this file is the description text "`limit` (max 100)", which is prose.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      nowhere in this file. The refusal is decided in `service/provenance.service.ts`, outside the file set. This file only delegates to it.
+    evidence: >-
+      `getProvenanceByLinkService(client, input.link_id, svcLogger)`. The only refusal statement in this file is the description "410 if any underlying raw is tombstoned by a compliance delete.", which is prose.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      nowhere in this file. The status check is in `service/provenance.service.ts`, outside the file set. This file only delegates to it.
+    evidence: >-
+      `getProvenanceByFragmentService(client, input.fragment_id, svcLogger)`. The only status condition in this file is the description "not in status='accepted'", which is prose.
+looked_past: >-
+  The file's header and inline comments cite BR-23/24/25 and the HTTP statuses 404/410 appear in tool descriptions, and I left both for the comment route and for whichever judgment governs them, since no node in this set holds them.

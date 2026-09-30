@@ -1,0 +1,39 @@
+read:
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      nowhere in this file. The file only calls toSourceType(c.source_type) inside groupChain (line 153). The
+      enumeration itself is declared in dto/response.dto.ts, which is outside the file set.
+    evidence: >-
+      source_type: toSourceType(c.source_type),
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      finalise(), lines 75-92. It looks up a tombstone across every raw information id in the chain and throws
+      before anything is returned. All three anchor routes (link, attribute, fragment) go through finalise.
+    evidence: >-
+      const tombstone = await findTombstone(client, rawIds);
+      if (tombstone !== null) {
+      ...
+      throw new RawInformationDeletedError(
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      getProvenanceByFragmentService(), lines 56-62. The fragment's status is read and a non-accepted fragment is
+      refused before the chain is read.
+    evidence: >-
+      if (fragment.status !== "accepted") {
+        throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      }
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      nowhere. This file has no search query and no expansion depth.
+    evidence: >-
+      The file's exports are getProvenanceByLinkService, getProvenanceByAttributeService and
+      getProvenanceByFragmentService. None takes a depth, and no 1..3 bound appears.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      nowhere. This file has no page and no limit.
+    evidence: >-
+      The three service functions take (client, id, logger) only. No limit parameter and no 1..100 bound appears.
+looked_past: >-
+  The source_type vocabulary is declared in dto/response.dto.ts (SOURCE_TYPES, using the material's words ata, artigo, transcricao and outro), not in this file, so the source-type node's bind belongs to that file. I also saw that the empty-chain refusal in finalise() (EmptyProvenanceError) is held by rules/knowledge-base/empty-provenance-chain-refused, which is not in this pack. The code holds it once, so there is nothing to report against it.
+candidates_opened:
+  - rules/knowledge-base/empty-provenance-chain-refused

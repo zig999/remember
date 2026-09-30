@@ -1849,3 +1849,671 @@ Of the 11 judges, 6 belong to the discarded r3 (25 706 output tokens) and 5 to r
 ### Step 6 — stop
 
 Stopped for the human to review and commit, with pathspec `siegard-trace.json siegard-reconcile siegard-survey/adopt-query-retrieval siegard-telemetry`.
+
+## Run r5 — `source-type` release and adoption of `mcp/query-toolset.ts` (plugin 4.21.1)
+
+Asked by the human: (1) release `domain/knowledge-base/source-type` from `accepted-fragments.service.ts` and `provenance.service.ts` with the `--bind ... --replace` the r4 report handed over; (2) run `/siegard:reconcile` as an adoption over `src/modules/query-retrieval/mcp/query-toolset.ts`, slug `adopt-query-retrieval-r5`, with the four nodes of the r2 emitted-text findings in that file (#14, 17, 18, 20) as candidates; show `--owed`, `--check` and `--untraced`; stop before commit.
+
+`P=/home/siegfriedneto/.claude/plugins/cache/siegard-generator/siegard/4.21.1`
+
+### Order inverted, by the human's decision
+
+Step (1) was run first and left `siegard-trace.json` modified. `/reconcile` requires `siegard-trace.json` to be clean when it starts, and the human asked for no commit. The human chose to invert the order: the step (1) diff was saved to `/tmp/step1-trace.diff` and discarded (`git checkout siegard-trace.json`), r5 ran from the committed trace, and the same `--bind ... --replace` was then run again. The trace diff it left is byte-identical to the first run's diff (checked with `diff`).
+
+### r5 — situate
+
+```
+$ python3 -B $P/bin/project.py .
+standard backend: declared none
+specification_root: /home/siegfriedneto/projects/eternal/specification
+target backend: /home/siegfriedneto/projects/eternal/backend
+[exit 0]
+$ git status --porcelain -- backend/src/modules/query-retrieval/mcp/query-toolset.ts siegard-trace.json
+(empty, after the checkout)
+$ python3 -B $P/bin/spec.py specification
+specification sound: 21 element(s), 54 rule(s), 3 scenario(s), 1 contract(s), 5 constraint(s) across 1 context(s); 21 decision(s) disclosed
+[exit 0]
+$ python3 -B $P/bin/trace.py backend
+trace sound: 64 binding(s), traced against specification
+[exit 0]
+$ python3 -B $P/bin/trace.py --check backend
+backend/src/modules/query-retrieval/service/accepted-fragments.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+backend/src/modules/query-retrieval/service/provenance.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+2 drift finding(s) over 64 binding(s) … 2 code over 2 file(s)
+[exit 1]
+```
+
+`siegard-reconcile/adopt-query-retrieval-r5.md` was free. Neither drift line is in r5's file set.
+
+### r5 — stage
+
+```
+$ python3 -B $P/bin/trace.py --stage backend specification adopt-query-retrieval-r5 /tmp/tmp.B9ZDrxDspJ \
+    src/modules/query-retrieval/mcp/query-toolset.ts --adopt \
+    --node rules/knowledge-base/expansion-depth-bounds --node rules/knowledge-base/page-limit-bounds \
+    --node rules/knowledge-base/provenance-refused-after-compliance-deletion \
+    --node rules/knowledge-base/provenance-requires-accepted-fragment
+staged adopt-query-retrieval-r5: 1 file(s) to judge over 0 node(s); staged as an adoption — 4 candidate node(s) read on every file, each bound by the fold to the files that hold its fact; 0 file(s) kept outside the judgment; 0 file(s) with nothing left to judge; 0 file(s) the trace binds nothing to
+[exit 0]
+```
+
+The manifest omitted 4 standing pairs on the file as current and unowed: `constraints/retrieval-is-read-only`, `constraints/retrieval-transports-answer-alike`, `domain/knowledge-base/page`, `domain/knowledge-base/search-query`. Mechanical tier: empty, so no run was captured (step 3b skipped). No certifications were offered.
+
+### r5 — judge
+
+One `siegard:specification-conformance-reviewer` delegation for the one file. Its return is saved verbatim at `siegard-reconcile/adopt-query-retrieval-r5.returns/src__modules__query-retrieval__mcp__query-toolset.ts.yaml` (48 439 subagent tokens, 46 s).
+
+- **All 4 candidates: `held_at: nowhere`, each with a `contradicts` finding.** The file states each fact only in the `QueryRetrievalToolDescriptions` strings (`expand_depth (1..3)`, `limit (max 100)`, `410 if … tombstoned`, `404 … if the fragment is not in status='accepted'`). Its code passes the input through to the services and the imported `dto/search.dto.ts` schema, which are outside the set. **So these are not `restates`**: r4's `errors.ts` message could be `restates` because that file's code also held the fact. Here the code does not hold it, so the judge classed the text as a second home.
+- **2 more `contradicts` against nodes no file of this set is bound to.** `domain/knowledge-base/search-layer` (the `layers[] (fragment|node|chunk)` text, L133-134) and `contracts/knowledge-base/retrieval` (the `404 if missing` text in the three `get_provenance_*` descriptions). The fold put both in the record's `notes` as "owed a route of its own". `--owed` does not read notes, so this section is the only place they are handed on.
+- `looked_past`: the judge says the file still has comments citing BR-23, BR-24 and BR-25, and names the transport wiring choices (READ ONLY transaction, defensive re-parse, tool-name whitelist). It classed them as prose about the transport, not domain facts, and filed no finding. These comments still break the comment rule (step 3 removed no comment from this file because r2 filed no comment finding against it).
+
+### r5 — fold, validate, bind
+
+```
+$ python3 -B $P/bin/trace.py --fold backend /tmp/tmp.B9ZDrxDspJ /tmp/tmp.B9ZDrxDspJ/premise.yaml siegard-reconcile/adopt-query-retrieval-r5.md
+folded adopt-query-retrieval-r5.md: 0 node(s) cleared, 4 not — 0 of those collateral, blocked only by an unattributed sibling finding — 4 pair(s) omitted as current and unowed
+[exit 0]
+$ python3 -B $P/bin/trace.py --reconciliation siegard-reconcile/adopt-query-retrieval-r5.md
+adopt-query-retrieval-r5.md holds: 1 file(s), 0 node(s) the judgment cleared, 4 it did not, 0 file(s) the trace binds nothing to.
+--bind-record will write 0 binding(s) from this record and none for rules/knowledge-base/expansion-depth-bounds, rules/knowledge-base/page-limit-bounds, rules/knowledge-base/provenance-refused-after-compliance-deletion, rules/knowledge-base/provenance-requires-accepted-fragment: a node without `encoded_at` is a node this form cannot bind.
+[exit 0]
+$ python3 -B $P/bin/trace.py --bind-record backend specification siegard-reconcile/adopt-query-retrieval-r5.md --workspace /tmp/tmp.B9ZDrxDspJ
+nothing to bind: siegard-reconcile/adopt-query-retrieval-r5.md names no node with `encoded_at`; a node the record answers only by `how` reached no file, and a bind with none is refused
+[exit 0]
+```
+
+r5 wrote no binding. The record is at `siegard-reconcile/adopt-query-retrieval-r5.md`.
+
+### Step (1) — `source-type` release (run again after r5)
+
+```
+$ python3 -B $P/bin/trace.py --bind backend specification domain/knowledge-base/source-type \
+    src/modules/query-retrieval/dto/response.dto.ts src/modules/query-retrieval/repository/accepted-fragments.repository.ts \
+    src/modules/query-retrieval/repository/provenance.repository.ts --replace
+bound domain/knowledge-base/source-type to 3 file(s) at /home/siegfriedneto/projects/eternal/siegard-trace.json
+  this binding rests on no record: --bind wrote what the caller stated, and the judgment behind it lives nowhere a reader can reopen. A delivery's record or a reconciliation is the recorded route — for a hand edit over bound source, /reconcile writes the same binding with the judgment kept. The trace carries no mark of the difference on domain/knowledge-base/source-type; this line is the only one
+  --replace released 2 path(s) this call did not name; domain/knowledge-base/source-type no longer claims backend/src/modules/query-retrieval/service/accepted-fragments.service.ts, backend/src/modules/query-retrieval/service/provenance.service.ts. Where the fact moved out of those files, that is what --replace is for; where another delivery had bound one of them, that binding is gone from here, and the last committed trace is where it survives if anywhere
+[exit 0]
+```
+
+### `--owed`
+
+```
+$ python3 -B $P/bin/trace.py --owed backend
+unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  backend/src/modules/query-retrieval/dto/response.dto.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-chunk — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-information — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/dto/search.dto.ts
+    contracts/knowledge-base/retrieval — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/mcp/query-toolset.ts
+    rules/knowledge-base/expansion-depth-bounds — found against in adopt-query-retrieval-r2.md, adopt-query-retrieval-r5.md
+    rules/knowledge-base/page-limit-bounds — found against in adopt-query-retrieval-r2.md, adopt-query-retrieval-r5.md
+    rules/knowledge-base/provenance-refused-after-compliance-deletion — found against in adopt-query-retrieval-r2.md, adopt-query-retrieval-r5.md
+    rules/knowledge-base/provenance-requires-accepted-fragment — found against in adopt-query-retrieval-r2.md, adopt-query-retrieval-r5.md
+  backend/src/modules/query-retrieval/repository/provenance.repository.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/repository/search.repository.ts
+    rules/knowledge-base/search-excludes-compliance-deleted-sources — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/search-ranking — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/service/search.service.ts
+    domain/knowledge-base/assertion-flag — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/expansion-decay — found against in adopt-query-retrieval-r2.md
+
+13 finding(s) no bind closed, over 6 file(s):
+  13 unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  0 covered: bound at the content on disk now — a bind wrote over the only symptom `--check` had, and the finding stands under it
+  0 reported: the binding is stale, so `--check` already carries this one — the record is what says what was found
+  13 of them appear in no --check report, and nothing about the files has to change for that to stay true; this form is where they are said
+
+15 pair(s) the records answer both ways are not listed above: a clearance closes a finding here. No chronology is available — a record carries no timestamp and several land in one commit — so which judgment is current is a reading of the records themselves.
+  `--all` lists them, each with what the trace holds for it now
+
+11 unstated fact(s) the records name, over 7 file(s) — the source states them and no node holds them. No bind closes one and none is counted above:
+  src/modules/query-retrieval/dto/fragment.dto.ts — ListAcceptedFragmentsQuerySchema, the `.strict()` call on the query object (line 38): A request carrying any query parameter outside llm_run_id, raw_information_id, limit and offset is refused here. The contract's refusals for the listing name only a missing filter, a malformed identifier and out-of-range paging, so this refusal is decided in the DTO. The next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 81-84: The literal value a compliance-deleted source's original input takes is stated only in this prose. I searched the whole specification root, including the decision log, for REDACTED and found no node that holds it. It reads as a decision the business made, but the next reader will look for it in the specification and not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 83-84: The comment states that the original input is excluded from the content hash. I searched the specification for content_hash and content hash and found no node that holds this. It is a rule of the idempotency identity that lives only in prose here. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QUERY_RETRIEVAL_TOOL_NAMES and the four registerTool calls, lines 118-123 and 219-284: The retrieval contract names its operations search, read-link-provenance, read-attribute-provenance and read-fragment-provenance. The names an MCP client actually calls (get_provenance_link and the others) and the toolset key "query" live only in this file. The next reader who looks in the specification for what the owner's language model calls will not find them. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — search handler input mapping, lines 226-241, and the search description, lines 130-135: The search-query node names its choices text and link_types, and the contract gives no wire names. The input names `query` and `expand_link_types`, and the id parameters `link_id`, `attribute_id` and `fragment_id`, are fixed only in code. A reader comparing the node with the tool sees two vocabularies and no node saying which one the client must send. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/provenance.repository.ts — the ORDER BY clauses of the two chain queries in runChainSql (lines 154 and 179): The order of the chunks inside each fragment (chunk index ascending, then chunk id) and the fragment tie-break by fragment id decide what the owner reads first in a provenance answer. The specification holds only that fragments come in recording order. The chunk order lives only in this SQL, so the next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — listProvenanceForNodes, the ORDER BY clause (line 373): The order in which the fragments that support a node hit are presented is decided here, newest first, and no node states it. Provenance-in-recording-order covers only links and attributes. A reader looking for how a node's supporting fragments are ordered finds no rule. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — searchNodeAliasLayer, the SELECT score expression (line 123): A knowledge node's score is decided as the highest rank among its matching aliases, and the specification does not say how a node reached through several aliases is scored. Code becomes the only home of that choice. The next reader who wants to know why a node ranks where it does looks in layer-weights or search-item and finds nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/errors.ts — message of EmptyProvenanceError, lines 85-87: The message tells the owner that an empty provenance chain means legacy data. The node only says that a read of an existing item with an empty chain is refused, and states no cause. The owner is given a diagnosis that lives only in this string. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 357, the `layer` of a link search item: The search-item node types `layer` as a search-layer (fragment, node, chunk) and no node says which layer a link item reports. The code decides it is "node". A consumer filtering or grouping by layer inherits that decision, and the next reader will look for it in the specification and find nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 56, the constant PER_LAYER_FETCH_LIMIT, passed to searchFragmentLayer, searchNodeAliasLayer and searchChunkLayer at lines 129-147: The number 200 is a cap on what a search can ever rank, and no node states it. Matches beyond the 200th on a layer are dropped before ranking. The reported `total` is `filtered.length` (line 391), so it counts only what survived the cap. A reader who trusts search-total-before-pagination ("counts every search item before the page is cut") would not look here for the reason a total stops at some number. [adopt-query-retrieval-r2.md]
+  each is the analysis's to close, through the node that gives the fact a home
+
+1 place(s) the records name where text in the source restates a node's fact the code holds, over 1 file(s). The pair conforms and none is counted above:
+  src/modules/query-retrieval/service/errors.ts — InvalidSearchQueryError constructor, the message chosen for reason "too_long" (line 16) (rules/knowledge-base/search-query-length) [adopt-query-retrieval-r4.md]
+  a comment is removed, never refreshed, and the file reconciled after
+[exit 1]
+```
+
+### `--check`
+
+```
+$ python3 -B $P/bin/trace.py --check backend
+trace: /home/siegfriedneto/projects/eternal/siegard-trace.json — one file per git toplevel; every target under it reads this same one
+no drift: 64 binding(s) match the specification and the code as both stand now
+[exit 0]
+```
+
+### `--untraced`
+
+```
+$ python3 -B $P/bin/trace.py --untraced backend
+279 tracked file(s) under backend: 14 bound, 265 no binding names
+  1 holds-nothing: judged by an adoption, which bound none of its candidates to it
+  0 outside: kept outside an adoption's judgment
+  264 unsurveyed: no binding and no adoption names it
+
+directories by unsurveyed files:
+   34  backend/src/__tests__/unit/ingestion
+   14  backend/src/modules/chat/service
+   12  backend/src/modules/ingestion/service
+   10  backend/src/modules/ingestion/mcp
+    9  backend/src/__tests__/unit/chat
+    9  backend/src/modules/chat/service/__tests__
+    9  backend/src/modules/ingestion/dto
+    9  backend/src/modules/knowledge-graph/dto
+    9  backend/src/modules/knowledge-graph/service
+    8  backend/src/modules/curation/service
+    7  backend
+    7  backend/src/__tests__/unit
+    7  backend/src/__tests__/unit/knowledge-graph
+    7  backend/src/__tests__/unit/query-retrieval
+    6  backend/src/modules/curation/mcp
+  (49 more directories; --all lists every file)
+[exit 0]
+```
+
+### What changed
+
+- `--check`: **no drift** (64 bindings), down from 2. The `source-type` release closed both `code` findings.
+- `--owed`: 13 `unseen` over 6 files. These are the 9 r2 **code** differences (unchanged, never re-judged) plus the 4 `query-toolset.ts` candidates, which r5 found against again (now cited by r2 and r5). 11 `unstated`, 1 `restates` (`errors.ts` "query exceeds 1000 characters"), unchanged.
+- `--untraced`: 14 bound, 1 holds-nothing (`index.ts`), 264 unsurveyed. Unchanged: `query-toolset.ts` was already bound.
+- Owed a route of their own (record `notes`): `domain/knowledge-base/search-layer` and `contracts/knowledge-base/retrieval` against the `query-toolset.ts` descriptions.
+- **Route note, not decided here:** the four `query-toolset.ts` findings are about **emitted text**, the tool descriptions an MCP client reads. By the consumer rules' criterion ("alters what a person using the system can learn"), changing that text is not the comment route and not surface. It is the human's call whether to take it through `/plan-work` (corrective) or `/analyse`.
+
+### Stop
+
+Stopped before commit. Pending, for the human to review and commit with pathspec: `siegard-trace.json siegard-reconcile/adopt-query-retrieval-r5.md siegard-reconcile/adopt-query-retrieval-r5.returns siegard-survey/adopt-query-retrieval/RESULTS.md`.
+
+## Run r5b — re-run of the r5 adoption of `mcp/query-toolset.ts` under plugin 4.21.2
+
+Asked by the human: update the plugin to 4.21.2; discard r5, which was never committed
+(`git checkout -- siegard-trace.json`, delete `siegard-reconcile/adopt-query-retrieval-r5.md` and
+`adopt-query-retrieval-r5.returns/`), after confirming the only change in `siegard-trace.json` is
+r5's; then `/siegard:reconcile` as an adoption over `src/modules/query-retrieval/mcp/query-toolset.ts`,
+slug `adopt-query-retrieval-r5b`, with the same four candidate nodes; record here; stop before commit.
+
+### Plugin
+
+The human updated it with `/plugin` + `/reload-plugins`. `installed_plugins.json` holds
+`project /home/siegfriedneto/projects/eternal 4.21.2`; the skill ran from
+`~/.claude/plugins/cache/siegard-generator/siegard/4.21.2`.
+
+### Discarding r5 — what the trace diff was
+
+A structural diff of `siegard-trace.json` (HEAD vs. working tree) showed `specification` equal and
+exactly one binding changed: `domain/knowledge-base/source-type`, whose `files` lost
+`service/accepted-fragments.service.ts` and `service/provenance.service.ts` and lost `judged: true`
+on its three remaining files. That is **step (1) of the r5 run** (the `trace.py --bind ...
+source-type --replace` above), not the r5 fold: r5 cleared 0 nodes and wrote no binding. So the
+checkout also undid the `source-type` release. Its diff was saved before the checkout at
+`siegard-survey/adopt-query-retrieval/r5-step1-source-type-release.diff`, so it can be reapplied
+by running the same `--bind ... --replace` again. Until then `--check` again reports the two
+`source-type` drift lines.
+
+```
+$ git checkout -- siegard-trace.json
+$ rm -r siegard-reconcile/adopt-query-retrieval-r5.md siegard-reconcile/adopt-query-retrieval-r5.returns
+```
+
+### r5b — situate
+
+```
+$ project.py .
+standard backend: /home/siegfriedneto/projects/eternal/standards/backend-node-service.yaml
+specification_root: /home/siegfriedneto/projects/eternal/specification
+target backend: /home/siegfriedneto/projects/eternal/backend
+work_root: /home/siegfriedneto/projects/eternal/siegard-work
+delivery_root: /home/siegfriedneto/projects/eternal/siegard-delivery
+telemetry_root: /home/siegfriedneto/projects/eternal/siegard-telemetry
+exit=0
+$ git status --porcelain -- backend/src/modules/query-retrieval/mcp/query-toolset.ts siegard-trace.json
+$ spec.py specification
+specification sound: 21 element(s), 54 rule(s), 3 scenario(s), 1 contract(s), 5 constraint(s) across 1 context(s); 21 decision(s) disclosed
+exit=0
+$ trace.py backend
+trace sound: 64 binding(s), traced against specification
+exit=0
+$ ls siegard-reconcile/adopt-query-retrieval-r5b*
+ls: cannot access 'siegard-reconcile/adopt-query-retrieval-r5b*': No such file or directory
+$ trace.py --check backend
+trace: /home/siegfriedneto/projects/eternal/siegard-trace.json — one file per git toplevel; every target under it reads this same one
+backend/src/modules/query-retrieval/service/accepted-fragments.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+backend/src/modules/query-retrieval/service/provenance.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+
+2 drift finding(s) over 64 binding(s):
+  0 orphaned: bound to a node the specification no longer holds — no bind can repair these, and `--prune` is the only thing that clears them
+  0 moved: bound to a node whose text moved since the bind; `/reconcile` over the bound files re-reads them against the node as it stands, and a delivery of a task implementing the node restamps it
+  0 proof: decided by a test whose text changed since it was certified — the binding is decided by reading again until a judgment certifies the test as it now stands
+  2 code over 2 file(s): bound to a file that changed or is gone; `/reconcile` over the files re-reads a file that changed, and `--release` answers one the tree no longer holds
+exit=1
+```
+
+### r5b — stage
+
+```
+$ trace.py --stage backend specification adopt-query-retrieval-r5b /tmp/tmp.jcdXLu1IOD src/modules/query-retrieval/mcp/query-toolset.ts --adopt --node … (4)
+staged adopt-query-retrieval-r5b: 1 file(s) to judge over 0 node(s); staged as an adoption — 4 candidate node(s) read on every file, each bound by the fold to the files that hold its fact; 0 file(s) kept outside the judgment; 0 file(s) with nothing left to judge; 0 file(s) the trace binds nothing to
+  manifest and packs at /tmp/tmp.jcdXLu1IOD; candidate index at /tmp/tmp.jcdXLu1IOD/candidates.txt
+  save each delegation's return verbatim at /home/siegfriedneto/projects/eternal/siegard-reconcile/adopt-query-retrieval-r5b.returns/<file path with '/' as '__'>.yaml
+```
+
+Candidates: `rules/knowledge-base/expansion-depth-bounds`, `rules/knowledge-base/page-limit-bounds`,
+`rules/knowledge-base/provenance-refused-after-compliance-deletion`,
+`rules/knowledge-base/provenance-requires-accepted-fragment`. Nothing was staged as mechanical, so
+step 3b (capture) did not apply and `--fold` took no `--run`. The 4 pairs the trace already binds to
+the file (`constraints/retrieval-is-read-only`, `constraints/retrieval-transports-answer-alike`,
+`domain/knowledge-base/page`, `domain/knowledge-base/search-query`) were omitted as current and unowed.
+
+### r5b — judge
+
+One `siegard:specification-conformance-reviewer` delegation for the one file (41 049 subagent
+tokens, 6 tool uses, 25 s). Its return is saved verbatim at
+`siegard-reconcile/adopt-query-retrieval-r5b.returns/src__modules__query-retrieval__mcp__query-toolset.ts.yaml`.
+It found 4 findings, all `kind: restates`, one per candidate. For all 4 nodes `read.held_at` is
+"nowhere in this file": the bounds are enforced in `dto/search.dto.ts`, and the refusals in
+`service/provenance.service.ts`. `looked_past` (said here because it is not a record field): the
+header and inline comments that cite BR-23/24/25, and the 404/410 statuses in the tool descriptions,
+were left for the comment route.
+
+### r5b — fold, validate, bind, and the reports after
+
+```
+$ trace.py --fold backend /tmp/tmp.jcdXLu1IOD /tmp/tmp.jcdXLu1IOD/premise.yaml siegard-reconcile/adopt-query-retrieval-r5b.md
+folded adopt-query-retrieval-r5b.md: 0 node(s) cleared, 0 not — 0 of those collateral, blocked only by an unattributed sibling finding — 4 pair(s) omitted as current and unowed; 4 candidate(s) no file of the set holds, listed under `unheld`
+  next: trace.py --reconciliation siegard-reconcile/adopt-query-retrieval-r5b.md
+exit=0
+$ trace.py --reconciliation siegard-reconcile/adopt-query-retrieval-r5b.md
+adopt-query-retrieval-r5b.md holds: 1 file(s), 0 node(s) the judgment cleared, 0 it did not, 0 file(s) the trace binds nothing to.
+exit=0
+$ trace.py --bind-record backend specification siegard-reconcile/adopt-query-retrieval-r5b.md --workspace /tmp/tmp.jcdXLu1IOD
+nothing to bind: siegard-reconcile/adopt-query-retrieval-r5b.md names no node with `encoded_at`; a node the record answers only by `how` reached no file, and a bind with none is refused
+exit=0
+$ git status --porcelain -- siegard-trace.json
+$ trace.py --owed backend
+unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  backend/src/modules/query-retrieval/dto/response.dto.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-chunk — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-information — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/dto/search.dto.ts
+    contracts/knowledge-base/retrieval — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/repository/provenance.repository.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/repository/search.repository.ts
+    rules/knowledge-base/search-excludes-compliance-deleted-sources — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/search-ranking — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/service/search.service.ts
+    domain/knowledge-base/assertion-flag — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/expansion-decay — found against in adopt-query-retrieval-r2.md
+
+9 finding(s) no bind closed, over 5 file(s):
+  9 unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  0 covered: bound at the content on disk now — a bind wrote over the only symptom `--check` had, and the finding stands under it
+  0 reported: the binding is stale, so `--check` already carries this one — the record is what says what was found
+  9 of them appear in no --check report, and nothing about the files has to change for that to stay true; this form is where they are said
+
+19 pair(s) the records answer both ways are not listed above: a clearance closes a finding here. No chronology is available — a record carries no timestamp and several land in one commit — so which judgment is current is a reading of the records themselves.
+  `--all` lists them, each with what the trace holds for it now
+
+11 unstated fact(s) the records name, over 7 file(s) — the source states them and no node holds them. No bind closes one and none is counted above:
+  src/modules/query-retrieval/dto/fragment.dto.ts — ListAcceptedFragmentsQuerySchema, the `.strict()` call on the query object (line 38): A request carrying any query parameter outside llm_run_id, raw_information_id, limit and offset is refused here. The contract's refusals for the listing name only a missing filter, a malformed identifier and out-of-range paging, so this refusal is decided in the DTO. The next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 81-84: The literal value a compliance-deleted source's original input takes is stated only in this prose. I searched the whole specification root, including the decision log, for REDACTED and found no node that holds it. It reads as a decision the business made, but the next reader will look for it in the specification and not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 83-84: The comment states that the original input is excluded from the content hash. I searched the specification for content_hash and content hash and found no node that holds this. It is a rule of the idempotency identity that lives only in prose here. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QUERY_RETRIEVAL_TOOL_NAMES and the four registerTool calls, lines 118-123 and 219-284: The retrieval contract names its operations search, read-link-provenance, read-attribute-provenance and read-fragment-provenance. The names an MCP client actually calls (get_provenance_link and the others) and the toolset key "query" live only in this file. The next reader who looks in the specification for what the owner's language model calls will not find them. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — search handler input mapping, lines 226-241, and the search description, lines 130-135: The search-query node names its choices text and link_types, and the contract gives no wire names. The input names `query` and `expand_link_types`, and the id parameters `link_id`, `attribute_id` and `fragment_id`, are fixed only in code. A reader comparing the node with the tool sees two vocabularies and no node saying which one the client must send. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/provenance.repository.ts — the ORDER BY clauses of the two chain queries in runChainSql (lines 154 and 179): The order of the chunks inside each fragment (chunk index ascending, then chunk id) and the fragment tie-break by fragment id decide what the owner reads first in a provenance answer. The specification holds only that fragments come in recording order. The chunk order lives only in this SQL, so the next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — listProvenanceForNodes, the ORDER BY clause (line 373): The order in which the fragments that support a node hit are presented is decided here, newest first, and no node states it. Provenance-in-recording-order covers only links and attributes. A reader looking for how a node's supporting fragments are ordered finds no rule. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — searchNodeAliasLayer, the SELECT score expression (line 123): A knowledge node's score is decided as the highest rank among its matching aliases, and the specification does not say how a node reached through several aliases is scored. Code becomes the only home of that choice. The next reader who wants to know why a node ranks where it does looks in layer-weights or search-item and finds nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/errors.ts — message of EmptyProvenanceError, lines 85-87: The message tells the owner that an empty provenance chain means legacy data. The node only says that a read of an existing item with an empty chain is refused, and states no cause. The owner is given a diagnosis that lives only in this string. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 357, the `layer` of a link search item: The search-item node types `layer` as a search-layer (fragment, node, chunk) and no node says which layer a link item reports. The code decides it is "node". A consumer filtering or grouping by layer inherits that decision, and the next reader will look for it in the specification and find nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 56, the constant PER_LAYER_FETCH_LIMIT, passed to searchFragmentLayer, searchNodeAliasLayer and searchChunkLayer at lines 129-147: The number 200 is a cap on what a search can ever rank, and no node states it. Matches beyond the 200th on a layer are dropped before ranking. The reported `total` is `filtered.length` (line 391), so it counts only what survived the cap. A reader who trusts search-total-before-pagination ("counts every search item before the page is cut") would not look here for the reason a total stops at some number. [adopt-query-retrieval-r2.md]
+  each is the analysis's to close, through the node that gives the fact a home
+
+5 place(s) the records name where text in the source restates a node's fact the code holds, over 2 file(s). The pair conforms and none is counted above:
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.get_provenance_fragment, lines 146-147 (rules/knowledge-base/provenance-requires-accepted-fragment) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.get_provenance_link, get_provenance_attribute and get_provenance_fragment, lines 138-139, 142-143 and 147 (rules/knowledge-base/provenance-refused-after-compliance-deletion) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.search, line 134, the `expand_depth` (1..3) clause (rules/knowledge-base/expansion-depth-bounds) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.search, line 135, the `limit` (max 100) clause (rules/knowledge-base/page-limit-bounds) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/service/errors.ts — InvalidSearchQueryError constructor, the message chosen for reason "too_long" (line 16) (rules/knowledge-base/search-query-length) [adopt-query-retrieval-r4.md]
+  a comment is removed, never refreshed, and the file reconciled after
+exit=1
+$ trace.py --check backend
+trace: /home/siegfriedneto/projects/eternal/siegard-trace.json — one file per git toplevel; every target under it reads this same one
+backend/src/modules/query-retrieval/service/accepted-fragments.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+backend/src/modules/query-retrieval/service/provenance.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+
+2 drift finding(s) over 64 binding(s):
+  0 orphaned: bound to a node the specification no longer holds — no bind can repair these, and `--prune` is the only thing that clears them
+  0 moved: bound to a node whose text moved since the bind; `/reconcile` over the bound files re-reads them against the node as it stands, and a delivery of a task implementing the node restamps it
+  0 proof: decided by a test whose text changed since it was certified — the binding is decided by reading again until a judgment certifies the test as it now stands
+  2 code over 2 file(s): bound to a file that changed or is gone; `/reconcile` over the files re-reads a file that changed, and `--release` answers one the tree no longer holds
+exit=1
+$ trace.py --untraced backend
+279 tracked file(s) under backend: 14 bound, 265 no binding names
+  1 holds-nothing: judged by an adoption, which bound none of its candidates to it
+  0 outside: kept outside an adoption's judgment
+  264 unsurveyed: no binding and no adoption names it
+
+directories by unsurveyed files:
+   34  backend/src/__tests__/unit/ingestion
+   14  backend/src/modules/chat/service
+   12  backend/src/modules/ingestion/service
+   10  backend/src/modules/ingestion/mcp
+    9  backend/src/__tests__/unit/chat
+    9  backend/src/modules/chat/service/__tests__
+    9  backend/src/modules/ingestion/dto
+    9  backend/src/modules/knowledge-graph/dto
+    9  backend/src/modules/knowledge-graph/service
+    8  backend/src/modules/curation/service
+    7  backend
+    7  backend/src/__tests__/unit
+    7  backend/src/__tests__/unit/knowledge-graph
+    7  backend/src/__tests__/unit/query-retrieval
+    6  backend/src/modules/curation/mcp
+  (49 more directories; --all lists every file)
+exit=0
+```
+
+### r5b — outcome, and how it differs from r5
+
+- **Under 4.21.1 (r5)**, the four nodes folded as `conforms: false`, answered by `how`. They were
+  blocked and owed.
+- **Under 4.21.2 (r5b)**, the same file and the same four candidates fold as 4 `restates` plus 4
+  `unheld`: 0 cleared, 0 refused, nothing bound, and `siegard-trace.json` unchanged. A `restates`
+  finding blocks no binding. Each candidate is `unheld` because the fact lives in code outside the
+  file set, so the adoption binds it to no file here. `--untraced` now counts the file as
+  `holds-nothing`.
+- **What is owed:**
+  - The 4 `restates`: this is the comment route. Remove the range, the ceiling and the refusal
+    sentences from `QueryRetrievalToolDescriptions` in `query-toolset.ts`. Remove them, never
+    refresh them. Then run `/siegard:reconcile` over that file under a new slug.
+  - The 4 `unheld`: the facts are held by `dto/search.dto.ts` (expansion-depth-bounds,
+    page-limit-bounds) and `service/provenance.service.ts` (the two provenance rules). Those files
+    are an adoption of their own.
+- **Not done here:** the `source-type` release undone by the checkout. It still needs the same
+  `--bind ... --replace` again if it is wanted.
+
+**Stopped before commit.** Pending, uncommitted: `siegard-reconcile/adopt-query-retrieval-r5b.md`,
+`siegard-reconcile/adopt-query-retrieval-r5b.returns/`, this file, and
+`r5-step1-source-type-release.diff`.
+
+## Human ask after r5b — "pode fazer 1 e 2"
+
+- **Item 1:** the comment route over `mcp/query-toolset.ts`, for the 4 r5b `restates`. That means
+  removing the prose, then `/reconcile` over the file.
+- **Item 2:** an adoption of the files that hold the 4 facts, `dto/search.dto.ts` and
+  `service/provenance.service.ts`.
+
+### Item 1 — comment route over `src/modules/query-retrieval/mcp/query-toolset.ts` (source edited)
+
+Checked before removing the text: the descriptions are served over `tools/list`, so removing prose
+could change what the MCP client learns. `tools/list` also serves each tool's `inputSchema`,
+derived with `z.toJSONSchema`. Printed from the module:
+
+```
+$ npx tsx /tmp/js.mts   # prints QueryRetrievalToolInputJsonSchemas.search.properties.{limit,expand_depth,offset}
+{
+ "limit": { "default": 20, "type": "integer", "minimum": 1, "maximum": 100 },
+ "expand_depth": { "default": 1, "type": "integer", "minimum": 1, "maximum": 3 },
+ "offset": { "default": 0, "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+}
+```
+
+So the bounds still reach the client through the schema. The 404/410 statuses and the accepted-only
+refusal reach it through the refusal envelope when it happens. No test asserts on the description
+text (grep over `src`).
+
+What was removed:
+- **From the descriptions:** "(1..3)", "(max 100)", and the status sentences "404 if missing; 410
+  if any underlying raw is tombstoned by a compliance delete." (link and attribute) and "404 if
+  missing or if the fragment is not in status='accepted'; 410 if any underlying raw is tombstoned."
+  (fragment). The 404 clause goes with them because it is part of the same sentence; the judge's
+  `looked_past` had left the 404/410 statuses for the comment route.
+- **Every comment in the file:** the header, the section banners, the JSDoc and the inline comments.
+  This follows the consumer rule that a session writing a source file delivers it whole, with the
+  comments it finds removed.
+
+No code line changed (diff: 5 insertions, 101 deletions; every `+` line is a description string).
+
+```
+$ npx tsc --noEmit -p .        (backend)   → no output
+$ npx vitest run src/modules/query-retrieval src/__tests__/unit/query-retrieval
+ Test Files  10 passed (10)
+      Tests  57 passed (57)
+```
+
+**The `/reconcile` over this file is NOT run yet.** The skill requires every named file committed
+("the digest of an uncommitted edit points at content the next checkout erases"), and the edit is
+uncommitted. `--check` now reports the file (4 bindings: `constraints/retrieval-is-read-only`,
+`constraints/retrieval-transports-answer-alike`, `domain/knowledge-base/page`,
+`domain/knowledge-base/search-query`). Next, after commit: `/siegard:reconcile` over
+`src/modules/query-retrieval/mcp/query-toolset.ts`, target backend, slug `adopt-query-retrieval-r7`.
+It is an ordinary reconciliation, not an adoption: the file already holds 4 bindings, and r5b bound
+none of its candidates to it.
+
+### Item 2 — r6: adoption of `dto/search.dto.ts` and `service/provenance.service.ts` (plugin 4.21.2)
+
+Candidates: the same four nodes. The two files were committed and the trace was clean when r6
+started.
+
+```
+$ git status --porcelain -- backend/src/modules/query-retrieval/dto/search.dto.ts backend/src/modules/query-retrieval/service/provenance.service.ts siegard-trace.json
+$ spec.py specification
+specification sound: 21 element(s), 54 rule(s), 3 scenario(s), 1 contract(s), 5 constraint(s) across 1 context(s); 21 decision(s) disclosed
+$ trace.py backend
+trace sound: 64 binding(s), traced against specification
+ls: cannot access 'siegard-reconcile/adopt-query-retrieval-r6*': No such file or directory
+$ trace.py --stage backend specification adopt-query-retrieval-r6 /tmp/tmp.Xy5MeOfJSm src/modules/query-retrieval/dto/search.dto.ts src/modules/query-retrieval/service/provenance.service.ts --adopt --node … (4)
+staged adopt-query-retrieval-r6: 2 file(s) to judge over 3 node(s); staged as an adoption — 4 candidate node(s) read on every file, each bound by the fold to the files that hold its fact; 0 file(s) kept outside the judgment; 0 file(s) with nothing left to judge; 0 file(s) the trace binds nothing to
+  manifest and packs at /tmp/tmp.Xy5MeOfJSm; candidate index at /tmp/tmp.Xy5MeOfJSm/candidates.txt
+  save each delegation's return verbatim at /home/siegfriedneto/projects/eternal/siegard-reconcile/adopt-query-retrieval-r6.returns/<file path with '/' as '__'>.yaml
+exit=0
+```
+
+Staging result:
+- `search.dto.ts`: the 4 candidates only; 7 pairs omitted as current.
+- `provenance.service.ts`: `domain/knowledge-base/source-type` (drifted), plus the two provenance
+  rules the trace already bound there, plus the candidates; 11 pairs omitted.
+- 18 pairs omitted in all. The mechanical tier was empty, so no run was needed.
+
+Judging: two `siegard:specification-conformance-reviewer` delegations in parallel, one per file.
+Returns saved verbatim under `siegard-reconcile/adopt-query-retrieval-r6.returns/`.
+
+| file | subagent tokens | tool uses | time |
+|---|---|---|---|
+| `search.dto.ts` | 45 815 | 11 | 32 s |
+| `provenance.service.ts` | 38 671 | 9 | 27 s |
+
+What the judges answered:
+- **`search.dto.ts`:**
+  - `expansion-depth-bounds`: held at `SearchQuerySchema.expand_depth`, L65, `.min(1).max(3)`.
+  - `page-limit-bounds`: held at `SearchQuerySchema.limit`, L69, `.min(1).max(100)`.
+  - The two provenance rules: held nowhere in this file.
+  - 2 `restates` in the `QueryString` docblock (L37-47), for `search-query-length` and
+    `search-query-not-blank`, both candidates it opened.
+- **`provenance.service.ts`:**
+  - `provenance-refused-after-compliance-deletion`: held at `finalise()`, L75-92
+    (`findTombstone` / `RawInformationDeletedError`).
+  - `provenance-requires-accepted-fragment`: held at `getProvenanceByFragmentService()`, L56-62
+    (`FragmentNotAcceptedError`).
+  - `source-type`: held **nowhere** in this file. It only calls `toSourceType(...)`; the enumeration
+    is in `dto/response.dto.ts`.
+  - The two bounds: held nowhere in this file.
+
+One premise correction before the fold: `provenance.service.ts` did change since the `source-type`
+bind. The comment route removed its comments in 8ab81f9 and no code changed, so its `change` line
+says that rather than "nothing in it changed".
+
+```
+$ trace.py --fold backend /tmp/tmp.Xy5MeOfJSm /tmp/tmp.Xy5MeOfJSm/premise.yaml siegard-reconcile/adopt-query-retrieval-r6.md
+folded adopt-query-retrieval-r6.md: 4 node(s) cleared, 1 not — 0 of those collateral, blocked only by an unattributed sibling finding — 18 pair(s) omitted as current and unowed
+  next: trace.py --reconciliation siegard-reconcile/adopt-query-retrieval-r6.md
+exit=0
+$ trace.py --reconciliation siegard-reconcile/adopt-query-retrieval-r6.md
+adopt-query-retrieval-r6.md holds: 2 file(s), 4 node(s) the judgment cleared, 1 it did not, 0 file(s) the trace binds nothing to.
+--bind-record will write 4 binding(s) from this record and none for domain/knowledge-base/source-type: a node without `encoded_at` is a node this form cannot bind.
+exit=0
+$ trace.py --bind-record backend specification siegard-reconcile/adopt-query-retrieval-r6.md --workspace /tmp/tmp.Xy5MeOfJSm
+bound rules/knowledge-base/expansion-depth-bounds to 1 file(s)
+bound rules/knowledge-base/page-limit-bounds to 1 file(s)
+bound rules/knowledge-base/provenance-refused-after-compliance-deletion to 2 file(s)
+bound rules/knowledge-base/provenance-requires-accepted-fragment to 2 file(s)
+4 binding(s) written at /home/siegfriedneto/projects/eternal/siegard-trace.json, read from adopt-query-retrieval-r6.md
+  this act leaves 1 binding(s) stale — a bind restamps only the nodes it was handed:
+    domain/knowledge-base/source-type: backend/src/modules/query-retrieval/service/provenance.service.ts — this act restamped the file under another node
+    each is a `code` drift finding on the next --check; a reconciliation over these paths is the route, whatever wrote the change
+  1 node(s) of adopt-query-retrieval-r6.md the judgment did not clear, and this bind wrote none of them:
+    domain/knowledge-base/source-type
+    each stays as it stood — its drift, where the file was bound before, is still a finding on the next --check; where it was not, --owed is the only report that will ever say so. The record says what was found against it
+exit=0
+$ trace.py --check backend
+trace: /home/siegfriedneto/projects/eternal/siegard-trace.json — one file per git toplevel; every target under it reads this same one
+backend/src/modules/query-retrieval/mcp/query-toolset.ts: the file changed without a rebind — 4 binding(s): constraints/retrieval-is-read-only, constraints/retrieval-transports-answer-alike, domain/knowledge-base/page, domain/knowledge-base/search-query
+backend/src/modules/query-retrieval/service/accepted-fragments.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+backend/src/modules/query-retrieval/service/provenance.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+
+6 drift finding(s) over 66 binding(s):
+  0 orphaned: bound to a node the specification no longer holds — no bind can repair these, and `--prune` is the only thing that clears them
+  0 moved: bound to a node whose text moved since the bind; `/reconcile` over the bound files re-reads them against the node as it stands, and a delivery of a task implementing the node restamps it
+  0 proof: decided by a test whose text changed since it was certified — the binding is decided by reading again until a judgment certifies the test as it now stands
+  6 code over 3 file(s): bound to a file that changed or is gone; `/reconcile` over the files re-reads a file that changed, and `--release` answers one the tree no longer holds
+exit=1
+$ trace.py --owed backend
+unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  backend/src/modules/query-retrieval/dto/response.dto.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-chunk — found against in adopt-query-retrieval-r2.md
+    domain/knowledge-base/raw-information — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/dto/search.dto.ts
+    contracts/knowledge-base/retrieval — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/repository/provenance.repository.ts
+    domain/knowledge-base/fragment-status — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/repository/search.repository.ts
+    rules/knowledge-base/search-excludes-compliance-deleted-sources — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/search-ranking — found against in adopt-query-retrieval-r2.md
+  backend/src/modules/query-retrieval/service/search.service.ts
+    domain/knowledge-base/assertion-flag — found against in adopt-query-retrieval-r2.md
+    rules/knowledge-base/expansion-decay — found against in adopt-query-retrieval-r2.md
+
+9 finding(s) no bind closed, over 5 file(s):
+  9 unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  0 covered: bound at the content on disk now — a bind wrote over the only symptom `--check` had, and the finding stands under it
+  0 reported: the binding is stale, so `--check` already carries this one — the record is what says what was found
+  9 of them appear in no --check report, and nothing about the files has to change for that to stay true; this form is where they are said
+
+19 pair(s) the records answer both ways are not listed above: a clearance closes a finding here. No chronology is available — a record carries no timestamp and several land in one commit — so which judgment is current is a reading of the records themselves.
+  `--all` lists them, each with what the trace holds for it now
+
+11 unstated fact(s) the records name, over 7 file(s) — the source states them and no node holds them. No bind closes one and none is counted above:
+  src/modules/query-retrieval/dto/fragment.dto.ts — ListAcceptedFragmentsQuerySchema, the `.strict()` call on the query object (line 38): A request carrying any query parameter outside llm_run_id, raw_information_id, limit and offset is refused here. The contract's refusals for the listing name only a missing filter, a malformed identifier and out-of-range paging, so this refusal is decided in the DTO. The next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 81-84: The literal value a compliance-deleted source's original input takes is stated only in this prose. I searched the whole specification root, including the decision log, for REDACTED and found no node that holds it. It reads as a decision the business made, but the next reader will look for it in the specification and not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/dto/response.dto.ts — comment above ProvenanceRawInformation.original_input, lines 83-84: The comment states that the original input is excluded from the content hash. I searched the specification for content_hash and content hash and found no node that holds this. It is a rule of the idempotency identity that lives only in prose here. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QUERY_RETRIEVAL_TOOL_NAMES and the four registerTool calls, lines 118-123 and 219-284: The retrieval contract names its operations search, read-link-provenance, read-attribute-provenance and read-fragment-provenance. The names an MCP client actually calls (get_provenance_link and the others) and the toolset key "query" live only in this file. The next reader who looks in the specification for what the owner's language model calls will not find them. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — search handler input mapping, lines 226-241, and the search description, lines 130-135: The search-query node names its choices text and link_types, and the contract gives no wire names. The input names `query` and `expand_link_types`, and the id parameters `link_id`, `attribute_id` and `fragment_id`, are fixed only in code. A reader comparing the node with the tool sees two vocabularies and no node saying which one the client must send. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/provenance.repository.ts — the ORDER BY clauses of the two chain queries in runChainSql (lines 154 and 179): The order of the chunks inside each fragment (chunk index ascending, then chunk id) and the fragment tie-break by fragment id decide what the owner reads first in a provenance answer. The specification holds only that fragments come in recording order. The chunk order lives only in this SQL, so the next reader looks for it in the specification and does not find it. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — listProvenanceForNodes, the ORDER BY clause (line 373): The order in which the fragments that support a node hit are presented is decided here, newest first, and no node states it. Provenance-in-recording-order covers only links and attributes. A reader looking for how a node's supporting fragments are ordered finds no rule. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/repository/search.repository.ts — searchNodeAliasLayer, the SELECT score expression (line 123): A knowledge node's score is decided as the highest rank among its matching aliases, and the specification does not say how a node reached through several aliases is scored. Code becomes the only home of that choice. The next reader who wants to know why a node ranks where it does looks in layer-weights or search-item and finds nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/errors.ts — message of EmptyProvenanceError, lines 85-87: The message tells the owner that an empty provenance chain means legacy data. The node only says that a read of an existing item with an empty chain is refused, and states no cause. The owner is given a diagnosis that lives only in this string. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 357, the `layer` of a link search item: The search-item node types `layer` as a search-layer (fragment, node, chunk) and no node says which layer a link item reports. The code decides it is "node". A consumer filtering or grouping by layer inherits that decision, and the next reader will look for it in the specification and find nothing. [adopt-query-retrieval-r2.md]
+  src/modules/query-retrieval/service/search.service.ts — line 56, the constant PER_LAYER_FETCH_LIMIT, passed to searchFragmentLayer, searchNodeAliasLayer and searchChunkLayer at lines 129-147: The number 200 is a cap on what a search can ever rank, and no node states it. Matches beyond the 200th on a layer are dropped before ranking. The reported `total` is `filtered.length` (line 391), so it counts only what survived the cap. A reader who trusts search-total-before-pagination ("counts every search item before the page is cut") would not look here for the reason a total stops at some number. [adopt-query-retrieval-r2.md]
+  each is the analysis's to close, through the node that gives the fact a home
+
+7 place(s) the records name where text in the source restates a node's fact the code holds, over 3 file(s). The pair conforms and none is counted above:
+  src/modules/query-retrieval/dto/search.dto.ts — The docblock above QueryString (lines 37-47), bullet "btrim non-empty after transform (rejects whitespace-only input)" (rules/knowledge-base/search-query-not-blank) [adopt-query-retrieval-r6.md]
+  src/modules/query-retrieval/dto/search.dto.ts — The docblock above QueryString (lines 37-47), first bullets "min 1 char (raw)" and "max 1000 chars (raw)" (rules/knowledge-base/search-query-length) [adopt-query-retrieval-r6.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.get_provenance_fragment, lines 146-147 (rules/knowledge-base/provenance-requires-accepted-fragment) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.get_provenance_link, get_provenance_attribute and get_provenance_fragment, lines 138-139, 142-143 and 147 (rules/knowledge-base/provenance-refused-after-compliance-deletion) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.search, line 134, the `expand_depth` (1..3) clause (rules/knowledge-base/expansion-depth-bounds) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/mcp/query-toolset.ts — QueryRetrievalToolDescriptions.search, line 135, the `limit` (max 100) clause (rules/knowledge-base/page-limit-bounds) [adopt-query-retrieval-r5b.md]
+  src/modules/query-retrieval/service/errors.ts — InvalidSearchQueryError constructor, the message chosen for reason "too_long" (line 16) (rules/knowledge-base/search-query-length) [adopt-query-retrieval-r4.md]
+  a comment is removed, never refreshed, and the file reconciled after
+exit=1
+$ trace.py --untraced backend
+279 tracked file(s) under backend: 14 bound, 265 no binding names
+  1 holds-nothing: judged by an adoption, which bound none of its candidates to it
+  0 outside: kept outside an adoption's judgment
+  264 unsurveyed: no binding and no adoption names it
+
+directories by unsurveyed files:
+   34  backend/src/__tests__/unit/ingestion
+   14  backend/src/modules/chat/service
+   12  backend/src/modules/ingestion/service
+   10  backend/src/modules/ingestion/mcp
+    9  backend/src/__tests__/unit/chat
+    9  backend/src/modules/chat/service/__tests__
+    9  backend/src/modules/ingestion/dto
+    9  backend/src/modules/knowledge-graph/dto
+    9  backend/src/modules/knowledge-graph/service
+    8  backend/src/modules/curation/service
+    7  backend
+    7  backend/src/__tests__/unit
+    7  backend/src/__tests__/unit/knowledge-graph
+    7  backend/src/__tests__/unit/query-retrieval
+    6  backend/src/modules/curation/mcp
+  (49 more directories; --all lists every file)
+```
+
+### Outcome
+
+**Bound (4):**
+- `expansion-depth-bounds` → `dto/search.dto.ts`
+- `page-limit-bounds` → `dto/search.dto.ts`
+- `provenance-refused-after-compliance-deletion` → `service/provenance.service.ts`, plus the file
+  it was already bound to (2 files)
+- `provenance-requires-accepted-fragment` → `service/provenance.service.ts`, plus the file it was
+  already bound to (2 files)
+
+`--untraced` still counts `mcp/query-toolset.ts` as `holds-nothing`, as r5b left it: it holds none
+of the 4 facts.
+
+**Not bound (1):** `domain/knowledge-base/source-type` on `provenance.service.ts`, `conforms: false`,
+`held_at` nowhere. This is independent evidence for the release that r5 step (1) did and the r5b
+checkout undid. The route is the human's, ready to paste (this skill never passes `--replace`):
+
+    python3 -B $P/bin/trace.py --bind backend specification domain/knowledge-base/source-type \
+      src/modules/query-retrieval/dto/response.dto.ts src/modules/query-retrieval/repository/accepted-fragments.repository.ts \
+      src/modules/query-retrieval/repository/provenance.repository.ts --replace
+
+It also releases `accepted-fragments.service.ts`, which r6 did not judge. r4 handed it over for the
+same reason.
+
+**New `restates` (2, in `search.dto.ts`):** these go through the comment route over that file,
+then a reconcile. They were not part of the ask.
+
+**Stopped before commit.** Uncommitted:
+- the `mcp/query-toolset.ts` edit
+- `siegard-trace.json` (the 4 r6 bindings)
+- `siegard-reconcile/adopt-query-retrieval-r5b.*`
+- `siegard-reconcile/adopt-query-retrieval-r6.*`
+- this file
+- `r5-step1-source-type-release.diff`
+
+### Item 1 discarded
+
+The human rejected the item 1 edit: the MCP tool descriptions are text the system emits to the
+client, not comments, so removing facts from them is not the comment route. Descriptions and error
+messages are not to be edited. The edit was discarded without a commit:
+
+```
+$ git checkout -- backend/src/modules/query-retrieval/mcp/query-toolset.ts
+```
+
+`query-toolset.ts` is back to its committed content, and r7 is not to be run. The 4 r5b `restates`
+(and the r4 `restates` on the `errors.ts` message) stay in `--owed`. They are no longer handed to
+the comment route.

@@ -1,0 +1,63 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      The docblock above QueryString (lines 37-47), first bullets "min 1 char (raw)" and "max 1000 chars (raw)"
+    evidence: >-
+      * `query` validation per BR-04 of the back spec:
+       *   - min 1 char (raw)
+       *   - max 1000 chars (raw)
+    cost: >-
+      The 1000-character ceiling is written a second time in prose beside the code that enforces it,
+      as `.max(1000, { message: "query exceeds 1000 characters" })`. If the node's limit moves, the
+      comment still reads as a decided limit, and a reader can take it for the source of the number
+      instead of the node.
+    kind: restates
+    correction: >-
+      Remove the docblock text through the comment route. The code in this file
+      (`.max(1000, ...)` on QueryString) already holds the fact, so the pair conforms.
+    node: rules/knowledge-base/search-query-length
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      The docblock above QueryString (lines 37-47), bullet "btrim non-empty after transform (rejects whitespace-only input)"
+    evidence: >-
+      *   - btrim non-empty after transform (rejects whitespace-only input)
+    cost: >-
+      The rule that a blank query is refused is restated in prose beside the code that enforces it, as
+      `.transform((s) => s.trim()).refine((s) => s.length > 0, ...)`. The comment also cites
+      "BR-04 of the back spec" as the authority, which points a reader to a document other than the node.
+    kind: restates
+    correction: >-
+      Remove the docblock text through the comment route. The transform and refine in this file hold the fact.
+    node: rules/knowledge-base/search-query-not-blank
+read:
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      SearchQuerySchema.expand_depth, line 65
+    evidence: >-
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      SearchQuerySchema.limit, line 69
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries only the provenance path-param schemas (`LinkIdParamSchema`, `AttributeIdParamSchema`,
+      `FragmentIdParamSchema`, each a `z.string().uuid()`). It holds no compliance-deletion refusal.
+      The candidate index binds this rule to src/modules/query-retrieval/service/provenance.service.ts.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file carries only `FragmentIdParamSchema = z.object({ fragment_id: z.string().uuid() })`.
+      It holds no check on the fragment's status. The candidate index binds this rule to
+      src/modules/query-retrieval/service/provenance.service.ts.
+looked_past: >-
+  The other DTO facts (search layers, option defaults, offset floor, page defaults, query length and blank
+  refusal) are held by nodes outside the pack, so they are not unstated. The comments citing BR numbers
+  and error codes, and the `.strict()` object, were not reported as domain findings.
+candidates_opened:
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-query-not-blank
