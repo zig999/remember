@@ -1,0 +1,78 @@
+findings:
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the five route registrations in registerComplianceAuditRoutes (lines 65-175)
+    evidence: >-
+      app.post(
+          "/compliance/deletions",
+      app.get(
+          "/compliance/deletions",
+      app.get(
+          "/compliance/deletions/:complianceDeletionId",
+      app.get(
+          "/audit/curation-actions",
+      app.get(
+          "/audit/curation-actions/:curationActionId",
+    cost: >-
+      The URL and verb for each of the five operations are stated only in this file. The contract names the operations and their answers but never a path. The next reader who looks in the specification for where compliance-delete or the audit reads are exposed will not find it, and a client can only learn the paths from the code.
+    kind: unstated
+    correction: >-
+      The contract should state the path and verb of each of its five operations, or the specification should record that paths are deliberately left to the implementation.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the docstring above handleZodError (lines 182-189) and the comments "Priority 1", "Priority 2" and "Priority 3" inside it (lines 197, 210, 239)
+    evidence: >-
+      // Priority 1 — explicit semi-open range refinement.
+      // Priority 2 — required-field detection.
+      // Priority 3 — `reason` length / trim violations.
+    cost: >-
+      The refusal order (time window, then missing field, then reason out of range, then other) is written out a second time as prose. The docstring above it lists only two "special-case mappings" and then a third bullet, so it already differs from the code. The comments stay in the file after the node binds, and a reader can take them for the place the order was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring and the Priority comments. The if-sequence in handleZodError holds the order, and the node audit-filter-checks-order is where it is decided.
+    node: rules/knowledge-base/audit-filter-checks-order
+read:
+  - node: constraints/compliance-deletion-is-atomic
+    held_at: >-
+      the POST /compliance/deletions handler, line 76, where complianceDelete runs inside the callback passed to withTransaction
+    evidence: >-
+      const result = await withTransaction(deps.pool, (client) =>
+            complianceDelete({ logger: deps.logger }, client, body)
+          );
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      the route handlers (status selection at line 79, 200 on the reads), handleZodError (lines 193-267) and handleAuditError (lines 277-297). The refusal codes, messages and the 422 status sit in handleZodError and in VALIDATION_STATUS. The 404 and 500 answers reach handleAuditError from the service errors.
+    evidence: >-
+      const status = result.outcome === "deleted" ? 201 : 200;
+      const VALIDATION_STATUS = 422;
+      message: `Field '${reqField.path.join(".")}' is required.`,
+      "Field 'reason' must be non-empty after trim and ≤ 1000 characters."
+      message: "Time range bounds must satisfy `from < to`.",
+      message: "Request payload failed validation.",
+  - node: rules/knowledge-base/audit-filter-checks-order
+    held_at: >-
+      the order of the three guards in handleZodError. The custom VALIDATION_OUT_OF_RANGE window issue is tested first, then the required-field issue, then the too_small or too_big issue on path "reason", then the VALIDATION_INVALID_FORMAT fallback.
+    evidence: >-
+      err.issues.some((i) => i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE")
+      const reqField = err.issues.find((i) => {
+      (i.code === "too_small" || i.code === "too_big") &&
+              i.path[0] === "reason"
+      code: "VALIDATION_INVALID_FORMAT",
+  - node: rules/knowledge-base/compliance-deletion-check-order
+    held_at: >-
+      Only the first of the three checks sits in this file. The POST handler parses the body before any service call, and withTransaction is reached only after a successful parse. The checks for an existing raw information and for one already deleted are in the service, which this file calls but does not declare.
+    evidence: >-
+      body = ComplianceDeleteRequestSchema.parse(request.body ?? {});
+      } catch (err) {
+        return handleZodError(err, reply);
+      }
+      ...
+      const result = await withTransaction(deps.pool, (client) =>
+  - node: rules/knowledge-base/compliance-deletion-reason-trimmed
+    held_at: >-
+      nowhere
+    evidence: >-
+      The handler forwards the parsed body untouched, `complianceDelete({ logger: deps.logger }, client, body)`. Nothing in this file trims `reason`. handleZodError only tests `i.path[0] === "reason"` on issues raised by the schema, which is declared in another file.
+looked_past: >-
+  The header comment (endpoint list, UC numbers, BR-13, Neon Auth scope) and the section-banner comments are prose no node in this set holds, so they are a matter for the comment route. The `ok: false` envelope and the `details.issues` shape belong to the error-mapping convention rather than to this set. The "> 1000 chars" comment restates the reason-length rule, a candidate node outside this set, which I did not open.

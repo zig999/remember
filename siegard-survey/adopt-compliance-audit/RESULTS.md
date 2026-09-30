@@ -252,3 +252,226 @@ Left out, grouped by reason:
 (111 fact lines landed in 37 nodes and 24 were left out; 9 files in the file set, 1 with no candidate: `service/transaction.ts`.)
 
 **STOP (Step 3).** The owner reviews `git diff -- specification` and commits with pathspec `specification siegard-survey/adopt-compliance-audit`.
+
+## Step 4 — the adoption
+
+Invocation: `/siegard:reconcile` as an adoption — slug `adopt-compliance-audit`, ledger `siegard-survey/adopt-compliance-audit/ledger.md`, outside none, certifications none. Preconditions: the module and `siegard-trace.json` clean; specification sound; trace sound (261 bindings, 5 test-decided); `siegard-reconcile/adopt-compliance-audit.md` free. Workspace `/tmp/tmp.YzSeP0BHOM` (mktemp, not committed).
+
+### Staging line (verbatim)
+
+```
+staged adopt-compliance-audit: 8 file(s) to judge over 0 node(s); staged as an adoption — 37 candidate node(s) from the ledger, 78 pair(s) over 8 file(s) (23 at most on one file), each bound by the fold to the files that hold its fact; 0 file(s) kept outside the judgment; 0 file(s) with nothing left to judge; 9 file(s) the trace binds nothing to, 8 of them judged over the candidates alone
+  manifest and packs at /tmp/tmp.YzSeP0BHOM; candidate index at /tmp/tmp.YzSeP0BHOM/candidates.txt
+  save each delegation's return verbatim at /home/siegfriedneto/projects/eternal/siegard-reconcile/adopt-compliance-audit.returns/<file path with '/' as '__'>.yaml
+```
+
+Candidates from the ledger: 37. Pairs: 78 over 8 files, at most 23 on one file. Mechanical tier: none, so no run was captured (Step 3b skipped).
+
+### Node pack sizes
+
+- `src__modules__compliance-audit__dto__compliance-delete.dto.ts.md`: 12497 bytes
+- `src__modules__compliance-audit__dto__curation-action.dto.ts.md`: 11756 bytes
+- `src__modules__compliance-audit__index.ts.md`: 1203 bytes
+- `src__modules__compliance-audit__mcp__compliance-toolset.ts.md`: 10124 bytes
+- `src__modules__compliance-audit__repository__compliance-audit.repository.ts.md`: 19329 bytes
+- `src__modules__compliance-audit__routes__compliance-audit.routes.ts.md`: 9160 bytes
+- `src__modules__compliance-audit__service__compliance-audit.service.ts.md`: 17836 bytes
+- `src__modules__compliance-audit__service__errors.ts.md`: 6953 bytes
+
+### Judges
+
+8 `siegard:specification-conformance-reviewer` delegations, one per file, all in one batch. Each return was saved under `siegard-reconcile/adopt-compliance-audit.returns/`. The only change was stripping the outer ```yaml fence and decoding `&gt;`, `&lt;` and `&amp;`, which the task-notification transport had HTML-escaped. The escaped text is not valid YAML, and the characters are the literal ones the judges wrote. No return was refused and none was re-run. `--fold` refused nothing.
+
+### Fold, record check and bind (verbatim)
+
+```
+folded adopt-compliance-audit.md: 33 node(s) cleared, 3 not — 0 of those collateral, blocked only by an unattributed sibling finding — 0 pair(s) omitted as current and unowed; 1 candidate(s) no file of the set holds, listed under `unheld`
+  next: trace.py --reconciliation siegard-reconcile/adopt-compliance-audit.md
+```
+
+```
+bound constraints/compliance-deletion-is-atomic to 2 file(s)
+bound constraints/llm-toolset-omits-audit-reads to 1 file(s)
+bound contracts/knowledge-base/compliance-audit to 6 file(s)
+bound domain/knowledge-base/affected-counts to 1 file(s)
+bound domain/knowledge-base/compliance-deletion to 6 file(s)
+bound domain/knowledge-base/compliance-deletion-filter to 2 file(s)
+bound domain/knowledge-base/compliance-deletion-outcome to 1 file(s)
+bound domain/knowledge-base/curation-action to 2 file(s)
+bound domain/knowledge-base/curation-action-filter to 2 file(s)
+bound domain/knowledge-base/curation-action-kind to 1 file(s)
+bound domain/knowledge-base/curation-target-kind to 1 file(s)
+bound domain/knowledge-base/node-status to 3 file(s)
+bound rules/knowledge-base/audit-filter-checks-order to 2 file(s)
+bound rules/knowledge-base/audit-filters-match-exactly to 1 file(s)
+bound rules/knowledge-base/audit-listing-order to 1 file(s)
+bound rules/knowledge-base/audit-listing-total-before-pagination to 1 file(s)
+bound rules/knowledge-base/audit-listing-window-half-open to 1 file(s)
+bound rules/knowledge-base/audit-page-defaults to 2 file(s)
+bound rules/knowledge-base/audit-window-ordered to 2 file(s)
+bound rules/knowledge-base/compliance-deletion-check-order to 2 file(s)
+bound rules/knowledge-base/compliance-deletion-counts-what-it-marked to 2 file(s)
+bound rules/knowledge-base/compliance-deletion-flags-metadata to 1 file(s)
+bound rules/knowledge-base/compliance-deletion-keeps-content-hash to 1 file(s)
+bound rules/knowledge-base/compliance-deletion-propagates to 1 file(s)
+bound rules/knowledge-base/compliance-deletion-reason-length to 1 file(s)
+bound rules/knowledge-base/compliance-deletion-reason-trimmed to 1 file(s)
+bound rules/knowledge-base/compliance-deletion-records-curation-action to 1 file(s)
+bound rules/knowledge-base/curation-action-reason-length to 1 file(s)
+bound rules/knowledge-base/curation-action-time-is-recording-time to 1 file(s)
+bound rules/knowledge-base/deleted-source-deletion-records-nothing to 1 file(s)
+bound rules/knowledge-base/deletion-execution-time-is-recording-time to 1 file(s)
+bound rules/knowledge-base/page-limit-bounds to 3 file(s)
+bound rules/knowledge-base/page-offset-non-negative to 4 file(s)
+33 binding(s) written at /home/siegfriedneto/projects/eternal/siegard-trace.json, read from adopt-compliance-audit.md
+  3 node(s) of adopt-compliance-audit.md the judgment did not clear, and this bind wrote none of them:
+    rules/knowledge-base/compliance-deletion-redacts-content
+    rules/knowledge-base/compliance-deletion-tombstones
+    rules/knowledge-base/source-status-active-or-deleted
+    each stays as it stood — its drift, where the file was bound before, is still a finding on the next --check; where it was not, --owed is the only report that will ever say so. The record says what was found against it
+```
+
+## Step 5 — what it shows
+
+```
+$ trace.py --reconciliation siegard-reconcile/adopt-compliance-audit.md
+adopt-compliance-audit.md holds: 9 file(s), 33 node(s) the judgment cleared, 3 it did not, 2 file(s) the trace binds nothing to.
+--bind-record will write 33 binding(s) from this record and none for rules/knowledge-base/compliance-deletion-redacts-content, rules/knowledge-base/compliance-deletion-tombstones, rules/knowledge-base/source-status-active-or-deleted: a node without `encoded_at` is a node this form cannot bind.
+[exit 0]
+$ trace.py --untraced backend
+279 tracked file(s) under backend: 67 bound, 212 no binding names
+  6 holds-nothing: judged by an adoption, which bound none of its candidates to it
+  0 outside: kept outside an adoption's judgment
+  206 unsurveyed: no binding and no adoption names it
+
+directories by unsurveyed files:
+   34  backend/src/__tests__/unit/ingestion
+   14  backend/src/modules/chat/service
+    9  backend/src/__tests__/unit/chat
+    9  backend/src/modules/chat/service/__tests__
+    9  backend/src/modules/knowledge-graph/dto
+    9  backend/src/modules/knowledge-graph/service
+    8  backend/src/modules/curation/service
+    7  backend
+    7  backend/src/__tests__/unit
+    7  backend/src/__tests__/unit/knowledge-graph
+    7  backend/src/__tests__/unit/query-retrieval
+    6  backend/src/modules/curation/mcp
+    5  backend/src/__tests__/integration/ingestion
+    5  backend/src/modules/chat/prompts
+    5  backend/src/modules/curation/dto
+  (33 more directories; --all lists every file)
+[exit 0]
+$ trace.py --convergence backend specification siegard-work
+327 node(s) of specification; 289 binding(s) in /home/siegfriedneto/projects/eternal/siegard-trace.json
+0 initiative(s) read under siegard-work
+  0 archived initiative(s) read from git at the commit before each was removed
+
+285 current: bound, and every binding computes to what was recorded — the specification and the code stand as they did when the node was last answered
+    constraint 8, contract 2, element 49, rule 220, scenario 6
+4 stale: bound, and some binding no longer computes — `--check` lists each by class, and its route is that class's
+    element 4
+0 planned-unbound: a task implements it or an epic covers it, and no binding holds it — whether the task was delivered, and honored the node without encoding it, is `deliver.py --outstanding`'s answer per initiative
+0 declared-uncovered: an epic looked at it and wrote down why it is not being built; a decision somebody made, never a gap
+38 unreached: no initiative names it and nothing binds it — a specification describes more than the work has reached, and this is the part it has not
+    constraint 2, contract 1, element 3, rule 30, scenario 2
+
+files under backend: 279 tracked, 67 bound, 212 no binding names (206 unsurveyed) — `--untraced` lists them
+
+289 bound node(s) no initiative names — bound by a reconciliation over source that entered outside any task, or by a raw --bind; `--all` lists them
+
+Kept apart — the judged side, which no state above counts: 32 finding(s) past reconciliations left open and no bind closed (32 unseen, 0 covered, 0 reported); 118 pair(s) the records answer both ways; 113 unstated fact(s) the source states and no node holds; 246 place(s) text restates a node's fact; 50 node(s) a refused certification left with a testable remainder. A binding that computes is a fact about bytes and a record that found against a node is a fact about a reading — `--owed` names each record.
+[exit 0]
+$ trace.py --check backend
+trace: /home/siegfriedneto/projects/eternal/siegard-trace.json — one file per git toplevel; every target under it reads this same one
+domain/knowledge-base/accepted-fragment-filter: bound at sha256:1b25aa96d866d21eb71c4539179a67e630f7cd8e0a486ee55d569f750e61c48c, now sha256:a5d33ecf0d633813dfb40119cbdc8b4ca73ba5d8249039fc97b3156eb4a080db; the specification moved since this bind
+domain/knowledge-base/compliance-deletion: backend/src/modules/query-retrieval/repository/accepted-fragments.repository.ts was stamped against sha256:056baaa5bdd4bf419fb91cddbba10f60b46a40959726313bc1fc6772235d9dff, and the node now reads sha256:122147f87d3c261809ece79a6a64e5bf206a7f65ea745e906275ea1e6bcd4b17; a later bind restamped the node on other files and nobody read this one against it
+domain/knowledge-base/compliance-deletion: backend/src/modules/query-retrieval/repository/provenance.repository.ts was stamped against sha256:056baaa5bdd4bf419fb91cddbba10f60b46a40959726313bc1fc6772235d9dff, and the node now reads sha256:122147f87d3c261809ece79a6a64e5bf206a7f65ea745e906275ea1e6bcd4b17; a later bind restamped the node on other files and nobody read this one against it
+domain/knowledge-base/compliance-deletion: backend/src/modules/query-retrieval/service/provenance.service.ts was stamped against sha256:056baaa5bdd4bf419fb91cddbba10f60b46a40959726313bc1fc6772235d9dff, and the node now reads sha256:122147f87d3c261809ece79a6a64e5bf206a7f65ea745e906275ea1e6bcd4b17; a later bind restamped the node on other files and nobody read this one against it
+domain/knowledge-base/compliance-deletion: migrations/0001_init.sql was stamped against sha256:056baaa5bdd4bf419fb91cddbba10f60b46a40959726313bc1fc6772235d9dff, and the node now reads sha256:122147f87d3c261809ece79a6a64e5bf206a7f65ea745e906275ea1e6bcd4b17; a later bind restamped the node on other files and nobody read this one against it
+domain/knowledge-base/curation-action: migrations/0001_init.sql was stamped against sha256:f8a81f093809fc81823674eb275bc00dddf77b03a5b64be86b3682cc61e05802, and the node now reads sha256:7b7ad69429ff158003ea4190e60389bf753ada085b02b81e739fcfeafabecbc3; a later bind restamped the node on other files and nobody read this one against it
+backend/src/modules/query-retrieval/service/accepted-fragments.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+backend/src/modules/query-retrieval/service/provenance.service.ts: the file changed without a rebind — 1 binding(s): domain/knowledge-base/source-type
+
+8 drift finding(s) over 289 binding(s):
+  0 orphaned: bound to a node the specification no longer holds — no bind can repair these, and `--prune` is the only thing that clears them
+  6 moved: bound to a node whose text moved since the bind, or a file stamped against an earlier text of a node a later bind restamped elsewhere; `/reconcile` over the bound files re-reads them against the node as it stands, and a delivery of a task implementing the node restamps it
+  0 proof: decided by a test whose text changed since it was certified — the binding is decided by reading again until a judgment certifies the test as it now stands
+  2 code over 2 file(s): bound to a file that changed or is gone; `/reconcile` over the files re-reads a file that changed, and `--release` answers one the tree no longer holds
+[exit 1]
+```
+
+`--owed backend` (exit 1), the lines for this record:
+```
+$ trace.py --owed backend
+unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  backend/src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    rules/knowledge-base/compliance-deletion-tombstones — found against in adopt-compliance-audit.md
+    rules/knowledge-base/source-status-active-or-deleted — found against in adopt-compliance-audit.md
+  backend/src/modules/compliance-audit/service/compliance-audit.service.ts
+    rules/knowledge-base/compliance-deletion-redacts-content — found against in adopt-compliance-audit.md
+  backend/src/modules/ingestion/chunker/v1.ts
+```
+Totals across all records:
+```
+32 finding(s) no bind closed, over 24 file(s):
+  32 unseen: nothing binds the pair — `--check` has no digest to compare and never will
+  0 covered: bound at the content on disk now — a bind wrote over the only symptom `--check` had, and the finding stands under it
+  0 reported: the binding is stale, so `--check` already carries this one — the record is what says what was found
+  32 of them appear in no --check report, and nothing about the files has to change for that to stay true; this form is where they are said
+
+118 pair(s) the records answer both ways are not listed above: a clearance closes a finding here. No chronology is available — a record carries no timestamp and several land in one commit — so which judgment is current is a reading of the records themselves.
+  `--all` lists them, each with what the trace holds for it now
+```
+
+### Count from the record
+
+| outcome | count |
+|---|---|
+| cleared | 33 |
+| contradicts | 3 |
+| unstated | 2 |
+| restates | 15 |
+| unheld | 1 |
+
+**Contradicts, all three unbound:**
+1. `rules/knowledge-base/compliance-deletion-redacts-content` against `service/compliance-audit.service.ts`. The exported `REDACTED_LITERAL` is a second home of the literal, and nothing reads it. The repository redacts with its own inline `'[REDACTED]'`. Route: `/plan-work` corrective increment to remove the constant and its re-export, or `/analyse` if the constant is meant to hold the value.
+2. `rules/knowledge-base/compliance-deletion-tombstones` against `repository/compliance-audit.repository.ts`. Chunks are marked only where `superseded_at IS NULL`, and the node says each chunk. This is the Step 3 watch item turned into a finding. Route: `/analyse` to state the restriction, or `/plan-work` to mark every chunk.
+3. `rules/knowledge-base/source-status-active-or-deleted` against `repository/compliance-audit.repository.ts`. The locked row types the status with four values where the node admits two. Route: `/plan-work` corrective increment to narrow the type, or `/analyse`.
+
+**Unstated, both analysis drops:**
+- `dto/compliance-delete.dto.ts` line 108: the list key `items`. The survey stated it at `boundary.md:73` ("the total, the limit, the offset and the items"). The analysis wrote "the page of compliance deletions" and dropped the key's name.
+- `routes/compliance-audit.routes.ts`: the five paths and verbs. The surveyor classed them under Outside the domain as routing, so they never became a fact line. The analysis also keeps a published surface's own routes out on purpose. Either way the fact sits outside the survey's fact lines, and whether routes belong in the contract is for `/analyse` to decide.
+
+**Unheld: one fact outside the areas.** `domain/knowledge-base/raw-information` came from `service.md:94`, the source status that ingestion writes. The service only reads that status and holds no fact of the element. The element's facts live in the ingestion context and the migrations, which already bind it.
+
+**Restates: 15 comment findings over 7 files.** Every file except `index.ts` and `transaction.ts` has some. Each one owes removal of the prose through the comment route, then this route over the file again.
+
+**Unbound, 2 files.** `index.ts` holds nothing, and its judge answered nowhere. `service/transaction.ts` has no fact line.
+
+**Moved nodes the Step 3 increment caused, still reported by `--check`.** `domain/knowledge-base/compliance-deletion` is stale on four other files: the query-retrieval accepted-fragments repository, provenance repository and provenance service, and `migrations/0001_init.sql`. `domain/knowledge-base/curation-action` is stale on `migrations/0001_init.sql`. These files need a `/reconcile` under a new slug.
+
+### Tokens
+
+`telemetry.py --probe --since 2026-09-30T19:12:29Z` reported the transcripts readable, with one session. The read was announced and run, and the report is `siegard-telemetry/20260930T194017Z.json`.
+
+| agent | output | cache write | cache read | seconds |
+|---|---|---|---|---|
+| Survey compliance-audit service area | 9,307 | 62,585 | 130,582 | 90 |
+| Survey compliance-audit boundary area | 19,256 | 70,361 | 311,355 | 176 |
+| Judge compliance-delete.dto.ts | 6,317 | 44,463 | 108,835 | 47 |
+| Judge curation-action.dto.ts | 5,029 | 35,213 | 153,710 | 37 |
+| Judge compliance-audit index.ts | 1,138 | 24,245 | 34,285 | 10 |
+| Judge compliance-toolset.ts | 5,180 | 36,094 | 150,493 | 41 |
+| Judge compliance-audit.repository.ts | 11,770 | 46,086 | 81,421 | 82 |
+| Judge compliance-audit.routes.ts | 5,589 | 36,395 | 73,364 | 44 |
+| Judge compliance-audit.service.ts | 7,990 | 43,534 | 173,589 | 58 |
+| Judge compliance-audit errors.ts | 2,180 | 27,227 | 34,294 | 17 |
+
+Mean per judged file (8 judges): output 5,649, cache write 36,657, cache read 101,249.
+
+The analysis ran in the orchestrating session. The harness counts that session as one figure, 106,481 output tokens for the whole window from Step 1 to Step 5, so the analysis's own share cannot be separated out.
+
+## Step 6 — stop
+
+**STOP.** The owner reviews and commits with pathspec `siegard-trace.json siegard-reconcile siegard-survey/adopt-compliance-audit siegard-telemetry`.

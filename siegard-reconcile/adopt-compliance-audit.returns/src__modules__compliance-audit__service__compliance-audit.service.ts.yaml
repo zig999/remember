@@ -1,0 +1,119 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the header comment, lines 7-11 (Transaction policy (BR-02))
+    evidence: |-
+      The CALLER (route or MCP handler) opens BEGIN / COMMIT / ROLLBACK and
+      //     hands the live `client` to `complianceDelete`. Every DB statement of
+      //     UC-01 runs on that same client; commit is reached only after BR-08 has
+      //     written BOTH audit rows.
+    cost: >-
+      The atomicity of a compliance deletion is written out in prose here, beside code that does not hold it. A reader who edits this comment, or the function, believes they changed the guarantee. The guarantee is actually in src/shared/pg-transaction.ts (`withTransaction`), which the route and the MCP toolset call.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the node, and the code that enforces it is `withTransaction` in src/shared/pg-transaction.ts, called from routes/compliance-audit.routes.ts and mcp/compliance-toolset.ts.
+    node: constraints/compliance-deletion-is-atomic
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the doc comment above REDACTED_LITERAL, lines 51-56
+    evidence: |-
+      The literal `[REDACTED]` is hardcoded by spec (constraint #4 of TC-08:
+       * "[REDACTED] literal is hardcoded in the service (not config); a Vitest test
+       *  must pin its exact byte value").
+    cost: >-
+      The prose claims the literal is held "in the service". The redaction that runs is SQL in the repository (`SET content = '[REDACTED]'`), so a reader following the comment looks in the wrong file. The comment also cites a task constraint as though it were the authority for the value.
+    kind: restates
+    correction: >-
+      Remove the prose. The code that holds the fact is the UPDATE in modules/compliance-audit/repository/compliance-audit.repository.ts.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the exported constant REDACTED_LITERAL, line 57
+    evidence: >-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;
+    cost: >-
+      The literal is declared a second time as a constant that nothing reads. The repository redacts with its own inline '[REDACTED]' in SQL, and the constant is only re-exported from the module index and pinned by tests. If the node's literal changes, the constant and its test can keep passing while the real redaction stays as it was, or the reverse. Nobody can tell which value was decided. This file does not perform the redaction at all.
+    kind: contradicts
+    correction: >-
+      Remove the constant and its re-export, so the literal has one home, the repository statement the redaction node is bound to. Code cannot read the specification, so the bind is what ties the node to the repository file.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+read:
+  - node: constraints/compliance-deletion-is-atomic
+    held_at: nowhere
+    evidence: >-
+      `complianceDelete(deps, client, body)` only runs statements on the `client` it is handed. BEGIN, COMMIT and ROLLBACK are not in this file; the only statement of who opens the transaction is the header comment "The CALLER (route or MCP handler) opens BEGIN / COMMIT / ROLLBACK".
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      complianceDelete (lines 81-199) and the four read functions listComplianceDeletions, getComplianceDeletionById, listCurationActions and getCurationActionById (lines 205-295)
+    evidence: >-
+      `throw new ResourceNotFoundError(`RawInformation ${body.raw_information_id} not found.`, { entity: "raw_information", id: body.raw_information_id })`; `return { outcome: "noop_already_deleted", deletion: rowToDto(existing) }`; `throw new InternalFailure("legacy_orphan_tombstone", { raw_information_id: body.raw_information_id })`; `throw new InternalFailure("raw_tombstone_mismatch", { raw_information_id: body.raw_information_id, rows_updated: rawTombstoned })`; `CurationAction ${id} not found.`; `payload: (row.payload ?? {})`; `executed_at: toIso(row.executed_at)`
+  - node: domain/knowledge-base/affected-counts
+    held_at: nowhere
+    evidence: >-
+      The file only builds the value, `const affected = { chunks, fragments, links, attributes };`. The shape is declared by the DTO and repository row types this file imports.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      rowToDto maps `id`, `raw_information_id`, `reason`, `executed_at` and `affected` into the imported `ComplianceDeletion` type. The shape is declared in ../dto/compliance-delete.dto.js, not in this file.
+  - node: domain/knowledge-base/compliance-deletion-filter
+    held_at: nowhere
+    evidence: >-
+      listComplianceDeletions forwards `raw_information_id`, `executed_from`, `executed_to`, `limit` and `offset` from the imported `ListComplianceDeletionsQuery`. The shape is declared in the DTO.
+  - node: domain/knowledge-base/compliance-deletion-outcome
+    held_at: nowhere
+    evidence: >-
+      The file returns the literals `outcome: "deleted"` and `outcome: "noop_already_deleted"`. The enumeration is declared in the imported `ComplianceDeleteResponse` type.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      curationRowToDto maps `id`, `action`, `target_kind`, `target_id`, `payload`, `reason` and `created_at` into the imported `CurationAction` type. The shape is declared in ../dto/curation-action.dto.js.
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: nowhere
+    evidence: >-
+      listCurationActions forwards `action`, `target_kind`, `target_id`, `created_from`, `created_to`, `limit` and `offset` from the imported `ListCurationActionsQuery`. The shape is declared in the DTO.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      The file passes the single member `action: "compliance_delete"` into insertCurationAction. The closed set is declared in the DTO and repository types.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file reads `raw.status === "deleted"` from the row returned by loadRawInformationForUpdate. The element's shape is declared in the repository row type.
+  - node: rules/knowledge-base/compliance-deletion-check-order
+    held_at: >-
+      the order of statements in complianceDelete, lines 87-136
+    evidence: >-
+      `const raw = await loadRawInformationForUpdate(client, body.raw_information_id); if (!raw) { throw new ResourceNotFoundError(...) } if (raw.status === "deleted") {` precede the first `tombstoneRawInformation` call. Request well-formedness is checked upstream, before the service is called.
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      lines 153-164 in complianceDelete
+    evidence: >-
+      `const chunks = await tombstoneRawChunksOfRaw(...); const fragments = await tombstoneCascadedFragments(...); const links = await tombstoneCascadedLinks(...); const attributes = await tombstoneCascadedAttributes(...); const affected = { chunks, fragments, links, attributes };`
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      The file only invokes `tombstoneCascadedFragments`, `tombstoneCascadedLinks` and `tombstoneCascadedAttributes` with the raw information id. The "rests on no other non-deleted raw information" predicate is not stated in this file; it lives in the repository.
+  - node: rules/knowledge-base/compliance-deletion-records-curation-action
+    held_at: >-
+      the insertCurationAction call, lines 175-181
+    evidence: >-
+      `await insertCurationAction(client, { action: "compliance_delete", target_kind: "raw_information", target_id: body.raw_information_id, payload: { reason: body.reason, affected }, reason: body.reason });`
+  - node: rules/knowledge-base/compliance-deletion-redacts-content
+    held_at: nowhere
+    evidence: >-
+      This file performs no redaction. It declares `export const REDACTED_LITERAL = "[REDACTED]" as const;` and never reads it. The replacement of content and original_input is SQL in compliance-audit.repository.ts (`SET content = '[REDACTED]'`), reached through `tombstoneRawInformation`.
+  - node: rules/knowledge-base/compliance-deletion-tombstones
+    held_at: nowhere
+    evidence: >-
+      The file only calls `tombstoneRawInformation(client, ...)`, `tombstoneRawChunksOfRaw` and the three cascade functions. Marking deleted and the supersession time are not stated in this file; they are in the repository.
+  - node: rules/knowledge-base/deleted-source-deletion-records-nothing
+    held_at: >-
+      the `raw.status === "deleted"` branch, lines 101-121
+    evidence: >-
+      `if (existing) { logger.info({...}, "compliance_delete_noop"); return { outcome: "noop_already_deleted", deletion: rowToDto(existing) }; }` returns before any insert call.
+  - node: rules/knowledge-base/source-status-active-or-deleted
+    held_at: nowhere
+    evidence: >-
+      The file only compares `raw.status === "deleted"`. The status set is declared in the repository row type and the database, not here.
+looked_past: >-
+  Another judgment's: the structured log lines and operational alarm (`compliance.legacy_orphan_tombstone`, `compliance_delete_ok`) that no node mentions. Also the defensive coercion of a partial `affected` blob to zero counts in rowToDto, and the remaining explanatory comments (BR-, UC- and TC- citations) that restate nothing a node holds.

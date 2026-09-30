@@ -1,0 +1,97 @@
+findings:
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the doc comment above ReasonSchema, lines 12-19
+    evidence: >-
+      /** `reason` — non-empty after trim, ≤ 1000 chars (BR-01). ... `z.string().trim().min(1).max(1000)` runs `trim()` then checks the length AFTER the trim. */
+    cost: >-
+      The 1..1000 trimmed-length bound is written twice in this file, once as prose and once as `z.string().trim().min(1).max(1000)`. If the node moves, the comment keeps stating the old number. It also cites the back-spec rule id BR-01 as its authority. The next reader may take the comment, not the node, as where the bound was decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this same file (`ReasonSchema`) holds the fact, and the node's binding claims it.
+    node: rules/knowledge-base/compliance-deletion-reason-length
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the doc comment above ListComplianceDeletionsQuerySchema, lines 74-79
+    evidence: >-
+      When both bounds are supplied, the parser rejects `from >= to` with `VALIDATION_OUT_OF_RANGE`.
+    cost: >-
+      The start-strictly-before-end rule is restated in prose beside the `superRefine` that enforces it. The two can drift apart, and the comment cites BR-09 as its authority instead of the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The `superRefine` in this same file holds the fact (`Date.parse(value.executed_from) >= Date.parse(value.executed_to)`).
+    node: rules/knowledge-base/audit-window-ordered
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      ComplianceDeletionListSchema, line 108 (the list envelope key)
+    evidence: >-
+      items: z.array(ComplianceDeletionSchema),
+    cost: >-
+      The contract says the listing carries "the total, the limit, the offset and the page of compliance deletions". It gives no name for the key that holds the page, and no node in the specification root names it. The wire name `items` is decided only in this schema. A reader looking in the specification for what the REST and MCP callers receive will not find it.
+    kind: unstated
+    correction: >-
+      Have contracts/knowledge-base/compliance-audit name the key that carries the page of compliance deletions (and the same for the curation-action listing), so the schema is declaring a named fact rather than deciding one.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      ComplianceDeleteRequestSchema, ComplianceDeleteOutcomeSchema, ComplianceDeleteResponseSchema, ComplianceDeletionSchema, ListComplianceDeletionsQuerySchema, ComplianceDeletionListSchema, ComplianceDeletionIdParamSchema. Partial: the file declares the request and response shapes and the field-level validations, not the error codes, messages or HTTP statuses.
+    evidence: >-
+      export const ComplianceDeleteResponseSchema = z.object({ outcome: ComplianceDeleteOutcomeSchema, deletion: ComplianceDeletionSchema, }); ... export const ComplianceDeletionIdParamSchema = z.object({ complianceDeletionId: UuidSchema, });
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      ComplianceDeletionAffectedSchema, lines 41-46
+    evidence: >-
+      export const ComplianceDeletionAffectedSchema = z.object({ chunks: z.number().int().min(0), fragments: z.number().int().min(0), links: z.number().int().min(0), attributes: z.number().int().min(0), });
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      ComplianceDeletionSchema, lines 52-58
+    evidence: >-
+      export const ComplianceDeletionSchema = z.object({ id: UuidSchema, raw_information_id: UuidSchema, reason: ReasonSchema, executed_at: z.string(), affected: ComplianceDeletionAffectedSchema, });
+  - node: domain/knowledge-base/compliance-deletion-filter
+    held_at: >-
+      ListComplianceDeletionsQuerySchema, lines 80-98. The page appears as flat `limit` and `offset` fields.
+    evidence: >-
+      raw_information_id: UuidSchema.optional(), executed_from: z.string().datetime({ offset: true }).optional(), executed_to: z.string().datetime({ offset: true }).optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: domain/knowledge-base/compliance-deletion-outcome
+    held_at: >-
+      ComplianceDeleteOutcomeSchema, lines 32-35
+    evidence: >-
+      export const ComplianceDeleteOutcomeSchema = z.enum([ "deleted", "noop_already_deleted", ]);
+  - node: rules/knowledge-base/audit-filters-match-exactly
+    held_at: >-
+      nowhere. This file declares the filter's fields but performs no matching. Matching happens where the listing is queried, which is another file.
+    evidence: >-
+      The query schema only parses and defaults `raw_information_id`, `executed_from`, `executed_to`, `limit` and `offset`. No comparison against stored records appears in the file.
+  - node: rules/knowledge-base/audit-page-defaults
+    held_at: >-
+      ListComplianceDeletionsQuerySchema, the `limit` and `offset` fields, lines 85-86
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/audit-window-ordered
+    held_at: >-
+      the superRefine of ListComplianceDeletionsQuerySchema, lines 88-98
+    evidence: >-
+      if (Date.parse(value.executed_from) >= Date.parse(value.executed_to)) { ctx.addIssue({ code: "custom", path: ["executed_to"], message: "VALIDATION_OUT_OF_RANGE", }); }
+  - node: rules/knowledge-base/compliance-deletion-reason-length
+    held_at: >-
+      ReasonSchema, line 20
+    evidence: >-
+      export const ReasonSchema = z.string().trim().min(1).max(1000);
+  - node: rules/knowledge-base/compliance-deletion-reason-trimmed
+    held_at: >-
+      ReasonSchema, line 20. The `.trim()` transform makes the parsed request record the trimmed reason.
+    evidence: >-
+      export const ReasonSchema = z.string().trim().min(1).max(1000);
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the `limit` field of ListComplianceDeletionsQuerySchema, line 85
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the `offset` field of ListComplianceDeletionsQuerySchema, line 86
+    evidence: >-
+      offset: z.coerce.number().int().min(0).default(0),
+looked_past: >-
+  The comment "Time-range filters honor BR-09 (`from` inclusive, `to` exclusive)" states a half-open window that this file does not enforce; that belongs to another node and file (the candidate audit-listing-window-half-open, held in the repository). Also, the superRefine issue message is the bare code "VALIDATION_OUT_OF_RANGE" rather than the contract's wording, which the error mapping outside this file set may or may not replace.

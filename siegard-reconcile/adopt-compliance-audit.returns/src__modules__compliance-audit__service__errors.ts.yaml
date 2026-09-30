@@ -1,0 +1,55 @@
+findings:
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the header comment, lines 1-16, and the doc comments on ResourceNotFoundError (line 34)
+      and InternalFailure (lines 54-59)
+    evidence: >-
+      // Three families:
+      //   - ResourceNotFoundError -> 404 / RESOURCE_NOT_FOUND
+      //   - ValidationFailure     -> 422 / VALIDATION_*  (code set by the caller)
+      //   - InternalFailure       -> 500 / SYSTEM_INTERNAL_ERROR (BR-17 legacy-orphan alarm)
+      and
+      /** 404 — RESOURCE_NOT_FOUND. UC-01 alt 4a / UC-03 / UC-05. */
+      and
+      BR-17 mandates an
+       * operational alarm (already emitted at the service layer) and a generic
+       * 500 to the client.
+    cost: >-
+      The status and code pairs the contract refuses with (404 RESOURCE_NOT_FOUND, 500
+      SYSTEM_INTERNAL_ERROR, 422 VALIDATION_*) are written a second time as prose beside the
+      classes that hold them. The comments also cite back-spec rules (BR-15 v1.4.0, BR-17, UC-01
+      alt 4a/4c) as their authority, so a reader can take that document to be where the taxonomy
+      is decided instead of the node. When the node moves, these comments stay behind and read as
+      current. The same header also claims what another file does (the shared
+      `renderErrorEnvelope` mapper producing byte-identical envelopes on both transports). That is
+      prose about code outside this file, and it is not evidence of anything here.
+    kind: restates
+    correction: >-
+      Remove the comments (the prose route). The code in this file already holds the facts
+      (`statusCode = 404` with `code = "RESOURCE_NOT_FOUND"`, `statusCode = 422`, and
+      `statusCode = 500` with `code = "SYSTEM_INTERNAL_ERROR"`). Nothing in the node needs to
+      change.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      the three error classes: ResourceNotFoundError (404, RESOURCE_NOT_FOUND), ValidationFailure
+      (422, caller-supplied code and message) and InternalFailure (500, SYSTEM_INTERNAL_ERROR,
+      fixed message). The specific VALIDATION_* codes and the per-refusal messages are supplied by
+      callers in other files, not here.
+    evidence: >-
+      export class ResourceNotFoundError extends ComplianceAuditError {
+        public readonly statusCode = 404;
+        public readonly code = "RESOURCE_NOT_FOUND" as const;
+      }
+      export class ValidationFailure extends ComplianceAuditError {
+        public readonly statusCode = 422;
+      ...
+      export class InternalFailure extends ComplianceAuditError {
+        public readonly statusCode = 500;
+        public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+      ...
+          super("Unexpected internal error.", details);
+looked_past: >-
+  The `reason` field on InternalFailure and the `details` default of `{}` are implementation shape
+  and state no domain fact.

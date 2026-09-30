@@ -1,0 +1,276 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the status member of interface RawInformationLockedRow, line 23
+    evidence: |-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+    cost: >-
+      The node says a raw information's status is active or deleted, and this row type, which
+      is the only declaration of a raw information's status in the file, admits four values.
+      A reader taking the vocabulary from the type would treat needs_review and merged as
+      states a source can be in, and that is what the node denies.
+    kind: contradicts
+    correction: >-
+      The raw information's status shape would have to admit only active and deleted, as the
+      node states.
+    node: rules/knowledge-base/source-status-active-or-deleted
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneRawInformation, lines 45-61, sentence on content_hash (line 49)
+      and the UPDATE at lines 67-74
+    evidence: |-
+      content_hash is intentionally left untouched (BR-04).
+    cost: >-
+      A comment restates the node's fact while the UPDATE holds it by never naming
+      content_hash in its SET list. The prose is a second home that can go stale without
+      any check noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The UPDATE in this file holds the fact.
+    node: rules/knowledge-base/compliance-deletion-keeps-content-hash
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneRawInformation, lines 51-60, the [REDACTED] and original_input
+      paragraphs
+    evidence: |-
+      The `[REDACTED]` literal is hardcoded — never read from config
+    cost: >-
+      The prose restates the redaction rule and the original_input treatment at length,
+      while the UPDATE (`content = '[REDACTED]'`, `original_input = CASE WHEN original_input
+      IS NULL THEN NULL ELSE '[REDACTED]' END`) holds them. The two homes will drift when
+      the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The UPDATE in this file holds the fact.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneCascadedFragments, lines 105-107, and the predicate of
+      tombstoneRawChunksOfRaw, lines 94-98
+    evidence: |-
+      WHERE raw_information_id = $1
+        AND superseded_at IS NULL
+      RETURNING id
+    cost: >-
+      The node says a compliance deletion marks deleted each of its raw information's raw
+      chunks. This query marks only chunks whose superseded_at is null, and no node states
+      that restriction. A chunk of the raw information that already carries a supersession
+      time is left un-deleted, and the chunk count in the audit record omits it. The next
+      reader looks for the chunk rule in the specification and finds no such guard.
+    kind: contradicts
+    correction: >-
+      Either the node would have to state the restriction to not-yet-superseded chunks, or
+      the query would have to mark every chunk of the raw information.
+    node: rules/knowledge-base/compliance-deletion-tombstones
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneCascadedFragments, lines 105-111, against the UPDATE at lines
+      117-133
+    evidence: |-
+      BR-06 — tombstones every fragment whose `fragment_source` chain anchors
+       * ONLY chunks of the deleted raw. Cross-source fragments survive.
+    cost: >-
+      The prose restates the propagation rule, and the paired UPDATE holds it with its
+      EXISTS and NOT EXISTS predicates. The same applies to the link and attribute
+      docstrings at lines 139-143 and 174-178. A second home for the rule sits outside
+      behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The UPDATE statements in this file hold the fact.
+    node: rules/knowledge-base/compliance-deletion-propagates
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of listComplianceDeletions, lines 306-309 (line 427-428 for
+      listCurationActions)
+    evidence: |-
+      UC-02 — list ComplianceDeletion rows newest-first with optional filters.
+       * BR-09: `executed_from` inclusive, `executed_to` exclusive (semi-open).
+    cost: >-
+      The prose states both the newest-first order and the half-open window, and the
+      queries hold both (`ORDER BY executed_at DESC`, `executed_at >= $`, `executed_at <
+      $`). The prose is a second home that can go stale against the nodes.
+    kind: restates
+    correction: >-
+      Remove the prose. The queries in this file hold the facts.
+    node: rules/knowledge-base/audit-listing-window-half-open
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of listComplianceDeletions, line 307, and of listCurationActions, line 427
+    evidence: |-
+      UC-02 — list ComplianceDeletion rows newest-first with optional filters.
+    cost: >-
+      The prose restates the listing order, which the ORDER BY clauses hold (`ORDER BY
+      executed_at DESC`, `ORDER BY created_at DESC`). The docstring is a second home outside
+      behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The ORDER BY clauses in this file hold the fact.
+    node: rules/knowledge-base/audit-listing-order
+read:
+  - node: constraints/compliance-deletion-is-atomic
+    held_at: nowhere
+    evidence: |-
+      Every function takes a caller-supplied connection and opens no transaction of its own, e.g. `export async function tombstoneRawChunksOfRaw(client: PoolClient, rawInformationId: string)`. The file has no BEGIN, COMMIT or transaction call. The only mention is the comment "inside the UC-01 transaction", so the boundary is held by the caller.
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: nowhere
+    evidence: |-
+      The file holds data access only. It has no HTTP status, no error code and no outcome. The nearest constructs are `SELECT id, raw_information_id, reason, executed_at, affected FROM compliance_deletion WHERE id = $1` and `ORDER BY executed_at DESC LIMIT 1` in findComplianceDeletionByRawId. The accepted answers and refusals are stated elsewhere.
+  - node: domain/knowledge-base/affected-counts
+    held_at: nowhere
+    evidence: |-
+      `import type { ComplianceDeletionAffected } from "../dto/compliance-delete.dto.js";` and `readonly affected: ComplianceDeletionAffected;`. The shape is imported from another file. The file only passes it along, writing `jsonb_build_object('chunks', $3::int, 'fragments', $4::int, 'links', $5::int, 'attributes', $6::int)`.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      interface ComplianceDeletionRow, lines 213-219
+    evidence: |-
+      export interface ComplianceDeletionRow {
+        readonly id: string;
+        readonly raw_information_id: string;
+        readonly reason: string;
+        readonly executed_at: Date;
+        readonly affected: ComplianceDeletionAffected;
+      }
+  - node: domain/knowledge-base/compliance-deletion-filter
+    held_at: >-
+      interface ListComplianceDeletionsFilters, lines 293-299
+    evidence: |-
+      readonly raw_information_id?: string;
+        readonly executed_from?: string;
+        readonly executed_to?: string;
+        readonly limit: number;
+        readonly offset: number;
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      interface CurationActionRow, lines 360-368, and CurationActionInsertArgs, lines 352-358
+    evidence: |-
+      export interface CurationActionRow {
+        readonly id: string;
+        readonly action: string;
+        readonly target_kind: string;
+        readonly target_id: string | null;
+        readonly payload: Record<string, unknown>;
+        readonly reason: string | null;
+        readonly created_at: Date;
+      }
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      interface ListCurationActionsFilters, lines 411-419
+    evidence: |-
+      readonly action?: string;
+        readonly target_kind?: string;
+        readonly target_id?: string;
+        readonly created_from?: string;
+        readonly created_to?: string;
+        readonly limit: number;
+        readonly offset: number;
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: |-
+      The file types the field as `readonly action: string;` and declares no enumeration of the seven kinds. The comment "BR-10 enum already enforced at API layer" delegates the closed set elsewhere.
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: |-
+      The file types the field as `readonly target_kind: string;` and declares no enumeration of the five target kinds.
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      the status member of RawInformationLockedRow, line 23, partially
+    evidence: |-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/knowledge-base/audit-filters-match-exactly
+    held_at: >-
+      the where-clause builders of listComplianceDeletions (lines 317-320) and listCurationActions (lines 437-448)
+    evidence: |-
+      where.push(`raw_information_id = $${i++}`);
+      where.push(`action = $${i++}`);
+      where.push(`target_kind = $${i++}`);
+      where.push(`target_id = $${i++}`);
+  - node: rules/knowledge-base/audit-listing-order
+    held_at: >-
+      the data queries of listComplianceDeletions (line 335) and listCurationActions (line 463)
+    evidence: |-
+      ORDER BY executed_at DESC
+      ORDER BY created_at DESC
+  - node: rules/knowledge-base/audit-listing-total-before-pagination
+    held_at: >-
+      the countSql of listComplianceDeletions (lines 339-342) and listCurationActions (lines 467-470)
+    evidence: |-
+      const countSql = `SELECT count(*)::int AS total
+                          FROM compliance_deletion
+                          ${whereClause}`;
+      const countRes = await client.query<{ total: number }>(countSql, params);
+  - node: rules/knowledge-base/audit-listing-window-half-open
+    held_at: >-
+      the window predicates of listComplianceDeletions (lines 321-328) and listCurationActions (lines 449-456)
+    evidence: |-
+      where.push(`executed_at >= $${i++}`);
+      where.push(`executed_at < $${i++}`);
+      where.push(`created_at >= $${i++}`);
+      where.push(`created_at < $${i++}`);
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      the RETURNING and rowCount of the four tombstone functions, lines 89-207, and the jsonb_build_object of insertComplianceDeletion, lines 235-241
+    evidence: |-
+      RETURNING id`, [rawInformationId]);
+        return res.rowCount ?? 0;
+  - node: rules/knowledge-base/compliance-deletion-flags-metadata
+    held_at: >-
+      the metadata assignment in the UPDATE of tombstoneRawInformation, line 70
+    evidence: |-
+      metadata       = metadata || jsonb_build_object('compliance_deleted', true),
+  - node: rules/knowledge-base/compliance-deletion-keeps-content-hash
+    held_at: >-
+      the SET list of the UPDATE in tombstoneRawInformation, lines 68-72, which never names content_hash
+    evidence: |-
+      SET content        = '[REDACTED]',
+                  original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END,
+                  metadata       = metadata || jsonb_build_object('compliance_deleted', true),
+                  status         = 'deleted',
+                  superseded_at  = now()
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: >-
+      the UPDATE statements of tombstoneCascadedFragments (lines 117-133), tombstoneCascadedLinks (lines 150-168) and tombstoneCascadedAttributes (lines 185-203)
+    evidence: |-
+      AND NOT EXISTS (
+                SELECT 1 FROM fragment_source fs
+                  JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id
+                  JOIN raw_information ri ON ri.id = rc.raw_information_id
+                 WHERE fs.fragment_id = f.id
+                   AND ri.id <> $1
+                   AND ri.status <> 'deleted')
+          AND f.status <> 'deleted'
+  - node: rules/knowledge-base/compliance-deletion-redacts-content
+    held_at: >-
+      the content and original_input assignments in the UPDATE of tombstoneRawInformation, lines 68-69
+    evidence: |-
+      SET content        = '[REDACTED]',
+                  original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END,
+  - node: rules/knowledge-base/compliance-deletion-tombstones
+    held_at: >-
+      the UPDATEs of tombstoneRawInformation (lines 71-72), tombstoneRawChunksOfRaw (lines 95-96), tombstoneCascadedFragments, tombstoneCascadedLinks and tombstoneCascadedAttributes. The chunk update carries a restriction the node does not state, filed as a finding.
+    evidence: |-
+      SET status        = 'deleted',
+              superseded_at = now()
+        WHERE raw_information_id = $1
+          AND superseded_at IS NULL
+  - node: rules/knowledge-base/curation-action-time-is-recording-time
+    held_at: >-
+      the INSERT of insertCurationAction, lines 379-381, which names no creation time and returns created_at
+    evidence: |-
+      INSERT INTO curation_action (action, target_kind, target_id, payload, reason)
+           VALUES ($1, $2, $3, $4::jsonb, $5)
+           RETURNING id, action, target_kind, target_id, payload, reason, created_at
+  - node: rules/knowledge-base/deletion-execution-time-is-recording-time
+    held_at: >-
+      the INSERT of insertComplianceDeletion, lines 235-241, which names no execution time and returns executed_at
+    evidence: |-
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+           VALUES ($1, $2, jsonb_build_object(
+           ...
+           RETURNING id, raw_information_id, reason, executed_at, affected
+  - node: rules/knowledge-base/source-status-active-or-deleted
+    held_at: nowhere
+    evidence: |-
+      The only declaration of a raw information's status is `readonly status: "active" | "needs_review" | "merged" | "deleted";`, which admits four values where the node holds two. The writes set only 'deleted', as in `status = 'deleted'`.
+looked_past: >-
+  The InvariantError messages ("insertComplianceDeletion returned no row", "insertCurationAction returned no row") and the header comment citing compliance-audit.back.md are not domain facts of any node in the set, and the file-level prose naming the BR-12 UPDATE carve-out is a documentation matter.
+candidates_opened: []

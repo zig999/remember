@@ -1,0 +1,107 @@
+findings:
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      the doc comment above ListCurationActionsQuerySchema, lines 33-37
+    evidence: >-
+      BR-09 semi-open
+       * time-range honored (`from` inclusive, `to` exclusive); BR-10 action enum
+       * validated here.
+    cost: >-
+      The half-open window rule is written here as prose next to a schema that only parses and orders the two bounds. The rule itself runs in another file, so a reader of this DTO may take the comment for where it is enforced. The comment also says that enforcement sits in this file, which is wrong.
+    kind: restates
+    correction: >-
+      Remove the comment. The node already holds the rule, and the repository already enforces it, so no code change is owed.
+    node: rules/knowledge-base/audit-listing-window-half-open
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      the doc comment above CurationActionNameSchema, line 11
+    evidence: >-
+      /** 7 curation-tool names of §14.4 (BR-10). */
+    cost: >-
+      The count and the source of the closed set of action kinds is restated in prose beside the enumeration that holds it. If the node's set changes, the comment keeps claiming seven names from a section the node no longer cites.
+    kind: restates
+    correction: >-
+      Remove the comment. The enumeration in this file already declares the closed set that the node holds.
+    node: domain/knowledge-base/curation-action-kind
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      This file holds only the curation-action part of the contract, in three places. ListCurationActionsQuerySchema declares the list request. CurationActionSchema and CurationActionListSchema declare the response shapes. CurationActionIdParamSchema declares the read request. The compliance-deletion operations are held elsewhere.
+    evidence: >-
+      export const CurationActionSchema = z.object({ id: UuidSchema, action: z.string(), target_kind: z.string(), target_id: UuidSchema.nullable(), payload: z.record(z.string(), z.unknown()), reason: z.string().max(1000).nullable(), created_at: z.string(), });
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      ListCurationActionsQuerySchema, lines 38-47, which declares action, target_kind, target_id, created_from, created_to, limit and offset.
+    evidence: >-
+      action: CurationActionNameSchema.optional(),
+          target_kind: TargetKindSchema.optional(),
+          target_id: UuidSchema.optional(),
+          created_from: z.string().datetime({ offset: true }).optional(),
+          created_to: z.string().datetime({ offset: true }).optional(),
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      CurationActionNameSchema, lines 12-20. It is a z.enum with the node's seven kinds. The values are spelled snake_case, where the node spells them kebab-case.
+    evidence: >-
+      export const CurationActionNameSchema = z.enum([
+        "resolve_entity_match",
+        "merge_nodes",
+        "resolve_dispute",
+        "confirm_item",
+        "reject_item",
+        "correct_item",
+        "compliance_delete",
+      ]);
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      TargetKindSchema, lines 24-30. It is a z.enum with the node's five kinds, spelled snake_case.
+    evidence: >-
+      export const TargetKindSchema = z.enum([
+        "node",
+        "link",
+        "attribute",
+        "fragment",
+        "raw_information",
+      ]);
+  - node: rules/knowledge-base/audit-filters-match-exactly
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file declares the filter fields and validates their format, for example `target_id: UuidSchema.optional()`. It holds no matching or equality logic. The matching sits in the repository, which is outside this file set.
+  - node: rules/knowledge-base/audit-listing-window-half-open
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file only parses the two bounds, as `created_from: z.string().datetime({ offset: true }).optional()`. The inclusive start and exclusive end are applied in compliance-audit.repository.ts, which has `created_at >= $` and `created_at < $`. That file is outside this set.
+  - node: rules/knowledge-base/audit-page-defaults
+    held_at: >-
+      ListCurationActionsQuerySchema, lines 45-46.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+          offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/audit-window-ordered
+    held_at: >-
+      the superRefine of ListCurationActionsQuerySchema, lines 48-58.
+    evidence: >-
+      if (Date.parse(value.created_from) >= Date.parse(value.created_to)) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["created_to"],
+                message: "VALIDATION_OUT_OF_RANGE",
+              });
+  - node: rules/knowledge-base/curation-action-reason-length
+    held_at: >-
+      the `reason` field of CurationActionSchema, line 70.
+    evidence: >-
+      reason: z.string().max(1000).nullable(),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the `limit` field of ListCurationActionsQuerySchema, line 45.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the `offset` field of ListCurationActionsQuerySchema, line 46.
+    evidence: >-
+      offset: z.coerce.number().int().min(0).default(0),
+looked_past: >-
+  The header comment's claim that the `action` filter is validated only at the API layer because the DB column is plain `text`, and its mention of openapi.yaml, are prose-only facts that no code states. They go to the comment route. The action and target-kind values are spelled snake_case where the nodes spell them kebab-case, and no node states a wire spelling, so I did not file that as a finding.
