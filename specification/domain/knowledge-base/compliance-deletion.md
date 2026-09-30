@@ -8,7 +8,8 @@ attributes:
   type: string
   required: true
 - name: affected
-  type: string
+  type: affected-counts
+  required: true
 relationships:
 - target: raw-information
   type: reference

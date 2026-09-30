@@ -72,6 +72,7 @@ this groups its entries by the file each one located.
 - attributes.affected.type — decided: string
   unstated: The material holds a compliance deletion's record of what it affected as a structured document without giving its shape.
   why: Nothing in the material reads inside it, so it is carried whole as text.
+- attributes.affected.type — retired: The material now states what a compliance deletion affected as four counts, held by domain/knowledge-base/affected-counts, which compliance-deletion's affected attribute is typed by.
 
 ## domain/knowledge-base/curation-action.md
 - attributes.payload.type — decided: string
@@ -83,6 +84,12 @@ this groups its entries by the file each one located.
 - type — decided: aggregate-root
   unstated: The material does not say whether a curation action has an identity of its own or belongs to what it acted on.
   why: Each action is recorded once and never changes, and nothing it acted on holds it.
+- attributes.action.type — decided: curation-action-kind
+  unstated: The material closes the action a curation-action listing filters by to seven kinds, while the recorded action and the value written take any text; the two decide differently for a curation action recorded under a kind outside the seven.
+  why: An action recorded under a kind no listing can filter for is one the audit trail cannot find by its kind.
+- attributes.target_kind.type — decided: curation-target-kind
+  unstated: The material closes the target kind a curation-action listing filters by to five kinds, while the recorded target kind and the value written take any text; the two decide differently for a curation action recorded on a target kind outside the five.
+  why: An action recorded on a target kind no listing can filter for is one the audit trail cannot find by what it acted on.
 
 ## domain/knowledge-base/directed-ingestion.md
 - type — decided: value-object
@@ -210,6 +217,9 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this propagation holds across the separate records it changes.
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+- statement — decided: A compliance deletion marks deleted only the fragments, links and attributes that rest on no other raw information that is not deleted.
+  unstated: The standing node marks deleted every fragment of the raw information and every link and attribute whose only provenance is one of them, while the material spares any fragment, link or attribute that also rests on another raw information not deleted; the two decide differently for a fragment whose source chunks belong to two raw informations of which only one is deleted.
+  why: Knowledge another source that is not deleted still attests is held by that source, so deleting one source does not take it away.
 
 ## rules/knowledge-base/compliance-deletion-tombstones.md
 - statement — decided: A compliance deletion marks its raw information and raw chunks deleted and stamps the moment of the deletion as the supersession time of them, their fragments and every assertion it marks deleted.

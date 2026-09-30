@@ -16,17 +16,18 @@ classDiagram
             <<AggregateRoot>>
             +datetime executedAt
             +string reason
-            +string affected
+            +AffectedCounts affected
         }
     }
     namespace CurationActionAggregate {
         class CurationAction {
             <<AggregateRoot>>
-            +string action
-            +string targetKind
+            +CurationActionKind action
+            +CurationTargetKind targetKind
             +string targetId
             +string payload
             +string reason
+            +datetime createdAt
         }
     }
     namespace EntityMatchReviewAggregate {
@@ -164,6 +165,13 @@ classDiagram
         <<ValueObject>>
         +Page page
     }
+    class AffectedCounts {
+        <<ValueObject>>
+        +integer chunks
+        +integer fragments
+        +integer links
+        +integer attributes
+    }
     class AliasKind {
         <<Enumeration>>
         CANONICAL
@@ -195,6 +203,44 @@ classDiagram
         NONE
         SUCCESSION
         CORRECTION
+    }
+    class ComplianceDeletionFilter {
+        <<ValueObject>>
+        +datetime executedFrom
+        +datetime executedTo
+        +Page page
+    }
+    class ComplianceDeletionOutcome {
+        <<Enumeration>>
+        DELETED
+        NOOP_ALREADY_DELETED
+    }
+    class CurationActionFilter {
+        <<ValueObject>>
+        +CurationActionKind action
+        +CurationTargetKind targetKind
+        +string targetId
+        +datetime createdFrom
+        +datetime createdTo
+        +Page page
+    }
+    class CurationActionKind {
+        <<Enumeration>>
+        RESOLVE_ENTITY_MATCH
+        MERGE_NODES
+        RESOLVE_DISPUTE
+        CONFIRM_ITEM
+        REJECT_ITEM
+        CORRECT_ITEM
+        COMPLIANCE_DELETE
+    }
+    class CurationTargetKind {
+        <<Enumeration>>
+        NODE
+        LINK
+        ATTRIBUTE
+        FRAGMENT
+        RAW_INFORMATION
     }
     class DirectedIngestion {
         <<ValueObject>>
@@ -377,6 +423,7 @@ classDiagram
     AcceptedFragmentFilter "0..*" --> "0..1" LLMRun
     AttributeKey "0..*" --> "1" NodeType
     ComplianceDeletion "0..*" --> "1" RawInformation
+    ComplianceDeletionFilter "0..*" --> "0..1" RawInformation
     EntityMatchReview "0..*" --> "1" KnowledgeNode : node
     EntityMatchReview "0..*" --> "1" KnowledgeNode : candidate
     InformationFragment "0..*" -- "1..*" RawChunk : source

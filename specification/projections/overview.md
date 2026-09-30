@@ -7,14 +7,14 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 5 | 2 | 0 | 0 |
-| knowledge-base | core | 45 | 229 | 2 | 8 |
+| knowledge-base | core | 51 | 248 | 3 | 8 |
 
 ## Aggregates
 
 - chat/conversation — 3 entity(ies) inside, 5 attribute(s) on the root
 - knowledge-base/attribute-key — 0 entity(ies) inside, 7 attribute(s) on the root
 - knowledge-base/compliance-deletion — 0 entity(ies) inside, 3 attribute(s) on the root
-- knowledge-base/curation-action — 0 entity(ies) inside, 5 attribute(s) on the root
+- knowledge-base/curation-action — 0 entity(ies) inside, 6 attribute(s) on the root
 - knowledge-base/entity-match-review — 0 entity(ies) inside, 1 attribute(s) on the root
 - knowledge-base/information-fragment — 0 entity(ies) inside, 5 attribute(s) on the root
 - knowledge-base/knowledge-link — 0 entity(ies) inside, 8 attribute(s) on the root
@@ -31,13 +31,15 @@ None.
 
 ## Constraints
 
+- compliance-deletion-is-atomic (knowledge-base)
 - document-content-is-data (knowledge-base)
 - extraction-acts-only-through-proposals (knowledge-base)
 - ingestion-transports-answer-alike (knowledge-base)
+- llm-toolset-omits-audit-reads (knowledge-base)
 - llm-toolset-omits-fragment-listing (knowledge-base)
 - retrieval-is-lexical-only (knowledge-base)
 - retrieval-is-read-only (knowledge-base)
 - retrieval-requires-owner-authentication (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
 
-85 decision(s) disclosed, 1 location(s) retired in the decision log.
+88 decision(s) disclosed, 2 location(s) retired in the decision log.

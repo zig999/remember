@@ -2,10 +2,10 @@
 type: aggregate-root
 attributes:
 - name: action
-  type: string
+  type: curation-action-kind
   required: true
 - name: target_kind
-  type: string
+  type: curation-target-kind
   required: true
 - name: target_id
   type: string
@@ -13,6 +13,9 @@ attributes:
   type: string
 - name: reason
   type: string
+- name: created_at
+  type: datetime
+  required: true
 ---
 
 ## Description

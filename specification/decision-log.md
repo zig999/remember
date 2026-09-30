@@ -428,6 +428,24 @@ entries:
   unstated: The material keeps one provenance per fragment on a node attribute while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the node attribute already holds.
   decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
   why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
+- location: domain/knowledge-base/compliance-deletion.md
+  field: attributes.affected.type
+  retired: The material now states what a compliance deletion affected as four counts, held by domain/knowledge-base/affected-counts, which compliance-deletion's affected attribute is typed by.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.action.type
+  unstated: The material closes the action a curation-action listing filters by to seven kinds, while the recorded action and the value written take any text; the two decide differently for a curation action recorded under a kind outside the seven.
+  decided: curation-action-kind
+  why: An action recorded under a kind no listing can filter for is one the audit trail cannot find by its kind.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.target_kind.type
+  unstated: The material closes the target kind a curation-action listing filters by to five kinds, while the recorded target kind and the value written take any text; the two decide differently for a curation action recorded on a target kind outside the five.
+  decided: curation-target-kind
+  why: An action recorded on a target kind no listing can filter for is one the audit trail cannot find by what it acted on.
+- location: rules/knowledge-base/compliance-deletion-propagates.md
+  field: statement
+  unstated: The standing node marks deleted every fragment of the raw information and every link and attribute whose only provenance is one of them, while the material spares any fragment, link or attribute that also rests on another raw information not deleted; the two decide differently for a fragment whose source chunks belong to two raw informations of which only one is deleted.
+  decided: A compliance deletion marks deleted only the fragments, links and attributes that rest on no other raw information that is not deleted.
+  why: Knowledge another source that is not deleted still attests is held by that source, so deleting one source does not take it away.
 ---
 
 ## Description

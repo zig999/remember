@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: A compliance deletion marks deleted the information fragments of its raw information and every knowledge link and node attribute whose only provenance is one of those fragments.
+statement: A compliance deletion marks deleted every information fragment, knowledge link and node attribute not already deleted that rests on its raw information and on no other raw information that is not deleted.
 constrains:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/information-fragment
@@ -11,4 +11,5 @@ consistency: eventual
 
 ## Description
 
-None.
+An information fragment rests on the raw information its source chunks belong to.
+A knowledge link or a node attribute rests on the raw information its provenance fragments rest on.

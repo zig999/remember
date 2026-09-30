@@ -3,6 +3,17 @@
 Derived by spec.py from the specification files; never edited. Grep here to locate;
 open the node file a match names before claiming anything about it.
 
+=== constraints/compliance-deletion-is-atomic
+---
+statement: A compliance deletion's changes to its raw information, raw chunks, information fragments, knowledge links, node attributes and audit records take effect together or not at all.
+scope: knowledge-base
+fitness: each compliance deletion, over either transport, runs inside one database transaction
+---
+
+## Description
+
+None.
+
 === constraints/document-content-is-data
 ---
 statement: An extraction presents a document's content to the language model marked apart from its instructions as data, never as instruction.
@@ -26,6 +37,16 @@ None.
 === constraints/ingestion-transports-answer-alike
 ---
 statement: The REST and MCP transports answer every ingestion operation they both expose with the same result on success and the same error code on refusal.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/llm-toolset-omits-audit-reads
+---
+statement: The language model's curation tool surface exposes compliance deletion and none of the compliance-deletion or curation-action reads.
 scope: knowledge-base
 ---
 
@@ -83,6 +104,76 @@ scope: knowledge-base
 ## Description
 
 None.
+
+=== contracts/knowledge-base/compliance-audit
+---
+type: api
+direction: published
+operations:
+- compliance-delete
+- list-compliance-deletions
+- read-compliance-deletion
+- list-curation-actions
+- read-curation-action
+answers:
+- operation: compliance-delete
+  accepted: 'HTTP 201 carrying outcome deleted and the compliance deletion just recorded, or HTTP 200 carrying outcome noop_already_deleted and the latest compliance deletion on record for the raw information, each deletion with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts, ignoring any field the request does not define; over MCP, `{ ok: true, result }` carrying the same outcome and deletion'
+  refusals:
+  - when: The request omits the raw information or the reason.
+    answer: 'error code VALIDATION_REQUIRED_FIELD with message "Field ''<path>'' is required.", listing each failing field with its path and message, HTTP 422 over REST'
+  - rule: rules/knowledge-base/compliance-deletion-reason-length
+    answer: 'error code VALIDATION_OUT_OF_RANGE with message "Field ''reason'' must be non-empty after trim and ≤ 1000 characters.", listing each failing field with its path and message, HTTP 422 over REST'
+  - when: The named raw information is not a well-formed identifier, or a field is null or of the wrong type.
+    answer: 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message, HTTP 422 over REST'
+  - when: No raw information is held at the requested identity.
+    answer: 'error code RESOURCE_NOT_FOUND with message "RawInformation <id> not found.", naming the entity raw_information and the identity, HTTP 404 over REST'
+  - when: The raw information is already deleted and no compliance deletion of it is on record.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with message "Unexpected internal error.", naming the raw information, HTTP 500 over REST'
+  - when: Marking the raw information deleted reaches other than exactly that one raw information.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with message "Unexpected internal error.", naming the raw information and how many were reached, HTTP 500 over REST'
+  - when: The deletion fails over MCP for any other cause.
+    answer: error code SYSTEM_INTERNAL_ERROR with message "Unexpected internal error.", withholding the cause
+- operation: list-compliance-deletions
+  accepted: HTTP 200 carrying the total, the limit, the offset and the page of compliance deletions, each with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts, ignoring any query parameter the request does not define
+  refusals:
+  - &window
+    rule: rules/knowledge-base/audit-window-ordered
+    answer: 'HTTP 422, error code VALIDATION_OUT_OF_RANGE with message "Time range bounds must satisfy `from < to`.", listing each failing field with its path and message'
+  - &limit
+    rule: rules/knowledge-base/page-limit-bounds
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+  - &offset
+    rule: rules/knowledge-base/page-offset-non-negative
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+  - when: The named raw information is not a well-formed identifier, a window bound is not a date-time carrying a time zone, or the limit or offset is not an integer.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+- operation: read-compliance-deletion
+  accepted: HTTP 200 carrying the compliance deletion with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts
+  refusals:
+  - &malformed-id
+    when: The requested identity is not a well-formed identifier.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+  - when: No compliance deletion is held at the requested identity.
+    answer: 'HTTP 404, error code RESOURCE_NOT_FOUND with message "ComplianceDeletion <id> not found.", naming the entity compliance_deletion and the identity'
+- operation: list-curation-actions
+  accepted: HTTP 200 carrying the total, the limit, the offset and the page of curation actions, each with its identity, action, target kind, target identity or null, payload, an empty object where none is held, reason or null and creation time as an ISO-8601 timestamp, ignoring any query parameter the request does not define
+  refusals:
+  - *window
+  - *limit
+  - *offset
+  - when: The named target is not a well-formed identifier, a window bound is not a date-time carrying a time zone, the limit or offset is not an integer, or the action or target kind is outside its closed set.
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+- operation: read-curation-action
+  accepted: HTTP 200 carrying the curation action with its identity, action, target kind, target identity or null, payload, an empty object where none is held, reason or null and creation time as an ISO-8601 timestamp
+  refusals:
+  - *malformed-id
+  - when: No curation action is held at the requested identity.
+    answer: 'HTTP 404, error code RESOURCE_NOT_FOUND with message "CurationAction <id> not found.", naming the entity curation_action and the identity'
+---
+
+## Description
+
+The owner's surface for deleting a raw information for compliance and for reading the compliance deletions and curation actions on record.
 
 === contracts/knowledge-base/ingestion
 ---
@@ -819,6 +910,24 @@ entries:
   unstated: The material keeps one provenance per fragment on a node attribute while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the node attribute already holds.
   decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
   why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
+- location: domain/knowledge-base/compliance-deletion.md
+  field: attributes.affected.type
+  retired: The material now states what a compliance deletion affected as four counts, held by domain/knowledge-base/affected-counts, which compliance-deletion's affected attribute is typed by.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.action.type
+  unstated: The material closes the action a curation-action listing filters by to seven kinds, while the recorded action and the value written take any text; the two decide differently for a curation action recorded under a kind outside the seven.
+  decided: curation-action-kind
+  why: An action recorded under a kind no listing can filter for is one the audit trail cannot find by its kind.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.target_kind.type
+  unstated: The material closes the target kind a curation-action listing filters by to five kinds, while the recorded target kind and the value written take any text; the two decide differently for a curation action recorded on a target kind outside the five.
+  decided: curation-target-kind
+  why: An action recorded on a target kind no listing can filter for is one the audit trail cannot find by what it acted on.
+- location: rules/knowledge-base/compliance-deletion-propagates.md
+  field: statement
+  unstated: The standing node marks deleted every fragment of the raw information and every link and attribute whose only provenance is one of them, while the material spares any fragment, link or attribute that also rests on another raw information not deleted; the two decide differently for a fragment whose source chunks belong to two raw informations of which only one is deleted.
+  decided: A compliance deletion marks deleted only the fragments, links and attributes that rest on no other raw information that is not deleted.
+  why: Knowledge another source that is not deleted still attests is held by that source, so deleting one source does not take it away.
 ---
 
 ## Description
@@ -1016,6 +1125,32 @@ What the owner narrows an accepted-fragment listing to: an LLM run, a raw inform
 
 None.
 
+=== domain/knowledge-base/affected-counts
+---
+type: value-object
+attributes:
+- name: chunks
+  type: integer
+  required: true
+- name: fragments
+  type: integer
+  required: true
+- name: links
+  type: integer
+  required: true
+- name: attributes
+  type: integer
+  required: true
+---
+
+## Description
+
+How many raw chunks, information fragments, knowledge links and node attributes one compliance deletion marked deleted.
+
+## Responsibility
+
+It records the reach of a compliance deletion.
+
 === domain/knowledge-base/alias-kind
 ---
 type: enumeration
@@ -1154,7 +1289,8 @@ attributes:
   type: string
   required: true
 - name: affected
-  type: string
+  type: affected-counts
+  required: true
 relationships:
 - target: raw-information
   type: reference
@@ -1169,15 +1305,55 @@ The record that a raw information was deleted to honour a data-protection obliga
 
 It keeps a deleted source's knowledge from being presented as still traceable.
 
+=== domain/knowledge-base/compliance-deletion-filter
+---
+type: value-object
+attributes:
+- name: executed_from
+  type: datetime
+- name: executed_to
+  type: datetime
+- name: page
+  type: page
+relationships:
+- target: raw-information
+  type: reference
+  cardinality: 0..1
+---
+
+## Description
+
+What a listing of compliance deletions is narrowed to: the raw information deleted, a window over execution times, and the page.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/compliance-deletion-outcome
+---
+type: enumeration
+values:
+- deleted
+- noop-already-deleted
+---
+
+## Description
+
+How a requested compliance deletion ended: the raw information was deleted by it, or it was already deleted and nothing changed.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/curation-action
 ---
 type: aggregate-root
 attributes:
 - name: action
-  type: string
+  type: curation-action-kind
   required: true
 - name: target_kind
-  type: string
+  type: curation-target-kind
   required: true
 - name: target_id
   type: string
@@ -1185,6 +1361,9 @@ attributes:
   type: string
 - name: reason
   type: string
+- name: created_at
+  type: datetime
+  required: true
 ---
 
 ## Description
@@ -1194,6 +1373,72 @@ The record of one action the owner took while curating the knowledge base, namin
 ## Responsibility
 
 It keeps an audit trail of what curation changed and why.
+
+=== domain/knowledge-base/curation-action-filter
+---
+type: value-object
+attributes:
+- name: action
+  type: curation-action-kind
+- name: target_kind
+  type: curation-target-kind
+- name: target_id
+  type: string
+- name: created_from
+  type: datetime
+- name: created_to
+  type: datetime
+- name: page
+  type: page
+---
+
+## Description
+
+What a listing of curation actions is narrowed to: the kind of action, the kind and identity of the item acted on, a window over creation times, and the page.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/curation-action-kind
+---
+type: enumeration
+values:
+- resolve-entity-match
+- merge-nodes
+- resolve-dispute
+- confirm-item
+- reject-item
+- correct-item
+- compliance-delete
+---
+
+## Description
+
+The kinds of action a curation action records.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/curation-target-kind
+---
+type: enumeration
+values:
+- node
+- link
+- attribute
+- fragment
+- raw-information
+---
+
+## Description
+
+The kinds of item a curation action can act on.
+
+## Responsibility
+
+None.
 
 === domain/knowledge-base/directed-ingestion
 ---
@@ -2502,6 +2747,100 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/audit-filter-checks-order
+---
+type: invariant
+statement: A compliance deletion or an audit listing whose request fails several checks of form is refused for an unordered time window first, then for a missing field, then for a reason out of range, then for any other malformed field.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+---
+
+## Description
+
+An audit listing is a listing of compliance deletions or of curation actions.
+
+=== rules/knowledge-base/audit-filters-match-exactly
+---
+type: invariant
+statement: A compliance-deletion or curation-action listing holds only records equal to each raw information, action kind, target kind and target identity its filter names.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/audit-listing-order
+---
+type: invariant
+statement: A compliance-deletion or curation-action listing orders its records newest first by their recorded time.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/audit-listing-total-before-pagination
+---
+type: invariant
+statement: A compliance-deletion or curation-action listing's total counts every matching record before the page is cut.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/audit-listing-window-half-open
+---
+type: invariant
+statement: A compliance-deletion or curation-action listing holds only records whose recorded time is at or after its window's start and strictly before its window's end.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+---
+
+## Description
+
+A compliance deletion's recorded time is its execution time, and a curation action's is its creation time.
+
+=== rules/knowledge-base/audit-page-defaults
+---
+type: invariant
+statement: A compliance-deletion or curation-action listing page that omits its limit holds 50 records and one that omits its offset starts at 0.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/audit-window-ordered
+---
+type: invariant
+statement: A compliance-deletion or curation-action filter that states both bounds of its time window MUST state the start strictly before the end.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+- domain/knowledge-base/curation-action-filter
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/below-confidence-floor-records-nothing
 ---
 type: invariant
@@ -2790,15 +3129,123 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/compliance-deletion-check-order
+---
+type: invariant
+statement: A compliance deletion is checked for a well-formed request, then for an existing raw information, then for one already deleted, before it changes anything.
+constrains:
+- domain/knowledge-base/compliance-deletion
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-counts-what-it-marked
+---
+type: invariant
+statement: A compliance deletion's affected counts are the numbers of raw chunks, information fragments, knowledge links and node attributes it marked deleted.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/affected-counts
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-flags-metadata
+---
+type: policy
+statement: A compliance deletion adds compliance_deleted set to true to its raw information's metadata and keeps every other metadata key.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/raw-information
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-keeps-content-hash
+---
+type: policy
+statement: A compliance deletion leaves its raw information's content hash unchanged.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/raw-information
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/compliance-deletion-propagates
 ---
 type: policy
-statement: A compliance deletion marks deleted the information fragments of its raw information and every knowledge link and node attribute whose only provenance is one of those fragments.
+statement: A compliance deletion marks deleted every information fragment, knowledge link and node attribute not already deleted that rests on its raw information and on no other raw information that is not deleted.
 constrains:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/knowledge-link
 - domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+An information fragment rests on the raw information its source chunks belong to.
+A knowledge link or a node attribute rests on the raw information its provenance fragments rest on.
+
+=== rules/knowledge-base/compliance-deletion-reason-length
+---
+type: invariant
+statement: A compliance deletion's reason, trimmed of surrounding whitespace, MUST hold between 1 and 1000 characters.
+constrains:
+- domain/knowledge-base/compliance-deletion
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-reason-trimmed
+---
+type: invariant
+statement: A compliance deletion records its reason trimmed of surrounding whitespace.
+constrains:
+- domain/knowledge-base/compliance-deletion
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-records-curation-action
+---
+type: policy
+statement: A compliance deletion that deletes its raw information records one curation action of kind compliance-delete on target kind raw-information at that raw information's identity, with the deletion's reason as its reason and the reason and affected counts as its payload.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/curation-action
+- domain/knowledge-base/curation-action-kind
+- domain/knowledge-base/curation-target-kind
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-redacts-content
+---
+type: policy
+statement: A compliance deletion replaces its raw information's content, and its original input where it has one, with the literal [REDACTED].
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/raw-information
 consistency: eventual
 ---
 
@@ -2964,6 +3411,30 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/curation-action-reason-length
+---
+type: invariant
+statement: A curation action's reason MUST hold at most 1000 characters.
+constrains:
+- domain/knowledge-base/curation-action
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/curation-action-time-is-recording-time
+---
+type: invariant
+statement: A curation action's creation time is the moment it was recorded.
+constrains:
+- domain/knowledge-base/curation-action
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/current-assertion
 ---
 type: policy
@@ -2997,6 +3468,33 @@ statement: A document ingestion that names no prompt version runs under v4.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/deleted-source-deletion-records-nothing
+---
+type: policy
+statement: A compliance deletion requested for a raw information already deleted records nothing and ends in the outcome noop-already-deleted.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/compliance-deletion-outcome
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/deletion-execution-time-is-recording-time
+---
+type: invariant
+statement: A compliance deletion's execution time is the moment it was recorded.
+constrains:
+- domain/knowledge-base/compliance-deletion
 ---
 
 ## Description
