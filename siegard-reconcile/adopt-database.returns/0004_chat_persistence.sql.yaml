@@ -1,0 +1,498 @@
+findings:
+  - file: 0004_chat_persistence.sql
+    where: >-
+      header comment on chat_conversation.title, lines 40-41
+    evidence: >-
+      `title`            NULL until set by the Owner OR by the title-distillation
+      job (BR-34); length 1..200 enforced at the BFF (Zod ChatTurnRequest mirror).
+    cost: >-
+      A conversation title limited to 1..200 characters is a domain rule. It appears only in this comment, which points to an enforcement in the BFF. No node holds it (domain/chat/conversation types title as a bare string), and no constraint in this file holds it. The next reader looks for the title's limits in the specification, finds none, and cannot tell whether the BFF or the specification is the authority.
+    kind: unstated
+    correction: >-
+      The analysis gives the title's length limit a node, on domain/chat/conversation or a rule constraining it.
+    node: domain/chat/conversation
+  - file: 0004_chat_persistence.sql
+    where: >-
+      column summary_rolling of CREATE TABLE chat_conversation, line 52
+    evidence: >-
+      summary_rolling text        NULL,
+    cost: >-
+      The node names this attribute `rolling_summary`; the table spells it `summary_rolling`. The two names for one fact now live apart, so a reader who searches the code for the node's attribute finds nothing, and a change to the node's name never reaches this column.
+    kind: contradicts
+    correction: >-
+      Either the column is named as the node names the attribute, or the node's attribute name is amended by analysis to the name the business uses.
+    node: domain/chat/conversation
+  - file: 0004_chat_persistence.sql
+    where: >-
+      comment on chat_message.stop_reason, lines 100-102
+    evidence: >-
+      -- One of: end_turn|max_tokens|stop_sequence
+      -- |max_iterations|turn_timeout|cancelled
+      -- |provider_error|internal_error  (assistant rows only)
+    cost: >-
+      The closed vocabulary of reasons a turn stopped, and the rule that only assistant rows carry one, is stated only in a comment. The column is plain text with no check, and domain/chat/message types stop_reason as a bare string. The vocabulary is a business fact that nobody can find in the specification.
+    kind: unstated
+    correction: >-
+      The analysis gives the stop-reason values, and their restriction to assistant messages, a node.
+    node: domain/chat/message
+  - file: 0004_chat_persistence.sql
+    where: >-
+      comment on chat_message.idempotency_key, line 103 (and lines 86-89)
+    evidence: >-
+      idempotency_key uuid               NULL,  -- BR-26: non-null on user rows; null on assistant rows.
+    cost: >-
+      The rule that a user message always carries an idempotency key and an assistant message never does is stated only in a comment; the column allows NULL for every row. The node rules/chat/message-idempotency-key-unique says only that a conversation holds at most one message per key. The rule about which role carries a key has no home in the specification.
+    kind: unstated
+    correction: >-
+      The analysis gives "a user message holds an idempotency key, an assistant message holds none" a node, on domain/chat/message or as a rule.
+    node: domain/chat/message
+  - file: 0004_chat_persistence.sql
+    where: >-
+      column created_at of CREATE TABLE chat_message, line 108
+    evidence: >-
+      created_at      timestamptz        NOT NULL DEFAULT now()
+    cost: >-
+      A message's creation time is declared and required here, and the chronological index depends on it (idx_chat_message_conversation_created_at). domain/chat/message lists no such attribute. The attribute that orders a conversation's turns is held only in SQL.
+    kind: unstated
+    correction: >-
+      The analysis adds the message's creation time to domain/chat/message.
+    node: domain/chat/message
+  - file: 0004_chat_persistence.sql
+    where: >-
+      comment on chat_tool_call.tool_name, line 138
+    evidence: >-
+      --   - `tool_name`   one of the 13 names of the `query` toolset (BR-05).
+    cost: >-
+      The restriction of a chat tool call's tool name to the thirteen query tools is stated only in a comment. The column is unconstrained text, and domain/chat/tool-call types tool_name as a bare string. A reader cannot learn from the specification which tools a chat turn may call.
+    kind: unstated
+    correction: >-
+      The analysis gives the set of tool names a chat tool call may name a node.
+    node: domain/chat/tool-call
+  - file: 0004_chat_persistence.sql
+    where: >-
+      column created_at of CREATE TABLE chat_tool_call, line 156
+    evidence: >-
+      created_at      timestamptz NOT NULL DEFAULT now()
+    cost: >-
+      A chat tool call's creation time is declared and required here. domain/chat/tool-call lists no such attribute, so the time a tool call was recorded exists only in the table.
+    kind: unstated
+    correction: >-
+      The analysis adds the creation time to domain/chat/tool-call, or states that the tool call has none.
+    node: domain/chat/tool-call
+read:
+  - node: domain/chat/conversation
+    held_at: >-
+      CREATE TABLE chat_conversation (lines 49-56) and trg_chat_conversation_set_updated_at (lines 58-60). The rolling summary sits under another name, `summary_rolling`.
+    evidence: >-
+      CREATE TABLE chat_conversation ( id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NULL, summary_rolling text NULL, archived_at timestamptz NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now() ); and conversation_id uuid NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE on chat_message and chat_tool_call
+  - node: domain/chat/graph-view
+    held_at: nowhere
+    evidence: >-
+      The file declares only CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; no table holds a conversation's graph snapshot.
+  - node: domain/chat/message
+    held_at: >-
+      CREATE TABLE chat_message (lines 95-109)
+    evidence: >-
+      role            chat_message_role  NOT NULL, content         jsonb              NOT NULL, stop_reason     text               NULL, idempotency_key uuid               NULL, model           text               NULL, tokens_in       int                NULL, tokens_out      int                NULL, latency_ms      int                NULL
+  - node: domain/chat/message-role
+    held_at: >-
+      CREATE TYPE chat_message_role, line 33
+    evidence: >-
+      CREATE TYPE chat_message_role AS ENUM ('user', 'assistant');
+  - node: domain/chat/tool-call
+    held_at: >-
+      CREATE TABLE chat_tool_call (lines 146-157)
+    evidence: >-
+      tool_name       text        NOT NULL, arguments       jsonb       NOT NULL, result          jsonb       NULL, is_error        boolean     NOT NULL DEFAULT false, error_message   text        NULL, duration_ms     int         NOT NULL, message_id      uuid        NULL REFERENCES chat_message(id) ON DELETE SET NULL
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/allowed-value
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/curation-action
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/effective-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/llm-run
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/run-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/tool-call
+    held_at: nowhere
+    evidence: >-
+      The file's only tool-call construct is chat_tool_call, which belongs to domain/chat/tool-call. The LLM-run tool call (validation_outcome, ingest-tool) is not declared here.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/validation-outcome
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/chat/message-idempotency-key-unique
+    held_at: >-
+      idx_chat_message_idempotency, lines 119-121
+    evidence: >-
+      CREATE UNIQUE INDEX idx_chat_message_idempotency ON chat_message (conversation_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+  - node: rules/chat/tool-call-outlives-its-message
+    held_at: >-
+      message_id column of chat_tool_call, line 149, together with the conversation_id foreign key, line 148
+    evidence: >-
+      conversation_id uuid        NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE, message_id      uuid        NULL REFERENCES chat_message(id) ON DELETE SET NULL,
+  - node: rules/knowledge-base/alias-not-blank
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/alias-unique-per-node
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-document-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-event-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-project-statuses
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-task-priorities
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-task-statuses
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/allowed-value-unique-per-key
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-confidence-range
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-key-unique-per-node-type
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-never-supersedes-itself
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-start-has-basis
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/attribute-validity-ordered
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/catalog-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/catalog-link-type-rules
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/catalog-link-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/catalog-node-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/chunk-offsets-ordered
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/chunk-position-unique
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/closed-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/compliance-deletion-tombstones
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this. The header comment states that chat tables carry no status or superseded_at tombstone columns, and the tables carry none.
+  - node: rules/knowledge-base/effective-status
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/end-on-change-link-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/fragment-confidence-range
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-confidence-range
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-never-supersedes-itself
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-start-has-basis
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-type-name-unique
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-type-rule-window-ordered
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/link-validity-ordered
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/match-review-distinct-nodes
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/match-review-pair-unique
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/match-review-similarity-range
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/merged-node-names-survivor
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/multi-current-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/node-type-name-unique
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/one-canonical-alias
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/run-finish-time-when-closed
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/run-opens-with-one-attempt
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/run-start-is-opening-time
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/single-current-link-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/source-status-active-or-deleted
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/start-requiring-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/start-requiring-link-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/temporal-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+  - node: rules/knowledge-base/temporal-link-types
+    held_at: nowhere
+    evidence: >-
+      The file's only constructs are CREATE TYPE chat_message_role and CREATE TABLE chat_conversation, chat_message and chat_tool_call; none declares or applies this.
+looked_past: >-
+  The file types message content and tool-call arguments and result as jsonb where the nodes say string, gives chat_tool_call.is_error a default of false, and adds two B-tree indexes plus a BEGIN/COMMIT wrapper; I took these as storage choices and did not report them.

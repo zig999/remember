@@ -1,0 +1,752 @@
+findings:
+  - file: 0001_init.sql
+    where: >-
+      the header comment lines 58-60 and the comment on raw_information lines 226-228
+    evidence: >-
+      "reject_item / compliance_delete devem gravar superseded_at = now() ao marcar status = 'deleted'"
+      and "compliance_delete (§11), que redige `content` preservando `content_hash` e grava status = 'deleted' + superseded_at = now()".
+      Code holds the same fact outside this file, in backend/src/modules/compliance-audit/repository/compliance-audit.repository.ts:
+      "SET status        = 'deleted'," followed by "superseded_at = now()".
+    cost: >-
+      The tombstone rule is written in prose in the DDL header. Someone changing the node would not find this copy,
+      and the prose would keep saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The repository code already marks rows deleted and stamps the supersession time.
+    node: rules/knowledge-base/compliance-deletion-tombstones
+  - file: 0001_init.sql
+    where: >-
+      function norm(), line 97, feeding node_alias.alias_norm (line 356) and UNIQUE (node_id, alias_norm) (line 360)
+    evidence: >-
+      RETURN lower(immutable_unaccent(regexp_replace(btrim(t), '\s+', ' ', 'g')));
+      alias_norm        text NOT NULL GENERATED ALWAYS AS (norm(alias)) STORED,
+      UNIQUE (node_id, alias_norm)
+      Decision log, located at rules/knowledge-base/alias-unique-per-node.md: "The normalized form is the one name-normalization states, with every surrounding whitespace trimmed."
+    cost: >-
+      btrim(t) trims only spaces. A name with a leading or trailing tab or line break keeps a surrounding space after
+      the collapse. "\tSilva" therefore normalizes to " silva", not "silva". Two aliases that differ only by
+      surrounding whitespace get different normal forms, so the uniqueness guard does not stop the second one.
+      Exact-match resolution also misses the name.
+    kind: contradicts
+    correction: >-
+      Trim every surrounding whitespace in norm(), for example by collapsing first and then trimming, or by stripping
+      '^\s+|\s+$'. This is the normal form rules/knowledge-base/name-normalization states.
+    node: rules/knowledge-base/alias-unique-per-node
+  - file: 0001_init.sql
+    where: >-
+      node_status enum (lines 126-130) used by raw_information.status (line 238) and raw_chunk.status (line 252), with the comment on lines 49-51
+    evidence: >-
+      CREATE TYPE node_status AS ENUM ('active', 'needs_review', 'merged', 'deleted');
+      status        node_status NOT NULL DEFAULT 'active', -- tombstone (decisão 8)
+      "Sem CHECK adicional: a aplicação é o gatekeeper (BR-12)."
+    cost: >-
+      The source status being only active or deleted appears in this file only as a comment. The column admits
+      needs_review and merged, which the node denies. I found no code that restricts it, so the restriction
+      exists only in prose.
+    kind: contradicts
+    correction: >-
+      Hold the restriction in code, for example a CHECK (status IN ('active','deleted')) on both tables. Otherwise
+      the backend must hold it and be bound to the node.
+    node: rules/knowledge-base/source-status-active-or-deleted
+  - file: 0001_init.sql
+    where: >-
+      the comment on assertion_status (lines 132-133) and the views banner (lines 529-530)
+    evidence: >-
+      "'inactive' NUNCA é gravado — é derivado em leitura (effective_status, §5.4 / A9)." and
+      "is_current / is_in_effect / effective_status DERIVADOS, nunca armazenados."
+      The views hold it in code: WHEN kl.status = 'active' AND kl.valid_to IS NOT NULL AND kl.valid_to <= current_date THEN 'inactive'
+    cost: >-
+      The derivation rule is narrated in comments beside the views that implement it. A change to the rule has a
+      second copy in prose to keep in step.
+    kind: restates
+    correction: >-
+      Remove the comments. The CASE in knowledge_link_resolved and node_attribute_resolved holds the rule.
+    node: rules/knowledge-base/effective-status
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE node_type, column version (line 156)
+    evidence: >-
+      version     int  NOT NULL DEFAULT 1
+    cost: >-
+      A per-row version number on catalog rows is a domain fact in the schema alone. The node-type node lists only
+      name and description. The next reader looks in the specification for what the number means and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the catalog version a node, or the column should go.
+    node: domain/knowledge-base/node-type
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE link_type, column version (line 169)
+    evidence: >-
+      version                     int NOT NULL DEFAULT 1
+    cost: >-
+      Same as node_type. The link-type node lists no version, so the catalog versioning lives only in the DDL.
+    kind: unstated
+    correction: >-
+      Give the catalog row version a node, or remove the column.
+    node: domain/knowledge-base/link-type
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE attribute_key, column version (line 198)
+    evidence: >-
+      version                 int NOT NULL DEFAULT 1,
+    cost: >-
+      The attribute-key node lists no version, so the catalog versioning lives only in the DDL.
+    kind: unstated
+    correction: >-
+      Give the catalog row version a node, or remove the column.
+    node: domain/knowledge-base/attribute-key
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE attribute_valid_value, column version (line 217)
+    evidence: >-
+      version          int  NOT NULL DEFAULT 1,
+    cost: >-
+      The allowed-value node lists value, label, sort_order and description, and no version. The catalog versioning
+      lives only in the DDL.
+    kind: unstated
+    correction: >-
+      Give the catalog row version a node, or remove the column.
+    node: domain/knowledge-base/allowed-value
+  - file: 0001_init.sql
+    where: >-
+      the comment on knowledge_node lines 336-337, and the header line 57
+    evidence: >-
+      "preenchido SSE status = 'merged' (§3.3); apontar para nó ATIVO é invariante de aplicação (compressão de caminho, §4.4)"
+      The CHECK that holds the first half: CONSTRAINT knowledge_node_merged_ck CHECK ((status = 'merged') = (merged_into_node_id IS NOT NULL))
+    cost: >-
+      The "exactly when merged" half is prose beside a CHECK that already holds it. The prose is a second home for
+      the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. knowledge_node_merged_ck holds the fact.
+    node: rules/knowledge-base/merged-node-names-survivor
+  - file: 0001_init.sql
+    where: >-
+      the comment on knowledge_node lines 336-337 and the header line 57
+    evidence: >-
+      "apontar para nó ATIVO é invariante de aplicação (compressão de caminho, §4.4)" and
+      "merged_into_node_id sempre aponta para nó ATIVO (compressão de caminho na escrita, §4.4)"
+    cost: >-
+      That a merged node must point at an active survivor, with path compression on write, is a domain rule the
+      source states. No node in the specification holds it. The specification has only "names the survivor exactly
+      when merged" and "never merged into itself". The rule lives where a reader of the specification will not look.
+    kind: unstated
+    correction: >-
+      Analysis should give the rule a node, on knowledge-node or a rule constraining it.
+    node: domain/knowledge-base/knowledge-node
+  - file: 0001_init.sql
+    where: >-
+      node_alias.alias column CHECK, line 355
+    evidence: >-
+      alias             text NOT NULL CHECK (btrim(alias) <> ''),
+    cost: >-
+      btrim() without a character set trims only spaces. An alias made of a tab or a line break passes the CHECK,
+      although the node forbids an alias that is empty once surrounding whitespace is trimmed. A blank alias is
+      stored, and its normal form is a lone space.
+    kind: contradicts
+    correction: >-
+      Test the alias with all surrounding whitespace removed, for example CHECK (alias !~ '^\s*$') or
+      btrim(alias, E' \t\r\n') <> ''.
+    node: rules/knowledge-base/alias-not-blank
+  - file: 0001_init.sql
+    where: >-
+      the comment before node_alias_one_canonical_uq, line 371
+    evidence: >-
+      "-- guarda de sanidade: um único alias canônico por nó (espelho de canonical_name)"
+      The index that holds it: CREATE UNIQUE INDEX node_alias_one_canonical_uq ON node_alias (node_id) WHERE kind = 'canonical';
+    cost: >-
+      The one-canonical-alias rule is restated in prose next to the index that enforces it.
+    kind: restates
+    correction: >-
+      Remove the comment. The partial unique index holds the fact.
+    node: rules/knowledge-base/one-canonical-alias
+  - file: 0001_init.sql
+    where: >-
+      the comment on node_attribute_interval_ck, line 399
+    evidence: >-
+      "-- intervalo semiaberto [from, to) ⇒ estritamente crescente (§5.2/§13.3)"
+      Held by: CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_from < valid_to)
+    cost: >-
+      The ordering rule is restated in prose beside the CHECK that holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/attribute-validity-ordered
+  - file: 0001_init.sql
+    where: >-
+      the comment on node_attribute_basis_ck, line 402
+    evidence: >-
+      "-- data sem justificativa não existe (A14)"
+      Held by: CHECK (valid_from IS NULL OR valid_from_source IS NOT NULL)
+    cost: >-
+      The basis rule is restated in prose beside the CHECK that holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/attribute-start-has-basis
+  - file: 0001_init.sql
+    where: >-
+      the comment before provenance_attr_fragment_uq, line 481
+    evidence: >-
+      "-- guarda de sanidade: o mesmo fragmento não justifica o mesmo item duas vezes"
+      Held by: CREATE UNIQUE INDEX provenance_attr_fragment_uq ON provenance (attribute_id, fragment_id) WHERE attribute_id IS NOT NULL;
+    cost: >-
+      The once-per-fragment rule for attributes is restated in prose beside the unique index that holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/attribute-provenance-once-per-fragment
+  - file: 0001_init.sql
+    where: >-
+      the comment before provenance_attr_fragment_uq, line 481, read for links
+    evidence: >-
+      "-- guarda de sanidade: o mesmo fragmento não justifica o mesmo item duas vezes"
+      Held by: CREATE UNIQUE INDEX provenance_link_fragment_uq ON provenance (link_id, fragment_id) WHERE link_id IS NOT NULL;
+    cost: >-
+      The once-per-fragment rule for links is restated in the same prose. The comment is a second home for two nodes.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/link-provenance-once-per-fragment
+  - file: 0001_init.sql
+    where: >-
+      curation_action.reason comment, line 511
+    evidence: >-
+      reason      text,                 -- obrigatório em ações destrutivas (validação do backend)
+    cost: >-
+      The rule that a reason is required on destructive curation actions is stated only here. The curation-action
+      node declares reason as optional and no rule requires it. The DDL comment is the only place a reader finds it.
+    kind: unstated
+    correction: >-
+      Analysis should give the rule a node on curation-action, or drop the claim.
+    node: domain/knowledge-base/curation-action
+read:
+  - node: domain/chat/conversation
+    held_at: nowhere
+    evidence: >-
+      The file declares no chat_conversation table. The file is 19 tables from node_type to compliance_deletion, ending with "COMMIT;".
+  - node: domain/chat/graph-view
+    held_at: nowhere
+    evidence: >-
+      No snapshot or graph-view construct appears in the file.
+  - node: domain/chat/message
+    held_at: nowhere
+    evidence: >-
+      No message table or role column appears in the file.
+  - node: domain/chat/message-role
+    held_at: nowhere
+    evidence: >-
+      No user/assistant enumeration is declared in the file.
+  - node: domain/chat/tool-call
+    held_at: nowhere
+    evidence: >-
+      The only tool_call table is the extraction one, "CREATE TABLE tool_call (... llm_run_id uuid NOT NULL REFERENCES llm_run (id)". It has no conversation, is_error or duration_ms.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      A read-side value object. No construct in the DDL declares it.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      CREATE TYPE alias_kind, line 137
+    evidence: >-
+      CREATE TYPE alias_kind AS ENUM ('canonical', 'alias');
+  - node: domain/knowledge-base/allowed-value
+    held_at: >-
+      CREATE TABLE attribute_valid_value, lines 210-219
+    evidence: >-
+      value            text NOT NULL,
+      label            text,
+      sort_order       int,
+      description      text,
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag enumeration is declared. Only the stored assertion_status enum exists.
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      CREATE TYPE assertion_status, lines 134-135
+    evidence: >-
+      CREATE TYPE assertion_status AS ENUM ('active', 'uncertain', 'disputed', 'superseded', 'deleted');
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      CREATE TABLE attribute_key, lines 189-201
+    evidence: >-
+      key                     text NOT NULL,
+      value_type              attribute_value_type NOT NULL,
+      is_temporal             boolean NOT NULL,
+      allows_multiple_current boolean NOT NULL,
+      requires_valid_from     boolean NOT NULL,
+  - node: domain/knowledge-base/change-hint
+    held_at: nowhere
+    evidence: >-
+      A proposal field. No construct in the DDL declares it.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      CREATE TABLE compliance_deletion, lines 518-524
+    evidence: >-
+      raw_information_id uuid NOT NULL REFERENCES raw_information (id),
+      reason             text NOT NULL,
+      executed_at        timestamptz NOT NULL DEFAULT now(),
+      affected           jsonb NOT NULL DEFAULT '{}'::jsonb
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      CREATE TABLE curation_action, lines 505-513
+    evidence: >-
+      action      text NOT NULL,
+      target_kind text NOT NULL,
+      target_id   uuid,
+      payload     jsonb NOT NULL DEFAULT '{}'::jsonb,
+      reason      text,
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: nowhere
+    evidence: >-
+      A request value object. No construct in the DDL declares it.
+  - node: domain/knowledge-base/directed-item
+    held_at: nowhere
+    evidence: >-
+      A request value object. No construct in the DDL declares it.
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: nowhere
+    evidence: >-
+      No enumeration with fragment/node/attribute/link kinds is declared.
+  - node: domain/knowledge-base/directed-item-status
+    held_at: nowhere
+    evidence: >-
+      No enumeration with dependency-failed or needs-review is declared. The nearest, validation_outcome, is the tool-call outcome type.
+  - node: domain/knowledge-base/effective-status
+    held_at: >-
+      the effective_status CASE in knowledge_link_resolved (lines 540-545) and node_attribute_resolved (lines 558-563)
+    evidence: >-
+      CASE WHEN na.status = 'active' AND na.valid_to IS NOT NULL AND na.valid_to <= current_date THEN 'inactive' ELSE na.status::text END AS effective_status
+  - node: domain/knowledge-base/entity-match-review
+    held_at: >-
+      CREATE TABLE entity_match_review, lines 492-500
+    evidence: >-
+      node_id           uuid NOT NULL REFERENCES knowledge_node (id),
+      candidate_node_id uuid NOT NULL REFERENCES knowledge_node (id),
+      similarity        numeric NOT NULL CHECK (similarity >= 0 AND similarity <= 1),
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      CREATE TYPE fragment_status, lines 123-124
+    evidence: >-
+      CREATE TYPE fragment_status AS ENUM ('proposed', 'accepted', 'rejected', 'superseded', 'deleted');
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      CREATE TABLE information_fragment, lines 299-309
+    evidence: >-
+      "text"        text NOT NULL CHECK (char_length("text") <= 1000),
+      confidence    numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+      status        fragment_status NOT NULL DEFAULT 'proposed',
+      superseded_at timestamptz,
+      created_at    timestamptz NOT NULL DEFAULT now()
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      tool_call.tool_name is open text, "tool_name          text NOT NULL,". No enumeration of the four proposal kinds is declared.
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      A search-result kind. No construct in the DDL declares it.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      CREATE TABLE knowledge_link, lines 429-451, with provenance at lines 468-476
+    evidence: >-
+      source_node_id     uuid NOT NULL REFERENCES knowledge_node (id),
+      target_node_id     uuid NOT NULL REFERENCES knowledge_node (id),
+      link_type_id       uuid NOT NULL REFERENCES link_type (id),
+      supersedes_link_id uuid REFERENCES knowledge_link (id),
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      CREATE TABLE knowledge_node, lines 328-342
+    evidence: >-
+      canonical_name      text NOT NULL,
+      status              node_status NOT NULL DEFAULT 'active',
+      merged_into_node_id uuid REFERENCES knowledge_node (id),
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      CREATE TABLE link_type, lines 159-170
+    evidence: >-
+      name                        text NOT NULL UNIQUE,
+      label                       text NOT NULL,
+      inverse_name                text NOT NULL,
+      requires_valid_to_on_change boolean NOT NULL,
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      CREATE TABLE link_type_rule, lines 173-182
+    evidence: >-
+      source_node_type_id uuid NOT NULL REFERENCES node_type (id),
+      target_node_type_id uuid NOT NULL REFERENCES node_type (id),
+      valid_from          date,
+      valid_to            date,
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      CREATE TABLE llm_run, lines 268-280
+    evidence: >-
+      model                    text NOT NULL,
+      prompt_version           text NOT NULL,
+      status                   llm_run_status NOT NULL DEFAULT 'running',
+      attempts                 int NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+      idempotency_key          text NOT NULL UNIQUE,
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      CREATE TABLE node_alias, lines 352-361
+    evidence: >-
+      alias             text NOT NULL CHECK (btrim(alias) <> ''),
+      kind              alias_kind NOT NULL DEFAULT 'alias',
+      created_by_run_id uuid REFERENCES llm_run (id),
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      CREATE TABLE node_attribute, lines 376-407
+    evidence: >-
+      value                   text NOT NULL,
+      status                  assertion_status NOT NULL,
+      valid_from_source       valid_from_source,
+      supersedes_attribute_id uuid REFERENCES node_attribute (id),
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      A resolution outcome. No construct in the DDL declares it.
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      CREATE TYPE node_status, lines 129-130
+    evidence: >-
+      CREATE TYPE node_status AS ENUM ('active', 'needs_review', 'merged', 'deleted');
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      CREATE TABLE node_type, lines 152-157
+    evidence: >-
+      name        text NOT NULL UNIQUE,
+      description text NOT NULL,
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      A read-side window. No construct in the DDL declares it.
+  - node: domain/knowledge-base/prompt-version
+    held_at: nowhere
+    evidence: >-
+      llm_run.prompt_version is open text, "prompt_version           text NOT NULL,". No enumeration v1 to v4 is declared.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      A request value object. Only its audit shadow, tool_call.arguments, is declared.
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      CREATE TABLE provenance, lines 468-476
+    evidence: >-
+      fragment_id  uuid NOT NULL REFERENCES information_fragment (id),
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT provenance_target_ck CHECK (num_nonnulls(link_id, attribute_id) = 1)
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      CREATE TABLE raw_chunk, lines 243-258
+    evidence: >-
+      chunk_index        int  NOT NULL CHECK (chunk_index >= 0),
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      offset_end         int  NOT NULL,
+      chunking_version   text NOT NULL DEFAULT 'v1',
+      superseded_at      timestamptz,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      CREATE TABLE raw_information, lines 229-240
+    evidence: >-
+      source_type   source_type NOT NULL,
+      content       text NOT NULL,
+      content_hash  text NOT NULL UNIQUE
+      received_at   timestamptz NOT NULL DEFAULT now(),
+      superseded_at timestamptz
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      CREATE TYPE llm_run_status, line 143
+    evidence: >-
+      CREATE TYPE llm_run_status AS ENUM ('running', 'completed', 'failed');
+  - node: domain/knowledge-base/run-summary
+    held_at: nowhere
+    evidence: >-
+      llm_run has no summary column. The counts are not declared anywhere in the DDL.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      A search-result value object. No construct in the DDL declares it.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      No enumeration of fragment/node/chunk layers is declared.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      A request value object. No construct in the DDL declares it.
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      CREATE TYPE source_type, lines 120-121
+    evidence: >-
+      CREATE TYPE source_type AS ENUM ('pdf', 'email', 'ata', 'chat', 'artigo', 'transcricao', 'outro');
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      CREATE TABLE tool_call, lines 284-292
+    evidence: >-
+      tool_name          text NOT NULL,
+      arguments          jsonb NOT NULL,
+      result             jsonb,
+      validation_outcome validation_outcome NOT NULL,
+      created_at         timestamptz NOT NULL DEFAULT now()
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      CREATE TYPE valid_from_source, line 139
+    evidence: >-
+      CREATE TYPE valid_from_source AS ENUM ('stated', 'document', 'received');
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      CREATE TYPE validation_outcome, lines 145-147
+    evidence: >-
+      ('accepted', 'consolidated', 'superseded_previous', 'needs_review', 'uncertain', 'disputed', 'rejected', 'error')
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      CREATE TYPE attribute_value_type, line 141
+    evidence: >-
+      CREATE TYPE attribute_value_type AS ENUM ('date', 'number', 'text', 'bool');
+  - node: rules/chat/message-idempotency-key-unique
+    held_at: nowhere
+    evidence: >-
+      No chat message table exists in the file.
+  - node: rules/chat/tool-call-outlives-its-message
+    held_at: nowhere
+    evidence: >-
+      No chat tool-call or message table exists in the file.
+  - node: rules/knowledge-base/alias-not-blank
+    held_at: >-
+      node_alias.alias CHECK, line 355 (departing, see the finding)
+    evidence: >-
+      alias             text NOT NULL CHECK (btrim(alias) <> ''),
+  - node: rules/knowledge-base/alias-unique-per-node
+    held_at: >-
+      node_alias UNIQUE (node_id, alias_norm), line 360, over alias_norm = norm(alias) (departing, see the finding)
+    evidence: >-
+      alias_norm        text NOT NULL GENERATED ALWAYS AS (norm(alias)) STORED,
+      UNIQUE (node_id, alias_norm)
+  - node: rules/knowledge-base/allowed-document-types
+    held_at: nowhere
+    evidence: >-
+      The file is 100% DDL and inserts no rows. The doc_type values are seed data: "O catálogo seed obrigatório (§15) foi SEPARADO para `0001_seed.sql`".
+  - node: rules/knowledge-base/allowed-event-types
+    held_at: nowhere
+    evidence: >-
+      The file inserts no rows. The event_type values are in the seed files.
+  - node: rules/knowledge-base/allowed-project-statuses
+    held_at: nowhere
+    evidence: >-
+      The file inserts no rows. The status_text values are in the seed files.
+  - node: rules/knowledge-base/allowed-task-priorities
+    held_at: nowhere
+    evidence: >-
+      The file inserts no rows. The priority values are in the seed files.
+  - node: rules/knowledge-base/allowed-task-statuses
+    held_at: nowhere
+    evidence: >-
+      The file inserts no rows. The Task status values are in the seed files.
+  - node: rules/knowledge-base/allowed-value-unique-per-key
+    held_at: >-
+      attribute_valid_value, line 218
+    evidence: >-
+      UNIQUE (attribute_key_id, value)
+  - node: rules/knowledge-base/attribute-confidence-range
+    held_at: >-
+      node_attribute.confidence, line 391
+    evidence: >-
+      confidence              numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  - node: rules/knowledge-base/attribute-key-unique-per-node-type
+    held_at: >-
+      attribute_key, line 199
+    evidence: >-
+      UNIQUE (node_type_id, key),
+  - node: rules/knowledge-base/attribute-never-supersedes-itself
+    held_at: >-
+      node_attribute_no_self_supersede_ck, lines 405-406
+    evidence: >-
+      CHECK (supersedes_attribute_id IS DISTINCT FROM id)
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: >-
+      provenance_attr_fragment_uq, lines 484-485
+    evidence: >-
+      CREATE UNIQUE INDEX provenance_attr_fragment_uq ON provenance (attribute_id, fragment_id) WHERE attribute_id IS NOT NULL;
+  - node: rules/knowledge-base/attribute-start-has-basis
+    held_at: >-
+      node_attribute_basis_ck, lines 403-404
+    evidence: >-
+      CHECK (valid_from IS NULL OR valid_from_source IS NOT NULL)
+  - node: rules/knowledge-base/attribute-validity-ordered
+    held_at: >-
+      node_attribute_interval_ck, lines 400-401
+    evidence: >-
+      CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_from < valid_to)
+  - node: rules/knowledge-base/catalog-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file declares the attribute_key structure and inserts no key rows. The nineteen keys are seed data.
+  - node: rules/knowledge-base/catalog-link-type-rules
+    held_at: nowhere
+    evidence: >-
+      The file declares link_type_rule and inserts no rule rows. The permitted pairs are seed data.
+  - node: rules/knowledge-base/catalog-link-types
+    held_at: nowhere
+    evidence: >-
+      The file declares link_type and inserts no rows. The thirteen link types are seed data.
+  - node: rules/knowledge-base/catalog-node-types
+    held_at: nowhere
+    evidence: >-
+      The file declares node_type and inserts no rows. The ten node types are seed data.
+  - node: rules/knowledge-base/chunk-offsets-ordered
+    held_at: >-
+      raw_chunk, lines 248-249 and 256
+    evidence: >-
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      CONSTRAINT raw_chunk_offsets_ck CHECK (offset_end > offset_start),
+  - node: rules/knowledge-base/chunk-position-unique
+    held_at: >-
+      raw_chunk, line 257
+    evidence: >-
+      UNIQUE (raw_information_id, chunking_version, chunk_index)
+  - node: rules/knowledge-base/closed-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file declares attribute_valid_value with "Chave com >= 1 linha aqui => domínio FECHADO" and inserts no rows. Which keys are closed is seed data.
+  - node: rules/knowledge-base/compliance-deletion-tombstones
+    held_at: nowhere
+    evidence: >-
+      The file declares only the tombstone columns, "status        node_status NOT NULL DEFAULT 'active'" and "superseded_at timestamptz". Nothing in the DDL marks rows deleted or stamps the time. The behaviour is in the header comment, and the running code is in the backend repository.
+  - node: rules/knowledge-base/effective-status
+    held_at: >-
+      the effective_status CASE in both resolved views, lines 540-545 and 558-563
+    evidence: >-
+      WHEN kl.status = 'active' AND kl.valid_to IS NOT NULL AND kl.valid_to <= current_date THEN 'inactive' ELSE kl.status::text
+  - node: rules/knowledge-base/end-on-change-link-types
+    held_at: nowhere
+    evidence: >-
+      The file declares "requires_valid_to_on_change boolean NOT NULL" and inserts no rows. Which types require it is seed data.
+  - node: rules/knowledge-base/fragment-confidence-range
+    held_at: >-
+      information_fragment.confidence, line 303
+    evidence: >-
+      confidence    numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: >-
+      the is_in_effect column in both resolved views, lines 538-539 and 556-557
+    evidence: >-
+      (kl.valid_to IS NULL AND kl.superseded_at IS NULL AND (kl.valid_from IS NULL OR kl.valid_from <= current_date)) AS is_in_effect,
+  - node: rules/knowledge-base/link-confidence-range
+    held_at: >-
+      knowledge_link.confidence, line 439
+    evidence: >-
+      confidence         numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  - node: rules/knowledge-base/link-never-supersedes-itself
+    held_at: >-
+      knowledge_link_no_self_supersede_ck, lines 449-450
+    evidence: >-
+      CHECK (supersedes_link_id IS DISTINCT FROM id)
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: >-
+      provenance_link_fragment_uq, lines 482-483
+    evidence: >-
+      CREATE UNIQUE INDEX provenance_link_fragment_uq ON provenance (link_id, fragment_id) WHERE link_id IS NOT NULL;
+  - node: rules/knowledge-base/link-start-has-basis
+    held_at: >-
+      knowledge_link_basis_ck, lines 447-448
+    evidence: >-
+      CHECK (valid_from IS NULL OR valid_from_source IS NOT NULL)
+  - node: rules/knowledge-base/link-type-name-unique
+    held_at: >-
+      link_type.name, line 161
+    evidence: >-
+      name                        text NOT NULL UNIQUE,
+  - node: rules/knowledge-base/link-type-rule-window-ordered
+    held_at: >-
+      link_type_rule_interval_ck, lines 180-181
+    evidence: >-
+      CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_from < valid_to)
+  - node: rules/knowledge-base/link-validity-ordered
+    held_at: >-
+      knowledge_link_interval_ck, lines 445-446
+    evidence: >-
+      CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_from < valid_to),
+  - node: rules/knowledge-base/match-review-distinct-nodes
+    held_at: >-
+      entity_match_review_distinct_ck, line 499
+    evidence: >-
+      CONSTRAINT entity_match_review_distinct_ck CHECK (node_id <> candidate_node_id)
+  - node: rules/knowledge-base/match-review-pair-unique
+    held_at: >-
+      entity_match_review, line 498
+    evidence: >-
+      UNIQUE (node_id, candidate_node_id),
+  - node: rules/knowledge-base/match-review-similarity-range
+    held_at: >-
+      entity_match_review.similarity, line 496
+    evidence: >-
+      similarity        numeric NOT NULL CHECK (similarity >= 0 AND similarity <= 1),
+  - node: rules/knowledge-base/merged-node-names-survivor
+    held_at: >-
+      knowledge_node_merged_ck, lines 338-339
+    evidence: >-
+      CHECK ((status = 'merged') = (merged_into_node_id IS NOT NULL)),
+  - node: rules/knowledge-base/multi-current-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file declares "allows_multiple_current boolean NOT NULL" on attribute_key and inserts no rows. Which keys allow it is seed data.
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      knowledge_node_no_self_merge_ck, lines 340-341
+    evidence: >-
+      CHECK (merged_into_node_id IS DISTINCT FROM id)
+  - node: rules/knowledge-base/node-type-name-unique
+    held_at: >-
+      node_type.name, line 154
+    evidence: >-
+      name        text NOT NULL UNIQUE,
+  - node: rules/knowledge-base/one-canonical-alias
+    held_at: >-
+      node_alias_one_canonical_uq, lines 372-373
+    evidence: >-
+      CREATE UNIQUE INDEX node_alias_one_canonical_uq ON node_alias (node_id) WHERE kind = 'canonical';
+  - node: rules/knowledge-base/run-finish-time-when-closed
+    held_at: >-
+      llm_run_finished_ck, lines 278-279
+    evidence: >-
+      CHECK ((status = 'running') = (finished_at IS NULL))
+  - node: rules/knowledge-base/run-opens-with-one-attempt
+    held_at: >-
+      llm_run.attempts default, line 275
+    evidence: >-
+      attempts                 int NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+  - node: rules/knowledge-base/run-start-is-opening-time
+    held_at: >-
+      llm_run.started_at default, line 272
+    evidence: >-
+      started_at               timestamptz NOT NULL DEFAULT now(),
+  - node: rules/knowledge-base/single-current-link-types
+    held_at: nowhere
+    evidence: >-
+      The file declares "allows_multiple_current boolean NOT NULL" on link_type and inserts no rows. Which types allow it is seed data.
+  - node: rules/knowledge-base/source-status-active-or-deleted
+    held_at: nowhere
+    evidence: >-
+      "status        node_status NOT NULL DEFAULT 'active', -- tombstone (decisão 8)" over an enum that also admits needs_review and merged. The only statement of the restriction is the comment "Sem CHECK adicional: a aplicação é o gatekeeper (BR-12)".
+  - node: rules/knowledge-base/start-requiring-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file declares "requires_valid_from boolean NOT NULL" on attribute_key and inserts no rows. Which keys require it is seed data.
+  - node: rules/knowledge-base/start-requiring-link-types
+    held_at: nowhere
+    evidence: >-
+      The file declares "requires_valid_from boolean NOT NULL" on link_type and inserts no rows. Which types require it is seed data.
+  - node: rules/knowledge-base/temporal-attribute-keys
+    held_at: nowhere
+    evidence: >-
+      The file declares "is_temporal boolean NOT NULL" on attribute_key and inserts no rows. Which keys are temporal is seed data.
+  - node: rules/knowledge-base/temporal-link-types
+    held_at: nowhere
+    evidence: >-
+      The file declares "is_temporal boolean NOT NULL" on link_type and inserts no rows. Which types are temporal is seed data.
+looked_past: >-
+  The DDL also states facts whose governing nodes sit outside this set and were not judged: the 1000-character fragment text CHECK, the 64-hex content_hash CHECK, the chunking_version default 'v1', the UNIQUE idempotency_key, the pt_unaccent_v1 and simple_unaccent_v1 search configurations, and the Portuguese source_type spellings.
+candidates_opened:
+  - rules/knowledge-base/name-normalization
