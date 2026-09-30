@@ -500,3 +500,20 @@ specification sound: 21 element(s), 54 rule(s), 3 scenario(s), 1 contract(s), 5 
 - FTS configuration names, layer weights as named constants, `websearch_to_tsquery`, SQL, indexes, transactions, logging and p95 budgets are implementation or performance details, which no class admits.
 - From §11: redaction of the raw content with the hash preserved, the chunks' `deleted` status, and the `ComplianceDeletion` audit fields (what, why, counts). These are write-side facts of compliance. The model has no raw-chunk status or raw content attribute, so none of them was added.
 - From §14.3: `get_node`, `traverse` and `get_history` are point reads that the domain doc says belong to knowledge-graph, which is outside this specification's scope.
+
+## Step 7 — clean up
+
+Step 6 committed as `74dca46` (specification + this file).
+
+```
+$ ls -d /tmp/eternal-pilot /tmp/eternal-pilot-ws
+/tmp/eternal-pilot
+/tmp/eternal-pilot-ws
+$ rm -rf /tmp/eternal-pilot /tmp/eternal-pilot-ws
+exit=0
+$ ls -d /tmp/eternal-pilot /tmp/eternal-pilot-ws
+ls: cannot access '/tmp/eternal-pilot': No such file or directory
+ls: cannot access '/tmp/eternal-pilot-ws': No such file or directory
+```
+
+The disposable trace, the seed binding and the 15 judge returns are gone; their counts survive in steps 3–4 above.
