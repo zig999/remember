@@ -24,6 +24,14 @@ this groups its entries by the file each one located.
   unstated: The material has the MCP proposals accept any non-empty text as the LLM run's identity while REST and the MCP run read demand a UUID; the two decide differently for a malformed run identity over MCP.
   why: An LLM run's identity is a UUID everywhere else the material names one.
 
+## contracts/knowledge-base/retrieval.md
+- answers — decided: The node-type listing refuses an unknown parameter on both transports, like every other graph read.
+  unstated: The material has the REST node-type listing ignore unknown parameters while the MCP one refuses them, so the two transports answer the same request with a success and a refusal.
+  why: Every other catalog and graph read refuses an unknown parameter, and the transports answer each shared operation alike.
+- answers — decided: Each of these operations refuses an unauthenticated caller with the same answer as the other retrieval operations.
+  unstated: The material for the catalog listings, the node listing and the graph reads does not show how they authenticate their caller.
+  why: They are served on the same owner-only surface as search, including the one query tool endpoint they share with it.
+
 ## domain/chat/_context.md
 - strategic — decided: supporting
   unstated: The material does not say whether the chat is core, supporting or generic.
@@ -271,6 +279,26 @@ this groups its entries by the file each one located.
   unstated: The material has MCP proposals record a tool call on every outcome and REST proposals record none; the two decide differently for a proposal carried over REST.
   why: A run's summary is counted from its tool calls, so a proposal without one would vanish from its run's account.
 
+## rules/knowledge-base/expansion-follows-both-directions.md
+- statement — decided: The standing node governs a search's expansion, and a traversal follows the direction it names.
+  unstated: The standing node says expansion follows a knowledge link from either end, while the material's traversal follows links only from their source or only from their target when its direction is out or in; the two decide differently for an outgoing traversal from a node that is only a link's target.
+  why: The standing node was read from the search's expansion, which names no direction.
+
+## rules/knowledge-base/expansion-skips-deleted-nodes.md
+- statement — decided: The standing node governs a search's expansion, and a traversal lists the deleted nodes it reaches.
+  unstated: The standing node says expansion never reaches a deleted knowledge node, while the material's traversal lists a deleted node it reaches as a link's end without expanding it; the two decide differently for a traversal whose link ends at a deleted node.
+  why: The standing node was read from the search's expansion, and the traversal shows each reached link together with both of its ends.
+
+## rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt.md
+- statement — decided: A provenance entry shows the whole excerpt of the raw chunk it cites.
+  unstated: The material cuts a provenance entry's excerpt from the chunk's own text starting at the chunk's start offset, which gives a shifted or empty slice for any chunk that does not start at the beginning of its source.
+  why: A chunk's excerpt is already the content between its offsets, so offsetting it again cuts away the text the entry exists to show.
+
+## rules/knowledge-base/graph-provenance-hides-compliance-deleted.md
+- statement — decided: A graph read shows no provenance entry whose raw information was deleted for compliance.
+  unstated: The material reads a graph read's provenance with no filter on whether the fragment's raw information was deleted for compliance, and says nothing about whether such entries may be shown.
+  why: A compliance deletion exists to keep a deleted source's knowledge from being presented as still traceable, and a provenance entry presents exactly that trace.
+
 ## rules/knowledge-base/ingestion-records-chunks-and-run.md
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
@@ -310,6 +338,16 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
   why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+
+## rules/knowledge-base/node-listing-name-prefix.md
+- statement — decided: A name prefix is read literally.
+  unstated: The material shows a percent sign or an underscore in a node listing's name prefix acting as a wildcard, without saying whether a prefix is read literally.
+  why: A name prefix is the start of a name the owner types, and its characters mean themselves.
+
+## rules/knowledge-base/node-read-alias-order.md
+- statement — decided: The canonical alias comes first, followed by the other aliases in alphabetical order.
+  unstated: The material orders a node's aliases by kind and then by alias without settling which kind comes first, since the order follows how the kinds are declared rather than their spelling.
+  why: The canonical alias is the name the node is known by, so it heads the list of its names.
 
 ## rules/knowledge-base/node-surfaces-only-with-accepted-mention.md
 - consistency — decided: eventual
@@ -406,3 +444,8 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this read holds across the separate records it combines.
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+
+## rules/knowledge-base/traversal-lists-reached-nodes.md
+- statement — decided: A traversal always lists its starting knowledge node.
+  unstated: The material leaves a merged starting node whose survivor is missing or deleted out of a traversal's nodes while its starting node identity still names it.
+  why: The starting node identity a traversal answers must resolve within the nodes that same answer lists.

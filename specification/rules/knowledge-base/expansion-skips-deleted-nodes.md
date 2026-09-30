@@ -1,6 +1,6 @@
 ---
 type: invariant
-statement: Expansion never reaches a knowledge node whose status is deleted.
+statement: A search's expansion never reaches a knowledge node whose status is deleted.
 constrains:
 - domain/knowledge-base/knowledge-node
 ---

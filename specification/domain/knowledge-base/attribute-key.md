@@ -18,6 +18,9 @@ attributes:
 - name: allowed_values
   type: allowed-value
   many: true
+- name: version
+  type: integer
+  required: true
 relationships:
 - target: node-type
   type: reference

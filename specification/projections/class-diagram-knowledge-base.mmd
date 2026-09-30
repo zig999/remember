@@ -9,6 +9,7 @@ classDiagram
             +boolean requiresValidFrom
             +string description
             +AllowedValue[] allowedValues
+            +integer version
         }
     }
     namespace ComplianceDeletionAggregate {
@@ -69,6 +70,7 @@ classDiagram
             <<Entity>>
             +string alias
             +AliasKind kind
+            +datetime createdAt
         }
     }
     namespace LinkTypeAggregate {
@@ -82,6 +84,7 @@ classDiagram
             +boolean allowsMultipleCurrent
             +boolean requiresValidFrom
             +boolean requiresValidToOnChange
+            +integer version
         }
         class LinkTypeRule {
             <<Entity>>
@@ -132,6 +135,7 @@ classDiagram
             <<AggregateRoot>>
             +string name
             +string description
+            +integer version
         }
     }
     namespace RawInformationAggregate {
@@ -289,6 +293,16 @@ classDiagram
         SUPERSEDED
         DELETED
     }
+    class GraphRead {
+        <<Enumeration>>
+        NODE_READ
+        LINK_READ
+        ATTRIBUTE_READ
+        LINK_HISTORY
+        ATTRIBUTE_HISTORY
+        ATTRIBUTE_KEY_HISTORY
+        TRAVERSAL
+    }
     class IngestTool {
         <<Enumeration>>
         PROPOSE_FRAGMENT
@@ -302,6 +316,12 @@ classDiagram
         LINK
         FRAGMENT
     }
+    class NodeFilter {
+        <<ValueObject>>
+        +string namePrefix
+        +NodeStatus status
+        +Page page
+    }
     class NodeResolution {
         <<Enumeration>>
         MATCHED_EXISTING
@@ -314,6 +334,12 @@ classDiagram
         NEEDS_REVIEW
         MERGED
         DELETED
+    }
+    class NodeView {
+        <<ValueObject>>
+        +date asOf
+        +boolean inEffectOnly
+        +boolean includeUncertain
     }
     class Page {
         <<ValueObject>>
@@ -395,6 +421,20 @@ classDiagram
         TRANSCRIPT
         OTHER
     }
+    class TraversalDirection {
+        <<Enumeration>>
+        OUT
+        IN
+        BOTH
+    }
+    class TraversalRequest {
+        <<ValueObject>>
+        +TraversalDirection direction
+        +string[] linkTypes
+        +integer depth
+        +date asOf
+        +boolean inEffectOnly
+    }
     class ValidFromBasis {
         <<Enumeration>>
         STATED
@@ -446,9 +486,11 @@ classDiagram
     NodeAttribute "0..*" --> "1" AttributeKey
     NodeAttribute "0..*" --> "1" LLMRun
     NodeAttribute "0..*" --> "0..1" NodeAttribute : supersedes
+    NodeFilter "0..*" --> "0..1" NodeType
     Proposal "0..*" --> "1" LLMRun
     Proposal "0..*" -- "0..*" InformationFragment : evidence
     Proposal "0..*" -- "0..*" RawChunk : source
     Provenance "0..*" --> "1" InformationFragment
     RawInformation "1" *-- "1..*" RawChunk
     SearchItem "0..*" -- "1..*" InformationFragment : provenance
+    TraversalRequest "0..*" --> "1" KnowledgeNode

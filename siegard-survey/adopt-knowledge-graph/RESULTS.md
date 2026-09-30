@@ -118,3 +118,267 @@ Outside the context, `src/shared/*`, `src/middleware/*` and `src/mcp/*` belong t
 ```
 
 **STOP (Step 2).** The owner reads every material file under `siegard-survey/adopt-knowledge-graph/`.
+
+## Step 3 — the analysis
+
+Invocation: `/siegard:analyse` with project root `/home/siegfriedneto/projects/eternal` and the three material files. Before writing, `git status --porcelain -- specification` printed nothing and the specification was sound. The survey material had been committed as `b36e447` at the owner's request before this step.
+
+**Modelling choice.** The eleven catalog, node and graph reads were added to `contracts/knowledge-base/retrieval`. They share the owner-only query surface and the MCP query endpoint with search. This makes `retrieval-is-read-only`, `retrieval-requires-owner-authentication` and `retrieval-transports-answer-alike` cover them. The traversal got its own rules, because it has a direction and a starting node that the search's expansion does not.
+
+### Nodes written
+
+Changed (listed from `git status`):
+```
+contracts/knowledge-base/retrieval
+decision-log
+domain/knowledge-base/attribute-key
+domain/knowledge-base/link-type
+domain/knowledge-base/node-alias
+domain/knowledge-base/node-type
+rules/knowledge-base/expansion-depth-bounds
+rules/knowledge-base/expansion-follows-both-directions
+rules/knowledge-base/expansion-restricted-to-named-link-types
+rules/knowledge-base/expansion-skips-deleted-nodes
+rules/knowledge-base/name-normalization
+rules/knowledge-base/page-defaults
+rules/knowledge-base/unknown-link-type-refused
+```
+
+Created (51):
+```
+constraints/llm-toolset-omits-graph-point-reads
+domain/knowledge-base/graph-read
+domain/knowledge-base/node-filter
+domain/knowledge-base/node-view
+domain/knowledge-base/traversal-direction
+domain/knowledge-base/traversal-request
+rules/knowledge-base/allowed-values-in-string-order
+rules/knowledge-base/attribute-key-history-check-order
+rules/knowledge-base/attribute-key-history-requires-registered-key
+rules/knowledge-base/attribute-key-history
+rules/knowledge-base/attribute-key-listing-by-node-type
+rules/knowledge-base/attribute-key-listing-order
+rules/knowledge-base/deleted-node-read-refused
+rules/knowledge-base/graph-item-flags
+rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+rules/knowledge-base/graph-provenance-hides-compliance-deleted
+rules/knowledge-base/graph-provenance-one-entry-per-chunk
+rules/knowledge-base/graph-provenance-order
+rules/knowledge-base/graph-read-as-of-view
+rules/knowledge-base/graph-read-current-view
+rules/knowledge-base/graph-read-in-effect-only
+rules/knowledge-base/graph-read-shows-empty-provenance
+rules/knowledge-base/history-order
+rules/knowledge-base/lineage-history
+rules/knowledge-base/link-type-listing-order
+rules/knowledge-base/link-type-rules-on-request
+rules/knowledge-base/merged-node-read-as-itself
+rules/knowledge-base/node-listing-by-status
+rules/knowledge-base/node-listing-name-prefix
+rules/knowledge-base/node-listing-one-entry-per-node
+rules/knowledge-base/node-listing-order
+rules/knowledge-base/node-listing-total-before-pagination
+rules/knowledge-base/node-read-alias-order
+rules/knowledge-base/node-read-attribute-order
+rules/knowledge-base/node-read-excludes-uncertain-on-request
+rules/knowledge-base/node-type-filter-in-catalog
+rules/knowledge-base/node-type-listing-order
+rules/knowledge-base/node-view-defaults
+rules/knowledge-base/point-reads-answer-any-status
+rules/knowledge-base/traversal-check-order
+rules/knowledge-base/traversal-defaults
+rules/knowledge-base/traversal-direction
+rules/knowledge-base/traversal-drops-merge-self-loops
+rules/knowledge-base/traversal-expands-live-nodes
+rules/knowledge-base/traversal-link-once
+rules/knowledge-base/traversal-link-score
+rules/knowledge-base/traversal-lists-reached-nodes
+rules/knowledge-base/traversal-merged-start
+rules/knowledge-base/traversal-order
+rules/knowledge-base/traversal-skips-deleted-links
+rules/knowledge-base/traversal-substitutes-merged-ends
+```
+
+Removed: none. The projections were re-derived (8 files).
+
+### Impact set read
+
+`spec.py --impact` over 39 entry nodes returned 176 nodes. The entry nodes were the graph and catalog elements, the status and flag enumerations, provenance, page, the search query, the retrieval contract, name-normalization, page-defaults, the expansion rules the traversal touches, the current, in-effect and effective-status rules, chunk-excerpt-is-verbatim, and all 10 constraints. They were read in full, along with uncertain-items-excluded-on-request, search-option-defaults, unknown-link-type-refused, attribute-key-for-node-type, node-type-in-catalog, closed-attribute-keys, merged-node-names-survivor, the catalog uniqueness rules, node-layer-skips-merged-and-deleted, empty-provenance-chain-refused, consolidation-records-provenance and one-canonical-alias.
+
+### Decisions logged (9)
+
+1. `rules/knowledge-base/node-listing-name-prefix.md` `statement`: a name prefix is read literally. The code lets `%` and `_` act as wildcards.
+2. `rules/knowledge-base/node-read-alias-order.md` `statement`: the canonical alias comes first, then the other aliases alphabetically. The code's order follows the enum declaration.
+3. `rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt.md` `statement`: a provenance entry shows the whole chunk excerpt. The code cuts the chunk text from `offset_start + 1` again.
+4. `rules/knowledge-base/graph-provenance-hides-compliance-deleted.md` `statement`: a graph read shows no provenance entry from a compliance-deleted source. The code applies no such filter.
+5. `rules/knowledge-base/traversal-lists-reached-nodes.md` `statement`: a traversal always lists its starting node. The code drops a merged start that has no usable survivor.
+6. `contracts/knowledge-base/retrieval.md` `answers`: the node-type listing refuses unknown parameters on both transports. REST ignores them today.
+7. `contracts/knowledge-base/retrieval.md` `answers`: the new operations carry the same authentication refusal as the other retrieval operations. The material does not show authentication.
+8. `rules/knowledge-base/expansion-follows-both-directions.md` `statement`: narrowed to the search's expansion. A traversal follows the direction it names.
+9. `rules/knowledge-base/expansion-skips-deleted-nodes.md` `statement`: narrowed to the search's expansion. A traversal lists the deleted nodes it reaches.
+
+### Watch items (tensions with no case decided differently)
+
+- **Duplicated view definitions.** `graph-read-as-of-view` and `expansion-as-of-view` state the same temporal filter, and only the graph rule names the supersession time. The search's expansion runs through the same traversal code.
+- **Two decays.** `traversal-link-score` is 0.5 to the power h. The search's `expansion-decay` multiplies that by the matched node's score. These are different operations.
+- **Empty provenance.** `graph-read-shows-empty-provenance` answers an assertion with no provenance with an empty list, while the provenance reads refuse an empty chain with a 500. This is also in tension with the anti-hallucination premise that every accepted assertion has provenance.
+- **Allowed-value order.** `allowed-values-in-string-order` sorts allowed values by string, though an allowed value carries a `sort_order`.
+- **Catalog snapshot.** A node type present in the store but absent from the startup catalog snapshot is listed yet refused as a filter. This was left as implementation, because the catalog changes only by migration plus restart.
+- **Two query-surface constraints.** `llm-toolset-omits-fragment-listing` and `llm-toolset-omits-graph-point-reads` both describe the query tool surface. They could be merged into one.
+- **As-of checks differ.** Search refuses an as-of date that is not a calendar date, while the graph reads check only its year-month-day form.
+- **Deleted items differ by kind.** A deleted node is refused by the node read, while a deleted link or attribute is answered by its point read. These are different elements, so no case is decided twice.
+
+### --shape over the 63 nodes written or changed
+
+At or past p90: `llm-toolset-omits-graph-point-reads` (45w), `attribute-key` (109w, now carrying `version`), `graph-read-as-of-view` (60w). Shared phrases are covered by the watch items and by the two narrowings logged above. Prose naming siblings: none. Names held nowhere: none.
+
+### What this increment may have put the delivered code in breach of
+
+The analysis never reads the target. Decisions 1 to 6 each state a behavior different from what the survey shows the code doing. The reconciliation should find them as `contradicts`: the literal prefix, the alias order, the excerpt, the compliance filter on graph provenance, a merged start without a survivor, and the REST node-type listing ignoring parameters.
+
+### Candidates for the reconciliation (the 63 nodes this increment wrote or changed)
+
+```
+contracts/knowledge-base/retrieval
+domain/knowledge-base/attribute-key
+domain/knowledge-base/link-type
+domain/knowledge-base/node-alias
+domain/knowledge-base/node-type
+rules/knowledge-base/expansion-depth-bounds
+rules/knowledge-base/expansion-restricted-to-named-link-types
+rules/knowledge-base/name-normalization
+rules/knowledge-base/page-defaults
+rules/knowledge-base/unknown-link-type-refused
+constraints/llm-toolset-omits-graph-point-reads
+domain/knowledge-base/graph-read
+domain/knowledge-base/node-filter
+domain/knowledge-base/node-view
+domain/knowledge-base/traversal-direction
+domain/knowledge-base/traversal-request
+rules/knowledge-base/allowed-values-in-string-order
+rules/knowledge-base/attribute-key-history-check-order
+rules/knowledge-base/attribute-key-history-requires-registered-key
+rules/knowledge-base/attribute-key-history
+rules/knowledge-base/attribute-key-listing-by-node-type
+rules/knowledge-base/attribute-key-listing-order
+rules/knowledge-base/deleted-node-read-refused
+rules/knowledge-base/graph-item-flags
+rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+rules/knowledge-base/graph-provenance-hides-compliance-deleted
+rules/knowledge-base/graph-provenance-one-entry-per-chunk
+rules/knowledge-base/graph-provenance-order
+rules/knowledge-base/graph-read-as-of-view
+rules/knowledge-base/graph-read-current-view
+rules/knowledge-base/graph-read-in-effect-only
+rules/knowledge-base/graph-read-shows-empty-provenance
+rules/knowledge-base/history-order
+rules/knowledge-base/lineage-history
+rules/knowledge-base/link-type-listing-order
+rules/knowledge-base/link-type-rules-on-request
+rules/knowledge-base/merged-node-read-as-itself
+rules/knowledge-base/node-listing-by-status
+rules/knowledge-base/node-listing-name-prefix
+rules/knowledge-base/node-listing-one-entry-per-node
+rules/knowledge-base/node-listing-order
+rules/knowledge-base/node-listing-total-before-pagination
+rules/knowledge-base/node-read-alias-order
+rules/knowledge-base/node-read-attribute-order
+rules/knowledge-base/node-read-excludes-uncertain-on-request
+rules/knowledge-base/node-type-filter-in-catalog
+rules/knowledge-base/node-type-listing-order
+rules/knowledge-base/node-view-defaults
+rules/knowledge-base/point-reads-answer-any-status
+rules/knowledge-base/traversal-check-order
+rules/knowledge-base/traversal-defaults
+rules/knowledge-base/traversal-direction
+rules/knowledge-base/traversal-drops-merge-self-loops
+rules/knowledge-base/traversal-expands-live-nodes
+rules/knowledge-base/traversal-link-once
+rules/knowledge-base/traversal-link-score
+rules/knowledge-base/traversal-lists-reached-nodes
+rules/knowledge-base/traversal-merged-start
+rules/knowledge-base/traversal-order
+rules/knowledge-base/traversal-skips-deleted-links
+rules/knowledge-base/traversal-substitutes-merged-ends
+rules/knowledge-base/expansion-follows-both-directions
+rules/knowledge-base/expansion-skips-deleted-nodes
+```
+
+### Validator (final, verbatim)
+
+```
+specification sound: 61 element(s), 295 rule(s), 8 scenario(s), 3 contract(s), 11 constraint(s) across 2 context(s); 97 decision(s) disclosed, 2 location(s) retired
+specification sound: 61 element(s), 295 rule(s), 8 scenario(s), 3 contract(s), 11 constraint(s) across 2 context(s); 97 decision(s) disclosed, 2 location(s) retired
+projected 8 file(s) into specification/projections: capability-map.mmd, class-diagram-chat.mmd, class-diagram-knowledge-base.mmd, context-map.mmd, decisions-by-node.md, full-text.md, overview.md, state-knowledge-base-llm-run.mmd
+```
+
+### --ledger (verbatim, exit 0)
+
+```
+ledger sound: 251 fact line(s) over 3 material file(s) — 219 landed in 83 node(s), 32 left out with a reason
+  file set: 28 file(s) the material read; candidates per file:
+    src/modules/knowledge-graph/catalog/catalog.ts: 10
+    src/modules/knowledge-graph/dto/attribute.dto.ts: 2
+    src/modules/knowledge-graph/dto/catalog.dto.ts: 5
+    src/modules/knowledge-graph/dto/enums.dto.ts: 8
+    src/modules/knowledge-graph/dto/history.dto.ts: 2
+    src/modules/knowledge-graph/dto/link.dto.ts: 2
+    src/modules/knowledge-graph/dto/node.dto.ts: 2
+    src/modules/knowledge-graph/dto/provenance.dto.ts: 1
+    src/modules/knowledge-graph/dto/queries.dto.ts: 12
+    src/modules/knowledge-graph/dto/traversal.dto.ts: 1
+    src/modules/knowledge-graph/index.ts: 3
+    src/modules/knowledge-graph/mcp/error-envelope.ts: 3
+    src/modules/knowledge-graph/mcp/query-toolset.ts: 7
+    src/modules/knowledge-graph/mcp/query-transport.ts: 0
+    src/modules/knowledge-graph/repository/catalog.repository.ts: 8
+    src/modules/knowledge-graph/repository/graph.repository.ts: 33
+    src/modules/knowledge-graph/repository/temporal-filter.ts: 6
+    src/modules/knowledge-graph/routes/knowledge-graph.routes.ts: 6
+    src/modules/knowledge-graph/service/attribute.service.ts: 3
+    src/modules/knowledge-graph/service/catalog.service.ts: 9
+    src/modules/knowledge-graph/service/errors.ts: 1
+    src/modules/knowledge-graph/service/formatters.ts: 10
+    src/modules/knowledge-graph/service/history.service.ts: 7
+    src/modules/knowledge-graph/service/link.service.ts: 3
+    src/modules/knowledge-graph/service/node.service.ts: 15
+    src/modules/knowledge-graph/service/norm.ts: 1
+    src/modules/knowledge-graph/service/traversal.service.ts: 19
+    src/modules/knowledge-graph/traversal/config.ts: 3
+  1 file(s) no fact names; an adoption over this ledger hands them no judge and leaves them unbound: src/modules/knowledge-graph/mcp/query-transport.ts
+  candidates, all: constraints/llm-toolset-omits-graph-point-reads constraints/retrieval-is-read-only constraints/retrieval-transports-answer-alike contracts/knowledge-base/retrieval domain/knowledge-base/alias-kind domain/knowledge-base/allowed-value domain/knowledge-base/assertion-flag domain/knowledge-base/assertion-status domain/knowledge-base/attribute-key domain/knowledge-base/effective-status domain/knowledge-base/knowledge-link domain/knowledge-base/link-type domain/knowledge-base/link-type-rule domain/knowledge-base/node-alias domain/knowledge-base/node-attribute domain/knowledge-base/node-filter domain/knowledge-base/node-status domain/knowledge-base/node-type domain/knowledge-base/node-view domain/knowledge-base/search-layer domain/knowledge-base/source-type domain/knowledge-base/traversal-direction domain/knowledge-base/traversal-request domain/knowledge-base/valid-from-basis domain/knowledge-base/value-type rules/knowledge-base/allowed-value-unique-per-key rules/knowledge-base/allowed-values-in-string-order rules/knowledge-base/attribute-key-history rules/knowledge-base/attribute-key-history-check-order rules/knowledge-base/attribute-key-history-requires-registered-key rules/knowledge-base/attribute-key-listing-by-node-type rules/knowledge-base/attribute-key-listing-order rules/knowledge-base/attribute-key-unique-per-node-type rules/knowledge-base/current-assertion rules/knowledge-base/deleted-node-read-refused rules/knowledge-base/effective-status rules/knowledge-base/expansion-depth-bounds rules/knowledge-base/expansion-restricted-to-named-link-types rules/knowledge-base/graph-item-flags rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt rules/knowledge-base/graph-provenance-hides-compliance-deleted rules/knowledge-base/graph-provenance-one-entry-per-chunk rules/knowledge-base/graph-provenance-order rules/knowledge-base/graph-read-as-of-view rules/knowledge-base/graph-read-current-view rules/knowledge-base/graph-read-in-effect-only rules/knowledge-base/graph-read-shows-empty-provenance rules/knowledge-base/history-order rules/knowledge-base/in-effect-assertion rules/knowledge-base/lineage-history rules/knowledge-base/link-type-listing-order rules/knowledge-base/link-type-name-unique rules/knowledge-base/link-type-rules-on-request rules/knowledge-base/merged-node-read-as-itself rules/knowledge-base/name-normalization rules/knowledge-base/node-listing-by-status rules/knowledge-base/node-listing-name-prefix rules/knowledge-base/node-listing-one-entry-per-node rules/knowledge-base/node-listing-order rules/knowledge-base/node-listing-total-before-pagination rules/knowledge-base/node-read-alias-order rules/knowledge-base/node-read-attribute-order rules/knowledge-base/node-read-excludes-uncertain-on-request rules/knowledge-base/node-type-filter-in-catalog rules/knowledge-base/node-type-listing-order rules/knowledge-base/node-type-name-unique rules/knowledge-base/node-view-defaults rules/knowledge-base/page-defaults rules/knowledge-base/page-limit-bounds rules/knowledge-base/page-offset-non-negative rules/knowledge-base/point-reads-answer-any-status rules/knowledge-base/traversal-check-order rules/knowledge-base/traversal-defaults rules/knowledge-base/traversal-direction rules/knowledge-base/traversal-drops-merge-self-loops rules/knowledge-base/traversal-expands-live-nodes rules/knowledge-base/traversal-link-once rules/knowledge-base/traversal-link-score rules/knowledge-base/traversal-lists-reached-nodes rules/knowledge-base/traversal-merged-start rules/knowledge-base/traversal-order rules/knowledge-base/traversal-skips-deleted-links rules/knowledge-base/traversal-substitutes-merged-ends
+```
+
+`--ledger` refused nothing on its first run.
+
+Left out, grouped by reason:
+- Implementation knowledge: a fallback for a timestamp the store always holds. (1: service.md:85)
+- The expansion simply has nothing further to reach; no node states when its loop ends. (2: service.md:102, storage.md:82)
+- Implementation knowledge: which item kind a batched provenance read is issued for. (2: service.md:131, storage.md:100)
+- Implementation knowledge: which layer computes each read; what the read holds is stated by its own rules. (1: service.md:135)
+- Implementation knowledge: the catalog is checked against a snapshot loaded at startup. (4: service.md:136, boundary.md:99, boundary.md:111, boundary.md:155)
+- Implementation knowledge: the catalog listings read the stored catalog. (1: service.md:137)
+- Wiring: the MCP handler catches every thrown value; what each failure answers is the contract's. (1: boundary.md:38)
+- A coercion quirk of the parameter parser; an empty limit read as 0 is then refused by the page bound. (1: boundary.md:46)
+- Transport shape: how the MCP input spells the parameters REST splits between path and query. (1: boundary.md:50)
+- Which issues one refusal lists follows each transport's parsing order; both transports answer the same code. (2: boundary.md:77, boundary.md:78)
+- The answer is the shared MCP transport kernel's, which this context does not decide. (4: boundary.md:115, boundary.md:132, boundary.md:133, boundary.md:158)
+- Transport wording and schema derivation that introduce a tool to its caller, not a domain fact. (1: boundary.md:116)
+- Shared error mapping, which this context does not decide. (1: boundary.md:157)
+- Wiring: the shared tool registry. (1: boundary.md:159)
+- Wiring: the traversal is exported for the search expansion to reuse. (1: boundary.md:160)
+- Implementation knowledge: how the snapshot holds the rules in memory. (1: storage.md:19)
+- Implementation knowledge: a repository read; what each operation does with what it reads is held by that operation's rules. (1: storage.md:37)
+- Implementation knowledge: a batched read issued once per operation. (2: storage.md:38, storage.md:70)
+- The listing's only guard against deleted attributes is the supersession time, which the current and as-of views already require. (1: storage.md:54)
+- Security: the filter's guard against an unsafe table qualifier, which no caller reaches. (1: storage.md:92)
+- This system's own storage, which its implementation chose. (2: storage.md:105, storage.md:107)
+
+### Handoff (Step 4)
+
+```
+/siegard:reconcile adoption; slug adopt-knowledge-graph; ledger siegard-survey/adopt-knowledge-graph/ledger.md; outside: none; certifications: none
+```
+(219 fact lines landed in 83 nodes and 32 were left out. The file set is 28 files. `mcp/query-transport.ts` has no candidate.)
+
+**STOP (Step 3).** The owner reviews `git diff -- specification` and commits with pathspec `specification siegard-survey/adopt-knowledge-graph`.

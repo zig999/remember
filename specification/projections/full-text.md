@@ -64,6 +64,16 @@ scope: knowledge-base
 
 None.
 
+=== constraints/llm-toolset-omits-graph-point-reads
+---
+statement: The language model's query tool surface exposes the catalog listings, the node listing, the node read, the three histories and the traversal, and does not expose the reads of one knowledge link or node attribute by identity.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
 === constraints/retrieval-is-lexical-only
 ---
 statement: Retrieval matches text only lexically and never by embeddings or semantic similarity.
@@ -401,11 +411,22 @@ operations:
 - read-attribute-provenance
 - read-fragment-provenance
 - list-accepted-fragments
+- list-node-types
+- list-link-types
+- list-attribute-keys
+- list-nodes
+- read-node
+- read-link
+- read-attribute
+- read-link-history
+- read-attribute-history
+- read-attribute-key-history
+- traverse
 answers:
 - operation: search
   accepted: '`{ ok: true, result }` carrying the page of ranked search items, each supporting fragment shown with its text, confidence, raw information, source type, reception time and chunk excerpt, and the total before pagination'
   refusals:
-  - &auth
+  - &id001
     when: The request carries no valid owner authentication.
     answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
   - rule: rules/knowledge-base/search-query-not-blank
@@ -422,62 +443,174 @@ answers:
     answer: HTTP 422, error code BUSINESS_INVALID_TRAVERSE_DEPTH
   - when: The as-of date is not a calendar date written as year-month-day.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
-  - &limit
+  - &id005
     rule: rules/knowledge-base/page-limit-bounds
     answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
-  - &offset
+  - &id006
     rule: rules/knowledge-base/page-offset-non-negative
     answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
 - operation: read-link-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
-  - *auth
-  - &id-format
+  - *id001
+  - &id002
     when: The requested identity is not a well-formed identifier.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - when: No knowledge link is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
-  - &id001
+  - &id003
     rule: rules/knowledge-base/provenance-refused-after-compliance-deletion
     answer: HTTP 410, error code BUSINESS_RAW_INFORMATION_DELETED, naming the earliest compliance deletion
-  - &id002
+  - &id004
     rule: rules/knowledge-base/empty-provenance-chain-refused
     answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR
 - operation: read-attribute-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
-  - *auth
-  - *id-format
-  - when: No node attribute is held at the requested identity.
-    answer: HTTP 404, error code RESOURCE_NOT_FOUND
   - *id001
   - *id002
+  - when: No node attribute is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND
+  - *id003
+  - *id004
 - operation: read-fragment-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
-  - *auth
-  - *id-format
+  - *id001
+  - *id002
   - when: No information fragment is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
   - rule: rules/knowledge-base/provenance-requires-accepted-fragment
     answer: HTTP 404, error code BUSINESS_FRAGMENT_NOT_ACCEPTED
-  - *id001
-  - *id002
+  - *id003
+  - *id004
 - operation: list-accepted-fragments
   accepted: '`{ ok: true, result }` carrying the page of accepted fragments, each with its text, confidence, LLM run, creation time and source (raw information, chunk index, source type, reception time, document title)'
   refusals:
-  - *auth
+  - *id001
   - rule: rules/knowledge-base/listing-requires-a-filter
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the two filters of which one is required
   - when: A named LLM run or raw information is not a well-formed identifier.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the offending filter
-  - *limit
-  - *offset
+  - *id005
+  - *id006
+- operation: list-node-types
+  accepted: '`{ ok: true, result }` carrying `total`, the number of items, and `items`: every node type with its identity, name, description and version'
+  refusals:
+  - *id001
+  - &id007
+    when: 'A parameter is malformed or unknown: an identity that is not a well-formed identifier, a switch other than true or false, a number that is not an integer, an as-of date not written as year-month-day, a name outside 1 to 200 characters, a value outside its closed set, or a parameter the operation does not define.'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message
+  - &id008
+    when: The store is unavailable, reached over MCP.
+    answer: error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+  - &id009
+    when: The read fails over MCP for any other cause, a stored status or source type outside its closed set included.
+    answer: error code SYSTEM_INTERNAL_ERROR with message "Internal server error." and no details, withholding the cause
+- operation: list-link-types
+  accepted: '`{ ok: true, result }` carrying `total` and `items`: every link type with its identity, name, label, description, inverse name, whether it is temporal, allows multiple current links, requires a validity start and requires a validity end on change, and its version, and, when rules are asked for, its `rules`, each with its identity, source and target node-type names and validity start and end as year-month-day or null, an empty list for a link type with none'
+  refusals:
+  - *id001
+  - *id007
+  - *id008
+  - *id009
+- operation: list-attribute-keys
+  accepted: '`{ ok: true, result }` carrying `total` and `items`: every attribute key with its identity, node-type name, key, value type, whether it is temporal, allows multiple current values and requires a validity start, its description and version, and `valid_values` only for a key the catalog closes'
+  refusals:
+  - *id001
+  - *id007
+  - &id010
+    rule: rules/knowledge-base/node-type-filter-in-catalog
+    answer: HTTP 422, error code BUSINESS_UNKNOWN_NODE_TYPE naming the node type
+  - *id008
+  - *id009
+- operation: list-nodes
+  accepted: '`{ ok: true, result }` carrying `total`, the `limit` and `offset` as requested, and `items`: the page of node summaries, each with its identity, node-type name, canonical name, status and the knowledge node it was merged into or null'
+  refusals:
+  - *id001
+  - *id007
+  - *id010
+  - rule: rules/knowledge-base/page-limit-bounds
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
+  - rule: rules/knowledge-base/page-offset-non-negative
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
+  - *id008
+  - *id009
+- operation: read-node
+  accepted: '`{ ok: true, result }` carrying `node`, its node summary, `aliases`, each with its identity, alias, kind and creation time, and `attributes`, each carrying the attribute detail: its identity, knowledge node, attribute-key name, value type and value, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the attribute it supersedes, and its provenance entries as a link detail carries them'
+  refusals:
+  - *id001
+  - *id007
+  - &id011
+    when: No knowledge node is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested node
+  - &id012
+    rule: rules/knowledge-base/deleted-node-read-refused
+    answer: HTTP 410, error code BUSINESS_NODE_DELETED naming the node
+  - *id008
+  - *id009
+- operation: read-link
+  accepted: 'HTTP 200 carrying `{ ok: true, result }` with the link detail: its identity, source and target knowledge nodes, link-type name and inverse name, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the link it supersedes, and its provenance entries, each with the fragment''s identity, text and confidence, the raw information, its source type and reception time, and the chunk excerpt'
+  refusals:
+  - *id001
+  - *id007
+  - when: No knowledge link is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested link
+- operation: read-attribute
+  accepted: 'HTTP 200 carrying `{ ok: true, result }` with the attribute detail: its identity, knowledge node, attribute-key name, value type and value, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the attribute it supersedes, and its provenance entries as a link detail carries them'
+  refusals:
+  - *id001
+  - *id007
+  - when: No node attribute is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested attribute
+- operation: read-link-history
+  accepted: '`{ ok: true, result }` carrying `versions`, each a link detail as read-link answers it'
+  refusals:
+  - *id001
+  - *id007
+  - when: No knowledge link is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested link
+  - *id008
+  - *id009
+- operation: read-attribute-history
+  accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it'
+  refusals:
+  - *id001
+  - *id007
+  - when: No node attribute is held at the requested identity.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested attribute
+  - *id008
+  - *id009
+- operation: read-attribute-key-history
+  accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it, an empty list when the knowledge node holds none for the key'
+  refusals:
+  - *id001
+  - *id007
+  - *id011
+  - *id012
+  - rule: rules/knowledge-base/attribute-key-history-requires-registered-key
+    answer: HTTP 404, error code BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the node type and key, and over REST also the requested node and key
+  - *id008
+  - *id009
+- operation: traverse
+  accepted: '`{ ok: true, result }` carrying `starting_node_id`, the knowledge node the traversal started from, `nodes` as node summaries, and `links`, each a link detail as read-link answers it with its `hop` and `score`'
+  refusals:
+  - *id001
+  - when: 'A parameter is malformed or unknown: an identity that is not a well-formed identifier, a switch other than true or false, a depth that is not a number, an as-of date not written as year-month-day, an empty link-type name, a direction outside out, in and both, or a parameter the operation does not define.'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message
+  - rule: rules/knowledge-base/expansion-depth-bounds
+    answer: HTTP 422, error code BUSINESS_INVALID_TRAVERSE_DEPTH naming the depth and the maximum of 3, and over REST also the requested node
+  - rule: rules/knowledge-base/unknown-link-type-refused
+    answer: HTTP 422, error code BUSINESS_UNKNOWN_LINK_TYPE naming the link type, and over REST also the requested node
+  - *id011
+  - *id012
+  - *id008
+  - *id009
 ---
 
 ## Description
 
-The owner's read surface over the knowledge base: search, the three provenance reads, and the accepted-fragment listing.
+The owner's read surface over the knowledge base: search, the three provenance reads, the accepted-fragment listing, the catalog listings, the node listing, and the graph reads.
 
 === decision-log
 ---
@@ -928,6 +1061,51 @@ entries:
   unstated: The standing node marks deleted every fragment of the raw information and every link and attribute whose only provenance is one of them, while the material spares any fragment, link or attribute that also rests on another raw information not deleted; the two decide differently for a fragment whose source chunks belong to two raw informations of which only one is deleted.
   decided: A compliance deletion marks deleted only the fragments, links and attributes that rest on no other raw information that is not deleted.
   why: Knowledge another source that is not deleted still attests is held by that source, so deleting one source does not take it away.
+- location: rules/knowledge-base/node-listing-name-prefix.md
+  field: statement
+  unstated: The material shows a percent sign or an underscore in a node listing's name prefix acting as a wildcard, without saying whether a prefix is read literally.
+  decided: A name prefix is read literally.
+  why: A name prefix is the start of a name the owner types, and its characters mean themselves.
+- location: rules/knowledge-base/node-read-alias-order.md
+  field: statement
+  unstated: The material orders a node's aliases by kind and then by alias without settling which kind comes first, since the order follows how the kinds are declared rather than their spelling.
+  decided: The canonical alias comes first, followed by the other aliases in alphabetical order.
+  why: The canonical alias is the name the node is known by, so it heads the list of its names.
+- location: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt.md
+  field: statement
+  unstated: The material cuts a provenance entry's excerpt from the chunk's own text starting at the chunk's start offset, which gives a shifted or empty slice for any chunk that does not start at the beginning of its source.
+  decided: A provenance entry shows the whole excerpt of the raw chunk it cites.
+  why: A chunk's excerpt is already the content between its offsets, so offsetting it again cuts away the text the entry exists to show.
+- location: rules/knowledge-base/graph-provenance-hides-compliance-deleted.md
+  field: statement
+  unstated: The material reads a graph read's provenance with no filter on whether the fragment's raw information was deleted for compliance, and says nothing about whether such entries may be shown.
+  decided: A graph read shows no provenance entry whose raw information was deleted for compliance.
+  why: A compliance deletion exists to keep a deleted source's knowledge from being presented as still traceable, and a provenance entry presents exactly that trace.
+- location: rules/knowledge-base/traversal-lists-reached-nodes.md
+  field: statement
+  unstated: The material leaves a merged starting node whose survivor is missing or deleted out of a traversal's nodes while its starting node identity still names it.
+  decided: A traversal always lists its starting knowledge node.
+  why: The starting node identity a traversal answers must resolve within the nodes that same answer lists.
+- location: contracts/knowledge-base/retrieval.md
+  field: answers
+  unstated: The material has the REST node-type listing ignore unknown parameters while the MCP one refuses them, so the two transports answer the same request with a success and a refusal.
+  decided: The node-type listing refuses an unknown parameter on both transports, like every other graph read.
+  why: Every other catalog and graph read refuses an unknown parameter, and the transports answer each shared operation alike.
+- location: contracts/knowledge-base/retrieval.md
+  field: answers
+  unstated: The material for the catalog listings, the node listing and the graph reads does not show how they authenticate their caller.
+  decided: Each of these operations refuses an unauthenticated caller with the same answer as the other retrieval operations.
+  why: They are served on the same owner-only surface as search, including the one query tool endpoint they share with it.
+- location: rules/knowledge-base/expansion-follows-both-directions.md
+  field: statement
+  unstated: The standing node says expansion follows a knowledge link from either end, while the material's traversal follows links only from their source or only from their target when its direction is out or in; the two decide differently for an outgoing traversal from a node that is only a link's target.
+  decided: The standing node governs a search's expansion, and a traversal follows the direction it names.
+  why: The standing node was read from the search's expansion, which names no direction.
+- location: rules/knowledge-base/expansion-skips-deleted-nodes.md
+  field: statement
+  unstated: The standing node says expansion never reaches a deleted knowledge node, while the material's traversal lists a deleted node it reaches as a link's end without expanding it; the two decide differently for a traversal whose link ends at a deleted node.
+  decided: The standing node governs a search's expansion, and a traversal lists the deleted nodes it reaches.
+  why: The standing node was read from the search's expansion, and the traversal shows each reached link together with both of its ends.
 ---
 
 ## Description
@@ -1247,6 +1425,9 @@ attributes:
 - name: allowed_values
   type: allowed-value
   many: true
+- name: version
+  type: integer
+  required: true
 relationships:
 - target: node-type
   type: reference
@@ -1588,6 +1769,27 @@ The state an information fragment is in.
 
 None.
 
+=== domain/knowledge-base/graph-read
+---
+type: enumeration
+values:
+- node-read
+- link-read
+- attribute-read
+- link-history
+- attribute-history
+- attribute-key-history
+- traversal
+---
+
+## Description
+
+The reads that show knowledge links and node attributes with their provenance: a knowledge node with its attributes, one knowledge link or node attribute, the history of one, the history of one attribute key on a node, and a traversal.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/information-fragment
 ---
 type: aggregate-root
@@ -1770,6 +1972,9 @@ attributes:
 - name: requires_valid_to_on_change
   type: boolean
   required: true
+- name: version
+  type: integer
+  required: true
 relationships:
 - target: link-type-rule
   type: composition
@@ -1872,6 +2077,8 @@ attributes:
 - name: kind
   type: alias-kind
   required: true
+- name: created_at
+  type: datetime
 relationships:
 - target: llm-run
   type: reference
@@ -1935,6 +2142,30 @@ A literal value asserted about a knowledge node.
 
 It holds what is known about a node that is not a relation to another node.
 
+=== domain/knowledge-base/node-filter
+---
+type: value-object
+attributes:
+- name: name_prefix
+  type: string
+- name: status
+  type: node-status
+- name: page
+  type: page
+relationships:
+- target: node-type
+  type: reference
+  cardinality: 0..1
+---
+
+## Description
+
+What a listing of knowledge nodes is narrowed to: a node type, the start of a name, a node status, and the page.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/node-resolution
 ---
 type: enumeration
@@ -1980,6 +2211,9 @@ attributes:
 - name: description
   type: string
   required: true
+- name: version
+  type: integer
+  required: true
 ---
 
 ## Description
@@ -1989,6 +2223,26 @@ A named kind of entity the catalog holds.
 ## Responsibility
 
 It fixes which kinds of entity a knowledge node may be.
+
+=== domain/knowledge-base/node-view
+---
+type: value-object
+attributes:
+- name: as_of
+  type: date
+- name: in_effect_only
+  type: boolean
+- name: include_uncertain
+  type: boolean
+---
+
+## Description
+
+How a node read shows its knowledge node's attributes: as of which day, whether only those in effect, and whether uncertain ones are included.
+
+## Responsibility
+
+None.
 
 === domain/knowledge-base/page
 ---
@@ -2362,6 +2616,53 @@ The record of one proposal made within an LLM run: what was proposed, what it wa
 
 It keeps every proposal accountable, whether it was taken or refused.
 
+=== domain/knowledge-base/traversal-direction
+---
+type: enumeration
+values:
+- out
+- in
+- both
+---
+
+## Description
+
+Which end of a knowledge link a traversal follows it from: its source, its target, or either.
+
+## Responsibility
+
+None.
+
+=== domain/knowledge-base/traversal-request
+---
+type: value-object
+attributes:
+- name: direction
+  type: traversal-direction
+- name: link_types
+  type: string
+  many: true
+- name: depth
+  type: integer
+- name: as_of
+  type: date
+- name: in_effect_only
+  type: boolean
+relationships:
+- target: knowledge-node
+  type: reference
+  cardinality: '1'
+---
+
+## Description
+
+What the owner asks a traversal for: the knowledge node it starts from, which way to follow links, which link types, how many hops, and as of which day.
+Link types are named by their catalog name.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/valid-from-basis
 ---
 type: enumeration
@@ -2603,6 +2904,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/allowed-values-in-string-order
+---
+type: invariant
+statement: An attribute-key listing gives a closed attribute key's allowed values in ascending string order.
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/ambiguous-candidates-need-review
 ---
 type: policy
@@ -2638,6 +2952,69 @@ type: invariant
 statement: An attribute proposal MUST name an attribute key the catalog holds for the node type of its knowledge node.
 constrains:
 - domain/knowledge-base/proposal
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-key-history
+---
+type: invariant
+statement: An attribute-key history holds every node attribute of its knowledge node and attribute key, whatever its status.
+constrains:
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-key-history-check-order
+---
+type: invariant
+statement: An attribute-key history is checked for an existing knowledge node, then for one not deleted, then for an attribute key the catalog holds for that node's node type.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-key-history-requires-registered-key
+---
+type: invariant
+statement: An attribute-key history MUST name an attribute key the catalog holds for the node type of its knowledge node.
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-key-listing-by-node-type
+---
+type: invariant
+statement: An attribute-key listing that names a node type holds only that node type's attribute keys.
+constrains:
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-key-listing-order
+---
+type: invariant
+statement: The attribute-key listing orders attribute keys by node-type name and then by key.
+constrains:
 - domain/knowledge-base/attribute-key
 ---
 
@@ -3474,6 +3851,20 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/deleted-node-read-refused
+---
+type: invariant
+statement: A node read, an attribute-key history or a traversal is refused when its knowledge node is deleted.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/deleted-source-deletion-records-nothing
 ---
 type: policy
@@ -3887,9 +4278,10 @@ None.
 === rules/knowledge-base/expansion-depth-bounds
 ---
 type: invariant
-statement: A search query's expansion depth MUST be between 1 and 3 hops.
+statement: A search query's expansion depth and a traversal's depth MUST be whole numbers between 1 and 3 hops.
 constrains:
 - domain/knowledge-base/search-query
+- domain/knowledge-base/traversal-request
 ---
 
 ## Description
@@ -3899,7 +4291,7 @@ None.
 === rules/knowledge-base/expansion-follows-both-directions
 ---
 type: invariant
-statement: Expansion follows a knowledge link from either of its ends.
+statement: A search's expansion follows a knowledge link from either of its ends.
 constrains:
 - domain/knowledge-base/knowledge-link
 ---
@@ -3936,9 +4328,10 @@ None.
 === rules/knowledge-base/expansion-restricted-to-named-link-types
 ---
 type: policy
-statement: Expansion under a query that names link types follows only links of those types.
+statement: Expansion under a search query, or a traversal, that names link types follows only links of those types.
 constrains:
 - domain/knowledge-base/search-query
+- domain/knowledge-base/traversal-request
 - domain/knowledge-base/knowledge-link
 ---
 
@@ -3949,7 +4342,7 @@ None.
 === rules/knowledge-base/expansion-skips-deleted-nodes
 ---
 type: invariant
-statement: Expansion never reaches a knowledge node whose status is deleted.
+statement: A search's expansion never reaches a knowledge node whose status is deleted.
 constrains:
 - domain/knowledge-base/knowledge-node
 ---
@@ -4146,12 +4539,169 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/graph-item-flags
+---
+type: policy
+statement: A graph read flags a knowledge link or node attribute uncertain when its status is uncertain and disputed when its status is disputed, and never flags it low-confidence.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/assertion-flag
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+---
+type: policy
+statement: A graph read's provenance entry shows the whole excerpt of the raw chunk it cites.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/provenance
+- domain/knowledge-base/raw-chunk
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-provenance-hides-compliance-deleted
+---
+type: policy
+statement: A graph read shows no provenance entry whose raw information was deleted for compliance.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/provenance
+- domain/knowledge-base/compliance-deletion
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-provenance-one-entry-per-chunk
+---
+type: policy
+statement: A graph read shows one provenance entry for each raw chunk that each provenance fragment of a knowledge link or node attribute cites.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-provenance-order
+---
+type: policy
+statement: A graph read orders a knowledge link's or node attribute's provenance entries by the time each provenance was recorded and then by fragment identity.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-read-as-of-view
+---
+type: policy
+statement: A node read or traversal that names an as-of date shows only knowledge links and node attributes without a supersession time whose validity has no start or starts on or before that date and has no end or ends after it.
+constrains:
+- domain/knowledge-base/node-view
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-read-current-view
+---
+type: policy
+statement: A node read or traversal that names no as-of date shows only current knowledge links and node attributes.
+constrains:
+- domain/knowledge-base/node-view
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-read-in-effect-only
+---
+type: policy
+statement: A node read or traversal that asks for in-effect-only items and names no as-of date shows only knowledge links and node attributes in effect.
+constrains:
+- domain/knowledge-base/node-view
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/graph-read-shows-empty-provenance
+---
+type: policy
+statement: A graph read shows a knowledge link or node attribute that has no provenance with an empty provenance list.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/held-content-records-nothing
 ---
 type: invariant
 statement: Ingesting content whose content hash a raw information already holds records no new raw information, raw chunk or LLM run.
 constrains:
 - domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/history-order
+---
+type: policy
+statement: A link, attribute or attribute-key history orders its versions by recording time and then by identity.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
 ---
 
 ## Description
@@ -4230,6 +4780,21 @@ type: invariant
 statement: A match's strength is weighted by 1.0 on the fragment layer, 0.9 on the node layer and 0.6 on the chunk layer.
 constrains:
 - domain/knowledge-base/search-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/lineage-history
+---
+type: policy
+statement: A link or attribute history holds the item, each item it supersedes in turn, and each item that supersedes it or one of its successors, whatever their status or validity.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
 ---
 
 ## Description
@@ -4338,6 +4903,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/link-type-listing-order
+---
+type: invariant
+statement: The link-type listing orders link types by name and each link type's rules by source and then target node-type name.
+constrains:
+- domain/knowledge-base/link-type
+- domain/knowledge-base/link-type-rule
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/link-type-name-unique
 ---
 type: invariant
@@ -4368,6 +4946,19 @@ None.
 type: invariant
 statement: A link type rule that holds both a validity start and a validity end holds the start strictly before the end.
 constrains:
+- domain/knowledge-base/link-type-rule
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-type-rules-on-request
+---
+type: invariant
+statement: The link-type listing carries each link type's rules, whatever their window, only when the request asks for rules.
+constrains:
+- domain/knowledge-base/link-type
 - domain/knowledge-base/link-type-rule
 ---
 
@@ -4597,6 +5188,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/merged-node-read-as-itself
+---
+type: invariant
+statement: A node read and an attribute-key history answer a merged knowledge node as itself and do not follow it to the knowledge node it was merged into.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/model-refusal-skips-chunk
 ---
 type: invariant
@@ -4624,7 +5228,7 @@ None.
 === rules/knowledge-base/name-normalization
 ---
 type: invariant
-statement: Entity resolution compares names after lower-casing them, removing their accents, trimming them and collapsing their inner whitespace.
+statement: Entity resolution and the node listing compare names after lower-casing them, removing their accents, trimming them and collapsing their inner whitespace.
 constrains:
 - domain/knowledge-base/node-alias
 ---
@@ -4731,6 +5335,73 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-listing-by-status
+---
+type: invariant
+statement: A node listing holds only knowledge nodes of the status its filter names, or active ones when it names none.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-listing-name-prefix
+---
+type: invariant
+statement: A node listing that names a name prefix holds only knowledge nodes one of whose aliases, compared as a name, starts with the prefix compared as a name and read literally.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-listing-one-entry-per-node
+---
+type: invariant
+statement: A node listing holds each knowledge node once, however many of its aliases match.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-listing-order
+---
+type: invariant
+statement: A node listing orders knowledge nodes by canonical name and then by identity.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-listing-total-before-pagination
+---
+type: invariant
+statement: A node listing's total counts every matching knowledge node before the page is cut.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-name-length
 ---
 type: invariant
@@ -4755,6 +5426,46 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-read-alias-order
+---
+type: invariant
+statement: A node read lists its knowledge node's canonical alias first and its other aliases after it in alphabetical order.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+- domain/knowledge-base/alias-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-read-attribute-order
+---
+type: invariant
+statement: A node read orders its knowledge node's attributes by attribute key name, then by recording time, then by identity.
+constrains:
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/graph-read
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-read-excludes-uncertain-on-request
+---
+type: invariant
+statement: A node read that leaves out uncertain items shows no node attribute whose status is uncertain.
+constrains:
+- domain/knowledge-base/node-view
+- domain/knowledge-base/node-attribute
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-surfaces-only-with-accepted-mention
 ---
 type: policy
@@ -4764,6 +5475,19 @@ constrains:
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/search-item
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-type-filter-in-catalog
+---
+type: invariant
+statement: A node listing or attribute-key listing that names a node type the catalog does not hold is refused.
+constrains:
+- domain/knowledge-base/node-filter
+- domain/knowledge-base/node-type
 ---
 
 ## Description
@@ -4783,12 +5507,36 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-type-listing-order
+---
+type: invariant
+statement: The node-type listing orders node types by name.
+constrains:
+- domain/knowledge-base/node-type
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-type-name-unique
 ---
 type: invariant
 statement: No two node types hold the same name.
 constrains:
 - domain/knowledge-base/node-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-view-defaults
+---
+type: invariant
+statement: A node read that omits an option names no as-of date, does not ask for in-effect-only items and includes uncertain items.
+constrains:
+- domain/knowledge-base/node-view
 ---
 
 ## Description
@@ -4890,7 +5638,7 @@ None.
 === rules/knowledge-base/page-defaults
 ---
 type: invariant
-statement: A search or accepted-fragment listing page that omits its limit returns 20 items and one that omits its offset starts at 0.
+statement: A search, accepted-fragment listing or node listing page that omits its limit returns 20 items and one that omits its offset starts at 0.
 constrains:
 - domain/knowledge-base/page
 ---
@@ -4930,6 +5678,21 @@ statement: A pdf's content is cut into blocks at every form feed, the form feed 
 constrains:
 - domain/knowledge-base/raw-information
 - domain/knowledge-base/source-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/point-reads-answer-any-status
+---
+type: policy
+statement: A read of one knowledge link or node attribute by identity answers it whatever its status or validity.
+constrains:
+- domain/knowledge-base/graph-read
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
 ---
 
 ## Description
@@ -5625,6 +6388,169 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/traversal-check-order
+---
+type: invariant
+statement: A traversal is checked for its depth, then for each named link type in the order given, then for an existing starting knowledge node, then for one not deleted.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-defaults
+---
+type: invariant
+statement: A traversal that omits an option follows links from either end, goes one hop deep, names no as-of date, does not ask for in-effect-only links and follows every link type.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/traversal-direction
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-direction
+---
+type: policy
+statement: A traversal follows a knowledge link from its source when its direction is out, from its target when it is in, and from either end when it is both.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/traversal-direction
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-drops-merge-self-loops
+---
+type: policy
+statement: A traversal leaves out a knowledge link whose two distinct ends become one knowledge node through merge substitution.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/knowledge-node
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-expands-live-nodes
+---
+type: invariant
+statement: A traversal expands no knowledge node that is deleted or merged.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-link-once
+---
+type: policy
+statement: A traversal shows each knowledge link once, at the first hop that reached it.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-link-score
+---
+type: policy
+statement: A knowledge link a traversal reaches at hop h scores 0.5 raised to the power h.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-lists-reached-nodes
+---
+type: invariant
+statement: A traversal lists its starting knowledge node and every knowledge node it reached that is not merged, deleted ones included.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-merged-start
+---
+type: invariant
+statement: A traversal from a merged knowledge node starts from the knowledge node it was merged into when that node is held and not deleted.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-order
+---
+type: policy
+statement: A traversal lists knowledge nodes in the order it first reached them with its starting node first, and knowledge links in the order it first reached them with outgoing links before incoming ones within a hop.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/knowledge-link
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-skips-deleted-links
+---
+type: policy
+statement: A traversal never follows a knowledge link whose status is deleted.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/traversal-substitutes-merged-ends
+---
+type: policy
+statement: A traversal shows a knowledge link that ends at a merged knowledge node as ending at the knowledge node it was merged into.
+constrains:
+- domain/knowledge-base/traversal-request
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/knowledge-node
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/turn-blocks
 ---
 type: invariant
@@ -5667,9 +6593,10 @@ None.
 === rules/knowledge-base/unknown-link-type-refused
 ---
 type: policy
-statement: A search query that expands and names a link type the catalog does not hold is refused.
+statement: A search query that expands, or a traversal, that names a link type the catalog does not hold is refused.
 constrains:
 - domain/knowledge-base/search-query
+- domain/knowledge-base/traversal-request
 - domain/knowledge-base/link-type
 ---
 

@@ -8,6 +8,8 @@ attributes:
 - name: kind
   type: alias-kind
   required: true
+- name: created_at
+  type: datetime
 relationships:
 - target: llm-run
   type: reference

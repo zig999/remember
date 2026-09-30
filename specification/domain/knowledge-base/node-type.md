@@ -7,6 +7,9 @@ attributes:
 - name: description
   type: string
   required: true
+- name: version
+  type: integer
+  required: true
 ---
 
 ## Description

@@ -25,6 +25,9 @@ attributes:
 - name: requires_valid_to_on_change
   type: boolean
   required: true
+- name: version
+  type: integer
+  required: true
 relationships:
 - target: link-type-rule
   type: composition

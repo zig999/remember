@@ -446,6 +446,51 @@ entries:
   unstated: The standing node marks deleted every fragment of the raw information and every link and attribute whose only provenance is one of them, while the material spares any fragment, link or attribute that also rests on another raw information not deleted; the two decide differently for a fragment whose source chunks belong to two raw informations of which only one is deleted.
   decided: A compliance deletion marks deleted only the fragments, links and attributes that rest on no other raw information that is not deleted.
   why: Knowledge another source that is not deleted still attests is held by that source, so deleting one source does not take it away.
+- location: rules/knowledge-base/node-listing-name-prefix.md
+  field: statement
+  unstated: The material shows a percent sign or an underscore in a node listing's name prefix acting as a wildcard, without saying whether a prefix is read literally.
+  decided: A name prefix is read literally.
+  why: A name prefix is the start of a name the owner types, and its characters mean themselves.
+- location: rules/knowledge-base/node-read-alias-order.md
+  field: statement
+  unstated: The material orders a node's aliases by kind and then by alias without settling which kind comes first, since the order follows how the kinds are declared rather than their spelling.
+  decided: The canonical alias comes first, followed by the other aliases in alphabetical order.
+  why: The canonical alias is the name the node is known by, so it heads the list of its names.
+- location: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt.md
+  field: statement
+  unstated: The material cuts a provenance entry's excerpt from the chunk's own text starting at the chunk's start offset, which gives a shifted or empty slice for any chunk that does not start at the beginning of its source.
+  decided: A provenance entry shows the whole excerpt of the raw chunk it cites.
+  why: A chunk's excerpt is already the content between its offsets, so offsetting it again cuts away the text the entry exists to show.
+- location: rules/knowledge-base/graph-provenance-hides-compliance-deleted.md
+  field: statement
+  unstated: The material reads a graph read's provenance with no filter on whether the fragment's raw information was deleted for compliance, and says nothing about whether such entries may be shown.
+  decided: A graph read shows no provenance entry whose raw information was deleted for compliance.
+  why: A compliance deletion exists to keep a deleted source's knowledge from being presented as still traceable, and a provenance entry presents exactly that trace.
+- location: rules/knowledge-base/traversal-lists-reached-nodes.md
+  field: statement
+  unstated: The material leaves a merged starting node whose survivor is missing or deleted out of a traversal's nodes while its starting node identity still names it.
+  decided: A traversal always lists its starting knowledge node.
+  why: The starting node identity a traversal answers must resolve within the nodes that same answer lists.
+- location: contracts/knowledge-base/retrieval.md
+  field: answers
+  unstated: The material has the REST node-type listing ignore unknown parameters while the MCP one refuses them, so the two transports answer the same request with a success and a refusal.
+  decided: The node-type listing refuses an unknown parameter on both transports, like every other graph read.
+  why: Every other catalog and graph read refuses an unknown parameter, and the transports answer each shared operation alike.
+- location: contracts/knowledge-base/retrieval.md
+  field: answers
+  unstated: The material for the catalog listings, the node listing and the graph reads does not show how they authenticate their caller.
+  decided: Each of these operations refuses an unauthenticated caller with the same answer as the other retrieval operations.
+  why: They are served on the same owner-only surface as search, including the one query tool endpoint they share with it.
+- location: rules/knowledge-base/expansion-follows-both-directions.md
+  field: statement
+  unstated: The standing node says expansion follows a knowledge link from either end, while the material's traversal follows links only from their source or only from their target when its direction is out or in; the two decide differently for an outgoing traversal from a node that is only a link's target.
+  decided: The standing node governs a search's expansion, and a traversal follows the direction it names.
+  why: The standing node was read from the search's expansion, which names no direction.
+- location: rules/knowledge-base/expansion-skips-deleted-nodes.md
+  field: statement
+  unstated: The standing node says expansion never reaches a deleted knowledge node, while the material's traversal lists a deleted node it reaches as a link's end without expanding it; the two decide differently for a traversal whose link ends at a deleted node.
+  decided: The standing node governs a search's expansion, and a traversal lists the deleted nodes it reaches.
+  why: The standing node was read from the search's expansion, and the traversal shows each reached link together with both of its ends.
 ---
 
 ## Description
