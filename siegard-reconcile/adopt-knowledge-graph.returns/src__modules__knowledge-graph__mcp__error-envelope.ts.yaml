@@ -1,0 +1,88 @@
+findings:
+  - file: src/modules/knowledge-graph/mcp/error-envelope.ts
+    where: >-
+      the docstring above mapErrorToHttpResponse, lines 61-64
+    evidence: >-
+      Unknown errors collapse to 500 SYSTEM_INTERNAL_ERROR with a generic message;
+       * `err.message` is NEVER leaked to the client (caller logs the original at
+       * ERROR level — `logLevel` in the result signals that).
+    cost: >-
+      The contract holds the refusal, "error code SYSTEM_INTERNAL_ERROR with message
+      "Internal server error." and no details, withholding the cause". The docstring
+      says it again, so a reader may take this file for the place it is decided. The
+      behavior is carried by `return internalError();` here, with the body in
+      `src/shared/error-mapping.ts`. If the contract moves, this prose stays behind
+      and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the sentence. The code already holds the fact through `internalError()`
+      in src/shared/error-mapping.ts, and the contract holds it as the node's own
+      refusal.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/mcp/error-envelope.ts
+    where: >-
+      the comment inside the EmptyProvenanceError branch, lines 153-156
+    evidence: >-
+      Legacy-data inconsistency surfaces as a generic 500 — by design the
+          // class carries no `details` at the wire (anchor info stays server-side
+          // for the operator's audit log only). Distinct from the generic
+          // SYSTEM_INTERNAL_ERROR: keeps the class's own `code`.
+    cost: >-
+      The contract refuses an empty provenance chain with "HTTP 500, error code
+      SYSTEM_INTERNAL_ERROR". The comment calls that code distinct from
+      SYSTEM_INTERNAL_ERROR. The class's own code is in fact that same value, so a
+      reader who trusts the comment will look for a separate error code that does
+      not exist. The code is correct, because this branch emits `err.code` with no
+      `details`, and the prose misdescribes it.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch already holds the refusal, with status 500,
+      message "Internal server error." and no `details`. The code value is declared
+      in backend/src/modules/query-retrieval/service/errors.ts as
+      `code = "SYSTEM_INTERNAL_ERROR" as const`.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      mapErrorToHttpResponse, lines 65-182, which holds the refusal half of the
+      contract. Each branch sets the status and details shape, and the error class
+      supplies the code. Branches cover ResourceNotFoundError (404), NodeDeletedError
+      (410), UnknownNodeTypeError, UnknownLinkTypeError and InvalidTraverseDepthError
+      (422), UnknownAttributeKeyError (404), InvalidSearchQueryError and
+      InvalidSearchLayerError (422), FragmentNotAcceptedError (404),
+      RawInformationDeletedError (410), EmptyProvenanceError (500) and ZodError (422).
+      Pg unavailability and the unknown fallback go to the shared
+      serviceUnavailableError() and internalError().
+    evidence: >-
+      return mapped(422, "warn", {
+            code: "VALIDATION_INVALID_FORMAT",
+            message: "Request payload failed validation.",
+            details: err.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          });
+      and
+      return mapped(410, "warn", {
+            code: err.code,
+            message: err.message,
+            details: {
+              raw_information_id: err.rawInformationId,
+              deleted_at: err.deletedAt.toISOString(),
+            },
+          });
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The enumeration fragment/node/chunk is not declared in this file. The file
+      only forwards the allowed set it is handed:
+      `details: { invalid: err.invalid, allowed: err.allowed }`.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      The 1-to-3 bound is not stated in this file. The file only forwards the
+      values it is handed:
+      `details: { depth: err.depth, max: err.max, ...extraDetails }`.
+looked_past: >-
+  The prose claims about REST versus MCP transport rendering, the BR-24 citation and the back-compat re-export note are not facts of my three nodes, and I left them to other judgments.
+candidates_opened: []

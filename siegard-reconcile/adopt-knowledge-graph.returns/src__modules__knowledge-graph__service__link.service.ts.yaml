@@ -1,0 +1,65 @@
+findings:
+  - file: src/modules/knowledge-graph/service/link.service.ts
+    where: >-
+      the BR-17 branch of getLinkByIdService, lines 35-46
+    evidence: |-
+      if (link.status !== "deleted" && provenance.length === 0) {
+          logger.warn(
+            {
+              route: "GET /api/v1/links/:link_id",
+              link_id: link.id,
+              status: link.status,
+            },
+            "knowledge_graph_empty_provenance"
+          );
+        }
+    cost: >-
+      The code treats a link with no provenance as an alarm worth a WARN,
+      except when its status is deleted. No node states either half of that.
+      The specification only says such a link is shown with an empty list.
+      The alarm, its `deleted` exemption and the event name
+      `knowledge_graph_empty_provenance` exist only in this file. Anyone who
+      reads the specification to learn what the system reports about a link
+      without provenance will not find them.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether the system reports a link
+      without provenance, and for which statuses. That decision would go into
+      a node, most naturally beside
+      rules/knowledge-base/graph-read-shows-empty-provenance. If the business
+      did not decide it, the log line is the thing to drop. No node holds the
+      fact today.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getLinkByIdService covers only the read-link operation, and only its
+      404 refusal and its accepted answer, at lines 23-26 and 48. The other
+      operations of the contract are not in this file.
+    evidence: |-
+      if (link === null) {
+          throw new ResourceNotFoundError("KnowledgeLink", linkId);
+        }
+      ...
+      return toLinkDetail(link, provenance);
+  - node: rules/knowledge-base/graph-read-shows-empty-provenance
+    held_at: >-
+      The nullish fallback to an empty list on line 33, which is returned
+      through toLinkDetail on line 48.
+    evidence: |-
+      const provenance = provenanceByLinkId.get(link.id) ?? [];
+  - node: rules/knowledge-base/point-reads-answer-any-status
+    held_at: >-
+      The service treats a missing link as its only refusal. A link of any
+      status is returned through toLinkDetail. The status check at line 37
+      only decides whether to log, and does not withhold the link.
+    evidence: |-
+      const link = await findLinkById(client, linkId);
+        if (link === null) {
+          throw new ResourceNotFoundError("KnowledgeLink", linkId);
+        }
+looked_past: >-
+  I saw the comments citing BR-16 and BR-17 and the single batched provenance
+  query. Both are comments or implementation choices, not domain facts a node
+  holds, so I left them for the comment route.
+candidates_opened: []

@@ -1,0 +1,77 @@
+findings:
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the `?? new Date(0).toISOString()` fallbacks in toNodeAlias (created_at), toAttributeDetail and toLinkDetail (recorded_at), and toProvenanceEntry (received_at)
+    evidence: >-
+      created_at: formatTimestamptz(row.created_at) ?? new Date(0).toISOString(),
+      recorded_at: formatTimestamptz(row.recorded_at) ?? new Date(0).toISOString(),
+      received_at:
+            formatTimestamptz(row.received_at) ?? new Date(0).toISOString(),
+    cost: >-
+      When a creation, recording or reception time is null, the code answers 1970-01-01T00:00:00.000Z as if it were a real time. The contract lists these times as facts to show and says nothing about a missing one. node-alias does not even mark created_at as required. A reader of the API gets an invented date that looks like data. The choice of the epoch as the stand-in lives only in this file, where the next reader will not look for it in the specification.
+    kind: unstated
+    correction: >-
+      The analysis should decide what a read shows when one of these times is absent, such as null or a refusal, and give that decision a node. Candidates are contracts/knowledge-base/retrieval and domain/knowledge-base/node-alias.
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the docstring above deriveFlags
+    evidence: >-
+      Today this mirrors the storage `status` for
+       * `uncertain` / `disputed`; `low_confidence` is reserved for a future
+       * threshold-based flag.
+    cost: >-
+      The prose restates the flag rule that the code in deriveFlags already holds. It also says low_confidence is "reserved for a future threshold-based flag". The node says a graph read never flags low-confidence. A reader taking the comment's word would plan a flag the specification rules out.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement. deriveFlags holds the rule in code, and the graph-item-flags node states it.
+    node: rules/knowledge-base/graph-item-flags
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      toNodeSummary, toNodeAlias, toAttributeDetail, toLinkDetail, toProvenanceEntry. These build the node summary, alias, attribute detail, link detail and provenance entry shapes the contract lists. Fetching and routing are in other files.
+    evidence: >-
+      return { id: row.id, source_node_id: row.source_node_id, target_node_id: row.target_node_id, link_type: row.link_type, link_inverse_name: row.link_inverse_name, valid_from: formatDateOnly(row.valid_from), valid_to: formatDateOnly(row.valid_to), recorded_at: ..., superseded_at: ..., status, effective_status: ..., is_current: row.is_current, is_in_effect: row.is_in_effect, confidence: toNumber(row.confidence), valid_from_source: row.valid_from_source, flags: deriveFlags(status), supersedes_link_id: row.supersedes_link_id, provenance: provenance.slice() }
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      the ASSERTION_STATUS set, lines 26-32, and toAssertionStatus, which throws InvariantError outside the set
+    evidence: >-
+      const ASSERTION_STATUS: ReadonlySet<AssertionStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", ]);
+  - node: domain/knowledge-base/effective-status
+    held_at: >-
+      the EFFECTIVE_STATUS set, lines 34-41, and toEffectiveStatus
+    evidence: >-
+      const EFFECTIVE_STATUS: ReadonlySet<EffectiveStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", "inactive", ]);
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      toNodeAlias, which maps id, alias, kind and created_at. The shape is declared in dto/node.dto.ts, which is not in this file set.
+    evidence: >-
+      return { id: row.id, alias: row.alias, kind: row.kind, created_at: formatTimestamptz(row.created_at) ?? new Date(0).toISOString(), };
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      the SOURCE_TYPE set, lines 43-51, and toSourceType. It holds the closed set under the material's own words (ata, artigo, transcricao, outro), which the node names as the material's own words for four of the values.
+    evidence: >-
+      const SOURCE_TYPE: ReadonlySet<SourceType> = new Set([ "pdf", "email", "ata", "chat", "artigo", "transcricao", "outro", ]);
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file does not compute currency. It passes the value through: `is_current: row.is_current,`
+  - node: rules/knowledge-base/effective-status
+    held_at: nowhere
+    evidence: >-
+      The file does not derive the effective status. It validates the value the resolved row carries: `effective_status: toEffectiveStatus(row.effective_status),`
+  - node: rules/knowledge-base/graph-item-flags
+    held_at: >-
+      deriveFlags, lines 105-110
+    evidence: >-
+      if (status === "uncertain") flags.push("uncertain");
+        if (status === "disputed") flags.push("disputed");
+  - node: rules/knowledge-base/graph-provenance-order
+    held_at: nowhere
+    evidence: >-
+      groupProvenance appends rows in arrival order and sorts nothing: `else arr.push(entry);`. The ordering by recording time and then fragment identity is not stated in this file.
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: nowhere
+    evidence: >-
+      The file does not compute being in effect. It passes the value through: `is_in_effect: row.is_in_effect,`
+looked_past: >-
+  The header comment ("Pure DB-row -> DTO mappers ... Tested independently in `__tests__/...`") and the "YYYY-MM-DD" and "ISO 8601 with offset" doc comments state no node fact, and the lenient string passthrough in formatDateOnly is a code-quality matter.

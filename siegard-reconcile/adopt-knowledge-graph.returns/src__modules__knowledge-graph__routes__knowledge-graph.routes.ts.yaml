@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      Header comment, lines 3-5.
+    evidence: >-
+      // Mounted under `/api/v1/*` by the bootstrap (`app.ts`). The parent scope
+      // already enforces Neon Auth JWT (BR-01); individual handlers do NOT
+      // re-check the token.
+    cost: >-
+      The contract's 401 refusal (no valid owner authentication) is also told in this prose, so the rule has a second home inside a route file. If the auth scope or its error codes change, this comment keeps asserting the old arrangement, and a reader looking for where authentication is enforced can stop here. Code holds the fact in backend/src/app.ts, where registerKnowledgeGraphRoutes is called on the auth-protected `scoped` instance ("await registerKnowledgeGraphRoutes(scoped, { pool, logger, catalog });"). The scope's own comments there say requireNeonAuth applies to every request in it.
+    kind: restates
+    correction: >-
+      Remove the comment. The route to use is the comment route, followed by /reconcile over this file.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      Every handler body in registerKnowledgeGraphRoutes: each service call runs inside withReadOnly(deps.pool, ...).
+    evidence: >-
+      `withReadOnly(deps.pool, async (client) => { const body = await listNodeTypesService(client); ... })`. The same wrapper opens the link-types, attribute-keys, nodes, node, link, attribute, traverse and the three history handlers.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      The REST side only. Service errors are rendered by the shared mapper `mapErrorToHttpResponse`, imported from ../mcp/error-envelope.js and called in the catch paths and in handleReadError, handleTraversalError and handleAttributeKeyHistoryError. This file does not show the MCP side.
+    evidence: >-
+      `const { statusCode, envelope } = mapErrorToHttpResponse(err, details); return reply.status(statusCode).send(envelope);`. Successes are sent as `reply.status(200).send({ ok: true, result: body })`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The REST routes for list-node-types, list-link-types, list-attribute-keys, list-nodes, read-node, read-link, read-attribute, read-link-history, read-attribute-history, read-attribute-key-history and traverse. Search, the provenance reads and list-accepted-fragments are not in this file.
+    evidence: >-
+      `app.get("/node-types", ...)`, `app.get("/nodes/:node_id", ...)`, `app.get("/nodes/:node_id/traverse", ...)`, `app.get("/nodes/:node_id/attributes/:key/history", ...)`. The "over REST also the requested node/link/attribute/key" context is passed as `handleReadError(err, reply, { node_id: params.node_id })`, `{ link_id: params.link_id }`, `{ attribute_id: ... }` and `{ node_id, key }`.
+  - node: rules/knowledge-base/lineage-history
+    held_at: nowhere
+    evidence: >-
+      The history routes only delegate: `getLinkHistoryService(client, params.link_id, deps.logger)`, `getAttributeHistoryService(...)`, `getAttributeKeyHistoryService(client, deps.catalog, { nodeId: params.node_id, key: params.key }, deps.logger)`. The walk over superseded and superseding items is in service/history.service.ts, which is outside this file.
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      The catch blocks of the /attribute-keys and /nodes handlers, which render the refusal. The check itself sits in the services, which receive `deps.catalog`.
+    evidence: >-
+      `if (err instanceof UnknownNodeTypeError) { const { statusCode, envelope } = mapErrorToHttpResponse(err); return reply.status(statusCode).send(envelope); }`
+  - node: rules/knowledge-base/traversal-check-order
+    held_at: nowhere
+    evidence: >-
+      The traverse handler only parses params and query, then calls `traverseNodeService(client, deps.catalog, { startingNodeId, direction, linkTypeNames, depth, asOf, inEffectOnly }, deps.logger)`. `handleTraversalError` renders whichever error arrives. The depth, then link-type, then node-exists, then node-deleted order is decided in service/traversal.service.ts, which is outside this file.
+looked_past: >-
+  The tail docblock on the error wrappers is prose about how unknown errors are re-thrown to the global handler and about the MCP transport. The "Endpoints implemented in TC-04/TC-05" list is prose naming routes the code declares. Both are comment-route matters that I judged as rationale rather than a node's fact, and the info log lines `knowledge_graph_list_nodes_ok` and `knowledge_graph_traverse_ok` are emitted operational text that no node governs.
+candidates_opened: []

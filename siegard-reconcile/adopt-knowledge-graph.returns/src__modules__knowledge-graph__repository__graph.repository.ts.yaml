@@ -1,0 +1,241 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listNodes, the optional alias join built when name_prefix_norm is set (lines 98-102)
+    evidence: >-
+      aliasJoin = `JOIN node_alias na ON na.node_id = kn.id
+                         AND na.alias_norm LIKE $${params.length} || '%'`;
+    cost: >-
+      The bound prefix goes straight into a LIKE pattern, so a percent sign or underscore the owner types in a
+      name prefix acts as a wildcard and matches nodes whose names do not start with those characters. The
+      service only applies norm() (node.service.ts, `norm(input.name_prefix)`), and norm() escapes nothing, so
+      no code in the tree reads the prefix literally. The decision log records this same behavior as the gap
+      the rule closed.
+    kind: contradicts
+    correction: >-
+      The prefix would have to match literally, for example by escaping LIKE metacharacters in the bound value
+      and adding an ESCAPE clause, or by using a literal-prefix comparison.
+    node: rules/knowledge-base/node-listing-name-prefix
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listProvenanceByTargets, the excerpt expression in the SELECT list (lines 322-323)
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                                FOR rc.offset_end - rc.offset_start) AS excerpt
+    cost: >-
+      rc."text" is the chunk's own text, while offset_start and offset_end are offsets into the source. The
+      slice is therefore shifted or empty for any chunk that does not start at offset 0, and the provenance
+      entry loses the text it exists to show. Every graph read (link, attribute, node, traversal, history)
+      takes its excerpt from this function.
+    kind: contradicts
+    correction: >-
+      The entry would have to carry the chunk's whole excerpt, which is rc."text" itself, without re-applying
+      the source offsets.
+    node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listProvenanceByTargets, the join chain and WHERE clause (lines 324-330)
+    evidence: >-
+      JOIN raw_information ri    ON ri.id = rc.raw_information_id
+                WHERE ${targetCol} = ANY($1::uuid[])
+    cost: >-
+      No predicate on the raw information's compliance-deleted state is applied here. A grep of the
+      knowledge-graph services finds none for compliance, so a provenance entry whose source was deleted for
+      compliance can still be shown as traceable. A compliance deletion exists to prevent exactly that.
+    kind: contradicts
+    correction: >-
+      The provenance read would have to leave out entries whose raw information was deleted for compliance.
+    node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a read-only repository of parameterized queries (`client.query<...>`). It declares no
+      operation, envelope, error code or refusal of the retrieval contract.
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      NodeAliasRow.kind, line 140
+    evidence: >-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      the status field of AttributeResolvedRow (line 172) and of LinkResolvedRow (line 250)
+    evidence: >-
+      readonly status: "active" | "uncertain" | "disputed" | "superseded" | "deleted";
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      KnowledgeNodeRow.status, line 28, and ListNodesFilter.status, line 57
+    evidence: >-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      valid_from_source in AttributeResolvedRow (line 174) and LinkResolvedRow (line 252)
+    evidence: >-
+      readonly valid_from_source: "stated" | "document" | "received" | null;
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      AttributeResolvedRow.value_type, line 166
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/attribute-key-history
+    held_at: >-
+      listAttributeHistoryByNodeKey, lines 529-543
+    evidence: >-
+      WHERE na.node_id = $1
+        AND na.attribute_key_id = $2
+      ORDER BY na.recorded_at ASC, na.id ASC
+      No status predicate is applied.
+  - node: rules/knowledge-base/current-assertion
+    held_at: nowhere
+    evidence: >-
+      The file never decides currency. It reads `is_current: boolean` from the resolved views
+      (`SELECT na.* FROM node_attribute_resolved na`). The rule is held in the view, which is outside this file.
+  - node: rules/knowledge-base/effective-status
+    held_at: nowhere
+    evidence: >-
+      The file only declares `readonly effective_status: string;` and reads it from
+      `knowledge_link_resolved` or `node_attribute_resolved`. The derivation is not stated here.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      fetchTraversalHop, lines 400-403
+    evidence: >-
+      if (filter.linkTypeIds !== undefined && filter.linkTypeIds.length > 0) {
+          params.push(filter.linkTypeIds);
+          where.push(`kl.link_type_id = ANY($${params.length}::uuid[])`);
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The excerpt is cut as substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start).
+      It is not the chunk's whole excerpt. See the finding.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The provenance query joins `raw_information ri` and filters only `WHERE ${targetCol} = ANY($1::uuid[])`.
+      See the finding.
+  - node: rules/knowledge-base/graph-provenance-one-entry-per-chunk
+    held_at: >-
+      listProvenanceByTargets, lines 324-328
+    evidence: >-
+      FROM provenance p
+                 JOIN information_fragment f ON f.id = p.fragment_id
+                 JOIN fragment_source fs    ON fs.fragment_id = f.id
+                 JOIN raw_chunk rc          ON rc.id = fs.raw_chunk_id
+      This yields one row per chunk cited by each provenance fragment.
+  - node: rules/knowledge-base/graph-provenance-order
+    held_at: >-
+      listProvenanceByTargets, line 330
+    evidence: >-
+      ORDER BY ${targetCol}, p.created_at ASC, f.id ASC
+  - node: rules/knowledge-base/graph-read-as-of-view
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `asOf` to `applyTemporalFilter("na", params.length + 1, { asOf: filter.asOf, ... })`.
+      The predicate lives in temporal-filter.ts, which is outside this file.
+  - node: rules/knowledge-base/graph-read-current-view
+    held_at: nowhere
+    evidence: >-
+      The file delegates all temporal predicates to `applyTemporalFilter(...)` and states no current-only
+      predicate of its own.
+  - node: rules/knowledge-base/history-order
+    held_at: >-
+      walkLinkHistory (line 481), walkAttributeHistory (line 516) and listAttributeHistoryByNodeKey (line 539)
+    evidence: >-
+      ORDER BY recorded_at ASC, id ASC
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: nowhere
+    evidence: >-
+      The file only reads `readonly is_in_effect: boolean;` from the resolved views. It states no in-effect
+      predicate.
+  - node: rules/knowledge-base/lineage-history
+    held_at: >-
+      walkLinkHistory (lines 459-481) and walkAttributeHistory (lines 494-516)
+    evidence: >-
+      up AS (... UNION SELECT kl.* FROM knowledge_link_resolved kl JOIN up ON kl.id = up.supersedes_link_id),
+      down AS (... JOIN down ON kl.supersedes_link_id = down.id)
+      Both walks apply no status or validity filter.
+  - node: rules/knowledge-base/name-normalization
+    held_at: nowhere
+    evidence: >-
+      listNodes receives `readonly name_prefix_norm?: string;` already normalized and compares it with
+      `na.alias_norm LIKE`. The lower-casing, accent removal, trimming and whitespace collapsing are done
+      outside this file (service/norm.ts).
+  - node: rules/knowledge-base/node-listing-by-status
+    held_at: >-
+      listNodes, lines 86-87
+    evidence: >-
+      const where: string[] = ["kn.status = $1"];
+        params.push(filter.status);
+      The default to active is applied by the caller. The field is required here: `readonly status: ...`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      `na.alias_norm LIKE $${params.length} || '%'` compares aliases as names but does not read the prefix
+      literally. See the finding.
+  - node: rules/knowledge-base/node-listing-one-entry-per-node
+    held_at: >-
+      listNodes, line 121
+    evidence: >-
+      SELECT DISTINCT kn.id, kn.node_type_id, nt.name AS node_type,
+  - node: rules/knowledge-base/node-listing-order
+    held_at: >-
+      listNodes, line 125
+    evidence: >-
+      ORDER BY kn.canonical_name ASC, kn.id ASC
+  - node: rules/knowledge-base/node-listing-total-before-pagination
+    held_at: >-
+      listNodes, lines 110-113
+    evidence: >-
+      const countSql = `SELECT count(DISTINCT kn.id)::int AS total
+                            ${baseFrom}`;
+      The count runs before the LIMIT and OFFSET parameters are pushed.
+  - node: rules/knowledge-base/node-read-alias-order
+    held_at: >-
+      listAliasesByNodeId, line 152
+    evidence: >-
+      ORDER BY kind ASC, alias ASC
+      The `alias_kind` enum is declared ('canonical', 'alias') in migrations/0001_init.sql, so canonical sorts first.
+  - node: rules/knowledge-base/node-read-attribute-order
+    held_at: >-
+      listAttributesByNodeId, line 218
+    evidence: >-
+      ORDER BY na.attribute_key ASC, na.recorded_at ASC, na.id ASC
+  - node: rules/knowledge-base/node-read-excludes-uncertain-on-request
+    held_at: >-
+      listAttributesByNodeId, lines 209-211
+    evidence: >-
+      if (!filter.includeUncertain) {
+          uncertainClause = "AND na.status <> 'uncertain'";
+        }
+  - node: rules/knowledge-base/point-reads-answer-any-status
+    held_at: >-
+      findLinkById (lines 269-271) and findAttributeById (lines 229-231)
+    evidence: >-
+      SELECT kl.*
+         FROM knowledge_link_resolved kl
+         WHERE kl.id = $1
+      The attribute read has the same shape, keyed on `na.id = $1`. Neither applies a status or validity predicate.
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: nowhere
+    evidence: >-
+      fetchTraversalHop takes `direction`, `linkTypeIds?`, `asOf` and `inEffectOnly` from the caller and
+      states no default for any of them. The defaults (both ends, one hop, no as-of date, all link types) are
+      applied in the service.
+  - node: rules/knowledge-base/traversal-direction
+    held_at: >-
+      fetchTraversalHop, lines 394-395
+    evidence: >-
+      const sideCol =
+          filter.direction === "out" ? "kl.source_node_id" : "kl.target_node_id";
+      The both case is left to the caller, which must call the function once for each side.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      findNodesByIds reads `WHERE kn.id = ANY($1::uuid[])` with no status predicate. The exclusion of merged
+      nodes and the listing of the start node happen in the service, outside this file.
+  - node: rules/knowledge-base/traversal-skips-deleted-links
+    held_at: >-
+      fetchTraversalHop, line 417
+    evidence: >-
+      AND kl.status <> 'deleted'
+looked_past: >-
+  The header and inline comments cite BR-xx, UC-xx and CLAUDE.md rules and restate derived-field and ordering facts that the code also holds, which is the comment route's judgment. KnowledgeNodeRow.status also spells the node-status value as `needs_review` where the node writes `needs-review`, which I took to be the storage spelling and did not report.

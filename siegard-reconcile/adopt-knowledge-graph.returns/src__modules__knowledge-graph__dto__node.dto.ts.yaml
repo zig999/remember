@@ -1,0 +1,44 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/node.dto.ts
+    where: >-
+      NodeListResponseSchema, the `limit` field (line 28)
+    evidence: >-
+      limit: z.number().int().min(1).max(100),
+    cost: >-
+      The page-limit bound of 1 to 100 is written a second time here, in a
+      response schema, beside the request-side bound in queries.dto.ts. If the
+      rule moves, this copy does not move with it. A list-nodes response that
+      fell outside 1 to 100 would then fail response validation as an internal
+      error rather than as the page-limit refusal the contract answers. The node
+      is bound to queries.dto.ts, so a change to the node never reaches this
+      file.
+    kind: contradicts
+    correction: >-
+      Either bind rules/knowledge-base/page-limit-bounds to this file too, so the
+      copy is a declared home of the rule, or have the response schema declare
+      `limit` as an integer echo without the bound, leaving the bound to the
+      request schema.
+    node: rules/knowledge-base/page-limit-bounds
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      NodeSummaryResponseSchema, NodeListResponseSchema, NodeDetailResponseSchema
+      and NodeAliasResponseSchema declare the list-nodes and read-node answer
+      shapes, lines 9-39.
+    evidence: >-
+      export const NodeListResponseSchema = z.object({ total: z.number().int().nonnegative(), limit: ..., offset: z.number().int().nonnegative(), items: z.array(NodeSummaryResponseSchema), }); export const NodeDetailResponseSchema = z.object({ node: NodeSummaryResponseSchema, aliases: z.array(NodeAliasResponseSchema), attributes: z.array(AttributeDetailResponseSchema), });
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      NodeAliasResponseSchema, lines 9-14. It declares alias, kind and
+      created_at. The identity field is the one the read-node contract adds to
+      each alias. The node's llm-run reference is not exposed in this read shape.
+    evidence: >-
+      export const NodeAliasResponseSchema = z.object({ id: z.string().uuid(), alias: z.string(), kind: AliasKindSchema, created_at: z.string().datetime({ offset: true }), });
+looked_past: >-
+  The header comment ("Mirror `openapi.yaml` components.schemas") is prose that
+  points at a file and states no node fact, and the closed sets behind
+  AliasKindSchema and NodeStatusSchema live in enums.dto.ts, which is outside the
+  file set.
+candidates_opened:
+  - domain/knowledge-base/node-alias
+  - rules/knowledge-base/page-limit-bounds

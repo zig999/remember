@@ -382,3 +382,177 @@ Left out, grouped by reason:
 (219 fact lines landed in 83 nodes and 32 were left out. The file set is 28 files. `mcp/query-transport.ts` has no candidate.)
 
 **STOP (Step 3).** The owner reviews `git diff -- specification` and commits with pathspec `specification siegard-survey/adopt-knowledge-graph`.
+
+## Step 4 — the adoption
+
+The Step 3 increment was committed as `b199170` (`specification siegard-survey/adopt-knowledge-graph`) before this step, under the same authorization as the earlier steps.
+
+Invocation: `/siegard:reconcile` as an adoption, with slug `adopt-knowledge-graph`, ledger `siegard-survey/adopt-knowledge-graph/ledger.md`, outside none and certifications none. The preconditions held: the module and `siegard-trace.json` were clean, the specification was sound, the trace was sound (289 bindings), and the record path was free. The workspace was `/tmp/tmp.4WlmZhnJki` (mktemp, not committed).
+
+### Staging line (verbatim)
+
+```
+staged adopt-knowledge-graph: 27 file(s) to judge over 0 node(s); staged as an adoption — 83 candidate node(s) from the ledger, 182 pair(s) over 27 file(s) (33 at most on one file), each bound by the fold to the files that hold its fact; 0 file(s) kept outside the judgment; 0 file(s) with nothing left to judge; 28 file(s) the trace binds nothing to, 27 of them judged over the candidates alone
+  manifest and packs at /tmp/tmp.4WlmZhnJki; candidate index at /tmp/tmp.4WlmZhnJki/candidates.txt
+  save each delegation's return verbatim at /home/siegfriedneto/projects/eternal/siegard-reconcile/adopt-knowledge-graph.returns/<file path with '/' as '__'>.yaml
+```
+
+The ledger gave 83 candidates and 182 pairs over 27 files, at most 33 on one file. `mcp/query-transport.ts` has no candidate and got no judge. Nothing went to the mechanical tier, so Step 3b was skipped.
+
+### Node pack sizes
+
+- `src__modules__knowledge-graph__catalog__catalog.ts.md`: 6302 bytes
+- `src__modules__knowledge-graph__dto__attribute.dto.ts.md`: 14444 bytes
+- `src__modules__knowledge-graph__dto__catalog.dto.ts.md`: 16451 bytes
+- `src__modules__knowledge-graph__dto__enums.dto.ts.md`: 4230 bytes
+- `src__modules__knowledge-graph__dto__history.dto.ts.md`: 13956 bytes
+- `src__modules__knowledge-graph__dto__link.dto.ts.md`: 14485 bytes
+- `src__modules__knowledge-graph__dto__node.dto.ts.md`: 13964 bytes
+- `src__modules__knowledge-graph__dto__provenance.dto.ts.md`: 13404 bytes
+- `src__modules__knowledge-graph__dto__queries.dto.ts.md`: 18534 bytes
+- `src__modules__knowledge-graph__dto__traversal.dto.ts.md`: 13401 bytes
+- `src__modules__knowledge-graph__index.ts.md`: 2204 bytes
+- `src__modules__knowledge-graph__mcp__error-envelope.ts.md`: 14201 bytes
+- `src__modules__knowledge-graph__mcp__query-toolset.ts.md`: 16088 bytes
+- `src__modules__knowledge-graph__repository__catalog.repository.ts.md`: 16350 bytes
+- `src__modules__knowledge-graph__repository__graph.repository.ts.md`: 29067 bytes
+- `src__modules__knowledge-graph__repository__temporal-filter.ts.md`: 16193 bytes
+- `src__modules__knowledge-graph__routes__knowledge-graph.routes.ts.md`: 15766 bytes
+- `src__modules__knowledge-graph__service__attribute.service.ts.md`: 14515 bytes
+- `src__modules__knowledge-graph__service__catalog.service.ts.md`: 18284 bytes
+- `src__modules__knowledge-graph__service__errors.ts.md`: 13392 bytes
+- `src__modules__knowledge-graph__service__formatters.ts.md`: 18268 bytes
+- `src__modules__knowledge-graph__service__history.service.ts.md`: 16541 bytes
+- `src__modules__knowledge-graph__service__link.service.ts.md`: 14500 bytes
+- `src__modules__knowledge-graph__service__node.service.ts.md`: 20597 bytes
+- `src__modules__knowledge-graph__service__norm.ts.md`: 1280 bytes
+- `src__modules__knowledge-graph__service__traversal.service.ts.md`: 22470 bytes
+- `src__modules__knowledge-graph__traversal__config.ts.md`: 2237 bytes
+
+### Judges
+
+28 `siegard:specification-conformance-reviewer` delegations ran over 27 files, in three batches of nine.
+- **Saving the returns.** Each return was copied by script from the final message in the agent's own transcript and saved under `siegard-reconcile/adopt-knowledge-graph.returns/`. The only change was stripping the outer ```yaml fence. This avoids the HTML-escaping of the notification transport, and each copy was schema-checked against `conformance-return.json` when saved.
+- **One unusable return.** The first judgment of `repository/catalog.repository.ts` carried a key the contract does not admit (`cost_note` inside a `read` entry). It was kept outside the tree at `/tmp/kg_catalog_repo.refused1.yaml`. A fresh delegation was run with the problem named, and its return is the one saved.
+- **The fold.** `--fold` refused nothing.
+
+### Fold and record check (verbatim)
+
+```
+folded adopt-knowledge-graph.md: 71 node(s) cleared, 7 not — 0 of those collateral, blocked only by an unattributed sibling finding — 0 pair(s) omitted as current and unowed; 5 candidate(s) no file of the set holds, listed under `unheld`
+  next: trace.py --reconciliation siegard-reconcile/adopt-knowledge-graph.md
+adopt-knowledge-graph.md holds: 28 file(s), 71 node(s) the judgment cleared, 7 it did not, 7 file(s) the trace binds nothing to.
+--bind-record will write 71 binding(s) from this record and none for contracts/knowledge-base/retrieval, domain/knowledge-base/source-type, rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt, rules/knowledge-base/graph-provenance-hides-compliance-deleted, rules/knowledge-base/node-listing-name-prefix, rules/knowledge-base/page-limit-bounds, rules/knowledge-base/traversal-expands-live-nodes: a node without `encoded_at` is a node this form cannot bind.
+```
+
+### Bind receipt (tail, verbatim)
+
+```
+bound rules/knowledge-base/traversal-skips-deleted-links to 1 file(s)
+bound rules/knowledge-base/traversal-substitutes-merged-ends to 1 file(s)
+71 binding(s) written at /home/siegfriedneto/projects/eternal/siegard-trace.json, read from adopt-knowledge-graph.md
+  7 node(s) of adopt-knowledge-graph.md the judgment did not clear, and this bind wrote none of them:
+    contracts/knowledge-base/retrieval
+    domain/knowledge-base/source-type
+    rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    rules/knowledge-base/node-listing-name-prefix
+    rules/knowledge-base/page-limit-bounds
+    rules/knowledge-base/traversal-expands-live-nodes
+    each stays as it stood — its drift, where the file was bound before, is still a finding on the next --check; where it was not, --owed is the only report that will ever say so. The record says what was found against it
+```
+
+## Step 5 — what it shows
+
+The full output of the five commands is in `/tmp/kg_step5.txt`. The key lines:
+```
+adopt-knowledge-graph.md holds: 28 file(s), 71 node(s) the judgment cleared, 7 it did not, 7 file(s) the trace binds nothing to.
+39 finding(s) no bind closed, over 29 file(s):
+124 unstated fact(s) the records name, over 54 file(s) — the source states them and no node holds them. No bind closes one and none is counted above:
+286 place(s) the records name where text in the source restates a node's fact the code holds, over 76 file(s). The pair conforms and none is counted above:
+279 tracked file(s) under backend: 88 bound, 191 no binding names
+  13 holds-nothing: judged by an adoption, which bound none of its candidates to it
+  178 unsurveyed: no binding and no adoption names it
+321 current: bound, and every binding computes to what was recorded — the specification and the code stand as they did when the node was last answered
+42 unreached: no initiative names it and nothing binds it — a specification describes more than the work has reached, and this is the part it has not
+Kept apart — the judged side, which no state above counts: 39 finding(s) past reconciliations left open and no bind closed (39 unseen, 0 covered, 0 reported); 118 pair(s) the records answer both ways; 124 unstated fact(s) the source states and no node holds; 286 place(s) text restates a node's fact; 50 node(s) a refused certification left with a testable remainder. A binding that computes is a fact about bytes and a record that found against a node is a fact about a reading — `--owed` names each record.
+29 drift finding(s) over 336 binding(s):
+  27 moved: bound to a node whose text moved since the bind, or a file stamped against an earlier text of a node a later bind restamped elsewhere; `/reconcile` over the bound files re-reads them against the node as it stands, and a delivery of a task implementing the node restamps it
+  2 code over 2 file(s): bound to a file that changed or is gone; `/reconcile` over the files re-reads a file that changed, and `--release` answers one the tree no longer holds
+```
+
+### Count from the record
+
+| outcome | count |
+|---|---|
+| cleared | 71 |
+| contradicts | 7 |
+| unstated | 11 |
+| restates | 40 |
+| unheld | 5 |
+
+**Contradicts: seven nodes, none bound.**
+- `contracts/knowledge-base/retrieval`: src/modules/knowledge-graph/dto/queries.dto.ts, IsoDateOnly, lines 78-80, used as as_of in GetNodeByIdQuerySchema (line 84) and TraverseQuerySchema (line 157): const IsoDateOnly = z   .string()   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"); — The contract refuses an as-of date that is "not a calendar date written as year-month-day". This schema checks only the digit shape, so a value such 
+- `domain/knowledge-base/source-type`: src/modules/knowledge-graph/dto/enums.dto.ts, SourceTypeSchema, lines 69-78: export const SourceTypeSchema = z.enum([   "pdf",   "email",   "ata",   "chat",   "artigo",   "transcricao",   "outro", ]); Node domain/knowledge-base/source-type lists the values: pdf, email, meeting-minutes, chat, article, transcript, other. It adds: "The material's own words for four of the values are `ata` (meeting-mi
+- `rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt`: src/modules/knowledge-graph/repository/graph.repository.ts, listProvenanceByTargets, the excerpt expression in the SELECT list (lines 322-323): substring(rc."text" FROM rc.offset_start + 1                           FOR rc.offset_end - rc.offset_start) AS excerpt — rc."text" is the chunk's own text, while offset_start and offset_end are offsets into the source. The slice is therefore shifted or emp
+- `rules/knowledge-base/graph-provenance-hides-compliance-deleted`: src/modules/knowledge-graph/repository/graph.repository.ts, listProvenanceByTargets, the join chain and WHERE clause (lines 324-330): JOIN raw_information ri    ON ri.id = rc.raw_information_id           WHERE ${targetCol} = ANY($1::uuid[]) — No predicate on the raw information's compliance-deleted state is applied here. A grep of the knowledge-graph services finds none for compliance, so a proven
+- `rules/knowledge-base/node-listing-name-prefix`: src/modules/knowledge-graph/repository/graph.repository.ts, listNodes, the optional alias join built when name_prefix_norm is set (lines 98-102): aliasJoin = `JOIN node_alias na ON na.node_id = kn.id                    AND na.alias_norm LIKE $${params.length} || '%'`; — The bound prefix goes straight into a LIKE pattern, so a percent sign or underscore the owner types in a name prefix acts as a wi
+- `rules/knowledge-base/page-limit-bounds`: src/modules/knowledge-graph/dto/node.dto.ts, NodeListResponseSchema, the `limit` field (line 28): limit: z.number().int().min(1).max(100), — The page-limit bound of 1 to 100 is written a second time here, in a response schema, beside the request-side bound in queries.dto.ts. If the rule moves, this copy does not move with it. A list-nodes response that fell outside 1 to 100 would then fail respons
+- `rules/knowledge-base/traversal-expands-live-nodes`: src/modules/knowledge-graph/service/traversal.service.ts, traverseNodeService lines 102-111 together with the frontier seed in traverseNodes at line 180: let startingResolved = starting; if (   starting.status === "merged" &&   starting.merged_into_node_id !== null ) {   const survivor = await findNodeById(client, starting.merged_into_node_id);   if (survivor !== null && survivor.status !== "delet
+
+Four of the seven are Step 3 decisions that the code does not follow yet: the literal prefix, the whole excerpt, the compliance filter on graph provenance, and the merged start being listed. That last one surfaced as `traversal-expands-live-nodes`, because the unfiltered frontier seed also expands the merged start. The judges found these as the analysis predicted.
+
+The alias order decision did **not** come back as a contradiction. The `alias_kind` enum declares canonical first, so the code already agrees.
+
+The REST node-type listing decision (unknown parameters) was not raised either.
+
+The other three findings are new:
+- **as_of is not checked as a calendar date.** The judge read the contract's refusal as requiring a calendar date. Only search states that, while the graph refusal says "not written as year-month-day". So this is a misreading of the graph refusal, or the two refusals should be unified.
+- **source-type spelling.** The code stores the Portuguese values while the node lists English values. This is a vocabulary decision owed since the ingestion adoption.
+- **Duplicated page-limit bound.** The page-limit bound is repeated in the node-list response schema.
+
+**Unstated: 11 facts, all for `/analyse`.**
+- `dto/catalog.dto.ts`: AttributeKeyResponseSchema, the `version` field (line 79)
+- `dto/catalog.dto.ts`: LinkTypeResponseSchema, the `version` field (line 55)
+- `dto/catalog.dto.ts`: NodeTypeResponseSchema, the `version` field (line 22)
+- `dto/traversal.dto.ts`: line 18, the `score` field of TraversalLinkResponseSchema
+- `mcp/query-toolset.ts`: QueryToolDescriptions.list_node_types, list_link_types and list_attribute_keys, lines 195-202
+- `service/attribute.service.ts`: lines 30-39, the warn branch in getAttributeByIdService
+- `service/formatters.ts`: the `?? new Date(0).toISOString()` fallbacks in toNodeAlias (created_at), toAttributeDetail and toLinkDetail (recorded_at), and toProvenanceEntry (received_at)
+- `service/history.service.ts`: the empty-provenance log in assembleLinkHistory (lines 150-155) and assembleAttributeHistory (lines 174-179)
+- `service/link.service.ts`: the BR-17 branch of getLinkByIdService, lines 35-46
+- `service/node.service.ts`: warnIfEmptyProvenance and its call in getNodeByIdService (lines 126-130 and 141-162)
+- `service/traversal.service.ts`: the warning emitted in traverseNodes, lines 307-315
+
+Six of the eleven are one fact seen from six files: a warning is logged when a non-deleted item has no provenance, and deleted items are exempt. The others are `version` ≥ 1 (three files), the traversal score range 0 to 1, the tool descriptions saying "active" catalog entries, and the 1970 epoch fallback for missing timestamps.
+
+**Unheld: five candidates, which are facts outside the areas or held elsewhere.**
+- `domain/knowledge-base/search-layer`: the error mapper only forwards the allowed layers.
+- The three catalog uniqueness rules: the snapshot indexes by name and enforces nothing. Uniqueness lives in the migrations, which the database adoption binds.
+- `rules/knowledge-base/effective-status`: this is derived in the resolved views.
+
+**Restates: 40 comment findings.** By file: `catalog/catalog.ts` (1), `dto/catalog.dto.ts` (1), `dto/enums.dto.ts` (1), `dto/queries.dto.ts` (2), `dto/traversal.dto.ts` (1), `mcp/error-envelope.ts` (2), `mcp/query-toolset.ts` (1), `repository/temporal-filter.ts` (3), `routes/knowledge-graph.routes.ts` (1), `service/catalog.service.ts` (3), `service/errors.ts` (5), `service/formatters.ts` (1), `service/history.service.ts` (3), `service/node.service.ts` (3), `service/norm.ts` (1), `service/traversal.service.ts` (8), `traversal/config.ts` (3).
+
+**Unbound: 7 files.** These are `dto/history.dto.ts`, `dto/provenance.dto.ts`, `dto/traversal.dto.ts`, `index.ts`, `mcp/error-envelope.ts`, `service/errors.ts` and `mcp/query-transport.ts`. For six of them, every candidate was answered as held nowhere or was blocked. `mcp/query-transport.ts` had no candidate.
+
+**Moved drift the Step 3 increment caused elsewhere.** `--check` now reports 27 moved bindings, up from 17. The files bound to nodes this increment widened are:
+- `migrations/0001_init.sql`
+- four ingestion files: `prompts/extraction.v1.ts`, `catalog/catalog.ts`, `service/entity-resolution.service.ts` and `mcp/mcp-schemas.ts`
+- six query-retrieval files, among them `dto/search.dto.ts` and `service/search.service.ts`
+
+The widened nodes are name-normalization, page-defaults, expansion-depth-bounds, unknown-link-type-refused, expansion-restricted-to-named-link-types, the two narrowed expansion rules, and the catalog elements that gained `version`. These files need a `/reconcile` under a new slug.
+
+### Tokens
+
+`telemetry.py --probe --since 2026-09-30T19:44:17Z` reported the transcripts readable, with one session. The read was announced and run, and the report is `siegard-telemetry/20260930T201619Z.json`.
+
+| agent | runs | output tokens | mean per run |
+|---|---|---|---|
+| domain-surveyor (3 areas, 2 re-runs) | 5 | 99,894 | 19,979 |
+| specification-conformance-reviewer (27 files, 1 re-run) | 28 | 122,283 | 4,367 |
+
+The analysis ran in the orchestrating session and is not separable in the harness figures.
+
+## Step 6 — stop
+
+**STOP.** The owner reviews and commits with pathspec `siegard-trace.json siegard-reconcile siegard-survey/adopt-knowledge-graph siegard-telemetry`.

@@ -1,0 +1,122 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      IsoDateOnly, lines 78-80, used as as_of in GetNodeByIdQuerySchema (line 84) and TraverseQuerySchema (line 157)
+    evidence: >-
+      const IsoDateOnly = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
+    cost: >-
+      The contract refuses an as-of date that is "not a calendar date written as year-month-day". This schema checks only the digit shape, so a value such as 2024-02-30 or 2024-13-45 passes the request DTO. A grep of routes/knowledge-graph.routes.ts, mcp/query-toolset.ts and service/ found no other calendar check. Those files pass `query.as_of` and `input.as_of` straight to the service as `asOf`. The owner gets no VALIDATION_INVALID_FORMAT for such a date. What happens to it depends on whatever consumes the string downstream, which no node decided.
+    kind: contradicts
+    correction: >-
+      The as_of schema would have to refuse a string that is not a real calendar date, not only one that does not match the digit shape.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment above TraverseDirectionSchema, lines 114-117
+    evidence: >-
+      Direction enum mirrors `openapi.yaml` traverseNode `direction` parameter.
+       * Default in this schema is `both` (matches OpenAPI).
+    cost: >-
+      The comment restates the direction set and the default-both rule, which nodes hold, and points at openapi.yaml as a second authority. The code holds both in this file: `z.enum(["out", "in", "both"])` and `.optional().default("both")`. A reader is sent to OpenAPI to learn a fact the specification already states.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact, and the trace links the file to the nodes.
+    node: rules/knowledge-base/traversal-defaults
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment above TraverseDepthCoercer, lines 130-136
+    evidence: >-
+      Out-of-range `depth` is detected here AND re-asserted in the service layer
+       * (defence in depth, BR-05 of back spec). Zod failure surfaces as Zod parse
+       * error (422 VALIDATION_INVALID_FORMAT through the global handler); the
+       * service-layer assertion produces BUSINESS_INVALID_TRAVERSE_DEPTH so the
+       * route can distinguish the two paths.
+    cost: >-
+      The comment restates the depth bounds and the BUSINESS_INVALID_TRAVERSE_DEPTH refusal, which expansion-depth-bounds and the retrieval contract hold. It also misdescribes this file. TraverseDepthCoercer does no range check, so the claim that out-of-range depth is "detected here" is false. The bounds are held in traversal/config.ts (TRAVERSAL_DEPTH_MIN = 1, TRAVERSAL_DEPTH_MAX = 3) and enforced in service/traversal.service.ts lines 344-347, which throws InvalidTraverseDepthError. A reader is misled about where the range is enforced.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by code in service/traversal.service.ts and traversal/config.ts.
+    node: rules/knowledge-base/expansion-depth-bounds
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Request-side parameter validation in the schemas of this file. The schemas are `.strict()`, which refuses an unknown parameter. Identities are `z.string().uuid()`. Switches go through BooleanQuery. Integers go through IntegerQuery. Names are `min(1).max(200)`. Direction is a closed enum. Empty link-type names are refused. The as_of calendar check is contradicted in the findings.
+    evidence: >-
+      export const ListNodesQuerySchema = z.object({ node_type: z.string().min(1).max(200).optional(), ... }).strict();
+      export const NodeIdParamSchema = z.object({ node_id: z.string().uuid() });
+  - node: domain/knowledge-base/node-filter
+    held_at: >-
+      ListNodesQuerySchema, lines 61-71, which declares the node_type, name_prefix, status, limit and offset attributes.
+    evidence: >-
+      name_prefix: z.string().min(1).max(200).optional(),
+          status: NodeStatusSchema.optional(),
+  - node: domain/knowledge-base/node-view
+    held_at: >-
+      GetNodeByIdQuerySchema, lines 82-88, which declares as_of, in_effect_only and include_uncertain.
+    evidence: >-
+      as_of: IsoDateOnly.optional(),
+          in_effect_only: BooleanQuery.optional().default(false),
+          include_uncertain: BooleanQuery.optional().default(true),
+  - node: domain/knowledge-base/traversal-direction
+    held_at: >-
+      TraverseDirectionSchema, line 118.
+    evidence: >-
+      export const TraverseDirectionSchema = z.enum(["out", "in", "both"]);
+  - node: domain/knowledge-base/traversal-request
+    held_at: >-
+      TraverseQuerySchema, lines 152-160, which declares direction, link_types, depth, as_of and in_effect_only.
+    evidence: >-
+      direction: TraverseDirectionSchema.optional().default("both"),
+          link_types: LinkTypesArray.optional(),
+          depth: TraverseDepthCoercer.optional().default(TRAVERSAL_DEPTH_DEFAULT),
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      nowhere. This file does not enforce the 1 to 3 range. TraverseDepthCoercer only coerces to a number, and the bounds are forwarded from traversal/config.ts. Enforcement is in service/traversal.service.ts.
+    evidence: >-
+      export const TRAVERSAL_DEPTH_BOUNDS = {
+        min: TRAVERSAL_DEPTH_MIN,
+        max: TRAVERSAL_DEPTH_MAX,
+      } as const;
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      ListLinkTypesQuerySchema, line 28. It holds only the request switch, defaulting to false. The listing that carries the rules is not in this file.
+    evidence: >-
+      include_rules: BooleanQuery.optional().default(false),
+  - node: rules/knowledge-base/node-view-defaults
+    held_at: >-
+      GetNodeByIdQuerySchema, lines 84-86.
+    evidence: >-
+      as_of: IsoDateOnly.optional(),
+          in_effect_only: BooleanQuery.optional().default(false),
+          include_uncertain: BooleanQuery.optional().default(true),
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      ListNodesQuerySchema, lines 66-69. The other two page-defaults subjects, search and accepted-fragment listing, are not in this file.
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+            .optional()
+            .default(20),
+          offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      ListNodesQuerySchema limit, line 66.
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      ListNodesQuerySchema offset, line 69.
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: >-
+      TraverseQuerySchema, lines 154-158. The depth default is forwarded from traversal/config.ts as TRAVERSAL_DEPTH_DEFAULT. The omitted link_types (follow every link type) and as_of (no date) defaults are the `.optional()` fields.
+    evidence: >-
+      direction: TraverseDirectionSchema.optional().default("both"),
+          link_types: LinkTypesArray.optional(),
+          depth: TraverseDepthCoercer.optional().default(TRAVERSAL_DEPTH_DEFAULT),
+          as_of: IsoDateOnly.optional(),
+          in_effect_only: BooleanQuery.optional().default(false),
+looked_past: >-
+  The file's header comment cites CLAUDE.md "DTO Pattern", BR-02 and BR-19, and names the error codes that Zod failures map to (`VALIDATION_INVALID_FORMAT` and `VALIDATION_OUT_OF_RANGE`). That is prose about the error handler, which is another judgment's.

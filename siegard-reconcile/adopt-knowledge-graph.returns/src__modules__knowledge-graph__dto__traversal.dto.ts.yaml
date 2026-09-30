@@ -1,0 +1,44 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/traversal.dto.ts
+    where: >-
+      lines 1-5, the header comment above the imports
+    evidence: >-
+      // Mirrors `openapi.yaml` components.schemas.TraversalLink and
+      // components.schemas.TraversalResult. The `TraversalLink` is a
+      // `LinkDetail` extended with `hop` and `score` (BR-14 of back spec).
+    cost: >-
+      The comment restates, as prose, the node's fact that each traversal link is a link detail carrying its hop and score. It also names `openapi.yaml` and "BR-14 of back spec" as the authority. A reader who follows the comment goes to those documents and not to the specification node. The comment cannot track the node, and the tooling never reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the fact: `LinkDetailResponseSchema.extend({ hop, score })` in this file. The removal belongs to the comment route, followed by /reconcile over this file.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/dto/traversal.dto.ts
+    where: >-
+      line 18, the `score` field of TraversalLinkResponseSchema
+    evidence: >-
+      score: z.number().min(0).max(1),
+    cost: >-
+      The schema enforces a closed range of 0 to 1 on a traversal link's score. The only node that speaks of the score, rules/knowledge-base/traversal-link-score, says the score is "0.5 raised to the power h" and gives no range. A range of 0 to 1 would be decided by this line alone. The next reader looks in the specification for the range and does not find it. A change to the scoring would then fail response validation with no rule saying why.
+    kind: unstated
+    correction: >-
+      Either give the score's range a node (the traversal-link-score rule, or the traversal link's shape in the retrieval contract), or drop the bound from the schema if the business never decided it. This is for the analysis to settle.
+    node: rules/knowledge-base/traversal-link-score
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      TraversalResultResponseSchema (lines 22-26) and TraversalLinkResponseSchema (lines 16-19). Together they declare the shape the `traverse` operation answers with.
+    evidence: |-
+      export const TraversalResultResponseSchema = z.object({
+        starting_node_id: z.string().uuid(),
+        nodes: z.array(NodeSummaryResponseSchema),
+        links: z.array(TraversalLinkResponseSchema),
+      });
+      export const TraversalLinkResponseSchema = LinkDetailResponseSchema.extend({
+        hop: z.number().int().min(TRAVERSAL_DEPTH_MIN).max(TRAVERSAL_DEPTH_MAX),
+        score: z.number().min(0).max(1),
+      });
+looked_past: >-
+  The file imports the hop bounds from `../traversal/config.js` and states no depth value itself, so the depth bound of 1 to 3 is held elsewhere and not judged here.
+candidates_opened:
+  - rules/knowledge-base/traversal-link-score
+  - rules/knowledge-base/expansion-depth-bounds

@@ -1,0 +1,97 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/catalog.dto.ts
+    where: >-
+      NodeTypeResponseSchema, the `version` field (line 22)
+    evidence: >-
+      version: z.number().int().min(1),
+    cost: >-
+      The lower bound of 1 on a node type's version is enforced only here. The node declares `version` as a required integer with no bound. The next reader who looks for the smallest valid version in the specification will not find it.
+    kind: unstated
+    correction: >-
+      Either domain/knowledge-base/node-type states the lower bound on `version`, or the schema drops `.min(1)`.
+    node: domain/knowledge-base/node-type
+  - file: src/modules/knowledge-graph/dto/catalog.dto.ts
+    where: >-
+      LinkTypeResponseSchema, the `version` field (line 55)
+    evidence: >-
+      version: z.number().int().min(1),
+    cost: >-
+      The lower bound of 1 on a link type's version is enforced only here. The node declares `version` as a required integer with no bound.
+    kind: unstated
+    correction: >-
+      Either domain/knowledge-base/link-type states the lower bound on `version`, or the schema drops `.min(1)`.
+    node: domain/knowledge-base/link-type
+  - file: src/modules/knowledge-graph/dto/catalog.dto.ts
+    where: >-
+      AttributeKeyResponseSchema, the `version` field (line 79)
+    evidence: >-
+      version: z.number().int().min(1),
+    cost: >-
+      The lower bound of 1 on an attribute key's version is enforced only here. The node declares `version` as a required integer with no bound.
+    kind: unstated
+    correction: >-
+      Either domain/knowledge-base/attribute-key states the lower bound on `version`, or the schema drops `.min(1)`.
+    node: domain/knowledge-base/attribute-key
+  - file: src/modules/knowledge-graph/dto/catalog.dto.ts
+    where: >-
+      the doc comment above `valid_values` in AttributeKeyResponseSchema (lines 80-85)
+    evidence: >-
+      Present ONLY when the key
+         * has a closed domain; absent means OPEN (any literal parsing against
+         * `value_type` is accepted).
+    cost: >-
+      The comment is a second home for the rule that `valid_values` appears only for a key the catalog closes. The contract holds that rule. The code holds it in `valid_values: z.array(z.string()).optional()`. If the contract changes, the comment keeps saying the old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by contracts/knowledge-base/retrieval (list-attribute-keys) and by the `.optional()` declaration in this file.
+    node: contracts/knowledge-base/retrieval
+
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The response shapes NodeTypeListResponseSchema, LinkTypeListResponseSchema and AttributeKeyListResponseSchema, with their item schemas and LinkTypeRuleResponseSchema (lines 18-96). They carry the list-node-types, list-link-types and list-attribute-keys accepted answers.
+    evidence: >-
+      total: z.number().int().nonnegative(),
+        items: z.array(LinkTypeResponseSchema),
+      ... rules: z.array(LinkTypeRuleResponseSchema).optional(),
+      ... valid_values: z.array(z.string()).optional(),
+      ... valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      AttributeKeyResponseSchema (lines 70-87). It declares id, node_type, key, value_type, is_temporal, allows_multiple_current, requires_valid_from, description, version and valid_values.
+    evidence: >-
+      export const AttributeKeyResponseSchema = z.object({
+        id: z.string().uuid(),
+        node_type: z.string(),
+        key: z.string(),
+        value_type: AttributeValueTypeSchema,
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      LinkTypeResponseSchema (lines 45-57). It declares name, label, inverse_name, description, is_temporal, allows_multiple_current, requires_valid_from, requires_valid_to_on_change, version and rules.
+    evidence: >-
+      export const LinkTypeResponseSchema = z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        label: z.string(),
+        description: z.string(),
+        inverse_name: z.string(),
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      LinkTypeRuleResponseSchema (lines 36-42). It declares the source and target node-type names and valid_from and valid_to as nullable dates.
+    evidence: >-
+      source_node_type: z.string(),
+        target_node_type: z.string(),
+        valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+        valid_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      NodeTypeResponseSchema (lines 18-23). It declares id, name, description and version.
+    evidence: >-
+      export const NodeTypeResponseSchema = z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        description: z.string(),
+        version: z.number().int().min(1),
+
+looked_past: >-
+  The header comment says catalog data is migration-only (BR-10) and that the in-memory cache serves query-parameter validation (BR-03, BR-04). The valid_values comment also says the list is "sorted". These are prose with no code in this file behind them, so I did not file them.

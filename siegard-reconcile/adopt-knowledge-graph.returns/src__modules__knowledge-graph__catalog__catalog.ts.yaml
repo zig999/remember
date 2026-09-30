@@ -1,0 +1,109 @@
+findings:
+  - file: src/modules/knowledge-graph/catalog/catalog.ts
+    where: >-
+      the comment above the accumulation loop in buildSnapshot(), lines 173-175
+    evidence: >-
+      // BR-30 — accumulate the closed value domain per attribute_key_id. The DB's
+      // UNIQUE(attribute_key_id, value) constraint already guarantees uniqueness;
+      // the `Set` deduplicates hand-built test fixtures too.
+    cost: >-
+      The comment states "no two allowed values of one attribute key hold the same value" a second time, in prose. The specification holds that rule in a node, and this file holds it in behavior, because the `Set` (`bucket.add(r.value)`) cannot hold two equal values. A reader looking for where the uniqueness lives finds the comment first and takes it for the decision. If the node moves, `--check` never reaches this prose.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the node and by the `Set` in this file, so the prose owes only its removal.
+    node: rules/knowledge-base/allowed-value-unique-per-key
+read:
+  - node: domain/knowledge-base/allowed-value
+    held_at: >-
+      interface AttributeValidValueRow, lines 63-66, which declares only `attribute_key_id` and `value`. It is held in part, and the rest of the shape is declared elsewhere.
+    evidence: >-
+      export interface AttributeValidValueRow {
+        readonly attribute_key_id: string;
+        readonly value: string;
+      }
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      interface AttributeKeyRow, lines 50-60.
+    evidence: >-
+      export interface AttributeKeyRow {
+        readonly id: string;
+        readonly node_type_id: string;
+        readonly key: string;
+        readonly value_type: "date" | "number" | "text" | "bool";
+        readonly is_temporal: boolean;
+        readonly allows_multiple_current: boolean;
+        readonly requires_valid_from: boolean;
+        readonly description: string;
+        readonly version: number;
+      }
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      interface LinkTypeRow, lines 26-37.
+    evidence: >-
+      export interface LinkTypeRow {
+        readonly id: string;
+        readonly name: string;
+        readonly label: string;
+        readonly description: string;
+        readonly inverse_name: string;
+        readonly is_temporal: boolean;
+        readonly allows_multiple_current: boolean;
+        readonly requires_valid_from: boolean;
+        readonly requires_valid_to_on_change: boolean;
+        readonly version: number;
+      }
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      interface LinkTypeRuleRow, lines 40-47.
+    evidence: >-
+      export interface LinkTypeRuleRow {
+        readonly id: string;
+        readonly link_type_id: string;
+        readonly source_node_type_id: string;
+        readonly target_node_type_id: string;
+        readonly valid_from: Date | null;
+        readonly valid_to: Date | null;
+      }
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      interface NodeTypeRow, lines 18-23.
+    evidence: >-
+      export interface NodeTypeRow {
+        readonly id: string;
+        readonly name: string;
+        readonly description: string;
+        readonly version: number;
+      }
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the string-literal union on AttributeKeyRow.value_type, line 54. The file declares no named enumeration.
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/allowed-value-unique-per-key
+    held_at: >-
+      the per-key `Set` accumulation in buildSnapshot(), lines 176-184.
+    evidence: >-
+      bucket = new Set<string>();
+      attributeValidValuesByKeyId.set(r.attribute_key_id, bucket);
+      ...
+      bucket.add(r.value);
+  - node: rules/knowledge-base/attribute-key-unique-per-node-type
+    held_at: >-
+      nowhere. The file indexes rows by `(node_type_id, key)` but enforces nothing. A second row with the same pair overwrites the first without a refusal.
+    evidence: >-
+      attributeKeyByNodeTypeAndKey.set(
+        attributeKeyCacheKey(r.node_type_id, r.key),
+        r
+      );
+  - node: rules/knowledge-base/link-type-name-unique
+    held_at: >-
+      nowhere. The file indexes link types by name and enforces nothing. A duplicate name overwrites silently.
+    evidence: >-
+      linkTypeByName.set(r.name, r);
+  - node: rules/knowledge-base/node-type-name-unique
+    held_at: >-
+      nowhere. The file indexes node types by name and enforces nothing. A duplicate name overwrites silently.
+    evidence: >-
+      nodeTypeByName.set(r.name, r);
+looked_past: >-
+  The header and `attributeValidValuesByKeyId` comments (catalog data changes only by versioned migration, cache invalidation is a process restart, a key without an entry has an open domain) state facts only in prose, since no code in this file applies them, so I left them as comment-route matters and did not file them as findings.

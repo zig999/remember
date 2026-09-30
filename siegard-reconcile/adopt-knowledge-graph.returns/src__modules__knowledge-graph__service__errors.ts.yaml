@@ -1,0 +1,70 @@
+findings:
+  - file: src/modules/knowledge-graph/service/errors.ts
+    where: >-
+      the doc comment above NodeDeletedError (line 20)
+    evidence: >-
+      /** BR-11 — `KnowledgeNode.status = 'deleted'` returns HTTP 410. */
+    cost: >-
+      The comment restates a refusal the class already carries in code (`statusCode = 410`, `code = "BUSINESS_NODE_DELETED"`). It cites a back-spec rule id (BR-11) that no node in the specification answers to. A reader can take it as a second home for the fact, and it can go stale without anything failing.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The class itself holds the fact, so there is nothing else to change.
+    node: rules/knowledge-base/deleted-node-read-refused
+  - file: src/modules/knowledge-graph/service/errors.ts
+    where: >-
+      the doc comment above UnknownNodeTypeError (line 33)
+    evidence: >-
+      /** BR-03 — `node_type` filter does not match the catalog. */
+    cost: >-
+      The comment restates the catalog-membership refusal that the class already holds in code (`statusCode = 422`, `code = "BUSINESS_UNKNOWN_NODE_TYPE"`). It cites a back-spec id, not a node.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route.
+    node: rules/knowledge-base/node-type-filter-in-catalog
+  - file: src/modules/knowledge-graph/service/errors.ts
+    where: >-
+      the doc comment above UnknownLinkTypeError (line 46)
+    evidence: >-
+      /** BR-04 — a `link_types[]` element is not registered in the catalog. */
+    cost: >-
+      The comment restates the unknown-link-type refusal that the class already holds in code (`statusCode = 422`, `code = "BUSINESS_UNKNOWN_LINK_TYPE"`). It cites a back-spec id, not a node.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route.
+    node: rules/knowledge-base/unknown-link-type-refused
+  - file: src/modules/knowledge-graph/service/errors.ts
+    where: >-
+      the doc comment above InvalidTraverseDepthError (line 59)
+    evidence: >-
+      /** BR-05 — `depth` parameter is outside `[TRAVERSAL_DEPTH_MIN, TRAVERSAL_DEPTH_MAX]`. */
+    cost: >-
+      The comment restates the depth bound, which code holds elsewhere. It names constants that traversal.service.ts (lines 344-347) compares against before throwing this error, and that dto/queries.dto.ts and dto/traversal.dto.ts use. It cites a back-spec id, not a node.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The bound is held in backend/src/modules/knowledge-graph/service/traversal.service.ts and the traversal config.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/service/errors.ts
+    where: >-
+      the doc comment above UnknownAttributeKeyError (line 74)
+    evidence: >-
+      /** BR-20 — `(node_type, key)` pair is not registered in the catalog. */
+    cost: >-
+      The comment restates the registered-key refusal that the class already holds in code (`statusCode = 404`, `code = "BUSINESS_UNKNOWN_ATTRIBUTE_KEY"`). It cites a back-spec id, not a node.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route.
+    node: rules/knowledge-base/attribute-key-history-requires-registered-key
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The five refusal classes in the file: ResourceNotFoundError (404 RESOURCE_NOT_FOUND), NodeDeletedError (410 BUSINESS_NODE_DELETED), UnknownNodeTypeError (422 BUSINESS_UNKNOWN_NODE_TYPE), UnknownLinkTypeError (422 BUSINESS_UNKNOWN_LINK_TYPE), InvalidTraverseDepthError (422 BUSINESS_INVALID_TRAVERSE_DEPTH, carrying depth and max) and UnknownAttributeKeyError (404 BUSINESS_UNKNOWN_ATTRIBUTE_KEY, carrying nodeType and key).
+    evidence: >-
+      public readonly statusCode = 404; public readonly code = "RESOURCE_NOT_FOUND" as const; ... public readonly statusCode = 410; public readonly code = "BUSINESS_NODE_DELETED" as const; ... public readonly statusCode = 422; public readonly code = "BUSINESS_UNKNOWN_NODE_TYPE" as const; ... public readonly code = "BUSINESS_UNKNOWN_LINK_TYPE" as const; ... public readonly code = "BUSINESS_INVALID_TRAVERSE_DEPTH" as const; ... public readonly statusCode = 404; public readonly code = "BUSINESS_UNKNOWN_ATTRIBUTE_KEY" as const;
+looked_past: >-
+  The file's header comment restating that the route layer maps each error to an HTTP status and code is another judgment's (a comment route). The hardcoded "1" in the InvalidTraverseDepthError message agrees with the depth rule's 1-to-3 bound, so it is no finding.
+candidates_opened:
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/deleted-node-read-refused
+  - rules/knowledge-base/node-type-filter-in-catalog
+  - rules/knowledge-base/attribute-key-history-requires-registered-key
+  - rules/knowledge-base/unknown-link-type-refused

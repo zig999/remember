@@ -1,0 +1,113 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/enums.dto.ts
+    where: >-
+      SourceTypeSchema, lines 69-78
+    evidence: >-
+      export const SourceTypeSchema = z.enum([
+        "pdf",
+        "email",
+        "ata",
+        "chat",
+        "artigo",
+        "transcricao",
+        "outro",
+      ]);
+      Node domain/knowledge-base/source-type lists the values: pdf, email, meeting-minutes, chat, article, transcript, other. It adds: "The material's own words for four of the values are `ata` (meeting-minutes), `artigo` (article), `transcricao` (transcript) and `outro` (other)."
+    cost: >-
+      The source declares four values as the material's Portuguese words (ata, artigo, transcricao, outro). The node holds meeting-minutes, article, transcript and other as the values, and names the Portuguese words only as the material's own. No node says the Portuguese words are the stored or wire form, so a reader who looks to the specification for the vocabulary will not find the one this file enumerates. Changing either side would leave the two disagreeing with no record of which was decided.
+    kind: contradicts
+    correction: >-
+      Decide which vocabulary is the stored and wire form, and have the node state it, or have this schema carry the node's values. The code cannot be asked to read the node.
+    node: domain/knowledge-base/source-type
+  - file: src/modules/knowledge-graph/dto/enums.dto.ts
+    where: >-
+      the comment above EffectiveStatusSchema, lines 30-33
+    evidence: >-
+      /**
+       * Derived `effective_status` computed inside the resolved views (§5.4 / A9).
+       * Includes the read-only `inactive` projection that is never stored.
+       */
+    cost: >-
+      The comment restates the effective-status node's fact that `inactive` is derived and never stored. The code holds it too: `AssertionStatusSchema` omits `inactive` and `EffectiveStatusSchema` adds it. The pair conforms, but the prose is a second home for the fact and will drift from the node if the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The node already holds the fact, and the two schemas carry it as code.
+    node: domain/knowledge-base/effective-status
+read:
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      AliasKindSchema, line 66
+    evidence: >-
+      export const AliasKindSchema = z.enum(["canonical", "alias"]);
+  - node: domain/knowledge-base/assertion-flag
+    held_at: >-
+      AssertionFlagSchema, lines 45-49. The third value is spelled `low_confidence`, where the node has `low-confidence`.
+    evidence: >-
+      export const AssertionFlagSchema = z.enum([
+        "uncertain",
+        "disputed",
+        "low_confidence",
+      ]);
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      AssertionStatusSchema, lines 21-27
+    evidence: >-
+      export const AssertionStatusSchema = z.enum([
+        "active",
+        "uncertain",
+        "disputed",
+        "superseded",
+        "deleted",
+      ]);
+  - node: domain/knowledge-base/effective-status
+    held_at: >-
+      EffectiveStatusSchema, lines 34-41
+    evidence: >-
+      export const EffectiveStatusSchema = z.enum([
+        "active",
+        "uncertain",
+        "disputed",
+        "superseded",
+        "deleted",
+        "inactive",
+      ]);
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      NodeStatusSchema, lines 12-17. The second value is spelled `needs_review`, where the node has `needs-review`.
+    evidence: >-
+      export const NodeStatusSchema = z.enum([
+        "active",
+        "needs_review",
+        "merged",
+        "deleted",
+      ]);
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      SourceTypeSchema, lines 69-78. It declares the enumeration, but four of its values are spelled differently from the node's, so the finding above applies.
+    evidence: >-
+      export const SourceTypeSchema = z.enum([
+        "pdf",
+        "email",
+        "ata",
+        "chat",
+        "artigo",
+        "transcricao",
+        "outro",
+      ]);
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      ValidFromSourceSchema, line 53
+    evidence: >-
+      export const ValidFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      AttributeValueTypeSchema, lines 57-62
+    evidence: >-
+      export const AttributeValueTypeSchema = z.enum([
+        "date",
+        "number",
+        "text",
+        "bool",
+      ]);
+looked_past: >-
+  Two things were not reported. The values `needs_review` and `low_confidence` use underscores where the nodes use hyphens, and I read that as an identifier-spelling convention, not a differing value. The remaining comments (the "Mirrors DB enum ..." lines and the header) only cite openapi.yaml, the migration and other sections, so they are prose for the comment route.

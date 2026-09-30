@@ -1,0 +1,171 @@
+findings:
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment above the status default in listNodesService (line 62)
+    evidence: >-
+      // BR-15 — default to active when caller omits status.
+    cost: >-
+      The active-by-default rule is stated in prose beside the code that applies it, so a second home exists outside behavior. If the node moves, the comment keeps claiming the old default and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by `const status: NodeStatus = input.status ?? "active";` in this file.
+    node: rules/knowledge-base/node-listing-by-status
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment above the deleted check in getNodeByIdService (line 101)
+    evidence: >-
+      // BR-11 — deleted -> 410 (row exists but tombstoned).
+    cost: >-
+      The refusal of a deleted node and its 410 status are restated in prose. The status code belongs to the contract and the error mapping, so the comment is a second home that can go stale without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal stays held by `if (node.status === "deleted") { throw new NodeDeletedError(input.nodeId); }` in this file.
+    node: rules/knowledge-base/deleted-node-read-refused
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment after the deleted check in getNodeByIdService (line 105)
+    evidence: >-
+      // Merged nodes return 200 with the merged_into pointer; caller follows.
+    cost: >-
+      The rule that a merged node is answered as itself is stated in prose. The code holds it only by not following the pointer, so the comment is the one place a reader sees the rule named.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior stays held by the fact that only `node.status === "deleted"` is refused and `toNodeSummary(node)` is returned for a merged node.
+    node: rules/knowledge-base/merged-node-read-as-itself
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      warnIfEmptyProvenance and its call in getNodeByIdService (lines 126-130 and 141-162)
+    evidence: >-
+      if (r.status === "deleted") continue;
+          const arr = provenanceByAttrId.get(r.id);
+          if (arr === undefined || arr.length === 0) {
+            logger.warn(
+      ...
+              "knowledge_graph_empty_provenance"
+    cost: >-
+      The system emits a warning for every non-deleted attribute that has no provenance, and skips deleted ones. No node holds this. The grep of the full-text projection for empty provenance, WARN and log terms finds only the refusal on the provenance reads and the rule that a graph read shows an empty list. Because the warning exists only here, it reads as a decision the business made, and the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the warning a node, or decide it is not a business fact. A natural home is rules/knowledge-base/graph-read-shows-empty-provenance or a sibling rule.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the returns of listNodesService (`total`, `limit`, `offset`, `items`) and getNodeByIdService (`node`, `aliases`, `attributes`). The refusal throws of UnknownNodeTypeError, ResourceNotFoundError and NodeDeletedError are also in this file. Their HTTP and MCP mapping is in other files.
+    evidence: >-
+      return {
+          total: repoResult.total,
+          limit: input.limit,
+          offset: input.offset,
+          items: repoResult.items.map(toNodeSummary),
+        };
+      ...
+      return {
+          node: toNodeSummary(node),
+          aliases: aliases.map(toNodeAlias),
+          attributes: attributeRows.map((r) =>
+            toAttributeDetail(r, provenanceByAttrId.get(r.id) ?? [])
+          ),
+        };
+  - node: domain/knowledge-base/node-filter
+    held_at: >-
+      the ListNodesInput interface
+    evidence: >-
+      export interface ListNodesInput {
+        readonly node_type?: string;
+        readonly name_prefix?: string;
+        readonly status?: NodeStatus;
+        readonly limit: number;
+        readonly offset: number;
+      }
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere. The file only imports the NodeStatus type, which is declared in dto/enums.dto.js.
+    evidence: >-
+      import type { NodeStatus } from "../dto/enums.dto.js";
+  - node: domain/knowledge-base/node-view
+    held_at: >-
+      the GetNodeByIdInput interface
+    evidence: >-
+      export interface GetNodeByIdInput {
+        readonly nodeId: string;
+        readonly asOf?: string;
+        readonly inEffectOnly: boolean;
+        readonly includeUncertain: boolean;
+      }
+  - node: rules/knowledge-base/deleted-node-read-refused
+    held_at: >-
+      the deleted-status branch in getNodeByIdService
+    evidence: >-
+      if (node.status === "deleted") {
+          throw new NodeDeletedError(input.nodeId);
+        }
+  - node: rules/knowledge-base/graph-read-as-of-view
+    held_at: >-
+      nowhere. The file only forwards `asOf` to listAttributesByNodeId, and the view is applied in the repository.
+    evidence: >-
+      listAttributesByNodeId(client, {
+            nodeId: input.nodeId,
+            asOf: input.asOf,
+  - node: rules/knowledge-base/graph-read-current-view
+    held_at: >-
+      nowhere. The file applies no current filter of its own and delegates to the repository call.
+    evidence: >-
+      listAttributesByNodeId(client, {
+            nodeId: input.nodeId,
+            asOf: input.asOf,
+            inEffectOnly: input.inEffectOnly,
+  - node: rules/knowledge-base/graph-read-in-effect-only
+    held_at: >-
+      nowhere. The file only forwards `inEffectOnly` to the repository.
+    evidence: >-
+      inEffectOnly: input.inEffectOnly,
+  - node: rules/knowledge-base/graph-read-shows-empty-provenance
+    held_at: >-
+      the attribute mapping in the return of getNodeByIdService, where an attribute with no provenance gets an empty list
+    evidence: >-
+      toAttributeDetail(r, provenanceByAttrId.get(r.id) ?? [])
+  - node: rules/knowledge-base/merged-node-read-as-itself
+    held_at: >-
+      the status check in getNodeByIdService. Only "deleted" is refused, and a merged node is returned through toNodeSummary without following its pointer.
+    evidence: >-
+      if (node.status === "deleted") {
+          throw new NodeDeletedError(input.nodeId);
+        }
+      ...
+      node: toNodeSummary(node),
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the norm() call on the name prefix in listNodesService. The norm implementation is in ./norm.js, which is not part of this file set.
+    evidence: >-
+      const name_prefix_norm =
+          input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
+  - node: rules/knowledge-base/node-listing-by-status
+    held_at: >-
+      the status default in listNodesService, passed on to the repository
+    evidence: >-
+      const status: NodeStatus = input.status ?? "active";
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      the prefix normalization in listNodesService, handed to the repository as `name_prefix_norm`. This file does not match against aliases or read the prefix literally. Those parts are the repository's.
+    evidence: >-
+      const name_prefix_norm =
+          input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
+      ...
+      name_prefix_norm,
+  - node: rules/knowledge-base/node-read-excludes-uncertain-on-request
+    held_at: >-
+      nowhere. The file only forwards `includeUncertain` to listAttributesByNodeId and applies no filter on uncertain status.
+    evidence: >-
+      includeUncertain: input.includeUncertain,
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      the catalog lookup and throw in listNodesService
+    evidence: >-
+      const row = catalog.nodeTypeByName.get(input.node_type);
+          if (row === undefined) {
+            throw new UnknownNodeTypeError(input.node_type);
+          }
+looked_past: >-
+  The file header comment restating the layering and the BR-03, BR-15, BR-11 and BR-09 references, the "BR-01 of `.spec.md`" comment, and the batching of provenance into one SQL call are prose or performance shape, not domain facts, and I did not report them.
+candidates_opened: []

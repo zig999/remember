@@ -1,0 +1,62 @@
+findings:
+  - file: src/modules/knowledge-graph/service/attribute.service.ts
+    where: >-
+      lines 30-39, the warn branch in getAttributeByIdService
+    evidence: |-
+      if (row.status !== "deleted" && provenance.length === 0) {
+        logger.warn(
+          {
+            route: "GET /api/v1/attributes/:attribute_id",
+            attribute_id: row.id,
+            status: row.status,
+          },
+          "knowledge_graph_empty_provenance"
+        );
+      }
+    cost: >-
+      The code treats an attribute with no provenance as an anomaly worth a warning, unless its status is
+      deleted. No node states that rule or the deleted exemption. The empty-provenance nodes only say that a
+      graph read shows an empty list and that a provenance read is refused. A reader changing what counts as
+      anomalous, or which statuses are exempt, has nowhere in the specification to look. The log event name
+      and its fields also live only in this file.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether a non-deleted item with an empty provenance chain is an
+      operator-visible anomaly. If it is, it needs a node, probably beside
+      rules/knowledge-base/graph-read-shows-empty-provenance, stating the condition and the status
+      exemption. If it is not, the branch goes.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getAttributeByIdService (lines 14-42), for the read-attribute operation only. The not-found refusal is
+      the throw at lines 20-22, and the accepted answer is the return at line 41. The other operations of the
+      contract are held in other files.
+    evidence: |-
+      if (row === null) {
+        throw new ResourceNotFoundError("NodeAttribute", attributeId);
+      }
+      ...
+      return toAttributeDetail(row, provenance);
+  - node: rules/knowledge-base/graph-read-shows-empty-provenance
+    held_at: >-
+      line 28 and line 41. A missing provenance group falls back to an empty list, and that list is passed to
+      the detail builder.
+    evidence: |-
+      const provenance = provenanceByAttrId.get(row.id) ?? [];
+      ...
+      return toAttributeDetail(row, provenance);
+  - node: rules/knowledge-base/point-reads-answer-any-status
+    held_at: >-
+      lines 19-22 and 41. The service applies no status or validity gate and returns the found row whatever
+      its status. The lookup itself is findAttributeById in graph.repository.ts, which is outside this file.
+    evidence: |-
+      const row = await findAttributeById(client, attributeId);
+      if (row === null) {
+        throw new ResourceNotFoundError("NodeAttribute", attributeId);
+      }
+looked_past: >-
+  The header comment on line 1 ("NodeAttribute read service — getAttributeById.") only names the file's
+  purpose and states no node fact, so it is another judgment's.
+candidates_opened:
+  - rules/knowledge-base/empty-provenance-chain-refused

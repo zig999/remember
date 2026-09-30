@@ -1,0 +1,84 @@
+findings:
+  - file: src/modules/knowledge-graph/service/catalog.service.ts
+    where: >-
+      the comment inside listAttributeKeysService's unknown-node-type branch, line 102
+    evidence: >-
+      // BR-03 — fail fast before SQL.
+    cost: >-
+      The comment states, in prose, the refusal of a node type the catalog does not hold. The branch that throws `UnknownNodeTypeError` already holds that refusal, so the fact now lives in a second place. A later change to the refusal has a comment to keep in step that no tool reaches.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior stays as it is: `throw new UnknownNodeTypeError(options.node_type)` holds the fact in this file.
+    node: rules/knowledge-base/node-type-filter-in-catalog
+  - file: src/modules/knowledge-graph/service/catalog.service.ts
+    where: >-
+      the comment above the valid-values grouping in listAttributeKeysService, lines 110-112
+    evidence: >-
+      // BR-30 — attach closed-domain values so REST/MCP clients see the allowed
+      // set up-front (parity with the chat ontology block). Group per key id;
+      // keys with no rows stay OPEN (no `valid_values`).
+    cost: >-
+      The comment restates that `valid_values` appears only for a key the catalog closes. The conditional `values !== undefined && values.length > 0 ? { ...base, valid_values: ... } : base` holds that fact too. The fact now has a prose home that drifts silently.
+    kind: restates
+    correction: >-
+      Remove the comment. The construct at lines 140-143 keeps holding the fact.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/service/catalog.service.ts
+    where: >-
+      the doc comment on formatDate, line 148
+    evidence: >-
+      /** Format `Date` as `YYYY-MM-DD` using UTC components (DB dates are TZ-less). */
+    cost: >-
+      The comment restates the year-month-day format of a rule's validity start and end. The body of `formatDate` builds that format from UTC components, so the code already holds it. The prose is a second home for the format.
+    kind: restates
+    correction: >-
+      Remove the doc comment. `formatDate` holds the format.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      listNodeTypesService (lines 26-39), listLinkTypesService (lines 42-90) and listAttributeKeysService (lines 93-146). Each builds the `total` and `items` answer for its listing. Attribute keys carry `valid_values` only when the key is closed. A link type's `rules` appear only when rules are asked for.
+    evidence: >-
+      return { total: rows.length, items: rows.map((r) => ({ id: r.id, name: r.name, description: r.description, version: r.version, })), }; ... return { ...base, rules }; ... return values !== undefined && values.length > 0 ? { ...base, valid_values: [...values].sort() } : base;
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only fills attribute-key fields into a response object typed by an import, `import type { AttributeKeyListResponse, ... } from "../dto/catalog.dto.js"`. It declares no shape for the element. `base = { id: r.id, node_type: r.node_type, key: r.key, value_type: r.value_type, is_temporal: r.is_temporal, ... }` only passes values along.
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes link-type fields along: `base = { id: lt.id, name: lt.name, label: lt.label, ... version: lt.version }`. The shape is declared in the imported `LinkTypeListResponse` from `../dto/catalog.dto.js`, not here.
+  - node: domain/knowledge-base/link-type-rule
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only maps rule fields into a response: `const rules: LinkTypeRuleResponse[] = ruleRows.map((r) => ({ id: r.id, source_node_type: r.source_node_type, ... }))`. `LinkTypeRuleResponse` and `LinkTypeRuleJoined` are imported from other files, so the shape is not declared here.
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes node-type fields along: `items: rows.map((r) => ({ id: r.id, name: r.name, description: r.description, version: r.version }))`. The response shape comes from the imported `NodeTypeListResponse`.
+  - node: rules/knowledge-base/allowed-values-in-string-order
+    held_at: >-
+      the `valid_values` expression in listAttributeKeysService, line 142
+    evidence: >-
+      { ...base, valid_values: [...values].sort() }
+  - node: rules/knowledge-base/attribute-key-listing-by-node-type
+    held_at: >-
+      lines 98-108 of listAttributeKeysService. The file resolves the named node type to an id and forwards it as the listing filter. The predicate that restricts the rows sits in the repository function, outside this file.
+    evidence: >-
+      nodeTypeId = row.id; ... const rows = await listAttributeKeys(client, { node_type_id: nodeTypeId });
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      the `options.include_rules` branch (lines 48-60) and the early return in the item mapper (line 77). Rules are fetched and attached only when asked for. No window filter is applied.
+    evidence: >-
+      if (options.include_rules) { rulesByLinkType = new Map(); const rules = await listLinkTypeRules(client); ... } ... if (rulesByLinkType === null) return base;
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      the node-type lookup branch in listAttributeKeysService, lines 99-106. The file does not serve a node listing.
+    evidence: >-
+      const row = catalog.nodeTypeByName.get(options.node_type); if (row === undefined) { ... throw new UnknownNodeTypeError(options.node_type); }
+looked_past: >-
+  The header comment about bypassing the in-memory cache and the UC-nn route docstrings are prose naming no node fact, so I left them to the comment route rather than filing them.

@@ -1,0 +1,275 @@
+findings:
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, lines 7-8 (and the docstring of traverseNodeService, line 72)
+    evidence: >-
+      // - `depth ∈ [1, 3]`; out-of-range -> `InvalidTraverseDepthError`
+      // (BR-05).
+    cost: >-
+      The 1-to-3 bound is written in prose a second time. If the bound moves, this comment keeps saying 3 while the code follows TRAVERSAL_DEPTH_MAX. Code holds the fact in assertDepth in this file, using TRAVERSAL_DEPTH_MIN and TRAVERSAL_DEPTH_MAX from src/modules/knowledge-graph/traversal/config.ts (`export const TRAVERSAL_DEPTH_MAX = 3 as const;`).
+    kind: restates
+    correction: >-
+      Remove the comment and docstring lines that restate the depth range. The bound stays in the code and the node.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 11
+    evidence: >-
+      //   - Score = `TRAVERSAL_DECAY ** hop` (BR-14).
+    cost: >-
+      The scoring formula is stated in prose beside the code that computes it. Code holds it at `const score = Math.pow(TRAVERSAL_DECAY, hop);` in this file, with the value `TRAVERSAL_DECAY = 0.5` in src/modules/knowledge-graph/traversal/config.ts.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/traversal-link-score
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, lines 12-14, and the comment at lines 232-236
+    evidence: >-
+      //   - Merged endpoints are substituted to their survivor BEFORE being
+      //     added to the response or enqueued for further expansion
+      //     (BR-13).
+    cost: >-
+      The substitution rule is written in prose in two places. Code holds it in this file, in buildMergedSubstitution and in `const substitutedRow: LinkResolvedRow = { ...row, source_node_id: sourceId, target_node_id: targetId }`.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/knowledge-base/traversal-substitutes-merged-ends
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 15, and the comment at lines 320-325 above finalNodes
+    evidence: >-
+      //   - The starting node is included in the result `nodes` list.
+    cost: >-
+      Which nodes the result lists is stated in prose twice. Code holds it in this file: the seed loop over `findNodesByIds(client, input.startingNodeIds)` and the `finalNodes` loop over `visitedNodeIds` that skips only `row.status === "merged"`.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/traversal-lists-reached-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      docstring of traverseNodeService, lines 71-75
+    evidence: >-
+      *   - InvalidTraverseDepthError (BR-05) — depth outside [1, 3].
+      *   - UnknownLinkTypeError (BR-04) — element of `linkTypeNames` not in catalog.
+      *   - ResourceNotFoundError — starting node id absent.
+      *   - NodeDeletedError (BR-11) — starting node tombstoned.
+    cost: >-
+      The order of the checks is restated in a docstring. Code holds it in the statement order of traverseNodeService: assertDepth, resolveLinkTypeIds, the null check, then the deleted check.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement of the check order.
+    node: rules/knowledge-base/traversal-check-order
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      docstring of traverseNodeService, lines 77-78
+    evidence: >-
+      * On a `merged` starting node, the result substitutes the survivor as
+      * the starting node id (BR-13) — the response includes the survivor in `nodes`.
+    cost: >-
+      The merged-start rule is restated in prose. Code holds it in this file: `if (survivor !== null && survivor.status !== "deleted") { startingResolved = survivor; }`.
+    kind: restates
+    correction: >-
+      Remove the sentence.
+    node: rules/knowledge-base/traversal-merged-start
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      traverseNodeService lines 102-111 together with the frontier seed in traverseNodes at line 180
+    evidence: >-
+      let startingResolved = starting;
+      if (
+        starting.status === "merged" &&
+        starting.merged_into_node_id !== null
+      ) {
+        const survivor = await findNodeById(client, starting.merged_into_node_id);
+        if (survivor !== null && survivor.status !== "deleted") {
+          startingResolved = survivor;
+        }
+      }
+      ...
+      let frontier: readonly string[] = input.startingNodeIds;
+    cost: >-
+      When a starting node is merged and its survivor is absent or deleted, startingResolved stays the merged node. traverseNodes then expands it at hop 1, because the frontier is seeded from the starting ids with no status check. The rule says a traversal expands no merged or deleted node. The `nextFrontier` loop applies the status filter; the seed does not. The same holds for any caller of traverseNodes passing a merged or deleted id, such as the internal query-retrieval batch. The merged start is also dropped from `nodes` by the `finalNodes` filter, while `starting_node_id` still names it.
+    kind: contradicts
+    correction: >-
+      The frontier seed would have to apply the same deleted and merged exclusion the next-hop frontier applies. What the specification wants listed for such a start is not stated and would be decided in the node.
+    node: rules/knowledge-base/traversal-expands-live-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment above isSubstitutionInducedSelfLoop, lines 250-254
+    evidence: >-
+      // Skip self-edges that emerged purely because of merged substitution
+      // (both endpoints collapsed to the same survivor) — they convey no
+      // graph information beyond what the survivor itself already provides.
+    cost: >-
+      The self-loop rule and its rationale are in prose beside the code that holds them. Code holds it in `sourceId === targetId && row.source_node_id !== row.target_node_id`. The rationale is held nowhere.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/traversal-drops-merge-self-loops
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment above `if (linksById.has(row.id)) continue;`, lines 259-261
+    evidence: >-
+      // Dedup links by underlying knowledge_link.id (BR-22). Keep the
+      // SMALLEST hop number seen so far (BFS guarantees the first sight is
+      // the minimum hop), so we only insert on first encounter.
+    cost: >-
+      The show-once-at-first-hop rule is restated in prose. Code holds it in this file: the `linksById.has(row.id)` guard before the single `linksById.set`.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/traversal-link-once
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      the warning emitted in traverseNodes, lines 307-315
+    evidence: >-
+      if (partial.status !== "deleted" && provenance.length === 0) {
+        logger.warn(
+          {
+            route: "GET /api/v1/nodes/:node_id/traverse",
+            link_id: linkId,
+            status: partial.status,
+          },
+          "knowledge_graph_empty_provenance"
+        );
+      }
+    cost: >-
+      The code treats a link that is not deleted and has no provenance as an anomaly worth a warning, and exempts deleted links. No node holds this alarm or its exemption. The candidate rules/knowledge-base/graph-read-shows-empty-provenance only says such a link is shown with an empty list, which the code also does. A reader looking in the specification for when the system raises this warning finds nothing, and the deleted exemption lives only here.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether this alarm is a business fact, and if so give it a node, for example beside graph-read-shows-empty-provenance.
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      only the traverse operation's accepted answer and three of its refusal conditions: the return object of traverseNodeService (lines 126-130), and the throws of InvalidTraverseDepthError, UnknownLinkTypeError, ResourceNotFoundError and NodeDeletedError. The error codes, HTTP statuses and other operations are not in this file.
+    evidence: >-
+      return {
+        starting_node_id: startingResolved.id,
+        nodes: result.nodes.map(toNodeSummary),
+        links: result.links.slice(),
+      };
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file only compares a row's status with the literals `starting.status === "deleted"` and `row.status === "merged"`. It declares no shape for the status values.
+  - node: domain/knowledge-base/traversal-direction
+    held_at: >-
+      the inline union on TraverseInput.direction and TraverseNodesInput.direction
+    evidence: >-
+      readonly direction: "out" | "in" | "both";
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      assertDepth, lines 341-349, with the bounds imported from traversal/config.ts
+    evidence: >-
+      if (
+        !Number.isInteger(depth) ||
+        depth < TRAVERSAL_DEPTH_MIN ||
+        depth > TRAVERSAL_DEPTH_MAX
+      ) {
+        throw new InvalidTraverseDepthError(depth, TRAVERSAL_DEPTH_MAX);
+      }
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      nowhere
+    evidence: >-
+      this file resolves names to ids (resolveLinkTypeIds) and passes `linkTypeIds: input.linkTypeIds` to fetchTraversalHop. The restriction on followed links is applied in the repository, not here.
+  - node: rules/knowledge-base/graph-read-as-of-view
+    held_at: >-
+      nowhere
+    evidence: >-
+      `asOf: input.asOf,` is only passed along to fetchTraversalHop. The view filter is not in this file.
+  - node: rules/knowledge-base/graph-read-current-view
+    held_at: >-
+      nowhere
+    evidence: >-
+      the file passes `asOf` and `inEffectOnly` to fetchTraversalHop and applies no currentness filter itself.
+  - node: rules/knowledge-base/graph-read-in-effect-only
+    held_at: >-
+      nowhere
+    evidence: >-
+      `inEffectOnly: input.inEffectOnly,` is only passed along to fetchTraversalHop.
+  - node: rules/knowledge-base/traversal-check-order
+    held_at: >-
+      traverseNodeService, lines 86-97
+    evidence: >-
+      assertDepth(input.depth);
+      const linkTypeIds = resolveLinkTypeIds(catalog, input.linkTypeNames);
+      const starting = await findNodeById(client, input.startingNodeId);
+      if (starting === null) { throw new ResourceNotFoundError(...) }
+      if (starting.status === "deleted") { throw new NodeDeletedError(...) }
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: >-
+      only the link-type part, in resolveLinkTypeIds (line 355). The direction and depth defaults are not in this file, where TraverseInput declares direction, depth and inEffectOnly as required.
+    evidence: >-
+      if (names === undefined || names.length === 0) return undefined;
+  - node: rules/knowledge-base/traversal-direction
+    held_at: >-
+      the two direction branches in traverseNodes, lines 190 and 200. The end each direction follows is applied in fetchTraversalHop in the repository.
+    evidence: >-
+      if (input.direction === "out" || input.direction === "both") {
+      ...
+      if (input.direction === "in" || input.direction === "both") {
+  - node: rules/knowledge-base/traversal-drops-merge-self-loops
+    held_at: >-
+      isSubstitutionInducedSelfLoop, lines 255-257
+    evidence: >-
+      const isSubstitutionInducedSelfLoop =
+        sourceId === targetId && row.source_node_id !== row.target_node_id;
+      if (isSubstitutionInducedSelfLoop) continue;
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      the nextFrontier loop, lines 284-294, for reached nodes only. The initial frontier at line 180 is unfiltered, which is the contradicts finding above.
+    evidence: >-
+      if (row.status === "deleted") continue;
+      if (row.status === "merged") continue; // defensive — survivor is the one we follow
+      nextFrontier.push(substituted);
+  - node: rules/knowledge-base/traversal-link-once
+    held_at: >-
+      the dedup guard in traverseNodes, line 262
+    evidence: >-
+      if (linksById.has(row.id)) continue;
+  - node: rules/knowledge-base/traversal-link-score
+    held_at: >-
+      `const score = Math.pow(TRAVERSAL_DECAY, hop);` (line 245), with the value 0.5 in traversal/config.ts
+    evidence: >-
+      const score = Math.pow(TRAVERSAL_DECAY, hop);
+      ...
+      linksById.set(row.id, { ...toLinkDetail(substitutedRow, []), hop, score });
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      the seed loop (lines 175-178) and the finalNodes loop (lines 326-332)
+    evidence: >-
+      for (const id of visitedNodeIds) {
+        const row = nodesById.get(id);
+        if (row === undefined) continue;
+        if (row.status === "merged") continue;
+        finalNodes.push(row);
+      }
+  - node: rules/knowledge-base/traversal-merged-start
+    held_at: >-
+      traverseNodeService, lines 102-111
+    evidence: >-
+      if (survivor !== null && survivor.status !== "deleted") {
+        startingResolved = survivor;
+      }
+  - node: rules/knowledge-base/traversal-order
+    held_at: >-
+      the insertion order of visitedNodeIds, linksById and hopLinks in traverseNodes. Starting ids are seeded first, and the out fetch is pushed before the in fetch within a hop. The order inside each fetch comes from the repository.
+    evidence: >-
+      const visitedNodeIds = new Set<string>(input.startingNodeIds);
+      ...
+      hopLinks.push(...out);
+      ...
+      hopLinks.push(...inn);
+  - node: rules/knowledge-base/traversal-substitutes-merged-ends
+    held_at: >-
+      buildMergedSubstitution (lines 376-404) and the substitutedRow construction (lines 247-268)
+    evidence: >-
+      const sourceId = substitution.get(row.source_node_id) ?? row.source_node_id;
+      const targetId = substitution.get(row.target_node_id) ?? row.target_node_id;
+looked_past: >-
+  The header comment says `direction = both` runs two independent BFS halves merged by link id, while the code fetches both directions per hop over one shared frontier, and comments use needs_review where the status enumeration says needs-review. Both are prose accuracy problems for the comment route, not domain facts.
+candidates_opened:
+  - rules/knowledge-base/graph-read-shows-empty-provenance

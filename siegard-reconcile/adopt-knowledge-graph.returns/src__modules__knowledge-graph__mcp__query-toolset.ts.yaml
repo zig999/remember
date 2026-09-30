@@ -1,0 +1,110 @@
+findings:
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      the file-level header comment, lines 1-24, in particular lines 4-9 and 10-13
+    evidence: >-
+      // `BEGIN READ ONLY` transaction (BR-23 rule 4), and returns the canonical MCP
+      // envelope: ... so REST and MCP surface byte-identical error codes for the same
+      // thrown sentinel.
+    cost: >-
+      The read-only transaction and the same-answer-on-both-transports guarantee are each stated a
+      second time in prose. A reader who finds the comment takes it for the authority on the
+      rule. The nodes stay where the code is, in `withReadOnly` and in the shared
+      `mapErrorToEnvelope`. The comment also says "mirroring the REST surface 1:1", which the
+      file's own nine-tool list does not do, because REST also reads a link and an attribute by
+      identity.
+    kind: restates
+    correction: >-
+      Remove the header comment. The read-only transaction is held by `withReadOnly` in
+      shared/pg-transaction.ts, called from `makeHandler` in this file. The error codes are held
+      by `mapErrorToEnvelope` in ./error-envelope.js. No node needs a change.
+    node: constraints/retrieval-is-read-only
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      QueryToolDescriptions.list_node_types, list_link_types and list_attribute_keys, lines 195-202
+    evidence: >-
+      list_node_types:
+          "List the active NodeType catalog entries (id, name, description, version).",
+        list_link_types:
+          "List the active LinkType catalog entries. Pass `include_rules=true` " +
+        list_attribute_keys:
+          "List the active AttributeKey catalog entries, optionally scoped to one " +
+    cost: >-
+      The description is text the running system sends to the model. It says the catalog lists
+      only "active" entries, which implies the catalog has an active state that filters the
+      listings. The contract answers "every node type", "every link type" and "every attribute
+      key". No node says a catalog entry can be inactive, so the next reader will look for that
+      state in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Either drop "active" from the three descriptions, or, if the catalog does have an
+      active/inactive entry state, give that state a node and have the contract say which
+      entries each listing returns.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/llm-toolset-omits-graph-point-reads
+    held_at: >-
+      `QUERY_TOOL_NAMES` and `QueryToolInputJsonSchemas` (lines 136-171), and the nine
+      `mcp.registerTool` calls in `registerQueryToolset`. They register the node read, the
+      traversal, the three histories, the node listing and the three catalog listings. No tool
+      reads one link or one attribute by identity.
+    evidence: >-
+      export const QUERY_TOOL_NAMES: readonly QueryToolName[] = [
+        "get_node",
+        "traverse",
+        "get_history_link",
+        "get_history_attribute",
+        "get_history_attribute_key",
+        "list_nodes",
+        "list_node_types",
+        "list_link_types",
+        "list_attribute_keys",
+      ];
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      `makeHandler`, lines 237-253. Every tool runs its service call inside `withReadOnly`.
+      `withReadOnly` itself is declared in shared/pg-transaction.ts, outside this file.
+    evidence: >-
+      const result = await withReadOnly(pool, (client) => run(parsed, client));
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      `makeHandler`, lines 237-253. Success is `{ ok: true, result }` from the same service
+      functions the REST routes call. Every throw goes through the shared `mapErrorToEnvelope`,
+      declared in ./error-envelope.js outside this file.
+    evidence: >-
+      return { ok: true, result };
+          } catch (err) {
+            return mapErrorToEnvelope(err);
+          }
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      `makeHandler` for the `{ ok: true, result }` answer, and `registerQueryToolset` for the
+      nine operations this file exposes (read-node, traverse, the three histories, list-nodes
+      and the three catalog listings). The refusal codes and messages are not declared here.
+      They come from the Zod DTOs in dto/queries.dto.ts, the services and `mapErrorToEnvelope`.
+    evidence: >-
+      getNodeByIdService(...), traverseNodeService(...), getLinkHistoryService(...),
+      getAttributeHistoryService(...), getAttributeKeyHistoryService(...), listNodesService(...),
+      listNodeTypesService(client), listLinkTypesService(...), listAttributeKeysService(...)
+  - node: domain/knowledge-base/node-view
+    held_at: nowhere
+    evidence: >-
+      The file only builds `GetNodeInputSchema` from `GetNodeByIdQuerySchema.shape` and passes
+      `asOf: input.as_of, inEffectOnly: input.in_effect_only, includeUncertain:
+      input.include_uncertain` to the service. The shape of the node view is declared in
+      dto/queries.dto.ts.
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: nowhere
+    evidence: >-
+      The file passes `catalog` and `{ node_type: input.node_type }` to `listNodesService` and
+      `listAttributeKeysService`. It holds no branch that refuses a node type the catalog does
+      not hold.
+  - node: rules/knowledge-base/node-view-defaults
+    held_at: nowhere
+    evidence: >-
+      The file forwards `input.in_effect_only` and `input.include_uncertain` as parsed. It
+      states no default for an omitted option.
+looked_past: >-
+  The comments in this file that cite BR-23, BR-24 and BR-25, and the comment "Closed enumeration of the nine tool names" that claims a transport rejects `propose_*` tools, are prose about other files. They are for the comment route, not for this pass.
+candidates_opened:
+  - rules/knowledge-base/catalog-node-types

@@ -1,0 +1,101 @@
+findings:
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the comment "BR-11" above the node lookup in getAttributeKeyHistoryService, lines 96-103
+    evidence: >-
+      // BR-11 — resolve the node first; 404 if absent, 410 if tombstoned.
+    cost: >-
+      The check order (existing node, then not deleted, then a registered key) is stated a second time as prose. The code beneath it already holds that order, so the comment is a second home. It can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The branches at lines 97-103 and 109-113 hold the order, and the node binds it.
+    node: rules/knowledge-base/attribute-key-history-check-order
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the comment "BR-20" above attributeKeyCacheKey in getAttributeKeyHistoryService, lines 105-108
+    evidence: >-
+      // BR-20 — resolve `(node_type_id, key)` via the catalog cache. The
+      // attribute_key id is required to scope the history listing; a miss
+      // surfaces as 404 (BUSINESS_UNKNOWN_ATTRIBUTE_KEY) because the segment
+      // is part of the URL hierarchy, not a free query parameter.
+    cost: >-
+      The refusal and its code are restated as prose. The code already refuses with UnknownAttributeKeyError at line 112. If the status or error code moves in the node, this comment keeps claiming the old value.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal at lines 111-113 holds the fact.
+    node: rules/knowledge-base/attribute-key-history-requires-registered-key
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the "Note:" comment before the return in getAttributeKeyHistoryService, lines 121-123
+    evidence: >-
+      // Note: an empty result is a valid response — the caller queried a key
+      // that exists in the catalog but has no attributes recorded yet on this
+      // node. Return `{ versions: [] }` rather than 404.
+    cost: >-
+      The contract's empty-list answer for a key with no attributes is restated as prose. The code already gives that answer, because an empty `rows` yields `{ versions }` with an empty array. The comment is a second home for that answer.
+    kind: restates
+    correction: >-
+      Remove the comment. assembleAttributeHistory returning `{ versions }` from empty rows holds the fact.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the empty-provenance log in assembleLinkHistory (lines 150-155) and assembleAttributeHistory (lines 174-179)
+    evidence: >-
+      if (row.status !== "deleted" && provenance.length === 0) {
+        logger.warn(
+          { route, link_id: row.id, status: row.status },
+          "knowledge_graph_empty_provenance"
+        );
+      }
+    cost: >-
+      The code applies its own rule here: a history version that is not deleted and has no provenance raises a warning alarm, and a deleted one does not. The deleted exemption and the alarm's existence are decisions no node records. The empty-provenance rule only says the read shows an empty list. A later reader looking for what an empty chain does in a history read will not find this in the specification. It is stated in code, and someone could change it without any node noticing.
+    kind: unstated
+    correction: >-
+      Give the alarm a node. The natural home is rules/knowledge-base/graph-read-shows-empty-provenance, which is bound to this file. It should say that a graph read of a non-deleted item with no provenance is reported as an operational warning, and that a deleted item is not.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getLinkHistoryService, getAttributeHistoryService and getAttributeKeyHistoryService. They raise the not-found, deleted and unknown-key refusals and return `{ versions }`.
+    evidence: >-
+      throw new ResourceNotFoundError("KnowledgeLink", linkId); throw new ResourceNotFoundError("NodeAttribute", attributeId); throw new NodeDeletedError(input.nodeId); throw new UnknownAttributeKeyError(node.node_type, input.key); return { versions };
+  - node: rules/knowledge-base/attribute-key-history
+    held_at: >-
+      the call to listAttributeHistoryByNodeKey at lines 115-119, in getAttributeKeyHistoryService. The service applies no status filter of its own.
+    evidence: >-
+      const rows = await listAttributeHistoryByNodeKey(
+          client,
+          input.nodeId,
+          attributeKeyRow.id
+        );
+  - node: rules/knowledge-base/attribute-key-history-check-order
+    held_at: >-
+      the sequential branches in getAttributeKeyHistoryService at lines 97-113. They check for an existing node, then for one not deleted, then for a catalog key.
+    evidence: >-
+      if (node === null) { throw new ResourceNotFoundError("KnowledgeNode", input.nodeId); } if (node.status === "deleted") { throw new NodeDeletedError(input.nodeId); } ... if (attributeKeyRow === undefined) { throw new UnknownAttributeKeyError(node.node_type, input.key); }
+  - node: rules/knowledge-base/attribute-key-history-requires-registered-key
+    held_at: >-
+      the catalog lookup and refusal at lines 109-113, in getAttributeKeyHistoryService
+    evidence: >-
+      const cacheKey = attributeKeyCacheKey(node.node_type_id, input.key);
+      const attributeKeyRow = catalog.attributeKeyByNodeTypeAndKey.get(cacheKey);
+      if (attributeKeyRow === undefined) {
+  - node: rules/knowledge-base/graph-read-shows-empty-provenance
+    held_at: >-
+      the empty-list defaults in assembleLinkHistory (line 149) and assembleAttributeHistory (line 173)
+    evidence: >-
+      const provenance = provenanceByLinkId.get(row.id) ?? [];
+  - node: rules/knowledge-base/lineage-history
+    held_at: >-
+      nowhere. This file delegates the lineage walk to the repository's walkLinkHistory and walkAttributeHistory. It states no supersession traversal and no status or validity filter in code.
+    evidence: >-
+      const rows = await walkLinkHistory(client, linkId); const rows = await walkAttributeHistory(client, attributeId);
+  - node: rules/knowledge-base/merged-node-read-as-itself
+    held_at: >-
+      the node lookup in getAttributeKeyHistoryService at lines 97-113. It reads the node by the requested id and uses that node's own `node_type_id` and `node_type`, with no branch that follows a merge.
+    evidence: >-
+      const node = await findNodeById(client, input.nodeId); ... const cacheKey = attributeKeyCacheKey(node.node_type_id, input.key);
+looked_past: >-
+  The file-header comment's description of a recursive CTE walking `supersedes_*` up and down, ordered ASC by `recorded_at`, is prose. It restates lineage-history and history-order facts that code holds in graph.repository.ts, outside this file set, so I did not judge it.
+candidates_opened:
+  - rules/knowledge-base/empty-provenance-chain-refused

@@ -1,0 +1,87 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment, lines 13-15, the "asOf undefined -> current view" mode (the same fact appears in the code at lines 79-82)
+    evidence: >-
+      //   1. asOf undefined            -> "current view" (query (a), BR-07):
+      //        AND <alias>.valid_to IS NULL
+      //        AND <alias>.superseded_at IS NULL
+    cost: >-
+      The comment is a second home for the current-view rule. The code in this file already holds it, so the comment adds nothing and can drift from the node. A reader who trusts it over the node would not know which one the business decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The code at lines 79-82 holds the fact, and the node binds it.
+    node: rules/knowledge-base/graph-read-current-view
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment, lines 16-17 and 24-25, the `inEffectOnly` clause (the same fact appears in the code at lines 83-87)
+    evidence: >-
+      //        [AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= current_date)]
+      //          (the bracketed clause is added when `inEffectOnly = true`)
+      // Note: the `inEffectOnly` flag is meaningful only in mode 1 — when
+      // `asOf` is provided, the valid_from check is already part of the filter.
+    cost: >-
+      The comment states the in-effect-only rule and its interaction with the as-of date a second time, outside behavior. The code already enforces both, so the comment can only drift from the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The `if (opts.inEffectOnly)` branch at lines 83-87 and the early return for `asOf` at lines 67-76 hold the fact.
+    node: rules/knowledge-base/graph-read-in-effect-only
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment, lines 19-22, the "asOf provided -> valid-time travel" mode (the same fact appears in the code at lines 67-76)
+    evidence: >-
+      //   2. asOf provided             -> "valid-time travel" (query (b), BR-08):
+      //        AND <alias>.superseded_at IS NULL
+      //        AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= $asOf)
+      //        AND (<alias>.valid_to   IS NULL OR <alias>.valid_to   >  $asOf)
+    cost: >-
+      The comment restates the as-of window, including which side of each bound is inclusive. The code already holds that, so the comment is a second home that the node's binding does not reach.
+    kind: restates
+    correction: >-
+      Remove the prose. The as-of branch at lines 67-76 holds the fact.
+    node: rules/knowledge-base/graph-read-as-of-view
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      This file builds only a temporal WHERE fragment, `export function applyTemporalFilter(alias, nextParamIdx, opts): TemporalFilterFragment`. It declares none of the contract's operations, answers or refusals. The as-of date format check (VALIDATION_INVALID_FORMAT) is not here either, because `asOf` is passed straight to a placeholder with `return { sql, params: [opts.asOf] };`.
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      the current-view branch of applyTemporalFilter, lines 79-82
+    evidence: >-
+      const lines = [
+          `AND ${alias}.valid_to IS NULL`,
+          `AND ${alias}.superseded_at IS NULL`,
+        ];
+  - node: rules/knowledge-base/graph-read-as-of-view
+    held_at: >-
+      the `opts.asOf !== undefined` branch of applyTemporalFilter, lines 67-76
+    evidence: >-
+      `AND ${alias}.superseded_at IS NULL`,
+      `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= $${p})`,
+      `AND (${alias}.valid_to   IS NULL OR ${alias}.valid_to   >  $${p})`,
+  - node: rules/knowledge-base/graph-read-current-view
+    held_at: >-
+      the fall-through after the asOf branch, lines 78-82, which applies when no as-of date is given
+    evidence: >-
+      // Query (a) — current view.
+      const lines = [
+          `AND ${alias}.valid_to IS NULL`,
+          `AND ${alias}.superseded_at IS NULL`,
+        ];
+  - node: rules/knowledge-base/graph-read-in-effect-only
+    held_at: >-
+      the `if (opts.inEffectOnly)` branch after the asOf early return, lines 83-87
+    evidence: >-
+      if (opts.inEffectOnly) {
+          lines.push(
+            `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= current_date)`
+          );
+        }
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: >-
+      the in-effect clause at lines 84-86, added on top of the current-view predicates
+    evidence: >-
+      `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= current_date)`
+looked_past: >-
+  The comments citing BR-07 and BR-08 of knowledge-graph.back.md, the "never concatenates user input" security note, and the InvariantError message for an invalid alias are not domain facts held by these nodes, so I did not report them.

@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/knowledge-graph/service/norm.ts
+    where: >-
+      the header comment block, lines 1-14, above collapseSpaces()
+    evidence: >-
+      // Application-side mirror of the DB `norm()` function:
+      //
+      //   norm(x) = lower(unaccent(collapseSpaces(trim(x))))
+      //
+      // This is the SINGLE normalization policy of the system (CLAUDE.md
+      // "Conventions").
+    cost: >-
+      The comment states the normalization policy (lower-case, strip accents, trim, collapse whitespace) in prose, and calls itself the single policy of the system. That is a second home outside behavior. If the node's policy changes, the comment keeps saying the old formula and nothing flags it. A reader can also take it for the place the policy was decided. The code in this file already holds the policy, in norm().
+    kind: restates
+    correction: >-
+      Remove the header comment and the per-function doc comments by the comment route, then run /reconcile over this file. The fact is already held by the node and by the code of norm(). Do not rewrite the comment.
+    node: rules/knowledge-base/name-normalization
+read:
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the exported function norm() at line 27, with collapseSpaces() at line 17 and stripDiacritics() at line 22
+    evidence: >-
+      export function norm(input: string): string {
+        return collapseSpaces(stripDiacritics(input.trim())).toLowerCase();
+      }
+      with collapseSpaces: `s.replace(/\s+/g, " ")` and stripDiacritics: `s.normalize("NFD").replace(/[̀-ͯ]/g, "")`

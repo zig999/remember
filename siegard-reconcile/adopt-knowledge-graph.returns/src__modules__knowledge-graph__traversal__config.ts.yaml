@@ -1,0 +1,57 @@
+findings:
+  - file: src/modules/knowledge-graph/traversal/config.ts
+    where: >-
+      the doc comments above TRAVERSAL_DEPTH_MIN and TRAVERSAL_DEPTH_MAX, lines 20 and 23
+    evidence: >-
+      /** Lower bound on the depth parameter (BR-05 of `knowledge-graph.back.md`). */
+      /** Upper bound on the depth parameter (BR-05). */
+    cost: >-
+      The 1-to-3 depth bound is stated twice in this file, once as the constants and once as prose naming a back-spec rule. A reader who finds the comment first may take the back-spec rule, not the specification node, as the authority. Nothing keeps that rule in step with the node when the node moves.
+    kind: restates
+    correction: >-
+      Remove the two doc comments. The constants `TRAVERSAL_DEPTH_MIN = 1` and `TRAVERSAL_DEPTH_MAX = 3` are where the fact is held, and the bind to the node claims them.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/traversal/config.ts
+    where: >-
+      the header comment and the doc comment above TRAVERSAL_DECAY, lines 3-5 and 17
+    evidence: >-
+      `TRAVERSAL_DECAY` (BR-14 of `knowledge-graph.back.md`, ADR A16) is the
+      // single source of truth for the per-hop score decay applied by the BFS
+      // traversal engine.
+      /** Per-hop score multiplier: `score(hop) = TRAVERSAL_DECAY ** hop`. */
+    cost: >-
+      The hop-score formula and its claim to be the "single source of truth" exist as prose beside `export const TRAVERSAL_DECAY = 0.5 as const;`. A reader is sent to a back-spec rule and an ADR letter instead of the specification node. The comment also asserts which consumers must change together, and no node holds that.
+    kind: restates
+    correction: >-
+      Remove the header comment and the doc comment. The constant is where the 0.5 base is held. The comment's `** hop` exponentiation is applied by the consumers that compute the score, not in this file.
+    node: rules/knowledge-base/traversal-link-score
+  - file: src/modules/knowledge-graph/traversal/config.ts
+    where: >-
+      the doc comment above TRAVERSAL_DEPTH_DEFAULT, line 26
+    evidence: >-
+      /** Default depth when the caller does not specify one. */
+    cost: >-
+      The omitted-depth default is stated as prose beside `TRAVERSAL_DEPTH_DEFAULT = 1`. The comment adds nothing the constant does not already carry, and it is a second place that would need changing if the node's default moved.
+    kind: restates
+    correction: >-
+      Remove the doc comment. The constant `TRAVERSAL_DEPTH_DEFAULT = 1` holds the depth part of the node's defaults.
+    node: rules/knowledge-base/traversal-defaults
+read:
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      the constants TRAVERSAL_DEPTH_MIN and TRAVERSAL_DEPTH_MAX, lines 21 and 24. This file declares the bounds only. The whole-number requirement and the search-query expansion depth are not stated here.
+    evidence: >-
+      export const TRAVERSAL_DEPTH_MIN = 1 as const;
+      export const TRAVERSAL_DEPTH_MAX = 3 as const;
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: >-
+      the constant TRAVERSAL_DEPTH_DEFAULT, line 27, which holds only the one-hop depth default. The other omitted-option defaults are not stated in this file: either-end direction, no as-of date, no in-effect-only request, and every link type.
+    evidence: >-
+      export const TRAVERSAL_DEPTH_DEFAULT = 1 as const;
+  - node: rules/knowledge-base/traversal-link-score
+    held_at: >-
+      the constant TRAVERSAL_DECAY, line 18, which holds the 0.5 base. The exponentiation by hop count is applied outside this file. It appears here only in a comment.
+    evidence: >-
+      export const TRAVERSAL_DECAY = 0.5 as const;
+looked_past: >-
+  The header comment's claims that query-retrieval reuses this constant, and its "coordinated updates in BOTH consumers" instruction, are prose about other files, so I did not judge them here.

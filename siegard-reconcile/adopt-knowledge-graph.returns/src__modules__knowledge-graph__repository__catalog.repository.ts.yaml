@@ -1,0 +1,64 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The three catalog reads this file carries, in part. listNodeTypes, listLinkTypes,
+      listLinkTypeRules, listAttributeKeys and listAttributeValidValues select the fields the
+      list-node-types, list-link-types and list-attribute-keys answers carry. The other
+      operations of the contract (search, provenance reads, list-nodes, read-node, traverse
+      and the rest) and every refusal are not in this file.
+    evidence: >-
+      listNodeTypes: "SELECT id, name, description, version FROM node_type". listLinkTypes:
+      "SELECT id, name, label, description, inverse_name, is_temporal, allows_multiple_current,
+      requires_valid_from, requires_valid_to_on_change, version FROM link_type".
+      listAttributeKeys: "SELECT ak.id, ak.node_type_id, nt.name AS node_type, ak.key,
+      ak.value_type, ak.is_temporal, ak.allows_multiple_current, ak.requires_valid_from,
+      ak.description, ak.version". listLinkTypeRules: "src.name AS source_node_type,
+      tgt.name AS target_node_type, r.valid_from, r.valid_to". listAttributeValidValues:
+      "SELECT avv.attribute_key_id, avv.value FROM attribute_valid_value avv".
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      The value_type member of the AttributeKeyJoined interface, which declares the four-member
+      union inline.
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/allowed-values-in-string-order
+    held_at: >-
+      The ORDER BY of both queries in listAttributeValidValues, the filtered one and the
+      unfiltered one.
+    evidence: >-
+      ORDER BY avv.attribute_key_id, avv.value ASC
+  - node: rules/knowledge-base/attribute-key-listing-by-node-type
+    held_at: >-
+      The node_type_id branch of listAttributeKeys, and the matching branch of
+      listAttributeValidValues.
+    evidence: >-
+      WHERE ak.node_type_id = $1
+  - node: rules/knowledge-base/attribute-key-listing-order
+    held_at: >-
+      The ORDER BY of listAttributeKeys. The unfiltered query orders by node-type name and then
+      key. The filtered query orders by key alone, which is the same order inside one node type.
+    evidence: >-
+      ORDER BY nt.name ASC, ak.key ASC (unfiltered); ORDER BY ak.key ASC (filtered to one node_type_id)
+  - node: rules/knowledge-base/link-type-listing-order
+    held_at: >-
+      The ORDER BY of listLinkTypes, which orders link types by name, and the ORDER BY of
+      listLinkTypeRules, which orders each link type's rules by source and then target
+      node-type name.
+    evidence: >-
+      listLinkTypes: "ORDER BY name ASC". listLinkTypeRules: "ORDER BY r.link_type_id, src.name, tgt.name"
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      listLinkTypeRules holds the "whatever their window" half: it selects every link_type_rule
+      row and has no predicate on valid_from or valid_to. Whether rules are fetched only when
+      the request asks for them is not decided in this file. It only exposes the function, and
+      any caller decides whether to invoke it.
+    evidence: >-
+      FROM link_type_rule r JOIN node_type src ON src.id = r.source_node_type_id JOIN node_type
+      tgt ON tgt.id = r.target_node_type_id ORDER BY r.link_type_id, src.name, tgt.name
+  - node: rules/knowledge-base/node-type-listing-order
+    held_at: >-
+      The ORDER BY of listNodeTypes.
+    evidence: >-
+      SELECT id, name, description, version FROM node_type ORDER BY name ASC
+looked_past: >-
+  The header comment ("Per the back spec stack note, these endpoints bypass the in-memory cache"), the BR-03 and BR-30 citations, and the docstring "Keys with no rows here have an OPEN domain and get no `valid_values`" are prose only, and I did not file them. The last of these, and the cache-parity function listLinkTypeRuleRows with its unused-import re-export, are a code-review matter rather than a conformance one.
