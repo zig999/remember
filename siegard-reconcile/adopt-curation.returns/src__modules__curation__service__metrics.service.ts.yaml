@@ -1,0 +1,52 @@
+findings:
+  - file: src/modules/curation/service/metrics.service.ts
+    where: >-
+      the header comment (lines 3-6) and the docblock above computeCurationMetricsService (lines 43-48)
+    evidence: >-
+      "All seven aggregates come from ONE
+      `BEGIN READ ONLY` transaction (via `withReadOnly`) so they are mutually
+      coherent" and "Wraps the seven aggregate SELECTs in
+      a single `BEGIN READ ONLY` transaction (curation.back.md BR-33 point 1)"
+    cost: >-
+      The constraint that each metrics read runs in one read-only transaction is written out a second time in prose. The prose also adds "seven" and "MVCC" detail that the node does not hold. When the node moves, nothing reaches these comments. A later reader can take the comment for the place where the consistency rule was decided.
+    kind: restates
+    correction: >-
+      Remove the comments. The code already holds the fact: the `withReadOnly(deps.pool, async (client) => { return aggregateCurationMetrics(client); })` call in this file. The transaction helper is imported from ./transaction.js, and I did not open it because it is outside the file set.
+    node: constraints/curation-reads-are-consistent
+  - file: src/modules/curation/service/metrics.service.ts
+    where: >-
+      the comments at lines 11-13 and 60-62 on the time source of computed_at
+    evidence: >-
+      "`computed_at` is the BFF wall clock at the moment the read transaction
+      closed (immediately after `withReadOnly` returns)" and, at lines 11-13, "captured INSIDE the open
+      `BEGIN READ ONLY` transaction (after the seven SELECTs, before COMMIT)"
+    cost: >-
+      The contract's rule that computed_at is taken after the metrics were read is restated in prose. The two comments describe different capture points, one inside the transaction and one after it closes. Only the code decides which is true, so a reader who trusts the comments learns a timing the running code may not have.
+    kind: restates
+    correction: >-
+      Remove both comments. The code holds the fact in `const computedAt = new Date().toISOString();`, which runs after the `await withReadOnly(...)` read completes.
+    node: contracts/knowledge-base/curation
+read:
+  - node: constraints/curation-reads-are-consistent
+    held_at: >-
+      the withReadOnly(deps.pool, ...) call in computeCurationMetricsService, lines 57-59. The transaction body is in ./transaction.js, which I did not read.
+    evidence: >-
+      const row = await withReadOnly(deps.pool, async (client) => {
+          return aggregateCurationMetrics(client);
+        });
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      the CurationMetricsResponse interface (lines 27-36) and the returned object of computeCurationMetricsService (lines 88-97). computed_at is taken after the read, at line 63.
+    evidence: >-
+      export interface CurationMetricsResponse {
+        readonly accept_rate: number;
+        readonly reject_rate_by_code: Readonly<Record<string, number>>; ...
+        readonly computed_at: string;
+      } and const computedAt = new Date().toISOString();
+  - node: domain/knowledge-base/curation-metrics
+    held_at: >-
+      the CurationMetricsResponse interface, lines 27-36, which declares all eight attributes
+    evidence: >-
+      readonly accept_rate: number; readonly reject_rate_by_code: Readonly<Record<string, number>>; readonly needs_review_count: number; readonly uncertain_count: number; readonly disputed_count: number; readonly entity_match_queue_count: number; readonly disputed_queue_count: number; readonly computed_at: string;
+looked_past: >-
+  I saw prose claiming behavior held in other files (REST-only with no MCP surface, route-layer remapping of 500 to 503, the openapi.yaml line references) and the structured log line "curation_metrics_computed", which is emitted observability text. All of it is another judgment's, and no domain fact is stated only here.

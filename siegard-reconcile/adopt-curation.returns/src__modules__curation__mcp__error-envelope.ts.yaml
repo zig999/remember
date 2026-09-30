@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/curation/mcp/error-envelope.ts
+    where: >-
+      the header comment, lines 3-8, and the docstring of mapErrorToEnvelope, lines 204-208
+    evidence: >-
+      "BR-30 (curation.back.md): REST and MCP transports surface IDENTICAL error
+      codes / messages / details for every thrown service error."
+    cost: >-
+      The same-answer-on-both-transports fact is written here as prose citing a back-spec rule (BR-30).
+      The node holding it is the constraint, and its contract lists refusals whose details differ by
+      transport, for example a bare list of `{ path, message }` over REST and `details: { issues }`
+      over MCP. A reader who trusts this header, and not the contract, will believe the details are
+      identical. The running code already holds the fact, because both renderings call one classifier.
+    kind: restates
+    correction: >-
+      Remove the prose (the comment route). The code in this file, `mapErrorToEnvelope` returning
+      `mapErrorToHttpResponse(err).envelope`, already holds the fact. The node binds to it, so the
+      comment needs no replacement.
+    node: constraints/curation-transports-answer-alike
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      mapErrorToEnvelope, line 209, which shares one classification core with mapErrorToHttpResponse
+    evidence: >-
+      export function mapErrorToEnvelope(err: unknown) {
+        return mapErrorToHttpResponse(err).envelope;
+      }
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      the refusal codes, statuses and messages in mapZodError (lines 97-119), the 23505 branch of
+      mapErrorToHttpResponse (lines 188-194), and the sentinel and pg-unavailable branches (lines 141-202)
+    evidence: >-
+      return mapped(422, "warn", {
+        code: "BUSINESS_TEMPORAL_INCOHERENT",
+        message:
+          "A duplicate-guard index rejected the resolution; another row currently occupies this scope.",
+      });
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: >-
+      the BUSINESS_DISPUTE_PERIODS_REQUIRED case of messageForZodCustomCode, line 70. The file renders
+      the refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_DISPUTE_PERIODS_REQUIRED":
+        return "decision=adjust_periods requires periods[] (one entry per item_id)";
+  - node: rules/knowledge-base/corrected-stated-start-cites-fragment
+    held_at: >-
+      the BUSINESS_DATE_UNJUSTIFIED case of messageForZodCustomCode, line 76. The file renders the
+      refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_DATE_UNJUSTIFIED":
+        return "valid_from change requires a justification (stated|document|received)";
+  - node: rules/knowledge-base/correction-changes-something
+    held_at: >-
+      the BUSINESS_CORRECTION_NO_CHANGES case of messageForZodCustomCode, line 74. The file renders
+      the refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_CORRECTION_NO_CHANGES":
+        return "corrected{} must change at least one of value, target_node_id, valid_from, valid_to";
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: >-
+      the BUSINESS_REASON_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY and the VALIDATION_INVALID_FORMAT
+      fallthrough of mapZodError, lines 114-118. Which of the two fires for a blank reason is decided in
+      the DTOs, not in this file.
+    evidence: >-
+      return mapped(422, "warn", {
+        code: "VALIDATION_INVALID_FORMAT",
+        message: "Request payload failed validation.",
+        details: { issues: zodIssuesAsDetails(err) },
+      });
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the BUSINESS_REASON_REQUIRED case of messageForZodCustomCode, line 64. The file renders the
+      refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_REASON_REQUIRED":
+        return "reason is required for the requested operation";
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      the ZOD_CUSTOM_CODE_PRIORITY list, lines 49-58, walked in order by mapZodError. The
+      VALIDATION_INVALID_FORMAT return (lines 114-118) is reached only when none of the custom codes is present.
+    evidence: >-
+      const ZOD_CUSTOM_CODE_PRIORITY: readonly string[] = [
+        "BUSINESS_TARGET_NODE_REQUIRED",
+        "BUSINESS_REASON_REQUIRED",
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+        "BUSINESS_TEMPORAL_INCOHERENT",
+        "BUSINESS_CORRECTION_NO_CHANGES",
+        "BUSINESS_DATE_UNJUSTIFIED",
+      ];
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: >-
+      the VALIDATION_INVALID_FORMAT fallthrough of mapZodError, lines 114-118. The file renders the
+      refusal and does not check the rule.
+    evidence: >-
+      return mapped(422, "warn", {
+        code: "VALIDATION_INVALID_FORMAT",
+        message: "Request payload failed validation.",
+        details: { issues: zodIssuesAsDetails(err) },
+      });
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      the BUSINESS_TARGET_NODE_REQUIRED case of messageForZodCustomCode, line 62. The file renders the
+      refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_TARGET_NODE_REQUIRED":
+        return "decision=merge_into requires target_node_id";
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the BUSINESS_SELF_MERGE_FORBIDDEN status and message in mapZodError (line 106) and
+      messageForZodCustomCode (line 66). The file renders the refusal and does not check the rule.
+    evidence: >-
+      const status = code === "BUSINESS_SELF_MERGE_FORBIDDEN" ? 409 : 422;
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the BUSINESS_DISPUTE_WINNER_REQUIRED case of messageForZodCustomCode, line 68. The file renders
+      the refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_DISPUTE_WINNER_REQUIRED":
+        return "decision=prefer_one requires winner_id (member of item_ids)";
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the BUSINESS_DATE_UNJUSTIFIED case of messageForZodCustomCode, line 76. The file renders the
+      refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_DATE_UNJUSTIFIED":
+        return "valid_from change requires a justification (stated|document|received)";
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the BUSINESS_TEMPORAL_INCOHERENT entry of ZOD_CUSTOM_CODE_PRIORITY and its case in
+      messageForZodCustomCode, lines 55 and 72-73. The file renders the refusal and does not check the rule.
+    evidence: >-
+      case "BUSINESS_TEMPORAL_INCOHERENT":
+        return "Adjusted periods violate `valid_from < valid_to` or overlap on a functional scope";
+looked_past: >-
+  The docstring's claim that MCP responses are "HTTP 200 + JSON-RPC `result`", and the log-level labels passed to `mapped`, are prose or logging concerns that state no curation fact the nodes hold.

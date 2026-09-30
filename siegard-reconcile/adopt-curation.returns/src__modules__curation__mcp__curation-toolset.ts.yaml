@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/curation/mcp/curation-toolset.ts
+    where: |-
+      the file's header comment, lines 1-6
+    evidence: |-
+      // service-layer function the REST handler invokes; success is wrapped in the
+      // canonical envelope `{ ok: true, result }`, failure flows through the shared
+      // `mapErrorToEnvelope` from TC-01 so REST and MCP surface byte-identical
+      // `code` / `message` / `details` for the same thrown sentinel (BR-30, BR-32).
+    cost: |-
+      The comment states, as its own claim, that the two transports answer alike. The node already holds that fact, and the code holds it too: each handler calls the same service function the REST route uses, and `makeHandler` returns `mapErrorToEnvelope(err)` from `./error-envelope.js`. A reader who finds the claim here may take the comment as where the rule is decided. It then drifts from the node, because the comment has no bind and is never re-checked when the node moves.
+    kind: restates
+    correction: |-
+      Remove the sentence from the header comment. The code in this file and in `src/modules/curation/mcp/error-envelope.ts` already holds the fact. The prose owes only its removal, by the comment route, followed by `/reconcile` over this file.
+    node: constraints/curation-transports-answer-alike
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: |-
+      `makeHandler` (lines 226-241) and the seven `mcp.registerTool("curation", ...)` handlers inside `registerCurationToolset`. They call the same service-layer functions as REST and route every failure through the shared `mapErrorToEnvelope`.
+    evidence: |-
+      try {
+        const parsed = schema.parse(rawInput) as z.output<S>;
+        const result = await run(parsed);
+        return { ok: true, result };
+      } catch (err) {
+        return mapErrorToEnvelope(err);
+      }
+  - node: constraints/llm-toolset-omits-curation-metrics
+    held_at: |-
+      `CURATION_TOOL_NAMES` (lines 148-156), `CurationToolInputJsonSchemas` (lines 127-138) and the seven `registerTool` calls. They cover the review queue listing and the six decisions. No metrics tool is registered.
+    evidence: |-
+      export const CURATION_TOOL_NAMES: readonly CurationToolName[] = [
+        "list_review_queue",
+        "resolve_entity_match",
+        "merge_nodes",
+        "resolve_dispute",
+        "confirm_item",
+        "reject_item",
+        "correct_item",
+      ];
+  - node: contracts/knowledge-base/curation
+    held_at: |-
+      The MCP side of the seven non-metrics operations, in `registerCurationToolset`. The `{ ok: true, result }` success envelope is built in `makeHandler`. The input schemas are the DTO schemas `ListReviewQueueQuerySchema`, `ResolveEntityMatchToolInputSchema` (`node_id` beside the body), `MergeNodesBodySchema`, `ResolveDisputeBodySchema`, `ConfirmItemBodySchema`, `RejectItemBodySchema` and `CorrectItemBodySchema`. The emitted tool descriptions in `CurationToolDescriptions` agree with the nodes I read: the 1..100 limit, default 20, the `BUSINESS_SELF_MERGE_FORBIDDEN` refusal, the `reason` requirements, and the statuses a reject or correct accepts. `read-curation-metrics` is not exposed over MCP, and the contract lists it without an MCP answer.
+    evidence: |-
+      mcp.registerTool("curation", {
+        name: "resolve_entity_match",
+        description: CurationToolDescriptions.resolve_entity_match,
+        inputSchema: ResolveEntityMatchToolInputSchema,
+        handler: makeHandler(ResolveEntityMatchToolInputSchema, (input) =>
+          resolveEntityMatchService({ pool, logger }, input.node_id, {
+looked_past: |-
+  The prose names back-spec codes (BR-xx, UC-xx) and describes the compliance_delete registration and the eight-name whitelist, which this file's nodes do not hold and only comments carry, and the tool descriptions cite BR codes; all of that is another judgment's.
+candidates_opened:
+  - rules/knowledge-base/page-defaults
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/keep-disputed-changes-nothing
+  - rules/knowledge-base/rejection-and-correction-require-live-item
+  - rules/knowledge-base/correction-supersedes-item
+  - rules/knowledge-base/prefer-one-outcome
+  - rules/knowledge-base/corrected-item-provenance
+  - rules/knowledge-base/stated-start-requires-basis

@@ -1,0 +1,29 @@
+findings:
+  - file: src/modules/curation/mcp/curation-transport.ts
+    where: >-
+      the header comment, lines 6-8, and the `toolNames` JSDoc on CurationMcpTransportDeps, line 31
+    evidence: >-
+      "Exposes 8 tools: the 7 owned by this domain (CURATION_TOOL_NAMES) plus
+      `compliance_delete` (owned by compliance-audit, registered under the same
+      `curation` toolset key on the shared registry)." and
+      "The closed set of tool names this endpoint exposes (7 curation + compliance_delete)."
+    cost: >-
+      The tool-surface composition (compliance_delete exposed, no audit reads) is written as prose in this
+      file. The code that decides it is the `toolNames` list in backend/src/app.ts. A reader looking for that
+      composition finds a comment that can drift from the list, and the comment is bound to no node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code that holds the fact is `toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"]`
+      in backend/src/app.ts, line 260.
+    node: constraints/llm-toolset-omits-audit-reads
+read:
+  - node: constraints/llm-toolset-omits-audit-reads
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file forwards whatever `deps.toolNames` supplies and declares no tool names of its own:
+      `deps.toolNames.map((name) => deps.mcp.getTool("curation", name)).filter((t): t is NonNullable<typeof t> => t !== undefined)`.
+      The closed set is composed by the caller, in backend/src/app.ts: `toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"]`.
+      Only the comment "Exposes 8 tools: the 7 owned by this domain (CURATION_TOOL_NAMES) plus `compliance_delete`" states it in this file.
+looked_past: >-
+  The serverName "remember-bff-curation", the serverVersion "0.1.0", the path "/mcp/curation" and the comments about the stateless kernel and the audit happening inside the service are outside this node's fact and were not judged.

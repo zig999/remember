@@ -1,0 +1,239 @@
+findings:
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the function `assertSameScope`, link branch (lines 292-305), called from `resolveDisputeService` at line 79.
+    evidence: |-
+      if (
+        r.source_node_id !== first.source_node_id ||
+        r.target_node_id !== first.target_node_id ||
+        r.link_type_id !== first.link_type_id
+      ) {
+        throw new ConflictError(
+          "BUSINESS_ITEM_NOT_DISPUTED",
+          "Items do not share the same conflict scope",
+          { scope_mismatch: true }
+        );
+    cost: >-
+      The node gives two link scopes: one source node and one link type that does not allow multiple current links, whatever the target, or one source node, one link type and one target node. The code accepts only the second. Disputed links from one source under a functional link type that point at different targets are in one scope by the node. The code refuses them with BUSINESS_ITEM_NOT_DISPUTED and `scope_mismatch: true`, so the owner cannot resolve the dispute that the review queue lists as one scope. The scope definition has a second, narrower home in this function, and the catalog's `allows_multiple_current` is never consulted to choose the scope.
+    kind: contradicts
+    correction: >-
+      For a link type that does not allow multiple current links, compare only the source node and the link type. Compare the target as well only when the link type allows multiple current links.
+    node: rules/knowledge-base/dispute-scope
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the prefer_one branch of `resolveDisputeService`, lines 118-123.
+    evidence: |-
+      throw new BusinessError(
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "decision=prefer_one requires winner_id"
+      );
+    cost: >-
+      The contract fixes the message as "decision=prefer_one requires winner_id (member of item_ids)". The code emits the text without "(member of item_ids)", so a client matching or displaying the specified message gets a different one. This file also checks only that `winnerId` is present, not that it is among `item_ids`. Whether another file enforces membership is outside this file set.
+    kind: contradicts
+    correction: >-
+      Emit the message exactly as the contract states it, and state the membership check in the file that holds it.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the adjust_periods branch of `resolveDisputeService`, lines 200-206.
+    evidence: |-
+      if (!periods || periods.length === 0) {
+        throw new BusinessError(
+          "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+          "decision=adjust_periods requires periods[]"
+        );
+      }
+    cost: >-
+      The contract fixes the message as "decision=adjust_periods requires periods[] (one entry per item_id)". The code emits the text without the parenthesis. The guard here also checks only that the list is non-empty, so this file does not hold "exactly one period to each of its items". A list of periods that does not match the items reaches `adjustItemPeriod` and fails there as a different refusal, BUSINESS_ITEM_NOT_DISPUTED. The same contract message is owed by the code path that enforces one period per item.
+    kind: contradicts
+    correction: >-
+      Emit the message exactly as the contract states it, and have the one-period-per-item check refuse with BUSINESS_DISPUTE_PERIODS_REQUIRED.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the comment at line 67, above the status loop.
+    evidence: >-
+      // BR-22: every row must be `disputed`.
+    cost: >-
+      The prose restates the node's fact, which the loop below it holds with BUSINESS_ITEM_NOT_DISPUTED. Two homes stay in step only by discipline. A reader who looks here for the rule, and not in the specification, finds a back-spec number that no trace reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the loop and by the node.
+    node: rules/knowledge-base/dispute-resolution-requires-disputed-items
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the comment at line 78 and the docstring at line 285 above `assertSameScope`.
+    evidence: >-
+      // BR-14: all items must share the same conflict scope.
+      /** BR-14: all items must share the same conflict scope. */
+    cost: >-
+      The prose restates the single-scope rule, which `assertSameScope` holds in this file. It is a second home for the rule outside behavior. It also hides that the code's notion of scope differs from the node's, reported separately.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/dispute-resolution-single-scope
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      the comment at lines 208-209, above `scopeAllowsMultipleCurrent`.
+    evidence: |-
+      // BR-16: functional-scope predicate — at most one row may end with
+      // valid_to = NULL when the scope's `allows_multiple_current = false`.
+    cost: >-
+      The prose restates the single-open rule, which the `openCount > 1` guard directly below holds in this file. The rule then has two homes, and only the code is checked by anything.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/adjusted-periods-single-open
+read:
+  - node: constraints/curation-is-atomic
+    held_at: >-
+      `resolveDisputeService` returns `withTransaction(deps.pool, async (client) => { ... })`, wrapping every lock, update and action insert.
+    evidence: >-
+      return withTransaction(deps.pool, async (client) => {
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      the resolve-dispute operation in `resolveDisputeService` and the `ResolveDisputeResult` and `ResolveDisputeItemResult` interfaces. The two refusal messages at lines 119-122 and 202-205 differ from the contract's.
+    evidence: |-
+      export interface ResolveDisputeResult {
+        readonly item_kind: ItemKind;
+        readonly decision: "prefer_one" | "adjust_periods" | "keep_disputed";
+        readonly items: readonly ResolveDisputeItemResult[];
+        readonly action_id: string;
+      }
+  - node: domain/knowledge-base/adjusted-period
+    held_at: nowhere
+    evidence: >-
+      the file only reads `p.item_id`, `p.valid_from` and `p.valid_to` of `body.periods`. The shape is declared in the imported `ResolveDisputeBody` from ../dto/dispute.dto.js.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: nowhere
+    evidence: >-
+      the file passes the value along and declares no enumeration: `action: "resolve_dispute",`.
+  - node: domain/knowledge-base/dispute-decision
+    held_at: >-
+      the literal union on `ResolveDisputeResult.decision`, line 46.
+    evidence: >-
+      readonly decision: "prefer_one" | "adjust_periods" | "keep_disputed";
+  - node: domain/knowledge-base/dispute-resolution
+    held_at: nowhere
+    evidence: >-
+      the file reads `body.item_kind`, `body.item_ids`, `body.decision`, `body.winner_id`, `body.periods` and `body.reason` from the imported `ResolveDisputeBody`. The shape is declared in ../dto/dispute.dto.js.
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: nowhere
+    evidence: >-
+      the only guard is `if (!periods || periods.length === 0)`. No comparison of the periods against `body.item_ids` appears in the file.
+  - node: rules/knowledge-base/adjust-periods-outcome
+    held_at: >-
+      the adjust_periods loop, lines 229-250.
+    evidence: |-
+      const updated = await adjustItemPeriod(
+        client, body.item_kind, p.item_id, p.valid_from, p.valid_to ?? null
+      );
+      ...
+      resulting_status: "active",
+      valid_from: p.valid_from,
+      valid_to: p.valid_to ?? null,
+  - node: rules/knowledge-base/adjusted-periods-single-open
+    held_at: >-
+      the `openCount > 1` guard, lines 210-226, with `scopeAllowsMultipleCurrent` at lines 322-339.
+    evidence: |-
+      if (openCount > 1) {
+        throw new BusinessError(
+          "BUSINESS_TEMPORAL_INCOHERENT",
+          "More than one row would remain current after the adjustment",
+          { open_count: openCount }
+        );
+      }
+  - node: rules/knowledge-base/assertion-review-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      the file records only resolve_dispute actions. No confirm-item or reject-item is recorded here.
+  - node: rules/knowledge-base/correction-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      the file records only resolve_dispute actions. No correct-item is recorded here.
+  - node: rules/knowledge-base/dispute-resolution-check-order
+    held_at: >-
+      the sequence in `resolveDisputeService`: the locked-row count check, then the status loop, then `assertSameScope`, then the decision branches.
+    evidence: |-
+      if (locked.length !== body.item_ids.length) {
+      ...
+      for (const row of locked) {
+        if (row.status !== "disputed") {
+      ...
+      assertSameScope(body.item_kind, locked);
+  - node: rules/knowledge-base/dispute-resolution-records-curation-action
+    held_at: >-
+      the three `insertCurationAction` calls, one per decision. The target is `winnerId` for prefer_one and `body.item_ids[0]!` otherwise.
+    evidence: |-
+      action: "resolve_dispute",
+      target_kind: body.item_kind,
+      target_id: winnerId,
+      payload: {
+        decision: "prefer_one",
+        item_ids: body.item_ids,
+        winner_id: winnerId,
+      },
+      reason: body.reason ?? null,
+  - node: rules/knowledge-base/dispute-resolution-requires-disputed-items
+    held_at: >-
+      the status loop, lines 68-76.
+    evidence: |-
+      if (row.status !== "disputed") {
+        throw new ConflictError(
+          "BUSINESS_ITEM_NOT_DISPUTED",
+  - node: rules/knowledge-base/dispute-resolution-single-scope
+    held_at: >-
+      `assertSameScope`, called at line 79. It compares a stricter scope for links than the dispute-scope node defines, reported as a finding.
+    evidence: >-
+      assertSameScope(body.item_kind, locked);
+  - node: rules/knowledge-base/dispute-scope
+    held_at: >-
+      `assertSameScope`, lines 286-320. The link branch requires an equal target node in every case, which the node requires only for link types that allow multiple current links.
+    evidence: |-
+      r.source_node_id !== first.source_node_id ||
+      r.target_node_id !== first.target_node_id ||
+      r.link_type_id !== first.link_type_id
+  - node: rules/knowledge-base/entity-match-resolution-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      the file records only resolve_dispute actions. No resolve-entity-match is recorded here.
+  - node: rules/knowledge-base/keep-disputed-changes-nothing
+    held_at: >-
+      the keep_disputed branch, lines 81-114. It calls no update and returns the rows as they were locked.
+    evidence: |-
+      rows_mutated: 0,
+      ...
+      resulting_status: r.status,
+      valid_from: r.valid_from,
+      valid_to: r.valid_to,
+  - node: rules/knowledge-base/node-merge-records-curation-action
+    held_at: nowhere
+    evidence: >-
+      the file records only resolve_dispute actions. No merge-nodes is recorded here.
+  - node: rules/knowledge-base/prefer-one-outcome
+    held_at: >-
+      the prefer_one branch, lines 116-197. Validities pass through unchanged. The status updates and the supersession stamp sit in the repository functions it calls, outside this file.
+    evidence: |-
+      const winnerUpdated = await resolveDisputeWinner(client, body.item_kind, winnerId);
+      const losersUpdated = await resolveDisputeLosers(client, body.item_kind, loserIds);
+      ...
+      resulting_status: "deleted",
+      valid_from: r.valid_from,
+      valid_to: r.valid_to,
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the `if (!winnerId)` guard, lines 117-123. It checks presence only, not membership among `item_ids`, and its message differs from the contract's.
+    evidence: |-
+      const winnerId = body.winner_id;
+      if (!winnerId) {
+        throw new BusinessError(
+          "BUSINESS_DISPUTE_WINNER_REQUIRED",
+          "decision=prefer_one requires winner_id"
+        );
+  - node: rules/knowledge-base/refused-curation-records-nothing
+    held_at: >-
+      the whole body runs inside `withTransaction`. Every refusal is a thrown error raised before or rolling back the `insertCurationAction` call.
+    evidence: >-
+      return withTransaction(deps.pool, async (client) => {
+looked_past: >-
+  The log lines and the `UC-05 / UC-06 / UC-07` and `BR-26` comments, and the `?? true` fallbacks in `scopeAllowsMultipleCurrent`, state no fact of these nodes, so they are not reported.

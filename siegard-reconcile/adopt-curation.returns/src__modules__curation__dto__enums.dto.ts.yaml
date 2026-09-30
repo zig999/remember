@@ -1,0 +1,74 @@
+findings: []
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      Only in part, in the closed sets and shape primitives: `ReviewQueueKindSchema`, `EntityMatchDecisionSchema`, `DisputeDecisionSchema`, `AssertionStatusSchema`, `ValidFromSourceSchema`, `UuidSchema`, `IsoDateSchema`. The operations, answers and refusals of the contract are nowhere in this file.
+    evidence: |-
+      export const ReviewQueueKindSchema = z.enum(["entity_match", "disputed"]);
+      export const EntityMatchDecisionSchema = z.enum(["merge_into", "keep_separate"]);
+      export const IsoDateSchema = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be ISO date `YYYY-MM-DD`");
+  - node: domain/knowledge-base/assertion-kind
+    held_at: >-
+      `ItemKindSchema`, line 7. It carries the values link and attribute.
+    evidence: |-
+      export const ItemKindSchema = z.enum(["link", "attribute"]);
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      `AssertionStatusSchema`, lines 31-37. It carries the five values of the node.
+    evidence: |-
+      export const AssertionStatusSchema = z.enum([
+        "active",
+        "uncertain",
+        "disputed",
+        "superseded",
+        "deleted",
+      ]);
+  - node: domain/knowledge-base/dispute-decision
+    held_at: >-
+      `DisputeDecisionSchema`, lines 16-20. It carries the three values in the underscore spelling the contract uses on the wire.
+    evidence: |-
+      export const DisputeDecisionSchema = z.enum([
+        "prefer_one",
+        "adjust_periods",
+        "keep_disputed",
+      ]);
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: >-
+      `EntityMatchDecisionSchema`, line 13. It carries the two values in the underscore spelling the contract uses on the wire.
+    evidence: |-
+      export const EntityMatchDecisionSchema = z.enum(["merge_into", "keep_separate"]);
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      `NodeStatusSchema`, lines 23-28. It carries the four values of the node.
+    evidence: |-
+      export const NodeStatusSchema = z.enum([
+        "active",
+        "needs_review",
+        "merged",
+        "deleted",
+      ]);
+  - node: domain/knowledge-base/review-queue-kind
+    held_at: >-
+      `ReviewQueueKindSchema`, line 10. It carries the two values in the underscore spelling the contract uses in `kind: "entity_match"`.
+    evidence: |-
+      export const ReviewQueueKindSchema = z.enum(["entity_match", "disputed"]);
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      `ValidFromSourceSchema`, line 40. It carries the three values of the node.
+    evidence: |-
+      export const ValidFromSourceSchema = z.enum(["stated", "document", "received"]);
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: >-
+      `ReasonRequiredSchema` and `ReasonOptionalSchema`, lines 50-56. Both trim the reason and then require at least one character.
+    evidence: |-
+      export const ReasonRequiredSchema = z.string().trim().min(1);
+      export const ReasonOptionalSchema = z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .nullable();
+looked_past: >-
+  The header comment and the doc comments claim the file mirrors openapi.yaml component schemas and that trim plus min(1) rejects whitespace-only reasons; this is prose naming another artifact, and code in this file holds the enums and the reason check.

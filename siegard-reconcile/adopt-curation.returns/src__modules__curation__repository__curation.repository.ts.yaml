@@ -1,0 +1,375 @@
+findings:
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the comment above the pathCompressMergedInto UPDATE, line 85
+    evidence: >-
+      /** BR-07: path compression — repoint anything that was pointing at absorbed. */
+    cost: >-
+      The comment states a second time what the statement below it already does (every node merged into the absorbed node names the survivor instead). Two homes for one rule means a change to the node leaves the prose to drift, and the prose is a place no check reaches.
+    kind: restates
+    correction: >-
+      Remove the comment. The UPDATE in pathCompressMergedInto holds the fact in this file.
+    node: rules/knowledge-base/merge-compresses-paths
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of copyAliases, lines 105-109
+    evidence: >-
+      Copy aliases from absorbed -> survivor. The absorbed node's canonical alias
+       * is downgraded to `kind = 'alias'` on the survivor
+    cost: >-
+      The alias-copy rule (kind alias, skip forms the survivor already holds) is written in prose as well as in the INSERT ... SELECT ... ON CONFLICT (node_id, alias_norm) DO NOTHING. A reader can take the docstring for the decision and miss that the node holds it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The INSERT in copyAliases holds the fact.
+    node: rules/knowledge-base/merge-copies-aliases
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the section header above deleteEntityMatchReviewByNode, line 164
+    evidence: >-
+      // entity_match_review (delete on resolution — BR-10)
+    cost: >-
+      The header says an accepted resolution removes the node's reviews, and the DELETE below it already does that. The prose is a second statement of the rule with no check behind it.
+    kind: restates
+    correction: >-
+      Remove the header's rule claim. The DELETE FROM entity_match_review WHERE node_id = $1 holds the fact.
+    node: rules/knowledge-base/entity-match-resolution-clears-reviews
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of confirmItem, line 245
+    evidence: >-
+      /** UC-08: confirm_item — flip `uncertain` -> `active`. BR-21. */
+    cost: >-
+      The prose restates that a confirmation makes its item active and requires it to be uncertain. The UPDATE ... SET status = 'active' WHERE id = $1 AND status = 'uncertain' already holds both, so the docstring is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/confirmation-activates
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of rejectItem, line 271
+    evidence: >-
+      /** UC-09: reject_item — pair status='deleted' AND superseded_at=now() (BR-20). */
+    cost: >-
+      The prose restates that a rejection marks the item deleted and stamps its supersession time. The UPDATE in rejectItem does exactly that, so the docstring duplicates the rule outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/rejection-deletes
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstrings of resolveDisputeWinner and resolveDisputeLosers, lines 301 and 327
+    evidence: >-
+      /** UC-05 (prefer_one, winner): disputed -> active. */ ... /** UC-05 (prefer_one, losers): pair status='deleted' AND superseded_at=now(). */
+    cost: >-
+      The prefer-one outcome (winner active, every other item deleted with its supersession time stamped) is stated in prose and again in the two UPDATE statements. Nothing reads the prose, so the two can diverge unnoticed.
+    kind: restates
+    correction: >-
+      Remove both docstrings.
+    node: rules/knowledge-base/prefer-one-outcome
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of adjustItemPeriod, line 356
+    evidence: >-
+      /** UC-06 (adjust_periods): set new (valid_from, valid_to) and status='active'. */
+    cost: >-
+      The prose repeats the adjust-periods outcome that the UPDATE already carries (SET valid_from, valid_to, status = 'active'). It is a second place to look for a fact the node holds.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/adjust-periods-outcome
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of supersedePredecessor, line 401
+    evidence: >-
+      /** UC-10 predecessor UPDATE — `valid_to` is NOT in the SET list (BR-18). */
+    cost: >-
+      The prose restates that a correction supersedes its item and leaves the validity end alone. The UPDATE (SET status = 'superseded', superseded_at = now(), with no valid_to) holds that, so the docstring is a second copy.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/correction-supersedes-item
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstring of insertCorrectedRow, line 431
+    evidence: >-
+      /** UC-10 new row creation — SELECT-then-INSERT with COALESCE overrides. */
+    cost: >-
+      The prose describes the rule that a correction's new item carries the stated values and otherwise the predecessor's. The COALESCE($n, column) expressions and the predecessor's confidence already hold this, so the docstring is a second home for it.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/corrected-item-values
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the docstrings of copyProvenance and appendProvenanceFragment, lines 510 and 541
+    evidence: >-
+      /** UC-10 BR-19 provenance copy from predecessor to successor. */ ... /** UC-10 BR-19 (extension): append the errata fragment if supplied. */
+    cost: >-
+      The prose says the new item holds the predecessor's provenance plus the cited fragment. The two INSERT ... SELECT / INSERT ... VALUES statements already do that, so the rule is stated twice and only one copy is behavior.
+    kind: restates
+    correction: >-
+      Remove both docstrings.
+    node: rules/knowledge-base/corrected-item-provenance
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the ACCEPT_ACTIONS docstring (line 786) and the accept_rate comments (lines 820-824) in aggregateCurationMetrics
+    evidence: >-
+      /** Accept actions are the five non-reject curator verbs (BR-33 spec table). */ ... Zero-division → 0 at BFF layer
+    cost: >-
+      The accept-rate definition (which five actions count, and 0 when none is recorded) is in prose and in the ACCEPT_ACTIONS array plus the totalActions > 0 guard. The prose is a second home for a fact the node already holds.
+    kind: restates
+    correction: >-
+      Remove the docstring and the comment block. ACCEPT_ACTIONS and the guard in aggregateCurationMetrics hold the fact.
+    node: rules/knowledge-base/accept-rate
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the reject_rate_by_code comment block, lines 841-844
+    evidence: >-
+      Today `curation_action.payload` of `reject_item` is `'{}'` (BR-25), so
+        // this map is empty in practice. We still surface the field as `{}` rather
+        // than omit it
+    cost: >-
+      The prose restates that reject_rate_by_code is a per-code share of reject-item actions, empty when there is none. The query and the `{}` initialiser already hold that. The comment also asserts what the payload holds today, which nothing checks.
+    kind: restates
+    correction: >-
+      Remove the comment block.
+    node: rules/knowledge-base/reject-rate-by-code
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the needs_review_count comment block, lines 861-864
+    evidence: >-
+      BR-33: surfaced as two separate fields even though they are logically
+        // equal under BR-10
+    cost: >-
+      The prose restates that needs-review count and entity-match queue count are both the number of nodes in status needs-review. The query and `const entityMatchQueueCount = needsReviewCount` hold it, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment block.
+    node: rules/knowledge-base/metrics-review-counts
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the uncertain_count comment, lines 873-874
+    evidence: >-
+      Sum of resolved-view rows whose effective_status='uncertain' (§5.4/§6.6).
+    cost: >-
+      The prose restates that uncertain count is the number of links and attributes whose effective status is uncertain. The query over knowledge_link_resolved and node_attribute_resolved holds it, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/metrics-assertion-counts
+
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the disputed_queue_count statement and its comment, lines 892-912
+    evidence: >-
+      SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id
+           FROM knowledge_link
+          WHERE status = 'disputed'
+      ... NOTE: this is an ADVISORY metric and is NOT fully consistent with the
+        // queue's dispute grouping (queue.service.groupDisputedLinks), which is
+        // cardinality-aware and collapses competing targets of a FUNCTIONAL link
+        // into ONE group. For functional multi-target disputes this can over-count
+    cost: >-
+      The node says the metric is the number of entries the disputed queue holds. The code counts its own grouping, keyed by (source, target, link_type) for every link type. The queue's scope leaves the target out for a link type that does not allow multiple current links, per the curation contract. The dispute-scope rule is implemented a second time, differently, and the reported disputed_queue_count can exceed the number of queue entries, as the comment itself admits. The owner reads a number the queue does not back.
+    kind: contradicts
+    correction: >-
+      Derive disputed_queue_count from the same scope grouping the queue listing uses, so both give the same count of entries. Do not keep a separate grouping in this SQL.
+    node: rules/knowledge-base/metrics-disputed-queue-count
+
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      the data side only, spread over the guarded UPDATEs (WHERE ... AND status = ...), the queue listings and aggregateCurationMetrics. The HTTP answers, error codes and envelopes are not in this file.
+    evidence: >-
+      `UPDATE knowledge_link SET status = 'active' WHERE id = $1 AND status = 'uncertain' RETURNING id` and `SELECT kn.id AS node_id, nt.name AS node_type, kn.canonical_name, kn.created_at, em.candidate_node_id, ...`. The header says "the service layer owns transaction wiring".
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      the CurationActionInsertArgs interface and the INSERT in insertCurationAction (lines 592-621)
+    evidence: >-
+      `INSERT INTO curation_action (action, target_kind, target_id, payload, reason) VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id, created_at`
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      the `target_kind` union in CurationActionInsertArgs (line 594), which declares only three of the five values
+    evidence: >-
+      readonly target_kind: "node" | "link" | "attribute";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      the row types ItemLockedRow and DisputedLinkRow (lines 182-198 and 671-688), which name part of the link's attributes, and the knowledge_link statements
+    evidence: >-
+      `readonly source_node_id?: string; readonly target_node_id?: string; readonly link_type_id?: string;` and `supersedes_link_id AS supersedes_id`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      the row types ItemLockedRow and DisputedAttributeRow (lines 182-198 and 725-737), which name part of the attribute's fields, and the node_attribute statements
+    evidence: >-
+      `readonly attribute_key_id?: string; readonly value?: string;` and `supersedes_attribute_id AS supersedes_id`
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the `value_type` union in ItemLockedRow (line 189)
+    evidence: >-
+      readonly value_type?: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/accept-rate
+    held_at: >-
+      the ACCEPT_ACTIONS array and the totalActions > 0 branch in aggregateCurationMetrics (lines 787-839)
+    evidence: >-
+      `"resolve_entity_match", "merge_nodes", "resolve_dispute", "confirm_item", "correct_item"` and `let acceptRate = 0; if (totalActions > 0) { ... acceptRate = accepted / totalActions; }`
+  - node: rules/knowledge-base/adjust-periods-outcome
+    held_at: >-
+      the UPDATEs in adjustItemPeriod (lines 357-386)
+    evidence: >-
+      `SET valid_from = $2::date, valid_to = $3::date, status = 'active' WHERE id = $1 AND status = 'disputed'`
+  - node: rules/knowledge-base/alias-unique-per-node
+    held_at: >-
+      the ON CONFLICT clause of the INSERT in copyAliases (line 120). The uniqueness itself is a store constraint declared elsewhere.
+    evidence: >-
+      `ON CONFLICT (node_id, alias_norm) DO NOTHING`
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: >-
+      the ON CONFLICT clauses on the attribute branches of copyProvenance and appendProvenanceFragment (lines 534 and 561). The uniqueness itself is a store constraint declared elsewhere.
+    evidence: >-
+      `ON CONFLICT (attribute_id, fragment_id) DO NOTHING`
+  - node: rules/knowledge-base/confirmation-activates
+    held_at: >-
+      the UPDATEs in confirmItem (lines 246-269)
+    evidence: >-
+      `UPDATE node_attribute SET status = 'active' WHERE id = $1 AND status = 'uncertain' RETURNING id`
+  - node: rules/knowledge-base/confirmation-requires-uncertain
+    held_at: >-
+      the `AND status = 'uncertain'` guards in confirmItem (lines 255 and 265)
+    evidence: >-
+      `WHERE id = $1 AND status = 'uncertain'`
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: >-
+      copyProvenance (lines 511-539) and appendProvenanceFragment (lines 542-566)
+    evidence: >-
+      `INSERT INTO provenance (link_id, fragment_id, created_at) SELECT $2, fragment_id, now() FROM provenance WHERE link_id = $1` and `INSERT INTO provenance (link_id, fragment_id, created_at) VALUES ($1, $2, now())`
+  - node: rules/knowledge-base/corrected-item-values
+    held_at: >-
+      the INSERT ... SELECT statements in insertCorrectedRow (lines 432-508)
+    evidence: >-
+      `COALESCE($2::uuid, target_node_id), link_type_id, COALESCE($3::date, valid_from), COALESCE($4::date, valid_to), 'active'::assertion_status, confidence, ... NULL,`
+  - node: rules/knowledge-base/correction-fragment-accepted
+    held_at: >-
+      nowhere. The file only reads the fragment and returns its status. The accepted-status decision is not made here.
+    evidence: >-
+      `SELECT id, status FROM information_fragment WHERE id = $1`
+  - node: rules/knowledge-base/correction-supersedes-item
+    held_at: >-
+      supersedePredecessor (lines 402-429), plus the `supersedes_*` columns set by insertCorrectedRow
+    evidence: >-
+      `SET status = 'superseded', superseded_at = now() WHERE id = $1 AND status IN ('active', 'uncertain', 'disputed')`; the INSERT sets `supersedes_link_id` from `$1::uuid`.
+  - node: rules/knowledge-base/curation-action-time-is-recording-time
+    held_at: >-
+      nowhere. The INSERT does not set created_at; the file only returns the value the store produced.
+    evidence: >-
+      `INSERT INTO curation_action (action, target_kind, target_id, payload, reason) VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id, created_at`
+  - node: rules/knowledge-base/dispute-queue-entry
+    held_at: >-
+      nowhere. The file lists the disputed items one row each. The grouping into one entry per scope happens elsewhere, per the file's own docstring.
+    evidence: >-
+      `SELECT kl.id, kl.source_node_id, ... lt.allows_multiple_current ... FROM knowledge_link kl JOIN link_type lt ON lt.id = kl.link_type_id WHERE kl.status = 'disputed' ORDER BY kl.recorded_at ASC, kl.id ASC`
+  - node: rules/knowledge-base/entity-match-queue-entry
+    held_at: >-
+      listEntityMatchQueue (lines 637-660)
+    evidence: >-
+      `FROM knowledge_node kn ... LEFT JOIN entity_match_review em ON em.node_id = kn.id ... WHERE kn.status = 'needs_review' ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST`
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: >-
+      deleteEntityMatchReviewByNode (lines 167-176)
+    evidence: >-
+      `DELETE FROM entity_match_review WHERE node_id = $1 RETURNING id`
+  - node: rules/knowledge-base/keep-separate-activates-node
+    held_at: >-
+      updateNodeStatusKeepSeparate (lines 52-65)
+    evidence: >-
+      `UPDATE knowledge_node SET status = 'active' WHERE id = $1 AND status = 'needs_review' RETURNING id`
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: >-
+      the ON CONFLICT clauses on the link branches of copyProvenance and appendProvenanceFragment (lines 523 and 552). The uniqueness itself is a store constraint declared elsewhere.
+    evidence: >-
+      `ON CONFLICT (link_id, fragment_id) DO NOTHING`
+  - node: rules/knowledge-base/merge-check-order
+    held_at: >-
+      nowhere. The order of checks is not in this file. The file holds only the status guard of the merge UPDATE.
+    evidence: >-
+      `WHERE id = $1 AND status IN ('active', 'needs_review') RETURNING id`
+  - node: rules/knowledge-base/merge-compresses-paths
+    held_at: >-
+      pathCompressMergedInto (lines 86-99)
+    evidence: >-
+      `UPDATE knowledge_node SET merged_into_node_id = $2 WHERE merged_into_node_id = $1 RETURNING id`
+  - node: rules/knowledge-base/merge-copies-aliases
+    held_at: >-
+      copyAliases (lines 110-125)
+    evidence: >-
+      `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id, created_at) SELECT $2, alias, 'alias', created_by_run_id, created_at FROM node_alias WHERE node_id = $1 ON CONFLICT (node_id, alias_norm) DO NOTHING`
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: >-
+      updateNodeMerged (lines 68-83)
+    evidence: >-
+      `SET status = 'merged', merged_into_node_id = $2 WHERE id = $1 AND status IN ('active', 'needs_review')`
+  - node: rules/knowledge-base/merge-repoints-assertions
+    held_at: >-
+      repointLinks and repointAttributes (lines 131-161)
+    evidence: >-
+      `SET source_node_id = CASE WHEN source_node_id = $1 THEN $2 ELSE source_node_id END, ... WHERE source_node_id = $1 OR target_node_id = $1` and `UPDATE node_attribute SET node_id = $2 WHERE node_id = $1`, neither filtering on status.
+  - node: rules/knowledge-base/metrics-assertion-counts
+    held_at: >-
+      the uncertain_count and disputed_count queries in aggregateCurationMetrics (lines 875-890)
+    evidence: >-
+      `(SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'disputed') + (SELECT count(*) FROM node_attribute_resolved WHERE effective_status = 'disputed')`
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere. The count is computed from a grouping of its own that differs from the queue's entries (see the finding).
+    evidence: >-
+      `SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id FROM knowledge_link WHERE status = 'disputed' UNION ALL SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid`
+  - node: rules/knowledge-base/metrics-review-counts
+    held_at: >-
+      the needsReviewRes query and `const entityMatchQueueCount = needsReviewCount` in aggregateCurationMetrics (lines 865-871)
+    evidence: >-
+      `SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'`
+  - node: rules/knowledge-base/prefer-one-outcome
+    held_at: >-
+      resolveDisputeWinner and resolveDisputeLosers (lines 302-354)
+    evidence: >-
+      `SET status = 'active' WHERE id = $1 AND status = 'disputed'` and `SET status = 'deleted', superseded_at = now() WHERE id = ANY($1::uuid[]) AND status = 'disputed'`
+  - node: rules/knowledge-base/reject-rate-by-code
+    held_at: >-
+      the rejectsRes query and loop in aggregateCurationMetrics (lines 845-859)
+    evidence: >-
+      `WHERE action = 'reject_item' AND payload ? 'error_code' GROUP BY 1` and `rejectRateByCode[row.code] = Number(row.total) / totalActions;`
+  - node: rules/knowledge-base/rejection-and-correction-require-live-item
+    held_at: >-
+      the `status IN ('active', 'uncertain', 'disputed')` guards in rejectItem and supersedePredecessor (lines 283, 294, 413 and 424)
+    evidence: >-
+      `WHERE id = $1 AND status IN ('active', 'uncertain', 'disputed') RETURNING id`
+  - node: rules/knowledge-base/rejection-deletes
+    held_at: >-
+      rejectItem (lines 272-299)
+    evidence: >-
+      `SET status = 'deleted', superseded_at = now() WHERE id = $1 AND status IN ('active', 'uncertain', 'disputed')`
+  - node: rules/knowledge-base/review-queue-order
+    held_at: >-
+      the ORDER BY clauses of listEntityMatchQueue (line 655) and of the two disputed listings (lines 711 and 759). The ordering of kinds against each other is not in this file.
+    evidence: >-
+      `ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST` and `ORDER BY kl.recorded_at ASC, kl.id ASC`
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      countEntityMatchQueue (lines 662-669), which counts entries before any limit. countDisputedLinks and countDisputedAttributes count items, not scope entries.
+    evidence: >-
+      `SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'` and `SELECT count(*)::text AS total FROM knowledge_link WHERE status = 'disputed'`
+
+looked_past: >-
+  Comments citing BR-26 (FOR UPDATE at transaction start), BR-33 "SQL sources" and other back-spec rules state facts owned by no node in this set, and the listEntityMatchQueue LIMIT/OFFSET cuts joined candidate rows rather than entries. Both belong to the service-layer reading and the analysis, and I did not judge them here.

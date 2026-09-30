@@ -1,0 +1,68 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment block above the GET /metrics handler, lines 126-136, and the comment inside the catch block, lines 152-153
+    evidence: >-
+      // Wraps the shared mapper with a graceful-degradation override: ANY residual
+      // 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front
+      // spec MetricsStrip (R1) can fall back to per-kind totals from /queue.
+    cost: >-
+      The contract holds this refusal, and the `statusCode === 500 ? 503 : statusCode` branch below the comment implements it. The comment is a second home for the rule. When the contract's metrics refusal moves, a reader can follow the comment's wording instead of the node, and nothing checks the comment.
+    kind: restates
+    correction: >-
+      Remove the comment block. The behavior is already held by the `degradedStatus` and `degradedEnvelope` code and by the contract's read-curation-metrics refusal.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment inside the GET /metrics try block, lines 145-149
+    evidence: >-
+      // Bare success body — consistent with every other curation REST
+      // endpoint (queue/confirm/reject/...). The SPA's httpCuration returns
+      // the raw 2xx JSON, so an `{ ok, result }` wrapper here would surface
+    cost: >-
+      The contract holds "HTTP 200 carrying, with no envelope" for each curation operation, and `reply.status(200).send(result)` implements it. The comment restates it as prose with a rationale of its own. That leaves a second, unchecked statement of the success shape.
+    kind: restates
+    correction: >-
+      Remove the comment. The bare success body is held by the `reply.status(200).send(result)` calls and by the contract's accepted answers.
+    node: contracts/knowledge-base/curation
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      `sendError()` (lines 81-107) and the GET /metrics catch branch (lines 154-165), which take the status and envelope of every REST refusal from the shared `mapErrorToHttpResponse` imported from "../mcp/error-envelope.js". The mapper is not in the file set. This file holds only the routing of errors into it.
+    evidence: >-
+      const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
+      ...
+      return reply.status(statusCode).send(envelope);
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      The eight route registrations in `registerCurationRoutes` (lines 109-352). Each returns the service result as a bare HTTP 200 body. The metrics handler turns a residual 500 into a 503 with the contract's message. The per-refusal codes and messages sit in the DTO schemas, the services and the shared mapper, not in this file.
+    evidence: >-
+      return reply.status(200).send(result);
+      ...
+      code: "SYSTEM_SERVICE_UNAVAILABLE",
+      message: "A backing service is temporarily unavailable.",
+  - node: domain/knowledge-base/assertion-correction
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the parsed body: `body = CorrectItemBodySchema.parse(request.body ?? {});` then `correctItemService({...}, body)`. The shape is declared in `../dto/item.dto.js`, not here.
+  - node: domain/knowledge-base/assertion-review
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the parsed bodies: `ConfirmItemBodySchema.parse(request.body ?? {})` and `RejectItemBodySchema.parse(request.body ?? {})`. No shape with assertion_kind, item_id or reason is declared in this file.
+  - node: domain/knowledge-base/node-merge
+    held_at: nowhere
+    evidence: >-
+      The file reads one field of each merge body and passes it on: `body.survivor_id, body.absorbed_id, body.reason`. The shape is declared in `../dto/entity-match.dto.js`, not here.
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: nowhere
+    evidence: >-
+      The file states no rule about reasons. It only calls the DTO parsers and services, for example `MergeNodesBodySchema.parse(request.body ?? {})`. Reason enforcement sits in the DTO schemas and services outside this file.
+  - node: rules/knowledge-base/curation-request-checked-first
+    held_at: >-
+      The order in each POST handler: the body parse (in `try`, with failures sent through `sendError`) comes before the service call that reads nodes, links, attributes or fragments. In the entity-match route, `NodeIdPathSchema.parse(request.params)` comes first of all.
+    evidence: >-
+      body = ResolveDisputeBodySchema.parse(request.body ?? {});
+      ...
+      const result = await resolveDisputeService(
+looked_past: >-
+  The comment in `sendError` about byte-identical 500 and 503 envelopes from the global handler, the header's endpoint and use-case listing, and the `curation_request_failed` and `curation_metrics_degraded` log lines are not reported. Other judgments own them: the first two are prose about the mapper held in another file, and the log lines are operational telemetry that no node states.

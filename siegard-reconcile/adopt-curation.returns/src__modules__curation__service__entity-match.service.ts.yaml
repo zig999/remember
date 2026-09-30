@@ -1,0 +1,202 @@
+findings:
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      the comment above the first guard of resolveEntityMatchService, line 45
+    evidence: >-
+      // BR-23 defence in depth on resolveEntityMatch (target == self).
+    cost: >-
+      The self-merge rule is stated a second time as prose beside the guard that enforces it. The comment's BR-23 citation is a pointer to a back-spec rule, not to a node. A reader who changes the rule may edit the comment or the citation and believe they have touched the decision.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard at lines 46-56 holds the fact, and the node is the rule the trace should link to this file.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      the comment at the top of the keep_separate branch, line 60
+    evidence: >-
+      // BR-26: lock node and assert needs_review.
+    cost: >-
+      The rule that a resolution needs a node in needs-review is restated as prose under a back-spec number. Code that holds it follows at `node.status !== "needs_review"`. The two can drift apart without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The status check at lines 74-80 holds the fact.
+    node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      the comment above the review deletion in the keep_separate branch, line 90
+    evidence: >-
+      // BR-10: drop review-context rows.
+    cost: >-
+      The fact that an accepted resolution removes the node's entity match reviews is restated as prose under a back-spec number. `deleteEntityMatchReviewByNode` already does it, in this file and in the merge_into branch.
+    kind: restates
+    correction: >-
+      Remove the comment. The `deleteEntityMatchReviewByNode(client, nodeId)` calls hold the fact.
+    node: rules/knowledge-base/entity-match-resolution-clears-reviews
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      the comment at the start of the merge_into branch, line 123
+    evidence: >-
+      // merge_into branch — DTO superRefine guarantees target_node_id+reason exist.
+    cost: >-
+      The requirement that merge-into name a target, and state a reason, is restated as prose that points at the DTO for enforcement. Code in this file also holds the target requirement, as the defensive `BUSINESS_TARGET_NODE_REQUIRED` throw. A reader now finds the rule in three places: the comment, the throw and the DTO.
+    kind: restates
+    correction: >-
+      Remove the comment. The throw at lines 125-131 holds the target requirement in this file, and the DTO holds it upstream.
+    node: rules/knowledge-base/merge-into-requires-target
+read:
+  - node: constraints/curation-is-atomic
+    held_at: >-
+      the `withTransaction(deps.pool, async (client) => { ... })` wrappers of resolveEntityMatchService and mergeNodesService
+    evidence: >-
+      return withTransaction(deps.pool, async (client) => {
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      the two operations of this file. resolve-entity-match is the ResolveEntityMatchResult shape and the returns of resolveEntityMatchService, with the refusals BUSINESS_SELF_MERGE_FORBIDDEN, RESOURCE_NOT_FOUND, BUSINESS_NODE_DELETED, BUSINESS_REVIEW_NOT_PENDING and BUSINESS_TARGET_NODE_REQUIRED. merge-nodes is the MergeNodesResult shape and mergeNodesService. The rest of each operation's refusals sit in performMerge and the DTO, outside this file.
+    evidence: >-
+      return { node_id: nodeId, decision: "keep_separate", resulting_status: "active", target_node_id: null, affected: null, action_id: action.id, };
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      nowhere. The file passes the values "resolve_entity_match" and "merge_nodes" to insertCurationAction and declares no enumeration of action kinds.
+    evidence: >-
+      action: "resolve_entity_match",
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      nowhere. The file only passes target_kind "node" along and declares no enumeration of target kinds.
+    evidence: >-
+      target_kind: "node",
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: >-
+      the literal union on `decision` in the ResolveEntityMatchResult interface
+    evidence: >-
+      readonly decision: "merge_into" | "keep_separate";
+  - node: domain/knowledge-base/entity-match-resolution
+    held_at: >-
+      nowhere. The shape is declared in the imported ResolveEntityMatchBody of ../dto/entity-match.dto.js, and this file only reads its fields.
+    evidence: >-
+      import type { ResolveEntityMatchBody } from "../dto/entity-match.dto.js";
+  - node: domain/knowledge-base/merge-counts
+    held_at: >-
+      nowhere. MergeAffectedCounts is imported from ./merge.service.js and this file declares no shape for it.
+    evidence: >-
+      import { performMerge, type MergeAffectedCounts } from "./merge.service.js";
+  - node: domain/knowledge-base/node-merge
+    held_at: >-
+      nowhere. mergeNodesService takes the survivor, the absorbed node and the reason as bare parameters and declares no shape for the merge request.
+    evidence: >-
+      survivorId: string,
+      absorbedId: string,
+      reason: string
+  - node: rules/knowledge-base/assertion-review-records-curation-action
+    held_at: >-
+      nowhere. The file handles no confirmation or rejection.
+    evidence: >-
+      The file's only curation-action kinds are "resolve_entity_match" and "merge_nodes".
+  - node: rules/knowledge-base/correction-records-curation-action
+    held_at: >-
+      nowhere. The file handles no correction.
+    evidence: >-
+      The file's only curation-action kinds are "resolve_entity_match" and "merge_nodes".
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      nowhere as enforcement. The file only forwards the reason, `body.reason ?? null` for resolution and the `reason` parameter for merge, and the requirement is enforced upstream in the DTO.
+    evidence: >-
+      reason: body.reason ?? null,
+  - node: rules/knowledge-base/curation-refuses-deleted-node
+    held_at: >-
+      the `node.status === "deleted"` branch of the keep_separate path. The merge paths are refused in performMerge, outside this file.
+    evidence: >-
+      if (node.status === "deleted") {
+        throw new NodeDeletedError(
+  - node: rules/knowledge-base/dispute-resolution-records-curation-action
+    held_at: >-
+      nowhere. The file handles no dispute resolution.
+    evidence: >-
+      The file's only curation-action kinds are "resolve_entity_match" and "merge_nodes".
+  - node: rules/knowledge-base/entity-match-queue-entry
+    held_at: >-
+      nowhere. The file lists no queue.
+    evidence: >-
+      The file exports only resolveEntityMatchService and mergeNodesService.
+  - node: rules/knowledge-base/entity-match-resolution-check-order
+    held_at: >-
+      the self-target guard before `withTransaction`, then the absent, deleted and not-needs_review checks in order inside the keep_separate branch
+    evidence: >-
+      body.decision === "merge_into" && body.target_node_id !== null && body.target_node_id === nodeId
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: >-
+      the `deleteEntityMatchReviewByNode(client, nodeId)` calls in both the keep_separate and merge_into branches
+    evidence: >-
+      await deleteEntityMatchReviewByNode(client, nodeId);
+  - node: rules/knowledge-base/entity-match-resolution-records-curation-action
+    held_at: >-
+      the two insertCurationAction calls in resolveEntityMatchService
+    evidence: >-
+      action: "resolve_entity_match",
+      target_kind: "node",
+      target_id: nodeId,
+      payload: { decision: "merge_into", target_node_id: targetNodeId },
+      reason: body.reason ?? null,
+  - node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+    held_at: >-
+      the `node.status !== "needs_review"` check in the keep_separate branch, and `absorbedExpectedStatus: "needs_review"` passed to performMerge on the merge_into branch
+    evidence: >-
+      if (node.status !== "needs_review") {
+        throw new ConflictError(
+          "BUSINESS_REVIEW_NOT_PENDING",
+  - node: rules/knowledge-base/keep-separate-activates-node
+    held_at: >-
+      the `updateNodeStatusKeepSeparate(client, nodeId)` call and the `resulting_status: "active"` return of the keep_separate branch
+    evidence: >-
+      const updated = await updateNodeStatusKeepSeparate(client, nodeId);
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      the defensive `targetNodeId === null || targetNodeId === undefined` throw at the start of the merge_into branch
+    evidence: >-
+      throw new BusinessError(
+        "BUSINESS_TARGET_NODE_REQUIRED",
+        "decision=merge_into requires target_node_id"
+      );
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: >-
+      nowhere. The marking is done inside performMerge, outside this file. This file only reports `resulting_status: "merged"`.
+    evidence: >-
+      const affected = await performMerge(client, {
+        survivorId: targetNodeId,
+        absorbedId: nodeId,
+  - node: rules/knowledge-base/node-merge-absorbs-active-node
+    held_at: >-
+      the `absorbedExpectedStatus: "active"` argument mergeNodesService passes to performMerge. The check itself runs in performMerge, outside this file.
+    evidence: >-
+      absorbedExpectedStatus: "active",
+  - node: rules/knowledge-base/node-merge-records-curation-action
+    held_at: >-
+      the insertCurationAction call in mergeNodesService
+    evidence: >-
+      action: "merge_nodes",
+      target_kind: "node",
+      target_id: absorbedId,
+      payload: { survivor_id: survivorId },
+      reason,
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the target-equals-node guard of resolveEntityMatchService. mergeNodesService has no such check here and relies on performMerge and the DTO, outside this file.
+    evidence: >-
+      throw new ConflictError(
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "merge_into target equals the node being resolved",
+        { node_id: nodeId }
+      );
+  - node: rules/knowledge-base/refused-curation-records-nothing
+    held_at: >-
+      the self-target guard that throws before `withTransaction` opens, and every throw inside the transaction that comes before `insertCurationAction`, so a refusal rolls back and records no action
+    evidence: >-
+      const action = await insertCurationAction(client, {
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      the keep_separate branch, which never reads `body.target_node_id` and returns `target_node_id: null`
+    evidence: >-
+      resulting_status: "active",
+      target_node_id: null,
+      affected: null,
+looked_past: >-
+  Seen and not reported as another judgment's: the structured log lines and their route strings, the refusal messages the contract does not word, and the refusals performMerge and the DTO hold in other files.

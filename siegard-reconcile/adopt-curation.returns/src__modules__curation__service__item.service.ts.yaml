@@ -1,0 +1,193 @@
+findings:
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above the fragment check in correctItemService, lines 212-213
+    evidence: >-
+      // BR-17: when `valid_from_fragment_id` is supplied, the fragment must
+      // exist AND its status must be `accepted`.
+    cost: >-
+      The comment states the node's rule a second time under the back-spec's own rule number. The code below it (`if (!fragment || fragment.status !== "accepted")`) already holds the rule. When the node changes, this sentence stays behind and says something different.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by the branch that throws BUSINESS_DATE_UNJUSTIFIED.
+    node: rules/knowledge-base/correction-fragment-accepted
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the BR-23 block comment above the attribute-correction checks, lines 231-241, the type leg (1)
+    evidence: >-
+      // BR-23 (TC-04): when correcting an attribute AND `corrected.value` is
+      // supplied, run two legs against the predecessor's `attribute_key`
+      // BEFORE any DB write:
+      //   (1) parseAttributeValue against `value_type` (type leg)
+    cost: >-
+      The comment restates that a corrected attribute value must read as its key's value type. The code holds this in `parseAttributeValue({ value: body.corrected.value, value_type: attrKey.value_type })`. A reader may take the comment for the decision, and the rule has a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and by the parse call.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the same BR-23 block comment, lines 231-241 and 288-289, the domain leg (2)
+    evidence: >-
+      //   (2) assertValueInDomain when the key has a closed domain (domain leg)
+      // Domain leg — runs only when the key has a closed domain. Details:
+      // { attribute_key, value, allowed_values } (BR-23 second leg).
+    cost: >-
+      The comments restate that a corrected value for a key with allowed values must be one of them. The code already holds this in `if (domain !== null) { assertValueInDomain(body.corrected.value, domain); }`. The prose is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comments. The rule is held by the node and by the domain-leg branch.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above supersedePredecessor, line 314
+    evidence: >-
+      // 1. Supersede predecessor — `valid_to` UNCHANGED (BR-18).
+    cost: >-
+      The comment restates that a correction supersedes its item and leaves its validity end as it was. The code holds this in the `supersedePredecessor(client, body.item_kind, body.item_id)` call, which passes no end date. The prose is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and by the call that supersedes the predecessor.
+    node: rules/knowledge-base/correction-supersedes-item
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comments above copyProvenance and appendProvenanceFragment, lines 338 and 341
+    evidence: >-
+      // 3. Copy provenance.
+      // 4. Append the errata fragment if supplied (BR-19).
+    cost: >-
+      The comments restate that the new item holds the superseded item's provenance and the cited fragment. The calls `copyProvenance(...)` and `appendProvenanceFragment(...)` already carry the rule, so the prose is a second home for it.
+    kind: restates
+    correction: >-
+      Remove the comments. The rule is held by the node and by the two calls.
+    node: rules/knowledge-base/corrected-item-provenance
+read:
+  - node: constraints/curation-is-atomic
+    held_at: >-
+      the `withTransaction(deps.pool, async (client) => { ... })` wrapper in each of confirmItemService, rejectItemService and correctItemService
+    evidence: >-
+      return withTransaction(deps.pool, async (client) => {
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      confirmItemService, rejectItemService and correctItemService, lines 59-386. They cover the absent-item, not-uncertain, not-deletable, race, unjustified-date and invalid-attribute-value refusals, and the result shapes. The other operations of the contract are not in this file.
+    evidence: >-
+      throw new ConflictError("BUSINESS_ITEM_NOT_UNCERTAIN", "confirm_item requires status=uncertain", { item_id: body.item_id, current_status: row.status }); throw new ResourceNotFoundError("Item not found", { item_id: body.item_id, item_kind: body.item_kind }); return { item_kind: body.item_kind, predecessor_id: body.item_id, new_item_id: newItemId, action_id: action.id };
+  - node: domain/knowledge-base/assertion-correction
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in the imported `CorrectItemBody` from ../dto/item.dto.js. This file only reads `body.item_kind`, `body.item_id`, `body.corrected` and `body.reason`.
+  - node: domain/knowledge-base/assertion-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in the imported `ConfirmItemBody` and `RejectItemBody` from ../dto/item.dto.js. This file only reads `body.item_kind`, `body.item_id` and `body.reason`.
+  - node: domain/knowledge-base/corrected-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared in the DTO file. This file only reads fields of `body.corrected`, for example `body.corrected.valid_from_fragment_id` and `body.corrected.value`.
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is not declared in this file, which only passes action names to the repository: `action: "confirm_item"`, `action: "reject_item"`, `action: "correct_item"`.
+  - node: rules/knowledge-base/assertion-review-check-order
+    held_at: >-
+      the order of checks in confirmItemService and rejectItemService: the empty-lock branch (RESOURCE_NOT_FOUND), then the status check
+    evidence: >-
+      if (locked.length === 0) { throw new ResourceNotFoundError("Item not found", ...) } const row = locked[0]!; if (row.status !== "uncertain") {
+  - node: rules/knowledge-base/assertion-review-records-curation-action
+    held_at: >-
+      the insertCurationAction calls in confirmItemService (lines 91-97) and rejectItemService (lines 151-157)
+    evidence: >-
+      action: "confirm_item", target_kind: body.item_kind, target_id: body.item_id, payload: {}, reason: body.reason ?? null
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the domain leg of correctItemService, lines 288-311
+    evidence: >-
+      const domain = domainOf(deps.catalog, attrKey.id); if (domain !== null) { try { assertValueInDomain(body.corrected.value, domain);
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      the type leg of correctItemService, lines 271-286
+    evidence: >-
+      parseAttributeValue({ value: body.corrected.value, value_type: attrKey.value_type, });
+  - node: rules/knowledge-base/confirmation-activates
+    held_at: >-
+      the `confirmItem(client, body.item_kind, body.item_id)` call and the returned `resulting_status: "active"` in confirmItemService. The status write is in the repository.
+    evidence: >-
+      const updated = await confirmItem(client, body.item_kind, body.item_id); ... resulting_status: "active",
+  - node: rules/knowledge-base/confirmation-requires-uncertain
+    held_at: >-
+      the status check in confirmItemService, lines 74-80
+    evidence: >-
+      if (row.status !== "uncertain") { throw new ConflictError("BUSINESS_ITEM_NOT_UNCERTAIN",
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: >-
+      the copyProvenance and appendProvenanceFragment calls in correctItemService, lines 339-352
+    evidence: >-
+      await copyProvenance(client, body.item_kind, body.item_id, newItemId); ... await appendProvenanceFragment(client, body.item_kind, newItemId, body.corrected.valid_from_fragment_id);
+  - node: rules/knowledge-base/corrected-item-values
+    held_at: >-
+      the insertCorrectedRow call in correctItemService, lines 329-336. Null counts as not stated here. The coalescing with the superseded item's values is in the repository.
+    evidence: >-
+      correctedValue: body.corrected.value ?? null, correctedTargetNodeId: body.corrected.target_node_id ?? null, correctedValidFrom: body.corrected.valid_from ?? null, correctedValidTo: body.corrected.valid_to ?? null,
+  - node: rules/knowledge-base/correction-check-order
+    held_at: >-
+      the order of checks in correctItemService: absent item, then deleted or superseded, then fragment, then attribute value type, then allowed values
+    evidence: >-
+      if (locked.length === 0) {...} if (predecessor.status === "deleted" || predecessor.status === "superseded") {...} const fragment = await findInformationFragmentById(...) ... parseAttributeValue({ ... }) ... assertValueInDomain(body.corrected.value, domain);
+  - node: rules/knowledge-base/correction-fragment-accepted
+    held_at: >-
+      the fragment check in correctItemService, lines 214-229
+    evidence: >-
+      if (!fragment || fragment.status !== "accepted") { throw new BusinessError("BUSINESS_DATE_UNJUSTIFIED",
+  - node: rules/knowledge-base/correction-records-curation-action
+    held_at: >-
+      the insertCurationAction call in correctItemService, lines 355-364
+    evidence: >-
+      action: "correct_item", target_kind: body.item_kind, target_id: body.item_id, payload: { corrected: body.corrected, new_item_id: newItemId, }, reason: body.reason,
+  - node: rules/knowledge-base/correction-supersedes-item
+    held_at: >-
+      the supersedePredecessor and insertCorrectedRow calls in correctItemService, lines 315-336
+    evidence: >-
+      const predecessorUpdated = await supersedePredecessor(client, body.item_kind, body.item_id); ... const newItemId = await insertCorrectedRow(client, body.item_kind, { predecessorId: body.item_id,
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file forwards `reason: body.reason` without checking it. The requirement is enforced where `RejectItemBody` and `CorrectItemBody` are declared in the DTO file. confirm passes `body.reason ?? null`.
+  - node: rules/knowledge-base/dispute-resolution-records-curation-action
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file holds no dispute resolution. It records only the actions "confirm_item", "reject_item" and "correct_item".
+  - node: rules/knowledge-base/entity-match-resolution-records-curation-action
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file holds no entity-match resolution. It records only the actions "confirm_item", "reject_item" and "correct_item".
+  - node: rules/knowledge-base/node-merge-records-curation-action
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file holds no node merge. It records only the actions "confirm_item", "reject_item" and "correct_item".
+  - node: rules/knowledge-base/refused-curation-records-nothing
+    held_at: >-
+      each service's throws, made before or inside the `withTransaction` callback. insertCurationAction is reached only after the checks and the write pass.
+    evidence: >-
+      if (updated !== 1) { throw new ConflictError("BUSINESS_ITEM_NOT_UNCERTAIN", "Item status changed under lock", ...) } const action = await insertCurationAction(client, {
+  - node: rules/knowledge-base/rejection-and-correction-require-live-item
+    held_at: >-
+      the status checks in rejectItemService (line 134) and correctItemService (lines 201-210)
+    evidence: >-
+      if (row.status === "deleted" || row.status === "superseded") { throw new ConflictError("BUSINESS_ITEM_NOT_DELETABLE",
+  - node: rules/knowledge-base/rejection-deletes
+    held_at: >-
+      the `rejectItem(client, body.item_kind, body.item_id)` call and the returned `resulting_status: "deleted"` in rejectItemService. The status and supersession-time write is in the repository.
+    evidence: >-
+      const updated = await rejectItem(client, body.item_kind, body.item_id); ... resulting_status: "deleted",
+looked_past: >-
+  The code-review matters of the file were left alone, such as the defensive branches and the doc-comment on `ItemServiceDeps.catalog` that explains wiring. The snake_case spelling of action names against the nodes' kebab-case vocabulary was also left alone, because the enumeration is declared in other files.
+candidates_opened:
+  - domain/knowledge-base/assertion-status

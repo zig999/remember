@@ -1,0 +1,178 @@
+findings:
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the header comment, lines 1 to 11
+    evidence: >-
+      //   2. Inspect status: 404 if missing, 410 if deleted, 409/422 mismatch.
+      //   3. Enforce node_type match (BR-06).
+      //   4. UPDATE absorbed node: status='merged', merged_into_node_id=survivor.
+    cost: >-
+      The header states the order of the merge checks and the merge steps a second time, in prose no system emits. The
+      code below holds them, so the prose is a second home for the order that the merge-check-order node owns. When
+      the node or the code moves, this list goes stale without anything flagging it.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is already held by the guards in performMerge, so no node change is needed.
+    node: rules/knowledge-base/merge-check-order
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the doc comment on absorbedExpectedStatus in PerformMergeArgs, lines 39 to 40
+    evidence: >-
+      /** "needs_review" -> UC-02: the absorbed is in `needs_review`. */
+    cost: >-
+      The comment restates that an entity-match resolution must resolve a node in needs-review. The branch that throws
+      BUSINESS_REVIEW_NOT_PENDING holds that fact, so the prose is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by the branch on absorbedExpectedStatus === "needs_review".
+    node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the self-merge guard, lines 54 to 55
+    evidence: >-
+      // Defence in depth (BR-23). Route layer rejects but the service must not
+      // trust upstream.
+    cost: >-
+      The comment states that the route layer already refuses a self-merge and that this guard is a second copy. The
+      rule is held by the guard and owned by the node. The prose adds a claim about another layer that no node holds
+      and that nothing keeps true.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard `args.survivorId === args.absorbedId` holds the behavior.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the deleted-node guards, line 81
+    evidence: >-
+      // BR-12: 410 for tombstones; explicit before 409/422 status checks.
+    cost: >-
+      The comment restates both the refusal of deleted nodes and its place in the check order. The code holds both, so
+      the prose is a second home that can drift from curation-refuses-deleted-node.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by the two `status === "deleted"` guards that throw NodeDeletedError.
+    node: rules/knowledge-base/curation-refuses-deleted-node
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the survivor status guard, line 95
+    evidence: >-
+      // Survivor must be active.
+    cost: >-
+      The comment restates the merge-survivor-active invariant in prose. The guard `survivor.status !== "active"`
+      already holds it.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by the guard below it.
+    node: rules/knowledge-base/merge-survivor-active
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the node type guard, line 120
+    evidence: >-
+      // BR-06: matching node_type.
+    cost: >-
+      The comment restates the same-node-type rule in prose. The guard comparing node_type_id holds it, so the prose
+      is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by the `survivor.node_type_id !== absorbed.node_type_id` guard.
+    node: rules/knowledge-base/merge-requires-same-node-type
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      The merge refusal branches of performMerge, lines 56 to 145. They cover self-merge, absent nodes, deleted nodes,
+      survivor not active, absorbed node status, node type mismatch and the status-changed-under-lock race.
+    evidence: >-
+      throw new ResourceNotFoundError(`KnowledgeNode not found`, { missing_id: args.survivorId, }); throw new
+      BusinessError("BUSINESS_INVALID_TARGET_NODE", "survivor and absorbed nodes must share node_type_id", { reason:
+      "node_type mismatch" });
+  - node: domain/knowledge-base/merge-counts
+    held_at: >-
+      The MergeAffectedCounts interface, lines 31 to 36.
+    evidence: >-
+      export interface MergeAffectedCounts { readonly links_repointed: number; readonly attributes_repointed: number;
+      readonly aliases_copied: number; readonly path_compressed_nodes: number; }
+  - node: rules/knowledge-base/curation-refuses-deleted-node
+    held_at: >-
+      The two deleted-status guards, lines 82 to 93.
+    evidence: >-
+      if (survivor.status === "deleted") { throw new NodeDeletedError( "KnowledgeNode tombstoned by
+      compliance_delete", { deleted_id: survivor.id } ); }
+  - node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+    held_at: >-
+      The absorbed status guard, where absorbedExpectedStatus is needs_review, lines 105 to 112.
+    evidence: >-
+      if (args.absorbedExpectedStatus === "needs_review") { throw new ConflictError( "BUSINESS_REVIEW_NOT_PENDING",
+      "Node is not in `needs_review` state", { node_id: absorbed.id, current_status: absorbed.status } ); }
+  - node: rules/knowledge-base/merge-check-order
+    held_at: >-
+      The sequence of guards in performMerge, lines 56 to 127. The order is self-merge, absent survivor, absent
+      absorbed, deleted survivor, deleted absorbed, survivor not active, absorbed status, then node type.
+    evidence: >-
+      if (args.survivorId === args.absorbedId) { ... } if (!survivor) { ... } if (!absorbed) { ... } if
+      (survivor.status === "deleted") { ... } if (absorbed.status === "deleted") { ... } if (survivor.status !==
+      "active") { ... } if (absorbed.status !== args.absorbedExpectedStatus) { ... } if (survivor.node_type_id !==
+      absorbed.node_type_id) { ... }
+  - node: rules/knowledge-base/merge-compresses-paths
+    held_at: >-
+      The call to pathCompressMergedInto with the absorbed and survivor ids, lines 147 to 151. The statement that
+      nodes merged into the absorbed node come to name the survivor is carried by this call. The update itself is
+      performed in the repository, outside this file.
+    evidence: >-
+      const pathCompressedCount = await pathCompressMergedInto( client, args.absorbedId, args.survivorId );
+  - node: rules/knowledge-base/merge-copies-aliases
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only calls `const aliasesCopied = await copyAliases( client, args.absorbedId, args.survivorId );`. The
+      rule's content is which aliases are copied (those whose normalized form the survivor lacks), the kind alias,
+      the run and creation time, and leaving the absorbed node its own aliases. None of that is declared in this
+      file. It sits in the repository's copyAliases, which this file only passes values to.
+  - node: rules/knowledge-base/merge-counts-what-it-changed
+    held_at: >-
+      The return statement of performMerge, lines 168 to 173.
+    evidence: >-
+      return { links_repointed: linksRepointed, attributes_repointed: attributesRepointed, aliases_copied:
+      aliasesCopied, path_compressed_nodes: pathCompressedCount, };
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: >-
+      The call to updateNodeMerged with the absorbed and survivor ids, lines 131 to 135. The rowcount check that
+      follows it is at lines 136 to 145.
+    evidence: >-
+      const mergedCount = await updateNodeMerged( client, args.absorbedId, args.survivorId );
+  - node: rules/knowledge-base/merge-repoints-assertions
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only calls `repointLinks(client, args.absorbedId, args.survivorId)` and
+      `repointAttributes(client, args.absorbedId, args.survivorId)`. The rule covers links whose source or target is
+      the absorbed node and its attributes, whatever their status. The selection of rows is not declared in this
+      file. It sits in the repository functions, outside this file.
+  - node: rules/knowledge-base/merge-requires-same-node-type
+    held_at: >-
+      The node type guard, lines 121 to 127.
+    evidence: >-
+      if (survivor.node_type_id !== absorbed.node_type_id) { throw new BusinessError(
+      "BUSINESS_INVALID_TARGET_NODE", "survivor and absorbed nodes must share node_type_id", { reason: "node_type
+      mismatch" } ); }
+  - node: rules/knowledge-base/merge-survivor-active
+    held_at: >-
+      The survivor status guard, lines 96 to 102.
+    evidence: >-
+      if (survivor.status !== "active") { throw new BusinessError( "BUSINESS_INVALID_TARGET_NODE", "Survivor must have
+      status=active", { id: survivor.id, current_status: survivor.status } ); }
+  - node: rules/knowledge-base/node-merge-absorbs-active-node
+    held_at: >-
+      The absorbed status guard, where absorbedExpectedStatus is active, lines 105 to 117.
+    evidence: >-
+      throw new BusinessError( "BUSINESS_INVALID_TARGET_NODE", "Both nodes must have status=active", { absorbed_id:
+      absorbed.id, absorbed_status: absorbed.status } );
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      The self-merge guard, lines 56 to 61.
+    evidence: >-
+      if (args.survivorId === args.absorbedId) { throw new ConflictError( "BUSINESS_SELF_MERGE_FORBIDDEN", "survivor_id
+      equals absorbed_id" ); }
+looked_past: >-
+  The self-merge refusal thrown here carries no `details`, while the merge-nodes contract names `details: { issues }`
+  at path `absorbed_id`. I did not file it because the comment says the route layer refuses a self-merge first, so
+  this branch looks unreachable, and the route layer is outside this file set.

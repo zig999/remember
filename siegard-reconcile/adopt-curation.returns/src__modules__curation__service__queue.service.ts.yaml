@@ -1,0 +1,156 @@
+findings:
+  - file: src/modules/curation/service/queue.service.ts
+    where: >-
+      listReviewQueueService, lines 88-106: the limit and offset are handed separately to each of the three listings inside withReadOnly.
+    evidence: |-
+      const rows = await listEntityMatchQueue(client, limit, offset);
+      ...
+      const linkRows = await listDisputedLinks(client, limit, offset);
+      const attrRows = await listDisputedAttributes(client, limit, offset);
+      items.push(...groupDisputedLinks(linkRows));
+      items.push(...groupDisputedAttributes(attrRows));
+    cost: >-
+      The node says a page skips and returns whole entries in listing order, where the listing is the combined one.
+      The code instead windows each source on its own. With no kind filter, a page can return up to three times the requested limit.
+      An offset past the last entity-match entry skips nothing of the disputes. An offset that falls inside the entity-match entries does not carry over into the link disputes.
+      The page a client sees is therefore not a window of the ordered listing, and `total` no longer matches what paging through the listing returns.
+      The disputed rows are also windowed before `groupDisputedLinks` and `groupDisputedAttributes` fold them into entries. A dispute whose sides straddle the page edge can be cut into a partial entry.
+      The repository code that would confirm this is outside the file set, so that second point is read from the row types only.
+    kind: contradicts
+    correction: >-
+      Apply one offset and limit over the combined ordered listing, which is entity-match entries, then link disputes, then attribute disputes, at the granularity of whole entries.
+      Do not apply them separately per source or per row.
+    node: rules/knowledge-base/review-queue-page-windows-entries
+  - file: src/modules/curation/service/queue.service.ts
+    where: >-
+      the comment block at the top of groupDisputedLinks, lines 155-168.
+    evidence: |-
+      // Group by the CONFLICT SCOPE, which depends on the link type's cardinality
+      // (A10, link_type.allows_multiple_current):
+      //   - FUNCTIONAL (allows_multiple_current=false, ...): ... so the scope is (source, link_type) — target EXCLUDED, scope.target
+      //     null. ...
+      //   - MULTI-VALUED (allows_multiple_current=true): ... the target is part of
+      //     the scope.
+    cost: >-
+      The prose restates the dispute-scope rule a second time outside behavior. The node holds that rule, and the keying in this file's code already implements it.
+      When the node changes, this comment will keep stating the old scope rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The grouping code below it holds the rule, and the node holds the statement.
+    node: rules/knowledge-base/dispute-scope
+read:
+  - node: constraints/curation-reads-are-consistent
+    held_at: >-
+      listReviewQueueService, the `withReadOnly(deps.pool, async (client) => { ... })` wrapper around every queue read and count.
+    evidence: |-
+      return withReadOnly(deps.pool, async (client) => {
+        ...
+        return { total, limit, offset, items };
+      });
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      Only the list-review-queue operation's accepted shape is held here. The interfaces EntityMatchCandidate, EntityMatchQueueItem, DisputedItemSide, DisputeQueueScope, DisputeQueueItem and ReviewQueueList declare it, and the return of listReviewQueueService builds it.
+      The other seven operations and all refusals are nowhere in this file.
+    evidence: |-
+      export interface ReviewQueueList {
+        readonly total: number;
+        readonly limit: number;
+        readonly offset: number;
+        readonly items: readonly ReviewQueueItem[];
+      }
+  - node: domain/knowledge-base/assertion-kind
+    held_at: >-
+      The inline union `"link" | "attribute"` on DisputeQueueItem.item_kind, line 63.
+    evidence: |-
+      readonly item_kind: "link" | "attribute";
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: nowhere
+    evidence: >-
+      The file never names the node, link, attribute, fragment or raw-information kinds of curation target. Only the link and attribute subset appears, as `item_kind`.
+  - node: domain/knowledge-base/dispute-scope
+    held_at: >-
+      The DisputeQueueScope interface, lines 53-59, and the scope objects built in groupDisputedLinks and groupDisputedAttributes.
+    evidence: |-
+      export interface DisputeQueueScope {
+        readonly source_node_id: string | null;
+        readonly target_node_id: string | null;
+        readonly link_type: string | null;
+        readonly node_id: string | null;
+        readonly attribute_key: string | null;
+      }
+  - node: domain/knowledge-base/review-queue-filter
+    held_at: nowhere
+    evidence: >-
+      The file imports `ListReviewQueueQuery` from ../dto/queue.dto.js and only reads `{ kind, limit, offset }` from it.
+      Its shape is declared in another file.
+  - node: domain/knowledge-base/review-queue-kind
+    held_at: nowhere
+    evidence: |-
+      import type { AssertionStatus, ReviewQueueKind } from "../dto/enums.dto.js";
+      ...
+      if (kind === undefined || kind === "entity_match") {
+      The enumeration is imported and compared against. It is declared in another file.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      The inline union on DisputedItemSide.valid_from_source, line 48.
+    evidence: |-
+      readonly valid_from_source: "stated" | "document" | "received" | null;
+  - node: rules/knowledge-base/dispute-entry-time
+    held_at: nowhere
+    evidence: |-
+      created_at: r.recorded_at.toISOString(),
+      This is set once, from the first row that opens a group. No minimum over the group's rows is computed, so the earliest recording time is held only if the repository delivers rows in that order.
+  - node: rules/knowledge-base/dispute-scope
+    held_at: >-
+      The grouping keys and scope construction in groupDisputedLinks, lines 171-187, and in groupDisputedAttributes, lines 211-223.
+    evidence: |-
+      const functional = !r.allows_multiple_current;
+      const key = functional
+        ? `${r.source_node_id}\x1F${r.link_type_id}`
+        : `${r.source_node_id}\x1F${r.target_node_id}\x1F${r.link_type_id}`;
+      ...
+      target_node_id: functional ? null : r.target_node_id,
+      ...
+      const key = `${r.node_id}\x1F${r.attribute_key_id}`;
+  - node: rules/knowledge-base/entity-match-queue-entry
+    held_at: >-
+      groupEntityMatchRows, lines 122-152. It makes one entry per node_id and appends each candidate row in arrival order. The needs-review filter and the similarity ordering are not visible in this file.
+    evidence: |-
+      let entry = map.get(r.node_id);
+      if (!entry) { entry = { kind: "entity_match", node_id: r.node_id, ... candidates: [], ... }; map.set(r.node_id, entry); }
+      ...
+      entry.candidates.push({ candidate_node_id: r.candidate_node_id, canonical_name: r.candidate_canonical_name, similarity: Number(r.similarity) });
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: nowhere
+    evidence: >-
+      The file only reads the queue. It performs no resolution and removes no entity match review.
+  - node: rules/knowledge-base/review-queue-kinds
+    held_at: >-
+      The kind branches in listReviewQueueService, lines 92 and 99.
+    evidence: |-
+      if (kind === undefined || kind === "entity_match") {
+      ...
+      if (kind === undefined || kind === "disputed") {
+  - node: rules/knowledge-base/review-queue-order
+    held_at: >-
+      Only the sequence of the pushes in listReviewQueueService: entity-match entries, then link disputes, then attribute disputes.
+      Ordering within each kind follows the row order the repository returns, because the Maps preserve insertion order. No sorting is done here.
+    evidence: |-
+      items.push(...grouped);
+      ...
+      items.push(...groupDisputedLinks(linkRows));
+      items.push(...groupDisputedAttributes(attrRows));
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: |-
+      The limit and offset are passed per source and not applied to the combined listing: `listDisputedLinks(client, limit, offset)` and `listDisputedAttributes(client, limit, offset)`. See the finding.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      The count calls that sum into `total` in listReviewQueueService, lines 96, 104 and 105. They are taken independently of limit and offset.
+    evidence: |-
+      total += await countEntityMatchQueue(client);
+      ...
+      total += await countDisputedLinks(client);
+      total += await countDisputedAttributes(client);
+looked_past: >-
+  The header comment and the "route layer logging" re-export comment state no domain fact that a running system emits. Whether the repository windows by entries, counts entries, sorts by creation time and filters status='needs_review' is the repository file's judgment, not this file's.

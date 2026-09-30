@@ -1,0 +1,34 @@
+findings:
+  - file: src/modules/curation/service/errors.ts
+    where: >-
+      TemporalIncoherentError constructor, lines 66-74 (the SQLSTATE 23505 duplicate-guard fallback)
+    evidence: |-
+      /** Defensive: SQLSTATE 23505 fallback (BR-28). */
+      export class TemporalIncoherentError extends BusinessError {
+        constructor(details?: CurationErrorDetails) {
+          super(
+            "BUSINESS_TEMPORAL_INCOHERENT",
+            "Adjusted periods violate semi-open invariant or functional-scope overlap.",
+            details
+          );
+    cost: >-
+      The node fixes what a caller is told when a uniqueness guard of the store refuses the write. That answer is code BUSINESS_TEMPORAL_INCOHERENT with the message "A duplicate-guard index rejected the resolution; another row currently occupies this scope." and no details. The class emits a different message and accepts optional details. A client or MCP caller that reads the contract gets one text, and the running system sends another. Someone checking the wording against the specification cannot tell which text was decided.
+    kind: contradicts
+    correction: >-
+      The message emitted for the duplicate-guard refusal has to be the node's text, with no details. If the current wording is the intended one, the node has to change through analysis. The code must not keep a divergent message.
+    node: contracts/knowledge-base/curation
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      Only in part. The 404, 410, 409 and 422 statuses are held in the ResourceNotFoundError, NodeDeletedError, ConflictError, ValidationError and BusinessError classes. The duplicate-guard answer in TemporalIncoherentError is held differently from the node (see the finding).
+    evidence: |-
+      export class ResourceNotFoundError extends CurationError {
+        public readonly statusCode = 404;
+        public readonly code = "RESOURCE_NOT_FOUND" as const;
+      }
+      export class NodeDeletedError extends CurationError {
+        public readonly statusCode = 410;
+        public readonly code = "BUSINESS_NODE_DELETED" as const;
+      }
+looked_past: >-
+  The header comment and the docstrings cite "back spec BR-28", "BR-12" and "BR-22", and restate status-to-code mappings held by the classes. That is prose for the comment route, not a domain fact.

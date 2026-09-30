@@ -1,0 +1,127 @@
+findings:
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the doc comment above RejectItemBodySchema, line 21
+    evidence: >-
+      /** reject_item — reason mandatory (destructive, BR-11). */
+    cost: >-
+      The comment states, in prose, that a rejection must carry a reason. That is a fact the node holds, and this file's code already holds it in `reason: ReasonRequiredSchema`, which is declared without `.optional()`. The comment also cites a back-spec rule id, "BR-11", as its authority. A reader can take that as a second home for the rule, and it will go stale without anything flagging it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the `reason: ReasonRequiredSchema` field and by the node.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      CorrectedValuesSchema, the `value` field, line 31
+    evidence: >-
+      value: z.string().min(1).optional().nullable(),
+    cost: >-
+      The schema makes a corrected value that is an empty string a format refusal. No node says that. The corrected-values node declares `value` as a bare string with no length constraint, and the nearby rules (curation-reason-not-blank, alias-not-blank, search-query-not-blank) each name their own non-blank constraint. The refusal therefore lives only in this schema. The next reader will look for it in the specification and not find it, and it will read as a business decision.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a correction's value must be non-empty, and give that decision a node, most naturally on domain/knowledge-base/corrected-values. Until then the constraint has no node behind it.
+    node: domain/knowledge-base/corrected-values
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment in CorrectItemBodySchema.superRefine, line 53
+    evidence: >-
+      // BR-18: at least one of value/target_node_id/valid_from/valid_to.
+    cost: >-
+      The comment restates the node's rule and cites a back-spec rule id. The code below it (`someProvided`, then `ctx.addIssue` at path `["corrected"]`) already holds the fact. The prose is a second home that no running system reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the `someProvided` check and by the node.
+    node: rules/knowledge-base/correction-changes-something
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment in CorrectItemBodySchema.superRefine, line 67
+    evidence: >-
+      // Cross-field: value only on attribute, target_node_id only on link.
+    cost: >-
+      The comment restates the node's rule. The two `ctx.addIssue` branches that follow (`body.item_kind === "link"` with a `value`, and `body.item_kind === "attribute"` with a `target_node_id`) already hold it. The prose is a second home that no running system reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the two branches and by the node.
+    node: rules/knowledge-base/correction-fits-assertion-kind
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment in CorrectItemBodySchema.superRefine, line 87
+    evidence: >-
+      // valid_from change requires valid_from_source.
+    cost: >-
+      The comment restates the node's rule. The branch below it, which refuses a `valid_from` without a `valid_from_source`, already holds it. The prose is a second home that no running system reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the branch and by the node.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment in CorrectItemBodySchema.superRefine, line 112
+    evidence: >-
+      // Semi-open invariant on the new pair when both supplied.
+    cost: >-
+      The comment restates the node's rule. The `c.valid_from >= c.valid_to` check that follows already holds it. The prose is a second home that no running system reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the check and by the node.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      Only the request shapes of confirm-item, reject-item and correct-item: ConfirmItemBodySchema, RejectItemBodySchema and CorrectItemBodySchema. The responses and the other operations are not in this file.
+    evidence: >-
+      export const CorrectItemBodySchema = z.object({ item_kind: ItemKindSchema, item_id: UuidSchema, corrected: CorrectedValuesSchema, reason: ReasonRequiredSchema })
+  - node: domain/knowledge-base/assertion-correction
+    held_at: >-
+      The object shape inside CorrectItemBodySchema, lines 43-49.
+    evidence: >-
+      item_kind: ItemKindSchema, item_id: UuidSchema, corrected: CorrectedValuesSchema, reason: ReasonRequiredSchema
+  - node: domain/knowledge-base/assertion-review
+    held_at: >-
+      ConfirmItemBodySchema (lines 14-18) and RejectItemBodySchema (lines 22-26).
+    evidence: >-
+      item_kind: ItemKindSchema, item_id: UuidSchema, reason: z.string().trim().min(1).optional().nullable()
+  - node: domain/knowledge-base/corrected-values
+    held_at: >-
+      CorrectedValuesSchema, lines 30-37.
+    evidence: >-
+      target_node_id: UuidSchema.optional().nullable(), valid_from: IsoDateSchema.optional().nullable(), valid_to: IsoDateSchema.optional().nullable(), valid_from_source: ValidFromSourceSchema.optional().nullable(), valid_from_fragment_id: UuidSchema.optional().nullable()
+  - node: rules/knowledge-base/corrected-stated-start-cites-fragment
+    held_at: >-
+      The second branch of the valid_from block in CorrectItemBodySchema.superRefine, lines 99-109.
+    evidence: >-
+      c.valid_from_source === "stated" && (c.valid_from_fragment_id === undefined || c.valid_from_fragment_id === null) ... path: ["corrected", "valid_from_fragment_id"], message: "BUSINESS_DATE_UNJUSTIFIED"
+  - node: rules/knowledge-base/correction-changes-something
+    held_at: >-
+      The `someProvided` check in CorrectItemBodySchema.superRefine, lines 54-65.
+    evidence: >-
+      if (!someProvided) { ctx.addIssue({ code: "custom", path: ["corrected"], message: "BUSINESS_CORRECTION_NO_CHANGES" }); }
+  - node: rules/knowledge-base/correction-fits-assertion-kind
+    held_at: >-
+      The two cross-field branches in CorrectItemBodySchema.superRefine, lines 68-85.
+    evidence: >-
+      body.item_kind === "link" && c.value !== undefined && c.value !== null ... path: ["corrected", "value"], message: "VALIDATION_INVALID_FORMAT"; body.item_kind === "attribute" && c.target_node_id !== undefined ... path: ["corrected", "target_node_id"]
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      The `reason` field of RejectItemBodySchema (line 25) and of CorrectItemBodySchema (line 48), declared without `.optional()`.
+    evidence: >-
+      reason: ReasonRequiredSchema
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The superRefine only collects issues, in this order: no-changes, then value/target format, then unjustified start, then start not before end. Which issue is refused first is decided where the issues are read, and that code is outside this file. Quoted: ctx.addIssue({ code: "custom", path: ["corrected"], message: "BUSINESS_TEMPORAL_INCOHERENT" });
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      The first branch of the valid_from block in CorrectItemBodySchema.superRefine, lines 88-98.
+    evidence: >-
+      c.valid_from_source === undefined || c.valid_from_source === null ... path: ["corrected", "valid_from_source"], message: "BUSINESS_DATE_UNJUSTIFIED"
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      The final check of CorrectItemBodySchema.superRefine, lines 113-125.
+    evidence: >-
+      c.valid_from >= c.valid_to ) { ctx.addIssue({ code: "custom", path: ["corrected"], message: "BUSINESS_TEMPORAL_INCOHERENT" });
+looked_past: >-
+  Two things are left for other judgments. The order in which the superRefine issues are refused, against curation-request-check-order, depends on code outside this file. The confirm reason carries the not-blank check (`trim().min(1)`) but no 1000-character bound, and the index does not bind this file to curation-reason-not-blank.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-not-blank

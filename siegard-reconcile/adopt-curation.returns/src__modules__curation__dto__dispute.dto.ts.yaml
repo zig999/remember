@@ -1,0 +1,114 @@
+findings:
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      AdjustedPeriodSchema, line 15 (valid_from)
+    evidence: >-
+      valid_from: IsoDateSchema.nullable(),
+      valid_to: IsoDateSchema.nullable().optional(),
+    cost: >-
+      The node declares both `valid_from` and `valid_to` as optional dates, with only `item_id` required. The schema accepts an omitted `valid_to` but refuses a period whose `valid_from` key is absent. The owner can omit a start in one field and not in the other. The only place that asymmetry is decided is this file, and a reader of the specification would not expect it.
+    kind: contradicts
+    correction: >-
+      Either make `valid_from` optional like `valid_to`, or have the `adjusted-period` node state that the start must be present and may be null.
+    node: domain/knowledge-base/adjusted-period
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      docstring of ResolveDisputeBodySchema, line 23 (prefer_one, winner_id required, member of item_ids)
+    evidence: >-
+      - `decision = prefer_one`  -> winner_id required, member of item_ids, reason required
+    cost: >-
+      The docstring is a second statement of the winner rule. The `ctx.addIssue` call with BUSINESS_DISPUTE_WINNER_REQUIRED in this same file holds that rule in code. If the node moves, this prose stays behind and reads as the authority.
+    kind: restates
+    correction: >-
+      Remove the docstring line. The rule stays held by the superRefine branch for `prefer_one` in this file.
+    node: rules/knowledge-base/prefer-one-requires-winner
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      docstring of ResolveDisputeBodySchema, line 23 (prefer_one, reason required)
+    evidence: >-
+      - `decision = prefer_one`  -> winner_id required, member of item_ids, reason required
+    cost: >-
+      The docstring restates that a prefer-one resolution must state a reason. The `BUSINESS_REASON_REQUIRED` issue in the `prefer_one` branch of the same superRefine holds that rule in code. The prose is a second home for it outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring line.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      docstring of ResolveDisputeBodySchema, lines 24-25 (adjust_periods, one entry per item_id)
+    evidence: >-
+      - `decision = adjust_periods` -> periods[] required with one entry per item_id;
+                                        semi-open invariant (valid_from < valid_to)
+    cost: >-
+      The docstring restates the one-period-per-item rule while the `periods.length !== value.item_ids.length` check and the BUSINESS_DISPUTE_PERIODS_REQUIRED issues in this file hold it in code. Two homes for one rule means a reader may take the comment as the decided version.
+    kind: restates
+    correction: >-
+      Remove these docstring lines.
+    node: rules/knowledge-base/adjust-periods-one-per-item
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      inline comment before the start/end comparison, line 113, and docstring line 25
+    evidence: >-
+      // Semi-open invariant: valid_from < valid_to when both supplied.
+    cost: >-
+      The comment states the start-strictly-before-end rule, which the `p.valid_from >= p.valid_to` branch with BUSINESS_TEMPORAL_INCOHERENT holds in code in this same file. The prose is a second statement of the rule.
+    kind: restates
+    correction: >-
+      Remove the comment and the matching docstring fragment.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      ResolveDisputeBodySchema and its superRefine, which carry the resolve-dispute request refusals. The DTO does not hold the operation's answers, the accepted result shape or the unavailable and internal errors.
+    evidence: >-
+      message: "BUSINESS_DISPUTE_WINNER_REQUIRED" / message: "BUSINESS_DISPUTE_PERIODS_REQUIRED" / message: "BUSINESS_TEMPORAL_INCOHERENT" / message: "BUSINESS_REASON_REQUIRED" / message: "VALIDATION_INVALID_FORMAT"
+  - node: domain/knowledge-base/adjusted-period
+    held_at: >-
+      AdjustedPeriodSchema, lines 13-17
+    evidence: >-
+      export const AdjustedPeriodSchema = z.object({ item_id: UuidSchema, valid_from: IsoDateSchema.nullable(), valid_to: IsoDateSchema.nullable().optional(), });
+  - node: domain/knowledge-base/dispute-resolution
+    held_at: >-
+      ResolveDisputeBodySchema z.object, lines 31-39
+    evidence: >-
+      item_kind: ItemKindSchema, item_ids: z.array(UuidSchema).min(2), decision: DisputeDecisionSchema, winner_id: UuidSchema.optional().nullable(), periods: z.array(AdjustedPeriodSchema).optional().nullable(), reason: z.string().trim().min(1).optional().nullable(),
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: >-
+      the adjust_periods branch of the superRefine, lines 76-112
+    evidence: >-
+      if (value.periods.length !== value.item_ids.length) { ctx.addIssue({ code: "custom", path: ["periods"], message: "BUSINESS_DISPUTE_PERIODS_REQUIRED", }); }
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the prefer_one branch of the superRefine, lines 51-62
+    evidence: >-
+      if ( value.reason === undefined || value.reason === null || value.reason.trim().length === 0 ) { ctx.addIssue({ code: "custom", path: ["reason"], message: "BUSINESS_REASON_REQUIRED", }); }
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      the order of the superRefine checks, lines 40-127. The file lists uniqueness, then reason, then winner, then periods, then start before end. Only the reason-before-winner ordering can be read from the file, because nothing here shows how the issues are ordered or ranked when the result is reported.
+    evidence: >-
+      message: "BUSINESS_REASON_REQUIRED", ... message: "BUSINESS_DISPUTE_WINNER_REQUIRED",
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: >-
+      item_ids .min(2) and the uniqueness check in the superRefine, lines 34 and 41-49
+    evidence: >-
+      item_ids: z.array(UuidSchema).min(2), ... if (uniqueIds.size !== value.item_ids.length) {
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the prefer_one branch of the superRefine, lines 63-73
+    evidence: >-
+      !value.item_ids.includes(value.winner_id) ) { ctx.addIssue({ code: "custom", path: ["winner_id"], message: "BUSINESS_DISPUTE_WINNER_REQUIRED", }); }
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      the superRefine, where winner_id and periods are checked only under their own decision and are otherwise left unread. The schema declares both fields optional and nullable.
+    evidence: >-
+      if (value.decision === "prefer_one") { ... } if (value.decision === "adjust_periods") { ... }
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the period loop of the adjust_periods branch, lines 113-125
+    evidence: >-
+      p.valid_from >= p.valid_to ) { ctx.addIssue({ code: "custom", path: ["periods"], message: "BUSINESS_TEMPORAL_INCOHERENT", }); }
+looked_past: >-
+  The comments that cite UC-05/UC-06/UC-07 and BR-11/BR-15/BR-16, and the `keep_disputed -> reason optional` docstring line, sit under nodes outside this set, and the string-valued `message` codes are read elsewhere into the error envelope.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-not-blank
+  - rules/knowledge-base/curation-action-reason-length

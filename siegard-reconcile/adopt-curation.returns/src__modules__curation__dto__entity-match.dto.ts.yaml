@@ -1,0 +1,68 @@
+findings:
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      the docstring above ResolveEntityMatchBodySchema (lines 17-23) and the docstring above MergeNodesBodySchema (line 62)
+    evidence: >-
+      " * ResolveEntityMatchRequest — BR-11 (reason mandatory on merge_into),"
+      and "/** MergeNodesRequest — BR-11 (reason required), BR-23 (self-merge forbidden). */"
+    cost: >-
+      The rule that a merge-into decision or a node merge must state a reason is held twice in this file. It is in code (the `value.decision === "merge_into"` branch adding BUSINESS_REASON_REQUIRED, and `reason: ReasonRequiredSchema`) and again in prose citing back-spec rule numbers. A reader who follows the BR-11 citation goes to a document the node does not govern. When the node moves, the prose stays behind and claims a rule the code no longer applies.
+    kind: restates
+    correction: >-
+      Remove the BR-11 citation and the "reason mandatory" / "reason required" wording from both docstrings. The code in this file holds the fact, and the bind to the node records the link.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      the docstring above ResolveEntityMatchBodySchema (line 19) and the docstring above MergeNodesBodySchema (line 62)
+    evidence: >-
+      "BR-23 (self-merge forbidden at request shape)." and
+      "BR-23 (self-merge forbidden). */"
+    cost: >-
+      The never-merged-into-itself rule is cited in prose beside code that enforces it only for `merge-nodes`: `if (value.survivor_id === value.absorbed_id)` adds BUSINESS_SELF_MERGE_FORBIDDEN. The ResolveEntityMatchBodySchema docstring claims the rule is applied at the request shape, but that schema has no check that compares `target_node_id` with the node identity. Anyone relying on the comment would believe entity-match resolution is guarded here. The comment also cites a back-spec rule number rather than the node.
+    kind: restates
+    correction: >-
+      Remove the BR-23 prose from both docstrings. The merge-nodes check in this file is where the fact is held.
+    node: rules/knowledge-base/node-never-merged-into-itself
+read:
+  - node: contracts/knowledge-base/curation
+    held_at: >-
+      in part: the request-body shapes and request-level refusals of resolve-entity-match and merge-nodes. These are NodeIdPathSchema, the ResolveEntityMatchBodySchema superRefine, and the MergeNodesBodySchema superRefine, lines 12-77. The other operations of the contract, the response shapes and the store-level refusals are not in this file.
+    evidence: >-
+      export const NodeIdPathSchema = z.object({ node_id: UuidSchema, });
+      ... message: "BUSINESS_TARGET_NODE_REQUIRED", ... message: "BUSINESS_REASON_REQUIRED", ... message: "BUSINESS_SELF_MERGE_FORBIDDEN",
+  - node: domain/knowledge-base/entity-match-resolution
+    held_at: >-
+      ResolveEntityMatchBodySchema, lines 25-56
+    evidence: >-
+      decision: EntityMatchDecisionSchema,
+      target_node_id: UuidSchema.optional().nullable(),
+      reason: z.string().trim().min(1).optional().nullable(),
+  - node: domain/knowledge-base/node-merge
+    held_at: >-
+      MergeNodesBodySchema, lines 63-77
+    evidence: >-
+      survivor_id: UuidSchema,
+      absorbed_id: UuidSchema,
+      reason: ReasonRequiredSchema,
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: >-
+      the `reason` field of ResolveEntityMatchBodySchema, line 29. The merge-nodes `reason` uses ReasonRequiredSchema, which is declared in ./enums.dto.js and not in this file.
+    evidence: >-
+      reason: z.string().trim().min(1).optional().nullable(),
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the merge_into branch of the ResolveEntityMatchBodySchema superRefine, lines 32-55, and `reason: ReasonRequiredSchema` in MergeNodesBodySchema, line 67
+    evidence: >-
+      if (value.decision === "merge_into") { ... if (value.reason === undefined || value.reason === null || value.reason.trim().length === 0) { ctx.addIssue({ code: "custom", path: ["reason"], message: "BUSINESS_REASON_REQUIRED",
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      the merge_into branch of the ResolveEntityMatchBodySchema superRefine, lines 32-43
+    evidence: >-
+      if (value.target_node_id === undefined || value.target_node_id === null) { ctx.addIssue({ code: "custom", path: ["target_node_id"], message: "BUSINESS_TARGET_NODE_REQUIRED",
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the superRefine of MergeNodesBodySchema, lines 69-77. Nothing in this file applies it to entity-match resolution.
+    evidence: >-
+      if (value.survivor_id === value.absorbed_id) { ctx.addIssue({ code: "custom", path: ["absorbed_id"], message: "BUSINESS_SELF_MERGE_FORBIDDEN",
+looked_past: >-
+  The issue messages are bare error-code tokens ("BUSINESS_TARGET_NODE_REQUIRED" and the others) that code outside this file must map to the node's message text. That mapping, and the ReasonRequiredSchema length bound in enums.dto.ts, are other files' judgments.
