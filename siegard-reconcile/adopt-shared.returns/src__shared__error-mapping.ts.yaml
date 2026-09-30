@@ -1,0 +1,158 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the comment block above `ErrorEnvelope`, lines 1-12, and the docstring on `MappedError`, lines 24-28
+    evidence: |-
+      // Before this module the `ErrorEnvelope` type, the pg-detection sets, and the
+      // 503/500 terminal envelopes were copy-pasted in all three places
+      ...
+      * `reply.status(...)`; MCP transports ignore it (they speak JSON-RPC over HTTP
+      * 200 and surface the envelope inside the result).
+    cost: >-
+      This is prose about the MCP failure form. The code here already holds it in `toMcpToolResult`, which returns `isError: true` with the error as JSON text. The `MappedError` docstring describes JSON-RPC over HTTP 200, which does not match that function. A reader looking for what MCP answers on failure finds two descriptions, and the prose one is wrong.
+    kind: restates
+    correction: >-
+      Remove the prose. `toMcpToolResult` in this file holds the fact.
+    node: constraints/mcp-failure-is-tool-error
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the docstring on `internalError`, line 194
+    evidence: |-
+      /** 500 — generic internal error. NEVER leaks `err.message` to the client. */
+    cost: >-
+      The rule that an unexpected failure answers a fixed message and never the cause is restated as prose. `internalError()` takes no cause argument and returns the fixed message "Internal server error.", so the code already holds it. Prose about that rule is a second home for it.
+    kind: restates
+    correction: >-
+      Remove the docstring. `internalError` holds the fact.
+    node: constraints/internal-failure-withholds-cause
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` registry, the curation section, which has no entry for BUSINESS_INVALID_ATTRIBUTE_VALUE (falls through `renderErrorEnvelope`'s `?? 500`)
+    evidence: |-
+      // Business — Curation (`curation.spec.md`).
+        BUSINESS_REVIEW_NOT_PENDING: 409,
+        ...
+        BUSINESS_REASON_REQUIRED: 422,
+      ...
+      const statusCode = codeToHttpStatus[code] ?? 500;
+      Node: "error code BUSINESS_INVALID_ATTRIBUTE_VALUE naming the value type and the value, HTTP 422 over REST"
+    cost: >-
+      The node gives this code HTTP 422 in correct-item. Any REST response rendered through this registry for this code answers 500 and is logged at the error level. The contract says the owner sees a refusal. The comment calls this registry the single source of truth for REST status, so the gap is not visible from the file.
+    kind: contradicts
+    correction: >-
+      Publish BUSINESS_INVALID_ATTRIBUTE_VALUE: 422 in the registry.
+    node: contracts/knowledge-base/curation
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` entry `BUSINESS_INVALID_TARGET_NODE: 422` (curation section)
+    evidence: |-
+      BUSINESS_INVALID_TARGET_NODE: 422,
+      Node: "error code BUSINESS_REVIEW_NOT_PENDING for keep_separate and BUSINESS_INVALID_TARGET_NODE for merge_into, naming the node, HTTP 409 over REST"
+    cost: >-
+      The registry maps each code to a single status. The curation contract gives BUSINESS_INVALID_TARGET_NODE HTTP 422 (survivor not active, node-type mismatch, absorbed node not active) and HTTP 409 (a concurrent change, in resolve-entity-match and merge-nodes). A rendering that resolves through this registry answers 422 for the 409 cases, and the registry cannot express the split.
+    kind: contradicts
+    correction: >-
+      The 409 cases need a status the registry does not derive from the code alone. The registry and the node must be made to agree on where that split is held.
+    node: contracts/knowledge-base/curation
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` entry `BUSINESS_LINK_RULE_VIOLATION: 422` (ingestion section)
+    evidence: |-
+      // Business — Ingestion (`ingestion.spec.md`).
+        BUSINESS_LINK_RULE_VIOLATION: 422,
+      Node: "error code BUSINESS_LINK_RULE_VIOLATION naming the source node type, link type and target node type, HTTP 200 carrying `{ ok: false, error }` over REST"
+    cost: >-
+      The ingestion contract answers this refusal over REST as HTTP 200 carrying `{ ok: false, error }`. The registry answers 422. REST and MCP then disagree on the transport status for one refusal if a propose route renders through the registry.
+    kind: contradicts
+    correction: >-
+      Drop the status for this code from the registry, or change it to match the contract, so that only one of the two is the decision.
+    node: contracts/knowledge-base/ingestion
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` entry in the chat section
+    evidence: |-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      A refusal code and its HTTP 503 status are declared here, and no node under the specification root states the code. The next reader looks for it in the chat contract and does not find it.
+    kind: unstated
+    correction: >-
+      Give the refusal, with its message and status, a node in the chat contract.
+    node: contracts/chat/conversations
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the `codeToHttpStatus` entry in the resource section
+    evidence: |-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      A refusal code and its status are published in the registry, and no node states the code or says which operation refuses with it. The code becomes the place that decision lives.
+    kind: unstated
+    correction: >-
+      Give the refusal a node in the contract of the operation that answers it, or remove the code.
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      `renderErrorEnvelope` and `toMcpToolResult`, which render one classified `error` (same `code`) for REST and for MCP
+    evidence: |-
+      const statusCode = codeToHttpStatus[code] ?? 500;
+      ...
+      content: [{ type: "text", text: JSON.stringify(envelope.error) }],
+  - node: constraints/failures-answer-one-envelope
+    held_at: >-
+      the `ErrorEnvelope` interface and `renderErrorEnvelope`, which omits details when they are undefined
+    evidence: |-
+      readonly ok: false;
+      readonly error: {
+        readonly code: string;
+        readonly message: string;
+        readonly details?: unknown;
+      };
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      `renderErrorEnvelope` and `toMcpToolResult`, which render the same `error.code` for both transports; statuses differ where the registry and the ingestion contract disagree (see the BUSINESS_LINK_RULE_VIOLATION finding)
+    evidence: |-
+      const error: ErrorEnvelope["error"] =
+        details === undefined ? { code, message } : { code, message, details };
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      `internalError()`, which takes no cause and returns a fixed message
+    evidence: |-
+      export function internalError(): MappedError {
+        return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
+      }
+  - node: constraints/mcp-failure-is-tool-error
+    held_at: >-
+      `toMcpToolResult`
+    evidence: |-
+      return {
+        content: [{ type: "text", text: JSON.stringify(envelope.error) }],
+        isError: true,
+      };
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      `renderErrorEnvelope` and `toMcpToolResult`, which render the same `error.code` for both transports
+    evidence: |-
+      const statusCode = codeToHttpStatus[code] ?? 500;
+      const logLevel: "warn" | "error" = statusCode >= 500 ? "error" : "warn";
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      `isPgUnavailable` with its SQLSTATE and errno sets, and `serviceUnavailableError()`
+    evidence: |-
+      "57014", // query_canceled (statement timeout)
+      ...
+      return renderErrorEnvelope(
+        "SYSTEM_SERVICE_UNAVAILABLE",
+        "A backing service is temporarily unavailable."
+      );
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      `serviceUnavailableError()`, `internalError()` and the AUTH_*, RESOURCE_NOT_FOUND, RESOURCE_CONFLICT, VALIDATION_INVALID_FORMAT and SYSTEM_* entries of `codeToHttpStatus`
+    evidence: |-
+      AUTH_TOKEN_EXPIRED: 401,
+      AUTH_FORBIDDEN: 403,
+      VALIDATION_INVALID_FORMAT: 422,
+      SYSTEM_SERVICE_UNAVAILABLE: 503,
+      "A backing service is temporarily unavailable."
+      "Internal server error."
+looked_past: >-
+  The comments naming spec documents and mappers in other files (`docs/specs/_global/error-codes.md`, `knowledge-graph/mcp/error-envelope.ts`, "P2.1 parity contract", "BR-28") and the claim that a registry miss pages in metrics are prose no node states, so they are for the comment route rather than findings.
+candidates_opened: []

@@ -1,0 +1,98 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: |-
+      mapJoseError, the final fallthrough (line 217), together with the catch around jwtVerify in preHandler (lines 146-151)
+    evidence: |-
+      } catch (err) {
+        throw mapJoseError(err);
+      }
+      ...
+      // Unknown — surface as invalid (defensive). We do not leak the underlying
+      // message to the client; the global error handler logs it server-side.
+      return new AuthError("AUTH_TOKEN_INVALID", "Invalid authentication token.");
+    cost: |-
+      When the auth provider's key set cannot be fetched (a jose JWKS timeout or fetch failure, which is not one of the listed classes), the owner gets a 401 "Invalid authentication token." The contract says HTTP 503 SYSTEM_SERVICE_UNAVAILABLE. A provider outage therefore looks like a bad credential. The owner is told to re-authenticate when nothing is wrong with the token. The decision log names this exact case: a failure to fetch the key set answered as an invalid token, decided as 503.
+    kind: contradicts
+    correction: |-
+      A key-set fetch failure must leave this middleware as the backing-service-unavailable answer (HTTP 503, SYSTEM_SERVICE_UNAVAILABLE). Only verification failures should map to AUTH_TOKEN_INVALID. The catch-all must stop absorbing it.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: |-
+      buildNeonAuth, the createRemoteJWKSet options (line 107)
+    evidence: |-
+      cooldownDuration: 30_000,
+    cost: |-
+      The 30-second interval between key-set refetches is a value the code applies and no node holds. The next reader looking for it in the specification will not find it. A change to how the system tolerates a rotated or unreachable key set has no node to reach.
+    kind: unstated
+    correction: |-
+      Give the key-set refresh cooldown a home in a node, most naturally the owner-authentication constraint or the access contract.
+  - file: src/middleware/auth.ts
+    where: |-
+      buildJwksUrl (lines 85-88)
+    evidence: |-
+      return new URL(`${base}/.well-known/jwks.json`);
+    cost: |-
+      The location of the provider's key set, which is the trust boundary for every token, is fixed here and in no node. The access contract says only "The auth provider's key set".
+    kind: unstated
+    correction: |-
+      Give the key-set location a home in a node, most naturally the owner-authentication constraint or the access contract.
+  - file: src/middleware/auth.ts
+    where: |-
+      header comment, lines 9-12 ("Error mapping")
+    evidence: |-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
+      //   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
+      //   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
+    cost: |-
+      The comment restates the authentication refusals as a second home outside behavior. It also lists only three outcomes and omits the 503 the contract holds. It will drift from the contract without anything noticing.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds these answers in preHandler and mapJoseError.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: |-
+      comments at lines 110-113 and 132-136 ("DEV-ONLY")
+    evidence: |-
+      // Resolved once at build time: enabled only when running in development AND a
+      // token is configured. In any other mode this is `null` and the bypass branch
+      // below is dead — production never trusts a static bearer.
+    cost: |-
+      The comments restate the development-only rule as a second home. The code holds it in the `env.NODE_ENV === "development"` guard.
+    kind: restates
+    correction: |-
+      Remove the prose. The code already holds the fact at `localOperatorToken`.
+    node: constraints/local-operator-token-development-only
+read:
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: |-
+      preHandler in buildNeonAuth (lines 122-166): bearer extraction, jwtVerify against the JWKS, then the `sub` check
+    evidence: |-
+      const token = extractBearer(header);
+      if (token === null) { throw new AuthError("AUTH_UNAUTHORIZED", ...) }
+      ...
+      const verified = await jwtVerify(token, jwks);
+      ...
+      if (typeof sub !== "string" || sub.length === 0) { throw new AuthError("AUTH_TOKEN_INVALID", "JWT missing required `sub` claim.") }
+  - node: constraints/local-operator-token-development-only
+    held_at: |-
+      localOperatorToken resolution (lines 114-119), the bypass branch in preHandler (lines 137-143) and constantTimeEqual (lines 187-192)
+    evidence: |-
+      env.NODE_ENV === "development" &&
+      typeof env.LOCAL_OPERATOR_TOKEN === "string" &&
+      ...
+      if (localOperatorToken !== null && constantTimeEqual(token, localOperatorToken)) {
+  - node: contracts/knowledge-base/access
+    held_at: |-
+      the authenticate-owner answers in preHandler and mapJoseError. The 401 refusals and the local-operator identity are held. The 503 answer for an unfetchable key set is not held; see the finding.
+    evidence: |-
+      throw new AuthError("AUTH_UNAUTHORIZED", "Missing or malformed Authorization header (expected `Bearer <jwt>`).");
+      return new AuthError("AUTH_TOKEN_EXPIRED", "Authentication token expired.");
+      return new AuthError("AUTH_TOKEN_INVALID", "Invalid authentication token.");
+      id: "local-operator",
+looked_past: |-
+  The file's other comments and docstrings (provider note, issuer/audience hardening, jose defaults, JWKS TTL of 10 minutes) are prose with no code or emitted text, which the comment route handles, and the TTL value itself is read from env in another file.
+candidates_opened:
+  - constraints/every-operation-requires-owner-authentication
+  - constraints/local-operator-token-development-only
+  - contracts/knowledge-base/access

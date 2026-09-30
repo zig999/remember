@@ -1,0 +1,93 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: |-
+      the header comment, line 14
+    evidence: |-
+      //   - pg error: ECONNREFUSED / ETIMEDOUT / 57P03 / 57014 -> 503 SYSTEM_SERVICE_UNAVAILABLE
+    cost: |-
+      The comment restates the unreachable-store rule next to the code that applies it. When the node moves, this copy keeps saying the old rule, and the next reader may take it as the decided one.
+    kind: restates
+    correction: |-
+      Remove the line. The code holds the rule through the `isPgUnavailable(err)` branch returning `serviceUnavailableError()`, both imported from ../shared/error-mapping.js.
+    node: constraints/unreachable-store-answers-unavailable
+  - file: src/middleware/error-handler.ts
+    where: |-
+      the header comment, lines 17-19
+    evidence: |-
+      // The handler MUST NOT leak internal messages on the 500 path — the client
+      // gets a generic "internal error" string; the original `err.message` is
+      // logged server-side via pino.
+    cost: |-
+      The comment restates the withhold-the-cause rule, and its wording ("internal error") differs from the emitted "Internal server error." The prose can drift from both the node and the code.
+    kind: restates
+    correction: |-
+      Remove the comment. The code holds the rule in the final `return internalError();` branch and in the 5xx message of `isFastifyHttpError`.
+    node: constraints/internal-failure-withholds-cause
+  - file: src/middleware/error-handler.ts
+    where: |-
+      classify(), branch 3 (Fastify validation), lines 110-123
+    evidence: |-
+      message: err.message ?? "Request payload failed validation.",
+                details: err.validation,
+    cost: |-
+      A request that fails Fastify's own schema validation gets the framework's message and the raw Fastify `validation` array, not the fixed message with a bare list of `{ path, message }`. A client reading the `details` of a 422 sees one shape from ZodError and another from schema validation. The node says every validation failure answers with the `{ path, message }` list.
+    kind: contradicts
+    correction: |-
+      Answer with the fixed message "Request payload failed validation." and map the `validation` entries to `{ path, message }`, with each path joined by ".", as the ZodError branch does.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: |-
+      classify(), branch 5 (Fastify HTTP errors), lines 132-147, the message for a 503
+    evidence: |-
+      const isServerError = err.statusCode >= 500;
+      ...
+      message: isServerError ? "Internal server error." : err.message,
+    cost: |-
+      A framework failure with status 503 is coded SYSTEM_SERVICE_UNAVAILABLE by `codeFromHttpStatus`, but its message is "Internal server error." The node says "A backing service is temporarily unavailable." The code and the message disagree, and the client is told an internal failure for an unavailable service.
+    kind: contradicts
+    correction: |-
+      For status 503, answer the message "A backing service is temporarily unavailable." Keep "Internal server error." for the other statuses of 500 and above.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: |-
+      codeFromHttpStatus(), the `case 422` arm, lines 183-184
+    evidence: |-
+      case 422:
+            return "VALIDATION_INVALID_FORMAT";
+    cost: |-
+      A framework-refused request with status 422 that carries no `validation` array gets code VALIDATION_INVALID_FORMAT. The node gives only 401, 403, 409 and 404 their own codes, and any other status below 500 SYSTEM_INTERNAL_ERROR. The 422 mapping is a code rule the specification does not hold.
+    kind: contradicts
+    correction: |-
+      Drop the 422 arm so that such a status falls to SYSTEM_INTERNAL_ERROR, or have a node hold a 422 code for a framework refusal.
+    node: contracts/knowledge-base/access
+read:
+  - node: constraints/internal-failure-withholds-cause
+    held_at: |-
+      classify(): the final `return internalError();` branch 6, and the 5xx message in branch 5 (`isFastifyHttpError`). The fixed message text itself sits in ../shared/error-mapping.ts, which this file imports.
+    evidence: |-
+      // 6. Anything else — generic 500. We do NOT leak the underlying message.
+        return internalError();
+      and
+      message: isServerError ? "Internal server error." : err.message,
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: |-
+      classify() branch 4. The detection and the answer are delegated to `isPgUnavailable` and `serviceUnavailableError` in ../shared/error-mapping.ts.
+    evidence: |-
+      if (isPgUnavailable(err)) {
+          return serviceUnavailableError();
+        }
+  - node: contracts/knowledge-base/access
+    held_at: |-
+      classify(): the AuthError branch 1 (401, code and message from the error, no details), the ZodError branch 2 (422 with the fixed message and `{ path, message }` details), the pg-unavailable branch 4, the Fastify HTTP branch 5 with `codeFromHttpStatus`, and the generic 500 branch 6. It departs from the node in branch 3 (validation message and details), in branch 5 (503 message) and in the 422 code mapping, as the findings show.
+    evidence: |-
+      details: err.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+      and
+      case 404:
+          return "RESOURCE_NOT_FOUND";
+        case 409:
+          return "RESOURCE_CONFLICT";
+looked_past: |-
+  The header comment cites docs/specs/_global/error-codes.md and "BR-18 of knowledge-graph" as registries of these mappings. Both are prose with no behavior, and I did not judge them.

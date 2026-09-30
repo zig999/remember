@@ -1,0 +1,61 @@
+findings:
+  - file: src/shared/health.ts
+    where: >-
+      the docstring above collectHealth(), lines 18-23
+    evidence: |-
+      * Probe the BFF: confirm the process is up and the database is reachable. Never
+       * throws — a DB failure surfaces as `{ ok: false, database: "unreachable" }`
+       * so callers always get a usable report
+    cost: |-
+      The docstring states the never-fails rule, which a node already holds. The catch branch that implements it sits in this same file. The prose is a second home for that rule outside behavior. If the node's wording moves, this text stays behind and still claims the old rule.
+    kind: restates
+    correction: |-
+      Remove the docstring prose. The fact stays held by the node and by the `catch` branch that returns `database: "unreachable"`. Reconcile the file afterwards.
+    node: rules/knowledge-base/health-probe-never-fails
+read:
+  - node: contracts/knowledge-base/access
+    held_at: |-
+      the two return objects of collectHealth(), lines 28-33 and 35-40. They serve the read-health operation only. The authenticate-owner and route-request operations are not stated in this file.
+    evidence: |-
+      return {
+            ok: true,
+            service: "remember-bff",
+            database: "ok",
+            checked_at: checkedAt,
+          };
+  - node: domain/knowledge-base/database-status
+    held_at: |-
+      the `database` member of the HealthReport interface, line 14
+    evidence: |-
+      database: "ok" | "unreachable";
+  - node: domain/knowledge-base/health-report
+    held_at: |-
+      the HealthReport interface, lines 11-16
+    evidence: |-
+      export interface HealthReport {
+        ok: boolean;
+        service: "remember-bff";
+        database: "ok" | "unreachable";
+        checked_at: string;
+      }
+  - node: rules/knowledge-base/health-checked-at-probe-start
+    held_at: |-
+      the first statement of collectHealth(), line 25, evaluated before pingDatabase is awaited
+    evidence: |-
+      const checkedAt = new Date().toISOString();
+        try {
+          await pingDatabase(pool);
+  - node: rules/knowledge-base/health-probe-never-fails
+    held_at: |-
+      the try/catch in collectHealth(), lines 26-41. A failed ping is caught and returned as a report with ok false.
+    evidence: |-
+      } catch {
+          return {
+            ok: false,
+            service: "remember-bff",
+            database: "unreachable",
+            checked_at: checkedAt,
+          };
+        }
+looked_past: >-
+  The header comment (lines 1-4) says one probe serves both GET /health and the health MCP tool, which is prose restating the access node's read-health fact. The code that shares it lives in app.ts and the ingestion toolset, which are outside the file set. That is a comment-route matter.
