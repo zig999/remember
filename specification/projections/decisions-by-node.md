@@ -24,6 +24,40 @@ this groups its entries by the file each one located.
   unstated: The material has the MCP proposals accept any non-empty text as the LLM run's identity while REST and the MCP run read demand a UUID; the two decide differently for a malformed run identity over MCP.
   why: An LLM run's identity is a UUID everywhere else the material names one.
 
+## domain/chat/_context.md
+- strategic — decided: supporting
+  unstated: The material does not say whether the chat is core, supporting or generic.
+  why: Keeping conversations with the assistant serves reading the knowledge base but is not what the system exists for.
+
+## domain/chat/conversation.md
+- relationships.message.cardinality — decided: 0..*
+  unstated: The material does not say whether a conversation may hold no message.
+  why: Nothing in the material requires a message before a conversation exists.
+- relationships.tool-call.cardinality — decided: 0..*
+  unstated: The material does not say how many tool calls a conversation holds.
+  why: A conversation need not call any tool.
+
+## domain/chat/graph-view.md
+- attributes.snapshot.type — decided: string
+  unstated: The material holds a graph view's snapshot as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+
+## domain/chat/message.md
+- attributes.content.type — decided: string
+  unstated: The material holds a message's content as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+
+## domain/chat/tool-call.md
+- type — decided: entity of a separate chat context
+  unstated: The material leaves open whether the conversation records belong to the knowledge-base context or to a context of their own.
+  why: A tool call in a conversation is any tool the assistant used, while a knowledge-base tool call is the audit of one proposal, so the same term carries two meanings.
+- attributes.arguments.type — decided: string
+  unstated: The material holds a chat tool call's arguments as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- attributes.result.type — decided: string
+  unstated: The material holds a chat tool call's result as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+
 ## domain/knowledge-base/_context.md
 - strategic — decided: core
   unstated: The material does not say whether the knowledge base is core, supporting or generic.
@@ -33,6 +67,22 @@ this groups its entries by the file each one located.
 - type — decided: aggregate-root referencing its node type
   unstated: The material says an attribute key belongs to one node type without saying whether it changes together with it.
   why: Node attributes point at their key directly, and a reference only reaches an aggregate root.
+
+## domain/knowledge-base/compliance-deletion.md
+- attributes.affected.type — decided: string
+  unstated: The material holds a compliance deletion's record of what it affected as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+
+## domain/knowledge-base/curation-action.md
+- attributes.payload.type — decided: string
+  unstated: The material holds a curation action's payload as a structured document without giving its shape.
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- attributes.target_id.type — decided: string
+  unstated: The material names the item a curation action acted on without saying what kind of identity it is.
+  why: The action targets items of several kinds, so no single element's identity fits it.
+- type — decided: aggregate-root
+  unstated: The material does not say whether a curation action has an identity of its own or belongs to what it acted on.
+  why: Each action is recorded once and never changes, and nothing it acted on holds it.
 
 ## domain/knowledge-base/directed-ingestion.md
 - type — decided: value-object
@@ -128,10 +178,28 @@ this groups its entries by the file each one located.
   unstated: The material does not say how this read holds across the separate records it combines.
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
 
+## rules/knowledge-base/alias-not-blank.md
+- statement — decided: The alias rule stands: a node proposal whose name or alias is blank once trimmed records no node or alias.
+  unstated: The material refuses a blank alias while a new node holds its proposed name as its canonical alias and the name checks bound only its length; the two decide differently for a node proposal whose name is only whitespace.
+  why: The store refuses a blank alias whatever the proposal passed, so no reading in which one is recorded can hold.
+
+## rules/knowledge-base/alias-unique-per-node.md
+- statement — decided: The uniqueness stands: a proposed name or alias whose normalized form the node already holds is held once.
+  unstated: The material keeps one alias per normalized form on a node while a node proposal adds each of its proposed aliases; the two decide differently for a proposed alias that differs from one the node holds only in case, accents or spacing.
+  why: Two aliases with one normalized form find the node under the same searches, so the second adds nothing a reader can use.
+- statement — decided: The normalized form is the one name-normalization states, with every surrounding whitespace trimmed.
+  unstated: The material's normalization trims only spaces before collapsing whitespace, so a leading or trailing tab or line break survives as a space, while entity resolution trims every surrounding whitespace; the two give different normalized forms for such a name.
+  why: A name that differs only by surrounding whitespace names the same entity, so the stricter trim is the one the domain means.
+
 ## rules/knowledge-base/ambiguous-candidates-need-review.md
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+
+## rules/knowledge-base/attribute-provenance-once-per-fragment.md
+- statement — decided: The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.
+  unstated: The material keeps one provenance per fragment on a node attribute while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the node attribute already holds.
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
 
 ## rules/knowledge-base/attribute-value-parses.md
 - statement — decided: Only a real calendar date is a date value.
@@ -142,6 +210,11 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this propagation holds across the separate records it changes.
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+
+## rules/knowledge-base/compliance-deletion-tombstones.md
+- statement — decided: A compliance deletion marks its raw information and raw chunks deleted and stamps the moment of the deletion as the supersession time of them, their fragments and every assertion it marks deleted.
+  unstated: The material gives raw informations, raw chunks and information fragments a supersession time and shows a deleted assertion with no supersession time staying current and blocking an equal new one, without saying what sets these on a compliance deletion.
+  why: A deleted item left without a supersession time keeps counting as current, which is what a deletion exists to end.
 
 ## rules/knowledge-base/compliance-refusal-takes-precedence.md
 - statement — decided: The compliance refusal comes first except against the refusal of a fragment that is not accepted.
@@ -192,6 +265,11 @@ this groups its entries by the file each one located.
 - consistency — decided: eventual
   unstated: The material does not say how this rule holds across the separate records it changes.
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+
+## rules/knowledge-base/link-provenance-once-per-fragment.md
+- statement — decided: The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.
+  unstated: The material keeps one provenance per fragment on a knowledge link while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the knowledge link already holds.
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
 
 ## rules/knowledge-base/listing-excludes-compliance-deleted.md
 - consistency — decided: eventual
@@ -293,6 +371,11 @@ this groups its entries by the file each one located.
 - statement — decided: Search shows no information fragment whose raw information was deleted for compliance, as an item or as support, replacing the node that said search keeps such fragments.
   unstated: The first increment's material showed search surfacing an accepted fragment whose raw information has a compliance deletion, while the documentation says deleted content never recirculates and that compliance deletion marks the fragments deleted; the two decide differently for an accepted fragment of a compliance-deleted source.
   why: The documentation states the business's intent for deleted sources, and the first material only described what the code does.
+
+## rules/knowledge-base/source-status-active-or-deleted.md
+- statement — decided: A raw information and its raw chunks are only ever active or deleted.
+  unstated: The material types a raw information's and a raw chunk's status with all four node statuses and gives needs-review and merged no meaning for either.
+  why: Nothing reviews or merges a source, and the only change a source undergoes is its deletion for compliance.
 
 ## rules/knowledge-base/succession-before-previous-start.md
 - consistency — decided: eventual

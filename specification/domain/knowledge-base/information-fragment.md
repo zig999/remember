@@ -13,6 +13,8 @@ attributes:
 - name: created_at
   type: datetime
   required: true
+- name: superseded_at
+  type: datetime
 relationships:
 - target: raw-chunk
   type: association

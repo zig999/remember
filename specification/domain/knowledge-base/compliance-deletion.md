@@ -4,6 +4,11 @@ attributes:
 - name: executed_at
   type: datetime
   required: true
+- name: reason
+  type: string
+  required: true
+- name: affected
+  type: string
 relationships:
 - target: raw-information
   type: reference

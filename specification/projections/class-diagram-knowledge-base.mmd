@@ -7,13 +7,26 @@ classDiagram
             +boolean isTemporal
             +boolean allowsMultipleCurrent
             +boolean requiresValidFrom
-            +string[] allowedValues
+            +string description
+            +AllowedValue[] allowedValues
         }
     }
     namespace ComplianceDeletionAggregate {
         class ComplianceDeletion {
             <<AggregateRoot>>
             +datetime executedAt
+            +string reason
+            +string affected
+        }
+    }
+    namespace CurationActionAggregate {
+        class CurationAction {
+            <<AggregateRoot>>
+            +string action
+            +string targetKind
+            +string targetId
+            +string payload
+            +string reason
         }
     }
     namespace EntityMatchReviewAggregate {
@@ -29,6 +42,7 @@ classDiagram
             +decimal confidence
             +FragmentStatus status
             +datetime createdAt
+            +datetime supersededAt
         }
     }
     namespace KnowledgeLinkAggregate {
@@ -60,6 +74,9 @@ classDiagram
         class LinkType {
             <<AggregateRoot>>
             +string name
+            +string label
+            +string inverseName
+            +string description
             +boolean isTemporal
             +boolean allowsMultipleCurrent
             +boolean requiresValidFrom
@@ -100,6 +117,7 @@ classDiagram
             <<AggregateRoot>>
             +string value
             +AssertionStatus status
+            +datetime recordedAt
             +Provenance[] provenance
             +date validFrom
             +date validTo
@@ -125,17 +143,21 @@ classDiagram
             +string locator
             +datetime supersededAt
             +string chunkingVersion
+            +NodeStatus status
         }
         class RawInformation {
             <<AggregateRoot>>
             +SourceType sourceType
             +datetime receivedAt
+            +string content
             +string title
             +string metadata
             +string originalInput
             +string contentHash
             +date documentDate
             +string storageRef
+            +NodeStatus status
+            +datetime supersededAt
         }
     }
     class AcceptedFragmentFilter {
@@ -146,6 +168,13 @@ classDiagram
         <<Enumeration>>
         CANONICAL
         ALIAS
+    }
+    class AllowedValue {
+        <<ValueObject>>
+        +string value
+        +string label
+        +integer sortOrder
+        +string description
     }
     class AssertionFlag {
         <<Enumeration>>
@@ -196,6 +225,15 @@ classDiagram
         REJECTED
         ERROR
         DEPENDENCY_FAILED
+    }
+    class EffectiveStatus {
+        <<Enumeration>>
+        ACTIVE
+        INACTIVE
+        UNCERTAIN
+        DISPUTED
+        SUPERSEDED
+        DELETED
     }
     class FragmentStatus {
         <<Enumeration>>
@@ -356,6 +394,7 @@ classDiagram
     LinkTypeRule "0..*" --> "1" NodeType : target
     LLMRun "0..*" --> "1" RawInformation
     LLMRun "1" *-- "0..*" ToolCall
+    NodeAlias "0..*" --> "0..1" LLMRun
     NodeAttribute "0..*" --> "1" KnowledgeNode
     NodeAttribute "0..*" --> "1" AttributeKey
     NodeAttribute "0..*" --> "1" LLMRun

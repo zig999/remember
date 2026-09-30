@@ -7,6 +7,9 @@ attributes:
 - name: received_at
   type: datetime
   required: true
+- name: content
+  type: string
+  required: true
 - name: title
   type: string
 - name: metadata
@@ -20,6 +23,11 @@ attributes:
   type: date
 - name: storage_ref
   type: string
+- name: status
+  type: node-status
+  required: true
+- name: superseded_at
+  type: datetime
 relationships:
 - target: raw-chunk
   type: composition

@@ -724,11 +724,260 @@ entries:
   unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
   decided: At most one current assertion that is not disputed; disputed assertions are exempt.
   why: A dispute exists to hold both conflicting assertions until curation settles it.
+- location: domain/chat/_context.md
+  field: strategic
+  unstated: The material does not say whether the chat is core, supporting or generic.
+  decided: supporting
+  why: Keeping conversations with the assistant serves reading the knowledge base but is not what the system exists for.
+- location: domain/chat/tool-call.md
+  field: type
+  unstated: The material leaves open whether the conversation records belong to the knowledge-base context or to a context of their own.
+  decided: entity of a separate chat context
+  why: A tool call in a conversation is any tool the assistant used, while a knowledge-base tool call is the audit of one proposal, so the same term carries two meanings.
+- location: rules/knowledge-base/source-status-active-or-deleted.md
+  field: statement
+  unstated: The material types a raw information's and a raw chunk's status with all four node statuses and gives needs-review and merged no meaning for either.
+  decided: A raw information and its raw chunks are only ever active or deleted.
+  why: Nothing reviews or merges a source, and the only change a source undergoes is its deletion for compliance.
+- location: rules/knowledge-base/compliance-deletion-tombstones.md
+  field: statement
+  unstated: The material gives raw informations, raw chunks and information fragments a supersession time and shows a deleted assertion with no supersession time staying current and blocking an equal new one, without saying what sets these on a compliance deletion.
+  decided: A compliance deletion marks its raw information and raw chunks deleted and stamps the moment of the deletion as the supersession time of them, their fragments and every assertion it marks deleted.
+  why: A deleted item left without a supersession time keeps counting as current, which is what a deletion exists to end.
+- location: domain/knowledge-base/compliance-deletion.md
+  field: attributes.affected.type
+  unstated: The material holds a compliance deletion's record of what it affected as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.payload.type
+  unstated: The material holds a curation action's payload as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/message.md
+  field: attributes.content.type
+  unstated: The material holds a message's content as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/tool-call.md
+  field: attributes.arguments.type
+  unstated: The material holds a chat tool call's arguments as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/tool-call.md
+  field: attributes.result.type
+  unstated: The material holds a chat tool call's result as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/graph-view.md
+  field: attributes.snapshot.type
+  unstated: The material holds a graph view's snapshot as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.target_id.type
+  unstated: The material names the item a curation action acted on without saying what kind of identity it is.
+  decided: string
+  why: The action targets items of several kinds, so no single element's identity fits it.
+- location: domain/knowledge-base/curation-action.md
+  field: type
+  unstated: The material does not say whether a curation action has an identity of its own or belongs to what it acted on.
+  decided: aggregate-root
+  why: Each action is recorded once and never changes, and nothing it acted on holds it.
+- location: domain/chat/conversation.md
+  field: relationships.message.cardinality
+  unstated: The material does not say whether a conversation may hold no message.
+  decided: 0..*
+  why: Nothing in the material requires a message before a conversation exists.
+- location: domain/chat/conversation.md
+  field: relationships.tool-call.cardinality
+  unstated: The material does not say how many tool calls a conversation holds.
+  decided: 0..*
+  why: A conversation need not call any tool.
+- location: rules/knowledge-base/alias-not-blank.md
+  field: statement
+  unstated: The material refuses a blank alias while a new node holds its proposed name as its canonical alias and the name checks bound only its length; the two decide differently for a node proposal whose name is only whitespace.
+  decided: 'The alias rule stands: a node proposal whose name or alias is blank once trimmed records no node or alias.'
+  why: The store refuses a blank alias whatever the proposal passed, so no reading in which one is recorded can hold.
+- location: rules/knowledge-base/alias-unique-per-node.md
+  field: statement
+  unstated: The material keeps one alias per normalized form on a node while a node proposal adds each of its proposed aliases; the two decide differently for a proposed alias that differs from one the node holds only in case, accents or spacing.
+  decided: 'The uniqueness stands: a proposed name or alias whose normalized form the node already holds is held once.'
+  why: Two aliases with one normalized form find the node under the same searches, so the second adds nothing a reader can use.
+- location: rules/knowledge-base/alias-unique-per-node.md
+  field: statement
+  unstated: The material's normalization trims only spaces before collapsing whitespace, so a leading or trailing tab or line break survives as a space, while entity resolution trims every surrounding whitespace; the two give different normalized forms for such a name.
+  decided: The normalized form is the one name-normalization states, with every surrounding whitespace trimmed.
+  why: A name that differs only by surrounding whitespace names the same entity, so the stricter trim is the one the domain means.
+- location: rules/knowledge-base/link-provenance-once-per-fragment.md
+  field: statement
+  unstated: The material keeps one provenance per fragment on a knowledge link while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the knowledge link already holds.
+  decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
+- location: rules/knowledge-base/attribute-provenance-once-per-fragment.md
+  field: statement
+  unstated: The material keeps one provenance per fragment on a node attribute while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the node attribute already holds.
+  decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
 ---
 
 ## Description
 
 Decisions the analysis made where the material was silent.
+
+=== domain/chat/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The chat holds the conversations the owner has with the assistant: their messages, the tools the assistant called while answering, and the view of the knowledge graph each conversation left open.
+
+## Responsibility
+
+It keeps each conversation with the assistant so the owner can return to it.
+
+=== domain/chat/conversation
+---
+type: aggregate-root
+attributes:
+- name: title
+  type: string
+- name: rolling_summary
+  type: string
+- name: archived_at
+  type: datetime
+- name: created_at
+  type: datetime
+  required: true
+- name: updated_at
+  type: datetime
+  required: true
+relationships:
+- target: message
+  type: composition
+  cardinality: 0..*
+- target: tool-call
+  type: composition
+  cardinality: 0..*
+- target: graph-view
+  type: composition
+  cardinality: 0..1
+---
+
+## Description
+
+One conversation the owner holds with the assistant, with an optional title and running summary, archived once it has an archiving time.
+
+## Responsibility
+
+It is the unit a conversation's messages, tool calls and graph view live and are removed with.
+
+=== domain/chat/graph-view
+---
+type: entity
+aggregate: conversation
+attributes:
+- name: snapshot
+  type: string
+  required: true
+- name: updated_at
+  type: datetime
+  required: true
+---
+
+## Description
+
+The view of the knowledge graph a conversation last left open.
+
+## Responsibility
+
+It lets the owner return to a conversation and find the graph as they left it.
+
+=== domain/chat/message
+---
+type: entity
+aggregate: conversation
+attributes:
+- name: role
+  type: message-role
+  required: true
+- name: content
+  type: string
+  required: true
+- name: stop_reason
+  type: string
+- name: idempotency_key
+  type: string
+- name: model
+  type: string
+- name: tokens_in
+  type: integer
+- name: tokens_out
+  type: integer
+- name: latency_ms
+  type: integer
+---
+
+## Description
+
+One turn of a conversation, spoken by the owner or by the assistant.
+
+## Responsibility
+
+It holds what was said in a conversation, in the words it was said.
+
+=== domain/chat/message-role
+---
+type: enumeration
+values:
+- user
+- assistant
+---
+
+## Description
+
+Who spoke a message: the owner, as user, or the assistant.
+
+## Responsibility
+
+It tells the owner's turns from the assistant's.
+
+=== domain/chat/tool-call
+---
+type: entity
+aggregate: conversation
+attributes:
+- name: tool_name
+  type: string
+  required: true
+- name: arguments
+  type: string
+  required: true
+- name: result
+  type: string
+- name: is_error
+  type: boolean
+  required: true
+- name: error_message
+  type: string
+- name: duration_ms
+  type: integer
+  required: true
+relationships:
+- target: message
+  type: association
+  cardinality: 0..1
+---
+
+## Description
+
+One call the assistant made to a tool while answering in a conversation, with what it was given, what it returned or the error it met, and how long it took.
+
+## Responsibility
+
+It shows the owner which tools an answer rested on.
 
 === domain/knowledge-base/_context
 ---
@@ -783,6 +1032,29 @@ Whether a node alias is its node's canonical name or another name for it.
 
 None.
 
+=== domain/knowledge-base/allowed-value
+---
+type: value-object
+attributes:
+- name: value
+  type: string
+  required: true
+- name: label
+  type: string
+- name: sort_order
+  type: integer
+- name: description
+  type: string
+---
+
+## Description
+
+One value the catalog allows for an attribute key, with the label it is shown by and its place in the key's order.
+
+## Responsibility
+
+It closes the values an attribute of that key may take.
+
 === domain/knowledge-base/assertion-flag
 ---
 type: enumeration
@@ -835,8 +1107,10 @@ attributes:
   type: boolean
 - name: requires_valid_from
   type: boolean
-- name: allowed_values
+- name: description
   type: string
+- name: allowed_values
+  type: allowed-value
   many: true
 relationships:
 - target: node-type
@@ -876,6 +1150,11 @@ attributes:
 - name: executed_at
   type: datetime
   required: true
+- name: reason
+  type: string
+  required: true
+- name: affected
+  type: string
 relationships:
 - target: raw-information
   type: reference
@@ -889,6 +1168,32 @@ The record that a raw information was deleted to honour a data-protection obliga
 ## Responsibility
 
 It keeps a deleted source's knowledge from being presented as still traceable.
+
+=== domain/knowledge-base/curation-action
+---
+type: aggregate-root
+attributes:
+- name: action
+  type: string
+  required: true
+- name: target_kind
+  type: string
+  required: true
+- name: target_id
+  type: string
+- name: payload
+  type: string
+- name: reason
+  type: string
+---
+
+## Description
+
+The record of one action the owner took while curating the knowledge base, naming the kind of item it acted on and, where there is one, that item.
+
+## Responsibility
+
+It keeps an audit trail of what curation changed and why.
 
 === domain/knowledge-base/directed-ingestion
 ---
@@ -973,6 +1278,26 @@ How one directed item fared.
 
 None.
 
+=== domain/knowledge-base/effective-status
+---
+type: enumeration
+values:
+- active
+- inactive
+- uncertain
+- disputed
+- superseded
+- deleted
+---
+
+## Description
+
+The status a knowledge link or node attribute is read with on a given day: its stored assertion status, or inactive where an active assertion has ended.
+
+## Responsibility
+
+It lets an ended assertion read as inactive without that state ever being stored.
+
 === domain/knowledge-base/entity-match-review
 ---
 type: aggregate-root
@@ -1034,6 +1359,8 @@ attributes:
 - name: created_at
   type: datetime
   required: true
+- name: superseded_at
+  type: datetime
 relationships:
 - target: raw-chunk
   type: association
@@ -1177,14 +1504,27 @@ attributes:
 - name: name
   type: string
   required: true
+- name: label
+  type: string
+  required: true
+- name: inverse_name
+  type: string
+  required: true
+- name: description
+  type: string
+  required: true
 - name: is_temporal
   type: boolean
+  required: true
 - name: allows_multiple_current
   type: boolean
+  required: true
 - name: requires_valid_from
   type: boolean
+  required: true
 - name: requires_valid_to_on_change
   type: boolean
+  required: true
 relationships:
 - target: link-type-rule
   type: composition
@@ -1287,6 +1627,10 @@ attributes:
 - name: kind
   type: alias-kind
   required: true
+relationships:
+- target: llm-run
+  type: reference
+  cardinality: 0..1
 ---
 
 ## Description
@@ -1307,6 +1651,8 @@ attributes:
 - name: status
   type: assertion-status
   required: true
+- name: recorded_at
+  type: datetime
 - name: provenance
   type: provenance
   many: true
@@ -1388,6 +1734,7 @@ attributes:
   required: true
 - name: description
   type: string
+  required: true
 ---
 
 ## Description
@@ -1509,12 +1856,16 @@ attributes:
   type: integer
 - name: excerpt
   type: string
+  required: true
 - name: locator
   type: string
 - name: superseded_at
   type: datetime
 - name: chunking_version
   type: string
+- name: status
+  type: node-status
+  required: true
 ---
 
 ## Description
@@ -1536,6 +1887,9 @@ attributes:
 - name: received_at
   type: datetime
   required: true
+- name: content
+  type: string
+  required: true
 - name: title
   type: string
 - name: metadata
@@ -1549,6 +1903,11 @@ attributes:
   type: date
 - name: storage_ref
   type: string
+- name: status
+  type: node-status
+  required: true
+- name: superseded_at
+  type: datetime
 relationships:
 - target: raw-chunk
   type: composition
@@ -1815,6 +2174,33 @@ The type the values of an attribute key take.
 
 None.
 
+=== rules/chat/message-idempotency-key-unique
+---
+type: invariant
+statement: A conversation holds at most one message with one idempotency key.
+constrains:
+- domain/chat/conversation
+- domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-call-outlives-its-message
+---
+type: invariant
+statement: Removing a message keeps the tool calls that named it in their conversation, naming no message.
+constrains:
+- domain/chat/conversation
+- domain/chat/tool-call
+- domain/chat/message
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/affected-nodes-follow-merges
 ---
 type: policy
@@ -1869,6 +2255,109 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/alias-not-blank
+---
+type: invariant
+statement: A node alias MUST NOT be empty once surrounding whitespace is trimmed.
+constrains:
+- domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/alias-unique-per-node
+---
+type: invariant
+statement: A knowledge node holds at most one alias of one normalized form.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-document-types
+---
+type: invariant
+statement: The allowed values of doc_type of Document, in sort order from 1, are «proposta» labelled «Proposta», «ata» labelled «Ata», «contrato» labelled «Contrato», «relatório» labelled «Relatório» and «outro» labelled «Outro».
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-event-types
+---
+type: invariant
+statement: The allowed values of event_type of Event, in sort order from 1, are «reunião» labelled «Reunião», «go-live» labelled «Go-live», «workshop» labelled «Workshop», «outro» labelled «Outro», «cobrança» labelled «Cobrança/Follow-up», «decisão» labelled «Decisão», «escalonamento» labelled «Escalonamento», «bloqueio» labelled «Bloqueio/Impedimento» and «marco» labelled «Marco/Entrega».
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-project-statuses
+---
+type: invariant
+statement: The allowed values of status_text of Project, in sort order from 1, are «planejado» labelled «Planejado», «em aprovação» labelled «Em aprovação», «aprovado» labelled «Aprovado», «em andamento» labelled «Em andamento», «pausado» labelled «Pausado», «concluído» labelled «Concluído», «cancelado» labelled «Cancelado» and «outro» labelled «Outro».
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-task-priorities
+---
+type: invariant
+statement: The allowed values of priority of Task, in sort order from 1, are «baixa» labelled «Baixa», «média» labelled «Média», «alta» labelled «Alta» and «crítica» labelled «Crítica».
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-task-statuses
+---
+type: invariant
+statement: The allowed values of status of Task, in sort order from 1, are «a fazer» labelled «A fazer», «em andamento» labelled «Em andamento», «bloqueada» labelled «Bloqueada», «em revisão» labelled «Em revisão», «concluída» labelled «Concluída», «cancelada» labelled «Cancelada» and «outro» labelled «Outro».
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/allowed-value-unique-per-key
+---
+type: invariant
+statement: No two allowed values of one attribute key hold the same value.
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/ambiguous-candidates-need-review
 ---
 type: policy
@@ -1880,6 +2369,18 @@ constrains:
 - domain/knowledge-base/node-resolution
 - domain/knowledge-base/node-status
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-confidence-range
+---
+type: invariant
+statement: A node attribute's confidence is between 0 and 1 inclusive.
+constrains:
+- domain/knowledge-base/node-attribute
 ---
 
 ## Description
@@ -1899,12 +2400,74 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/attribute-key-unique-per-node-type
+---
+type: invariant
+statement: No two attribute keys of one node type hold the same key.
+constrains:
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-never-supersedes-itself
+---
+type: invariant
+statement: A node attribute never names itself as the one it supersedes.
+constrains:
+- domain/knowledge-base/node-attribute
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/attribute-proposal-check-order
 ---
 type: invariant
 statement: An attribute proposal is checked for an existing knowledge node, then for an attribute key known for its node type, then for a value of the key's type and allowed values, then for cited fragments that exist and belong to its LLM run, then for its dates, then for its confidence, then for the anchoring of its fragments, and stops at the first check it fails.
 constrains:
 - domain/knowledge-base/proposal
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-provenance-once-per-fragment
+---
+type: invariant
+statement: A node attribute holds at most one provenance per information fragment.
+constrains:
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/provenance
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-start-has-basis
+---
+type: invariant
+statement: A node attribute that holds a validity start holds the basis of that start.
+constrains:
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/valid-from-basis
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/attribute-validity-ordered
+---
+type: invariant
+statement: A node attribute that holds both a validity start and a validity end holds the start strictly before the end.
+constrains:
+- domain/knowledge-base/node-attribute
 ---
 
 ## Description
@@ -1971,6 +2534,56 @@ statement: A knowledge node's similarity to a node proposal is the highest trigr
 constrains:
 - domain/knowledge-base/knowledge-node
 - domain/knowledge-base/node-alias
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/catalog-attribute-keys
+---
+type: invariant
+statement: 'The catalog holds exactly nineteen attribute keys, each with its value type: for Project deadline (date), start_date (date), status_text (text) and budget (number); for Event event_date (date), end_date (date) and event_type (text); for Person email (text), phone (text) and birth_date (date); for Organization cnpj (text) and website (text); for Location city (text) and address (text); for Concept definition (text); for Document doc_type (text); and for Task status (text), priority (text) and due_date (date).'
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/value-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/catalog-link-type-rules
+---
+type: invariant
+statement: 'The catalog permits, each with no validity window, exactly these pairs of source and target node types: participates_in from Person to Project or Event; member_of from Person to Organization; holds_role from Person to Role; responsible_for from Person to Project, Event or Task; reports_to from Person to Person; part_of from Organization to Organization, from Project to Project, from Event to Project and from Task to Project; located_in from Organization or Event to Location; organizes from Organization or Person to Event; belongs_to_category from Person, Organization, Project, Event, Concept or Location to Category; related_to from Concept or Project to Concept; concerns from Document to Project, Event or Organization and from Event to Project; delivered_to from Document to Person; and sponsors from Organization to Project.'
+constrains:
+- domain/knowledge-base/link-type
+- domain/knowledge-base/link-type-rule
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/catalog-link-types
+---
+type: invariant
+statement: 'The catalog holds exactly thirteen link types, each with its label and its inverse: participates_in «participa de» (has_participant), member_of «é membro de» (has_member), holds_role «exerce o cargo de» (role_held_by), responsible_for «é responsável por» (under_responsibility_of), reports_to «reporta a» (manages), part_of «faz parte de» (has_part), located_in «localizado em» (location_of), organizes «organiza» (organized_by), belongs_to_category «pertence à categoria» (contains), related_to «relacionado a» (related_to), concerns «trata de» (addressed_by), delivered_to «entregue a» (recipient_of) and sponsors «patrocina» (sponsored_by).'
+constrains:
+- domain/knowledge-base/link-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/catalog-node-types
+---
+type: invariant
+statement: 'The catalog holds exactly ten node types, described as follows: Person «Pessoa física», Organization «Empresa, órgão, time formal», Project «Projeto/iniciativa com objetivo e ciclo de vida», Event «Acontecimento pontual (reunião, go-live, workshop)», Role «Cargo/função (vocabulário controlado)», Category «Rótulo taxonômico para classificação», Concept «Conceito/tema referenciável», Location «Lugar físico ou lógico», Document «Artefato referenciado no conteúdo (proposta, ata, contrato, relatório); não é a fonte ingerida» and Task «Tarefa/atividade com responsável, prazo e ciclo de vida».'
+constrains:
+- domain/knowledge-base/node-type
 ---
 
 ## Description
@@ -2062,6 +2675,31 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/chunk-offsets-ordered
+---
+type: invariant
+statement: A raw chunk's start offset is at least 0 and its end offset is greater than its start offset.
+constrains:
+- domain/knowledge-base/raw-chunk
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/chunk-position-unique
+---
+type: invariant
+statement: A raw information holds at most one raw chunk of one chunking version at one index.
+constrains:
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/raw-chunk
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/chunking-version
 ---
 type: invariant
@@ -2127,6 +2765,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/closed-attribute-keys
+---
+type: invariant
+statement: The catalog attribute keys that hold allowed values are exactly doc_type of Document, event_type of Event, status_text of Project, and status and priority of Task.
+constrains:
+- domain/knowledge-base/attribute-key
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/closing-stamps-finish-time
 ---
 type: invariant
@@ -2145,6 +2796,24 @@ type: policy
 statement: A compliance deletion marks deleted the information fragments of its raw information and every knowledge link and node attribute whose only provenance is one of those fragments.
 constrains:
 - domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/information-fragment
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/compliance-deletion-tombstones
+---
+type: policy
+statement: A compliance deletion marks its raw information and each of its raw chunks deleted and gives them, its information fragments and every knowledge link and node attribute it marks deleted the moment of the deletion as their supersession time.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/raw-chunk
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/knowledge-link
 - domain/knowledge-base/node-attribute
@@ -2570,6 +3239,22 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/effective-status
+---
+type: policy
+statement: A knowledge link's or node attribute's effective status is inactive when its status is active and its validity ends on or before today, and is its status otherwise.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+- domain/knowledge-base/effective-status
+- domain/knowledge-base/assertion-status
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/email-header-block
 ---
 type: invariant
@@ -2602,6 +3287,18 @@ type: invariant
 statement: A provenance read of an existing item whose provenance chain is empty is refused.
 constrains:
 - domain/knowledge-base/provenance
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/end-on-change-link-types
+---
+type: invariant
+statement: The catalog link types that require a validity end on change are exactly reports_to, part_of and located_in.
+constrains:
+- domain/knowledge-base/link-type
 ---
 
 ## Description
@@ -2877,6 +3574,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/fragment-confidence-range
+---
+type: invariant
+statement: An information fragment's confidence is between 0 and 1 inclusive.
+constrains:
+- domain/knowledge-base/information-fragment
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/fragment-item-summary
 ---
 type: invariant
@@ -2975,6 +3684,20 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/in-effect-assertion
+---
+type: policy
+statement: A knowledge link or node attribute is in effect while it is current and its validity has no start or starts on or before today.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/ingestion-records-chunks-and-run
 ---
 type: policy
@@ -3015,12 +3738,36 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/link-confidence-range
+---
+type: invariant
+statement: A knowledge link's confidence is between 0 and 1 inclusive.
+constrains:
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/link-item-summary
 ---
 type: policy
 statement: A link search item's summary reads `source -[link type]-> target`, with the canonical names of its source and target knowledge nodes.
 constrains:
 - domain/knowledge-base/search-item
+- domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-never-supersedes-itself
+---
+type: invariant
+statement: A knowledge link never names itself as the one it supersedes.
+constrains:
 - domain/knowledge-base/knowledge-link
 ---
 
@@ -3054,12 +3801,50 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/link-provenance-once-per-fragment
+---
+type: invariant
+statement: A knowledge link holds at most one provenance per information fragment.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/provenance
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-start-has-basis
+---
+type: invariant
+statement: A knowledge link that holds a validity start holds the basis of that start.
+constrains:
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/valid-from-basis
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/link-type-in-catalog
 ---
 type: invariant
 statement: A link proposal MUST name a link type the catalog holds.
 constrains:
 - domain/knowledge-base/proposal
+- domain/knowledge-base/link-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-type-name-unique
+---
+type: invariant
+statement: No two link types hold the same name.
+constrains:
 - domain/knowledge-base/link-type
 ---
 
@@ -3080,12 +3865,36 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/link-type-rule-window-ordered
+---
+type: invariant
+statement: A link type rule that holds both a validity start and a validity end holds the start strictly before the end.
+constrains:
+- domain/knowledge-base/link-type-rule
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/link-types-ignored-without-expansion
 ---
 type: invariant
 statement: A search query that does not expand ignores the link types it names.
 constrains:
 - domain/knowledge-base/search-query
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-validity-ordered
+---
+type: invariant
+statement: A knowledge link that holds both a validity start and a validity end holds the start strictly before the end.
+constrains:
+- domain/knowledge-base/knowledge-link
 ---
 
 ## Description
@@ -3228,6 +4037,42 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/match-review-distinct-nodes
+---
+type: invariant
+statement: An entity match review pairs two different knowledge nodes.
+constrains:
+- domain/knowledge-base/entity-match-review
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/match-review-pair-unique
+---
+type: invariant
+statement: At most one entity match review pairs one knowledge node with one candidate knowledge node.
+constrains:
+- domain/knowledge-base/entity-match-review
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/match-review-similarity-range
+---
+type: invariant
+statement: An entity match review's similarity is between 0 and 1 inclusive.
+constrains:
+- domain/knowledge-base/entity-match-review
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/matched-node-gains-only-aliases
 ---
 type: invariant
@@ -3241,12 +4086,37 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/merged-node-names-survivor
+---
+type: invariant
+statement: A knowledge node names the knowledge node it was merged into exactly when its status is merged.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/model-refusal-skips-chunk
 ---
 type: invariant
 statement: A chunk the model declines to read is skipped without failing the LLM run.
 constrains:
 - domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/multi-current-attribute-keys
+---
+type: invariant
+statement: The catalog attribute keys that allow multiple current values are exactly email and phone of Person.
+constrains:
+- domain/knowledge-base/attribute-key
 ---
 
 ## Description
@@ -3375,6 +4245,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/node-never-merged-into-itself
+---
+type: invariant
+statement: A knowledge node is never merged into itself.
+constrains:
+- domain/knowledge-base/knowledge-node
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/node-surfaces-only-with-accepted-mention
 ---
 type: policy
@@ -3397,6 +4279,32 @@ statement: A node proposal MUST name a node type the catalog holds.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/node-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/node-type-name-unique
+---
+type: invariant
+statement: No two node types hold the same name.
+constrains:
+- domain/knowledge-base/node-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/one-canonical-alias
+---
+type: invariant
+statement: A knowledge node holds at most one canonical alias.
+constrains:
+- domain/knowledge-base/knowledge-node
+- domain/knowledge-base/node-alias
+- domain/knowledge-base/alias-kind
 ---
 
 ## Description
@@ -3807,6 +4715,43 @@ consistency: eventual
 
 None.
 
+=== rules/knowledge-base/run-finish-time-when-closed
+---
+type: invariant
+statement: An LLM run holds a finish time exactly when its status is not running.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/run-status
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/run-opens-with-one-attempt
+---
+type: invariant
+statement: An LLM run is opened with 1 attempt.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/run-start-is-opening-time
+---
+type: invariant
+statement: An LLM run's start time is the moment it was opened.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/search-excludes-compliance-deleted-sources
 ---
 type: policy
@@ -3919,12 +4864,62 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/single-current-link-types
+---
+type: invariant
+statement: The catalog link types that do not allow multiple current links are exactly reports_to, part_of and located_in.
+constrains:
+- domain/knowledge-base/link-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/source-status-active-or-deleted
+---
+type: invariant
+statement: A raw information's status and each of its raw chunks' status is active or deleted.
+constrains:
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/raw-chunk
+- domain/knowledge-base/node-status
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/speaker-line
 ---
 type: invariant
 statement: A speaker line is a line that, after optional leading whitespace and an optional time stamp written [h:mm], [hh:mm], (hh:mm) or (hh:mm:ss) followed by whitespace, starts with one or two words of letters, digits or underscores separated by one whitespace character and followed by a colon and a whitespace character.
 constrains:
 - domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/start-requiring-attribute-keys
+---
+type: invariant
+statement: The catalog attribute keys that require a validity start are exactly the temporal ones other than email and phone of Person and website of Organization.
+constrains:
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/start-requiring-link-types
+---
+type: invariant
+statement: The catalog link types that require a validity start are exactly the temporal ones other than delivered_to.
+constrains:
+- domain/knowledge-base/link-type
 ---
 
 ## Description
@@ -4044,6 +5039,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/temporal-attribute-keys
+---
+type: invariant
+statement: The temporal catalog attribute keys are exactly deadline, start_date, status_text and budget of Project, event_date and end_date of Event, email and phone of Person, website of Organization, and status, priority and due_date of Task.
+constrains:
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/temporal-filters-apply-to-expansion-only
 ---
 type: policy
@@ -4051,6 +5058,18 @@ statement: The as-of date and the in-effect-only switch filter the knowledge lin
 constrains:
 - domain/knowledge-base/search-query
 - domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/temporal-link-types
+---
+type: invariant
+statement: Every catalog link type is temporal except belongs_to_category, related_to and concerns.
+constrains:
+- domain/knowledge-base/link-type
 ---
 
 ## Description

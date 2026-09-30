@@ -11,12 +11,16 @@ attributes:
   type: integer
 - name: excerpt
   type: string
+  required: true
 - name: locator
   type: string
 - name: superseded_at
   type: datetime
 - name: chunking_version
   type: string
+- name: status
+  type: node-status
+  required: true
 ---
 
 ## Description

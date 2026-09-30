@@ -6,6 +6,7 @@ attributes:
   required: true
 - name: description
   type: string
+  required: true
 ---
 
 ## Description

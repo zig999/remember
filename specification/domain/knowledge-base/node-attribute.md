@@ -7,6 +7,8 @@ attributes:
 - name: status
   type: assertion-status
   required: true
+- name: recorded_at
+  type: datetime
 - name: provenance
   type: provenance
   many: true

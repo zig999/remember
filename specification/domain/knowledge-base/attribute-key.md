@@ -13,8 +13,10 @@ attributes:
   type: boolean
 - name: requires_valid_from
   type: boolean
-- name: allowed_values
+- name: description
   type: string
+- name: allowed_values
+  type: allowed-value
   many: true
 relationships:
 - target: node-type

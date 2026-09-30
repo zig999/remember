@@ -8,6 +8,10 @@ attributes:
 - name: kind
   type: alias-kind
   required: true
+relationships:
+- target: llm-run
+  type: reference
+  cardinality: 0..1
 ---
 
 ## Description

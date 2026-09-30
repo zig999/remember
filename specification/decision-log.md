@@ -333,6 +333,101 @@ entries:
   unstated: The material has a dispute record a second current assertion beside the one it disputes while a duplicate guard keeps one current assertion per node and type, without saying whether the guard spares disputed assertions; the two decide differently for the new assertion of a dispute.
   decided: At most one current assertion that is not disputed; disputed assertions are exempt.
   why: A dispute exists to hold both conflicting assertions until curation settles it.
+- location: domain/chat/_context.md
+  field: strategic
+  unstated: The material does not say whether the chat is core, supporting or generic.
+  decided: supporting
+  why: Keeping conversations with the assistant serves reading the knowledge base but is not what the system exists for.
+- location: domain/chat/tool-call.md
+  field: type
+  unstated: The material leaves open whether the conversation records belong to the knowledge-base context or to a context of their own.
+  decided: entity of a separate chat context
+  why: A tool call in a conversation is any tool the assistant used, while a knowledge-base tool call is the audit of one proposal, so the same term carries two meanings.
+- location: rules/knowledge-base/source-status-active-or-deleted.md
+  field: statement
+  unstated: The material types a raw information's and a raw chunk's status with all four node statuses and gives needs-review and merged no meaning for either.
+  decided: A raw information and its raw chunks are only ever active or deleted.
+  why: Nothing reviews or merges a source, and the only change a source undergoes is its deletion for compliance.
+- location: rules/knowledge-base/compliance-deletion-tombstones.md
+  field: statement
+  unstated: The material gives raw informations, raw chunks and information fragments a supersession time and shows a deleted assertion with no supersession time staying current and blocking an equal new one, without saying what sets these on a compliance deletion.
+  decided: A compliance deletion marks its raw information and raw chunks deleted and stamps the moment of the deletion as the supersession time of them, their fragments and every assertion it marks deleted.
+  why: A deleted item left without a supersession time keeps counting as current, which is what a deletion exists to end.
+- location: domain/knowledge-base/compliance-deletion.md
+  field: attributes.affected.type
+  unstated: The material holds a compliance deletion's record of what it affected as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.payload.type
+  unstated: The material holds a curation action's payload as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/message.md
+  field: attributes.content.type
+  unstated: The material holds a message's content as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/tool-call.md
+  field: attributes.arguments.type
+  unstated: The material holds a chat tool call's arguments as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/tool-call.md
+  field: attributes.result.type
+  unstated: The material holds a chat tool call's result as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/chat/graph-view.md
+  field: attributes.snapshot.type
+  unstated: The material holds a graph view's snapshot as a structured document without giving its shape.
+  decided: string
+  why: Nothing in the material reads inside it, so it is carried whole as text.
+- location: domain/knowledge-base/curation-action.md
+  field: attributes.target_id.type
+  unstated: The material names the item a curation action acted on without saying what kind of identity it is.
+  decided: string
+  why: The action targets items of several kinds, so no single element's identity fits it.
+- location: domain/knowledge-base/curation-action.md
+  field: type
+  unstated: The material does not say whether a curation action has an identity of its own or belongs to what it acted on.
+  decided: aggregate-root
+  why: Each action is recorded once and never changes, and nothing it acted on holds it.
+- location: domain/chat/conversation.md
+  field: relationships.message.cardinality
+  unstated: The material does not say whether a conversation may hold no message.
+  decided: 0..*
+  why: Nothing in the material requires a message before a conversation exists.
+- location: domain/chat/conversation.md
+  field: relationships.tool-call.cardinality
+  unstated: The material does not say how many tool calls a conversation holds.
+  decided: 0..*
+  why: A conversation need not call any tool.
+- location: rules/knowledge-base/alias-not-blank.md
+  field: statement
+  unstated: The material refuses a blank alias while a new node holds its proposed name as its canonical alias and the name checks bound only its length; the two decide differently for a node proposal whose name is only whitespace.
+  decided: 'The alias rule stands: a node proposal whose name or alias is blank once trimmed records no node or alias.'
+  why: The store refuses a blank alias whatever the proposal passed, so no reading in which one is recorded can hold.
+- location: rules/knowledge-base/alias-unique-per-node.md
+  field: statement
+  unstated: The material keeps one alias per normalized form on a node while a node proposal adds each of its proposed aliases; the two decide differently for a proposed alias that differs from one the node holds only in case, accents or spacing.
+  decided: 'The uniqueness stands: a proposed name or alias whose normalized form the node already holds is held once.'
+  why: Two aliases with one normalized form find the node under the same searches, so the second adds nothing a reader can use.
+- location: rules/knowledge-base/alias-unique-per-node.md
+  field: statement
+  unstated: The material's normalization trims only spaces before collapsing whitespace, so a leading or trailing tab or line break survives as a space, while entity resolution trims every surrounding whitespace; the two give different normalized forms for such a name.
+  decided: The normalized form is the one name-normalization states, with every surrounding whitespace trimmed.
+  why: A name that differs only by surrounding whitespace names the same entity, so the stricter trim is the one the domain means.
+- location: rules/knowledge-base/link-provenance-once-per-fragment.md
+  field: statement
+  unstated: The material keeps one provenance per fragment on a knowledge link while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the knowledge link already holds.
+  decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
+- location: rules/knowledge-base/attribute-provenance-once-per-fragment.md
+  field: statement
+  unstated: The material keeps one provenance per fragment on a node attribute while a re-affirmation adds a provenance for each fragment it cites; the two decide differently for a re-affirmation citing a fragment the node attribute already holds.
+  decided: 'The uniqueness stands: a re-affirmation citing a fragment the assertion already holds adds no second provenance for it.'
+  why: A second provenance to the same fragment traces the assertion to no source it was not already traced to.
 ---
 
 ## Description
