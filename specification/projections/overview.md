@@ -7,7 +7,7 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 17 | 78 | 1 | 0 |
-| knowledge-base | core | 72 | 355 | 4 | 9 |
+| knowledge-base | core | 74 | 357 | 5 | 9 |
 
 ## Aggregates
 
@@ -39,15 +39,20 @@ None.
 - curation-reads-are-consistent (knowledge-base)
 - curation-transports-answer-alike (knowledge-base)
 - document-content-is-data (knowledge-base)
+- every-operation-requires-owner-authentication (system)
 - extraction-acts-only-through-proposals (knowledge-base)
+- failures-answer-one-envelope (system)
 - ingestion-transports-answer-alike (knowledge-base)
+- internal-failure-withholds-cause (system)
 - llm-toolset-omits-audit-reads (knowledge-base)
 - llm-toolset-omits-curation-metrics (knowledge-base)
 - llm-toolset-omits-fragment-listing (knowledge-base)
 - llm-toolset-omits-graph-point-reads (knowledge-base)
+- local-operator-token-development-only (system)
+- mcp-failure-is-tool-error (system)
 - retrieval-is-lexical-only (knowledge-base)
 - retrieval-is-read-only (knowledge-base)
-- retrieval-requires-owner-authentication (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
+- unreachable-store-answers-unavailable (system)
 
-116 decision(s) disclosed, 2 location(s) retired in the decision log.
+123 decision(s) disclosed, 2 location(s) retired in the decision log.

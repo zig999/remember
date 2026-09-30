@@ -3,6 +3,11 @@
 Derived by spec.py from decision-log.md; never edited. The log is the authority —
 this groups its entries by the file each one located.
 
+## constraints/every-operation-requires-owner-authentication.md
+- statement — decided: One system constraint for every operation; constraints/retrieval-requires-owner-authentication is removed, as it held no binding and no log entry.
+  unstated: The specification held owner authentication only for retrieval, while the material authenticates the owner the same way before every operation.
+  why: The same gate over every operation is one fact, and two constraints stating it for overlapping scopes would be two homes.
+
 ## constraints/ingestion-transports-answer-alike.md
 - statement — decided: The two transports carry the same result and the same error code for every ingestion operation both expose, so MCP answers such a refusal as a refusal.
   unstated: The material has an MCP proposal whose service answered a refusal without raising it return that refusal wrapped in a success, while REST returns the refusal itself.
@@ -20,6 +25,23 @@ this groups its entries by the file each one located.
 - answers — decided: Every cursor that does not decode to a creation time and a well-formed identity answers HTTP 422 VALIDATION_INVALID_FORMAT with `details: { param: "cursor" }`.
   unstated: The material answers a conversation cursor with the right shape but a creation time that is not a timestamp or an identity that is not an identifier with an internal error, and any other malformed cursor with VALIDATION_INVALID_FORMAT.
   why: A malformed cursor is the caller's error, never the system's.
+
+## contracts/knowledge-base/access.md
+- operations — decided: One published api, knowledge-base access, with authenticate-owner, route-request and read-health.
+  unstated: The material gives the authentication refusals, the framework's routing and validation answers and the health probe without saying which contract holds these answers, since they come before or apart from any operation.
+  why: They are what a caller of every operation reads, and they belong to no single operation's contract.
+- answers — decided: Every SYSTEM_SERVICE_UNAVAILABLE answers "A backing service is temporarily unavailable."
+  unstated: The material answers SYSTEM_SERVICE_UNAVAILABLE with "A backing service is temporarily unavailable." for an unreachable store and with "Internal server error." for a framework 503.
+  why: One code carries one message, and a 503 is never an internal failure.
+- answers — decided: Every validation failure answers "Request payload failed validation." with `details` a bare list of `{ path, message }`.
+  unstated: The material answers a failed validation with `details` a list of `{ path, message }` and a fixed message for one validator, and with the framework's raw validation array and its own message for the other.
+  why: The operations' contracts already promise that shape, and a caller cannot tell which validator ran.
+- answers — decided: A key set that cannot be fetched answers HTTP 503 SYSTEM_SERVICE_UNAVAILABLE.
+  unstated: The material answers a failure to fetch the auth provider's key set as an invalid token, while an unreachable store answers that a backing service is unavailable.
+  why: The owner's token was not found invalid, and reporting it so hides an outage behind a refusal.
+- answers — decided: Such a refusal keeps its status, with SYSTEM_INTERNAL_ERROR and the framework's message.
+  unstated: The material answers a framework refusal with a status below 500 other than 401, 403, 404, 409 and 422 with that status and SYSTEM_INTERNAL_ERROR, which the code registry otherwise maps to 500.
+  why: The status tells the caller the request was theirs to fix, and no domain code names those framework refusals.
 
 ## contracts/knowledge-base/curation.md
 - answers — decided: The rule stands for every curation action, and each curation decision refuses a longer reason with VALIDATION_INVALID_FORMAT, HTTP 422 over REST, as it refuses any other malformed field.
@@ -141,6 +163,11 @@ this groups its entries by the file each one located.
 - values — decided: The five values stand, superseded included.
   unstated: The documentation lists four fragment states and leaves out superseded, which the standing node holds; the two decide differently for a fragment that was superseded.
   why: The first increment's material is the newer reading of the states fragments are held in, and the documentation's list predates it.
+
+## domain/knowledge-base/health-report.md
+- type — decided: value-object in the knowledge-base context
+  unstated: The material gives the health report's shape without saying whether it has an identity or which context it belongs to.
+  why: Nothing identifies one report, and the system has no context of its own for operating it.
 
 ## domain/knowledge-base/information-fragment.md
 - attributes.llm_run.type — decided: string

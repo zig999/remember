@@ -87,6 +87,16 @@ scope: knowledge-base
 
 None.
 
+=== constraints/every-operation-requires-owner-authentication
+---
+statement: Every operation authenticates the owner before it runs, by a bearer token the auth provider signed, that has not expired and that names the owner.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/extraction-acts-only-through-proposals
 ---
 statement: The language model that extracts a document acts on the knowledge base only through the fragment, node, link and attribute proposals.
@@ -97,10 +107,30 @@ scope: knowledge-base
 
 None.
 
+=== constraints/failures-answer-one-envelope
+---
+statement: Every refused or failed operation answers an error code and a message, with details only where the refusal gives them, and never as a success.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/ingestion-transports-answer-alike
 ---
 statement: The REST and MCP transports answer every ingestion operation they both expose with the same result on success and the same error code on refusal.
 scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/internal-failure-withholds-cause
+---
+statement: An operation that fails for an unexpected cause answers a fixed message and never the cause.
+scope: system
 ---
 
 ## Description
@@ -147,6 +177,26 @@ scope: knowledge-base
 
 None.
 
+=== constraints/local-operator-token-development-only
+---
+statement: Only while the system runs in development does the configured local operator token, compared in constant time, admit the owner without a signed token.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/mcp-failure-is-tool-error
+---
+statement: Over MCP a refused or failed operation answers a tool error result carrying its error code, message and details as JSON text.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/retrieval-is-lexical-only
 ---
 statement: Retrieval matches text only lexically and never by embeddings or semantic similarity.
@@ -168,9 +218,9 @@ fitness: each retrieval operation's database transaction is opened read-only
 
 None.
 
-=== constraints/retrieval-requires-owner-authentication
+=== constraints/retrieval-transports-answer-alike
 ---
-statement: Every retrieval operation authenticates the owner before it reads anything.
+statement: The REST and MCP transports answer every retrieval operation they both expose with the same result on success and the same error code on refusal.
 scope: knowledge-base
 ---
 
@@ -178,10 +228,10 @@ scope: knowledge-base
 
 None.
 
-=== constraints/retrieval-transports-answer-alike
+=== constraints/unreachable-store-answers-unavailable
 ---
-statement: The REST and MCP transports answer every retrieval operation they both expose with the same result on success and the same error code on refusal.
-scope: knowledge-base
+statement: An operation that cannot reach the store, or whose statement times out, answers that a backing service is unavailable, never an internal failure.
+scope: system
 ---
 
 ## Description
@@ -355,6 +405,56 @@ answers:
 
 The owner's conversation surface: creating, listing, reading, updating and deleting conversations, sending a message and streaming the assistant's answer, listing messages, reading usage, reading and saving the graph view, and cancelling a turn.
 It is carried by REST alone.
+
+=== contracts/knowledge-base/access
+---
+type: api
+direction: published
+operations:
+- authenticate-owner
+- route-request
+- read-health
+answers:
+- operation: authenticate-owner
+  accepted: the request proceeds as the owner, identified by the token's `sub` claim, or as `local-operator` for the local operator token
+  refusals:
+  - when: The Authorization header is absent or not `Bearer <token>`.
+    answer: HTTP 401, error code AUTH_UNAUTHORIZED with message "Missing or malformed Authorization header (expected `Bearer <jwt>`)." and no details
+  - when: The token has expired.
+    answer: HTTP 401, error code AUTH_TOKEN_EXPIRED with message "Authentication token expired." and no details
+  - when: 'The token fails verification: a bad signature, a malformed token, a failed claim, a disallowed algorithm or no matching key.'
+    answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "Invalid authentication token." and no details
+  - when: The verified token names no owner in its `sub` claim.
+    answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "JWT missing required `sub` claim." and no details
+  - when: The auth provider's key set cannot be fetched.
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+- operation: route-request
+  accepted: the request reaches the operation it names, whose own contract answers it
+  refusals:
+  - when: No operation is served at the method and path.
+    answer: HTTP 404, error code RESOURCE_NOT_FOUND with the framework's message
+  - when: The request fails the validation of the operation it names.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`, each path joined by "."
+  - when: The framework refuses the request with status 401, 403 or 409.
+    answer: that status, with error code AUTH_UNAUTHORIZED, AUTH_FORBIDDEN or RESOURCE_CONFLICT respectively and the framework's message
+  - when: The framework refuses the request with another status below 500.
+    answer: that status, with error code SYSTEM_INTERNAL_ERROR and the framework's message
+  - when: The framework fails the request with status 503.
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+  - when: The framework fails the request with another status of 500 or above.
+    answer: that status, with error code SYSTEM_INTERNAL_ERROR and message "Internal server error."
+  - when: The store is unreachable or a statement times out.
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+  - when: The request fails for any other cause.
+    answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause
+- operation: read-health
+  accepted: the health report `{ ok, service, database, checked_at }` with `service` "remember-bff", `database` "ok" or "unreachable", `ok` true exactly when the store answered, and `checked_at` an ISO-8601 UTC time; the same report over REST and as the `health` tool
+---
+
+## Description
+
+The answers every request can receive before or apart from the operation it names: the owner's authentication, the routing and validation of a request, and the health probe.
+Every other contract's answers apply once a request has passed through these.
 
 === contracts/knowledge-base/compliance-audit
 ---
@@ -1648,6 +1748,41 @@ entries:
   unstated: The material counts every message of a conversation in its usage, the assistant's tool requests and the tool results included, while its message listing shows only the owner's messages and the answers that ended turns.
   decided: Usage counts every message the conversation holds.
   why: Usage measures what the conversation consumed, and the model read every one of those messages.
+- location: contracts/knowledge-base/access.md
+  field: operations
+  unstated: The material gives the authentication refusals, the framework's routing and validation answers and the health probe without saying which contract holds these answers, since they come before or apart from any operation.
+  decided: One published api, knowledge-base access, with authenticate-owner, route-request and read-health.
+  why: They are what a caller of every operation reads, and they belong to no single operation's contract.
+- location: domain/knowledge-base/health-report.md
+  field: type
+  unstated: The material gives the health report's shape without saying whether it has an identity or which context it belongs to.
+  decided: value-object in the knowledge-base context
+  why: Nothing identifies one report, and the system has no context of its own for operating it.
+- location: contracts/knowledge-base/access.md
+  field: answers
+  unstated: The material answers SYSTEM_SERVICE_UNAVAILABLE with "A backing service is temporarily unavailable." for an unreachable store and with "Internal server error." for a framework 503.
+  decided: Every SYSTEM_SERVICE_UNAVAILABLE answers "A backing service is temporarily unavailable."
+  why: One code carries one message, and a 503 is never an internal failure.
+- location: contracts/knowledge-base/access.md
+  field: answers
+  unstated: The material answers a failed validation with `details` a list of `{ path, message }` and a fixed message for one validator, and with the framework's raw validation array and its own message for the other.
+  decided: Every validation failure answers "Request payload failed validation." with `details` a bare list of `{ path, message }`.
+  why: The operations' contracts already promise that shape, and a caller cannot tell which validator ran.
+- location: contracts/knowledge-base/access.md
+  field: answers
+  unstated: The material answers a failure to fetch the auth provider's key set as an invalid token, while an unreachable store answers that a backing service is unavailable.
+  decided: A key set that cannot be fetched answers HTTP 503 SYSTEM_SERVICE_UNAVAILABLE.
+  why: The owner's token was not found invalid, and reporting it so hides an outage behind a refusal.
+- location: contracts/knowledge-base/access.md
+  field: answers
+  unstated: The material answers a framework refusal with a status below 500 other than 401, 403, 404, 409 and 422 with that status and SYSTEM_INTERNAL_ERROR, which the code registry otherwise maps to 500.
+  decided: Such a refusal keeps its status, with SYSTEM_INTERNAL_ERROR and the framework's message.
+  why: The status tells the caller the request was theirs to fix, and no domain code names those framework refusals.
+- location: constraints/every-operation-requires-owner-authentication.md
+  field: statement
+  unstated: The specification held owner authentication only for retrieval, while the material authenticates the owner the same way before every operation.
+  decided: One system constraint for every operation; constraints/retrieval-requires-owner-authentication is removed, as it held no binding and no log entry.
+  why: The same gate over every operation is one fact, and two constraints stating it for overlapping scopes would be two homes.
 ---
 
 ## Description
@@ -2604,6 +2739,22 @@ The kinds of item a curation action can act on.
 
 None.
 
+=== domain/knowledge-base/database-status
+---
+type: enumeration
+values:
+- ok
+- unreachable
+---
+
+## Description
+
+Whether the store answered the health probe.
+
+## Responsibility
+
+None.
+
 === domain/knowledge-base/directed-ingestion
 ---
 type: value-object
@@ -2900,6 +3051,32 @@ The reads that show knowledge links and node attributes with their provenance: a
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/health-report
+---
+type: value-object
+attributes:
+- name: ok
+  type: boolean
+  required: true
+- name: service
+  type: string
+  required: true
+- name: database
+  type: database-status
+  required: true
+- name: checked_at
+  type: datetime
+  required: true
+---
+
+## Description
+
+What the health probe reports: whether the system is healthy, the service's name, whether the store answered, and when the probe ran.
+
+## Responsibility
+
+It lets the owner and the operator see whether the system can serve.
 
 === domain/knowledge-base/information-fragment
 ---
@@ -7354,6 +7531,31 @@ constrains:
 - domain/knowledge-base/node-attribute
 - domain/knowledge-base/provenance
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/health-checked-at-probe-start
+---
+type: invariant
+statement: A health report's time is the moment the probe began, before the store was asked.
+constrains:
+- domain/knowledge-base/health-report
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/health-probe-never-fails
+---
+type: invariant
+statement: A health probe reports the store unreachable, and the system not healthy, when the store does not answer, and never fails.
+constrains:
+- domain/knowledge-base/health-report
+- domain/knowledge-base/database-status
 ---
 
 ## Description
