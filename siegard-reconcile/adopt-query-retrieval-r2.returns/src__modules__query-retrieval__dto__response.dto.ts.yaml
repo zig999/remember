@@ -1,0 +1,399 @@
+findings:
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: ProvenanceRawInformation.metadata, line 80
+    evidence: >-
+      readonly metadata: Record<string, unknown>;
+    cost: >-
+      The specification decided the metadata to be a string, because the material gave it no shape and the retrieval only passes it through. The DTO states a structured JSON object. A reader who takes the shape from the node will expect a string. A client written to this type will expect an object.
+    kind: contradicts
+    correction: >-
+      Either the node's `attributes.metadata.type` moves to a structured type through analysis, or the DTO carries the type the node decided.
+    node: domain/knowledge-base/raw-information
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: comment above ProvenanceRawInformation.original_input, lines 81-84
+    evidence: >-
+      // `null` (or omitted) for non-chat sources and for rows that predate the
+      // feature; `'[REDACTED]'` after compliance_delete (BR-18 of
+      // compliance-audit).
+    cost: >-
+      The literal value a compliance-deleted source's original input takes is stated only in this prose. I searched the whole specification root, including the decision log, for REDACTED and found no node that holds it. It reads as a decision the business made, but the next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      An analysis should decide what `original_input` becomes after a compliance deletion and give it a node. The likely home is domain/knowledge-base/raw-information or domain/knowledge-base/compliance-deletion.
+    node: domain/knowledge-base/raw-information
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: comment above ProvenanceRawInformation.original_input, lines 83-84
+    evidence: >-
+      NOT part of the content_hash; NOT searchable.
+    cost: >-
+      The comment states that the original input is excluded from the content hash. I searched the specification for content_hash and content hash and found no node that holds this. It is a rule of the idempotency identity that lives only in prose here.
+    kind: unstated
+    correction: >-
+      The analysis of the ingestion side should give the content hash's composition a node.
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: ProvenanceChunk.locator, line 94
+    evidence: >-
+      readonly locator: Record<string, unknown> | null;
+    cost: >-
+      The specification decided the locator to be a string, because the material gave it no shape and the retrieval only passes it through. The DTO states a structured object that can be null. A reader who takes the shape from the node will expect a string. A client written to this type will expect an object.
+    kind: contradicts
+    correction: >-
+      Either the node's `attributes.locator.type` moves through analysis, or the DTO carries the type the node decided.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/query-retrieval/dto/response.dto.ts
+    where: ProvenanceFragment.status, line 102
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The fragment-status node holds five values and the decision log decided "The five values stand, superseded included." The DTO's union leaves out superseded. A provenance read that lists a superseded fragment has no legal value for its status, and clients narrow on four states while the business defined five.
+    kind: contradicts
+    correction: >-
+      Add "superseded" to the union so it matches the fragment-status enumeration.
+    node: domain/knowledge-base/fragment-status
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file declares only response shapes, for example `export interface SearchResponse {`. It declares no toolset surface.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      `export interface SearchResponse {` declares no matching mechanism. The file is types only.
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      The file opens no transaction. Its only executable code is `export function toSourceType(s: string): SourceType`.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file contains no authentication construct. It imports only `InvariantError`.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file describes one response shape and mentions no transport, apart from the header comment "for the query-retrieval REST endpoints".
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Only the accepted shapes of search and the provenance reads: SearchResponse (lines 64-70) and ProvenanceResponse (lines 106-108). The file carries no listing response and no refusals.
+    evidence: >-
+      export interface SearchResponse { readonly query: string; readonly total: number; readonly limit: number; readonly offset: number; readonly items: readonly SearchItem[]; }
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no request or filter type. Every interface is response-side.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: AssertionFlag type, line 12 (the file spells the value low_confidence)
+    evidence: >-
+      export type AssertionFlag = "uncertain" | "disputed" | "low_confidence";
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      No type in the file carries link or attribute status. The only status is `ProvenanceFragment.status`, which is a fragment status.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      No type in the file models a compliance deletion. The name appears only in a comment about original_input.
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      ProvenanceFragment.status, line 102, which drops superseded (see the finding)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      ProvenanceFragment (lines 98-104) and SearchProvenanceEntry (lines 43-51). They carry text, confidence and status. They do not carry created_at or llm_run.
+    evidence: >-
+      export interface ProvenanceFragment { readonly id: string; readonly text: string; readonly confidence: number;
+  - node: domain/knowledge-base/item-kind
+    held_at: SearchKind type, line 10
+    evidence: >-
+      export type SearchKind = "node" | "link" | "fragment";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No type in the file models a link or its validity. A link appears only as a SearchItem with `kind: SearchKind`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No type in the file models a node. A node appears only as a SearchItem.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no link-type construct.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file declares no alias construct.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute type.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The file declares no node-status union.
+  - node: domain/knowledge-base/page
+    held_at: SearchResponse.limit and SearchResponse.offset, lines 67-68
+    evidence: >-
+      readonly limit: number; readonly offset: number;
+  - node: domain/knowledge-base/provenance
+    held_at: >-
+      ProvenanceResponse.fragments, line 107. The fragment is carried; recorded_at is not.
+    evidence: >-
+      export interface ProvenanceResponse { readonly fragments: readonly ProvenanceFragment[]; }
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ProvenanceChunk, lines 88-96. It carries the chunk index, offsets, excerpt and locator, and the locator's type differs from the node (see the finding).
+    evidence: >-
+      readonly chunk_index: number; readonly offset_start: number; readonly offset_end: number; readonly excerpt: string; readonly locator: Record<string, unknown> | null;
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      ProvenanceRawInformation, lines 76-86. Its metadata type differs from the node (see the finding).
+    evidence: >-
+      readonly source_type: SourceType; readonly received_at: string; // ISO-8601 readonly metadata: Record<string, unknown>; ... readonly original_input: string | null;
+  - node: domain/knowledge-base/search-item
+    held_at: SearchItem interface, lines 53-62
+    evidence: >-
+      readonly kind: SearchKind; readonly layer: SearchLayer; readonly id: string; readonly score: number; readonly hop: number; readonly summary: string; readonly flags: readonly AssertionFlag[]; readonly provenance: readonly SearchProvenanceEntry[];
+  - node: domain/knowledge-base/search-layer
+    held_at: SearchLayer type, line 11
+    evidence: >-
+      export type SearchLayer = "fragment" | "node" | "chunk";
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type. The response echoes only `readonly query: string;`.
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      SourceType type (lines 13-20), SOURCE_TYPES (lines 22-30) and toSourceType (lines 38-41), using the material's own words
+    evidence: >-
+      | "pdf" | "email" | "ata" | "chat" | "artigo" | "transcricao" | "outro";
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      The file has no matching code. It has only response types.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      The file carries no chunk filtering. `SearchLayer` only names the "chunk" value.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      `SearchProvenanceEntry.excerpt` carries an excerpt, but no construct here decides that a chunk match becomes a fragment's excerpt. The rule is not stated.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      `SearchKind = "node" | "link" | "fragment"` has no chunk kind, which is compatible with the rule. No construct states the rule.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      `readonly offset_start: number; readonly offset_end: number;` carries no unit or inclusivity.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      The file declares no propagation logic.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      The file declares no refusal ordering.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      `readonly fragments: readonly ProvenanceFragment[];` states no non-emptiness or refusal. The only refusal-like code is toSourceType's InvariantError.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      `readonly provenance: readonly SearchProvenanceEntry[];` is a type only, with no condition for surfacing.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      The file has no expansion logic. It has only response types.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      The file has no expansion logic.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      `readonly score: number; readonly hop: number;` carry no decay factor.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      The file holds no depth bound. `hop` is `readonly hop: number;`.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      The file has no temporal filtering.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      `readonly summary: string;` carries no rule for its content.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      The file declares the `AssertionFlag` type and `readonly flags: readonly AssertionFlag[];`, but it carries no derivation, no status test and no 0.4 threshold.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      `readonly score: number;` carries no weights.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      `readonly summary: string;` carries no format.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing request.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      `readonly summary: string;` carries no rule for its content.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      `readonly limit: number; readonly offset: number;` are the response fields. The file states no defaults.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      `readonly limit: number;` carries no bounds.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      `readonly offset: number;` carries no bound.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      `readonly fragments: readonly ProvenanceFragment[];` states no ordering.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file declares no refusal construct.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      `readonly status: "accepted" | "proposed" | "rejected" | "deleted";` is a type. It refuses nothing.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      The file has no filtering logic.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      `export type SearchLayer = "fragment" | "node" | "chunk";` is a type only, with no validation of a request layer.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      `readonly query: string;` carries no length bound.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      The file has no parsing logic.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      `readonly query: string;` carries no blank check.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      `readonly items: readonly SearchItem[];` states no order.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      SearchResponse.total, line 66. It carries the field only; the count is computed elsewhere.
+    evidence: >-
+      readonly total: number;
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      The file has no request-side type.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      The file has no link-type validation.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      The file declares no listing response.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      The file has no parsing or refusal logic.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      The file has no matching logic. `total: number` and `items` are shapes only.
+looked_past: >-
+  The header comments citing openapi.yaml, TC-04 and BR-18 break the no-comment rule, and toSourceType's InvariantError-to-500 handling of DB drift is an implementation matter. Neither is a domain-fact judgment. I also did not report the wire spellings (`low_confidence`, `offset_start`) as departures from the node spellings (`low-confidence`, `start_offset`), and I did not report `layer` and `hop` being non-optional on SearchItem where the node marks them not required.

@@ -1,0 +1,406 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      line 56, the constant PER_LAYER_FETCH_LIMIT, passed to searchFragmentLayer, searchNodeAliasLayer and searchChunkLayer at lines 129-147
+    evidence: >-
+      const PER_LAYER_FETCH_LIMIT = 200;
+      and the comment "We pull a generous slice from each layer so the global ranking has enough candidates"
+    cost: >-
+      The number 200 is a cap on what a search can ever rank, and no node states it. Matches beyond the 200th on a layer are dropped before ranking. The reported `total` is `filtered.length` (line 391), so it counts only what survived the cap. A reader who trusts search-total-before-pagination ("counts every search item before the page is cut") would not look here for the reason a total stops at some number.
+    kind: unstated
+    correction: >-
+      Either a node states the per-layer candidate ceiling and how it bounds the total, or the code stops truncating the layers. The analysis decides which.
+    node: rules/knowledge-base/search-total-before-pagination
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 296-298 and 318-322, the scoring of an expanded link
+    evidence: >-
+      for (const it of items) { if (it.kind === "node") nodeScoreById.set(it.id, it.score); }
+      ...
+      const sourceScore = nodeScoreById.get(link.source_node_id) ?? nodeScoreById.get(link.target_node_id) ?? 0;
+      const score = Math.pow(TRAVERSAL_DECAY, hop) * sourceScore;
+    cost: >-
+      The node scores a link at hop h as 0.5^h times the score of the matched node it was reached from. The map holds only matched nodes, and the code looks up the link's own two endpoints. A link at hop 2 or 3 whose endpoints are both unmatched gets `?? 0`, so its score is 0 and it ranks last, where the node gives it a decayed score. The comment on lines 316-317 says "fall back to the highest source score", but the code falls back to 0. The 0 is a value no node holds, and depth above 1 is where it shows.
+    kind: contradicts
+    correction: >-
+      Score each link from the matched node it was reached from, as the node states. If the specification means a different fallback for a link with no matched endpoint, a node has to state it.
+    node: rules/knowledge-base/expansion-decay
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      line 357, the `layer` of a link search item
+    evidence: >-
+      items.push({ key: `link:${link.id}`, kind: "link", layer: "node", id: link.id,
+    cost: >-
+      The search-item node types `layer` as a search-layer (fragment, node, chunk) and no node says which layer a link item reports. The code decides it is "node". A consumer filtering or grouping by layer inherits that decision, and the next reader will look for it in the specification and find nothing.
+    kind: unstated
+    correction: >-
+      search-item, or a rule constraining it, should state the layer a link item carries, or state that it carries none.
+    node: domain/knowledge-base/search-item
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      line 499, computeFlags
+    evidence: >-
+      flags.push("low_confidence");
+    cost: >-
+      The assertion-flag node declares the value `low-confidence`. The code emits `low_confidence`, and the assertion-flag node records no other spelling. The source-type node does record the material's own words for its values, so here the wire spelling exists only in code.
+    kind: contradicts
+    correction: >-
+      Either the node records `low_confidence` as the spelling in use, as source-type does for its values, or the emitted value is brought to the node's spelling. The AssertionFlag type is declared in dto/response.dto.ts, outside this file set.
+    node: domain/knowledge-base/assertion-flag
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file exports only searchKnowledgeService(client, catalog, input, logger). It declares no tool surface and no toolset.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: >-
+      the layer calls at lines 128-148, which are the file's only matching paths
+    evidence: >-
+      fragmentHits = await searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT); nodeHits = await searchNodeAliasLayer(...); chunkHits = await searchChunkLayer(...); parseTsQuery(client, input.query). No embedding or similarity call appears.
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      The service receives an already-open `client: PoolClient`. It issues no BEGIN or read-only setting. The comment "inside the route's transaction" is the only mention.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      No authentication call or check appears in searchKnowledgeService. Nothing in the file reads a token or an owner.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file returns a SearchResponse and throws domain errors. It has no transport code.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the search operation only: the response assembly at lines 414-420, toProvenanceEntry, and the refusals thrown at lines 115, 437 and 453
+    evidence: >-
+      const response: SearchResponse = { query: input.query, total, limit: input.limit, offset: input.offset, items: sliced.map(toSearchItem) };
+      toProvenanceEntry returns fragment_id, fragment_text, confidence, raw_information_id, source_type, received_at and excerpt.
+      throw new InvalidSearchQueryError("empty_after_parse", ...); throw new InvalidSearchLayerError(layer); throw new UnknownLinkTypeError(name);
+      The other operations (the three provenance reads and the accepted-fragment listing) are not in this file.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing, no llm_run filter and no raw information filter.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: computeFlags, lines 486-502
+    evidence: >-
+      if (args.status === "uncertain") flags.push("uncertain"); if (args.status === "disputed") flags.push("disputed"); ... flags.push("low_confidence"); The enumeration itself is the AssertionFlag type imported from ../dto/response.dto.js. See the finding on the spelling.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The status is carried as `readonly status: string` (line 85) and compared to the literals "uncertain" and "disputed". The enumeration is not declared here.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      No reference to compliance deletion appears in the file. Any exclusion sits in the repository calls.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      The literal `status: "accepted"` (lines 207, 222) is used, but the enumeration is not declared in this file.
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the fragment item construction, lines 199-225
+    evidence: >-
+      const confidence = Number(f.confidence); ... recordedAtTs: f.created_at.getTime(), summary: f.text, ... confidence,
+      The aggregate itself is defined in the repository row type. This file only consumes text, confidence and created_at.
+  - node: domain/knowledge-base/item-kind
+    held_at: the `kind` field of IntermediateItem, line 75
+    evidence: >-
+      readonly kind: "node" | "link" | "fragment";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file consumes links as traversal rows (link.id, link.hop, link.source_node_id, link.target_node_id) and metadata (meta.status, meta.recorded_at). The aggregate is not defined here.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file consumes NodeAliasHitRow (n.node_id, n.canonical_name, n.status). The aggregate is not defined here.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The file reads the type only as `catalog.linkTypeByName.get(name)` and `row.id`. The catalog snapshot is imported.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      Aliases are not referenced in this file. The alias match is inside searchNodeAliasLayer.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No attribute is read or surfaced in the file.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      The node status is carried as `n.status` (a string). The enumeration is not declared here.
+  - node: domain/knowledge-base/page
+    held_at: >-
+      SearchServiceInput.limit/offset (lines 69-70) and the slice at line 392
+    evidence: >-
+      const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: domain/knowledge-base/provenance
+    held_at: toProvenanceEntry, lines 474-484
+    evidence: >-
+      return { fragment_id: row.fragment_id, fragment_text: row.fragment_text, confidence: Number(row.fragment_confidence), raw_information_id: row.raw_information_id, source_type: toSourceType(row.source_type), received_at: row.received_at.toISOString(), excerpt: row.excerpt };
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      Chunk hits are fetched (searchChunkLayer) and counted, but no chunk attribute is read or defined here.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file reads only row.raw_information_id, row.source_type and row.received_at in toProvenanceEntry. The entity is not defined here.
+  - node: domain/knowledge-base/search-item
+    held_at: toSearchItem, lines 504-515
+    evidence: >-
+      return { kind: it.kind, layer: it.layer, id: it.id, score: it.score, hop: it.hop, summary: it.summary, flags: it.flags, provenance: it.provenance };
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      resolveLayers, lines 428-442, over ALLOWED_LAYERS and SearchLayer, which are imported from ../dto/search.dto.js
+    evidence: >-
+      if (!(ALLOWED_LAYERS as readonly string[]).includes(layer)) { throw new InvalidSearchLayerError(layer); } The enumeration is declared outside this file.
+  - node: domain/knowledge-base/search-query
+    held_at: SearchServiceInput, lines 60-71
+    evidence: >-
+      readonly query: string; readonly layers?: readonly string[]; readonly asOf?: string; readonly inEffectOnly: boolean; readonly includeUncertain: boolean; readonly expand: boolean; readonly expandDepth: number; readonly expandLinkTypes?: readonly string[]; readonly limit: number; readonly offset: number;
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      `source_type: toSourceType(row.source_type)` calls a mapping imported from ../dto/response.dto.js. The enumeration is not declared here.
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      The file passes `input.query` to searchNodeAliasLayer. The matching configuration is not visible here.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      chunkHits = await searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT); no superseded filter is in this file.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: >-
+      toProvenanceEntry's `excerpt: row.excerpt` on a fragment item, lines 200-202 and 482
+    evidence: >-
+      const provenance = (provByFragment.get(f.id) ?? []).map(toProvenanceEntry); excerpt: row.excerpt. The chunk/fragment dedup result (dedupLinks) only feeds `dedupCollapsedCount`; the excerpt comes from the fragment's own provenance rows.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: >-
+      the item building of lines 189-370, which pushes only fragment, node and link items
+    evidence: >-
+      chunkHits is read only by `chunkIdSet` and `chunksById`; no `items.push` uses a chunk row. The comment says "we DROP all chunk hits unconditionally".
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      No offset is read or computed in the file.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      No deletion or propagation appears in the file.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      The file has no provenance read and no compliance refusal.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      The file has no provenance read operation. Empty provenance is dropped from search results (lines 244 and 330), not refused.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: the link loop, lines 327-342
+    evidence: >-
+      if (provenance.length === 0) { logger.warn({ ... }, "query_retrieval_search_empty_link_provenance"); continue; }
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: >-
+      the as-of date is passed to the traversal (line 287); the reach filter itself lives in traverseNodes
+    evidence: >-
+      asOf: input.asOf,
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      The file passes `asOf: input.asOf` (undefined when omitted). The rule that only open-ended links are reached is not stated here.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      line 322, with the departure reported in the finding on lines 318-322
+    evidence: >-
+      const score = Math.pow(TRAVERSAL_DECAY, hop) * sourceScore; TRAVERSAL_DECAY is imported from ../../knowledge-graph/index.js.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      depth: input.expandDepth is passed through unchecked; no 1..3 bound appears in the file.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: the traverseNodes call, line 284
+    evidence: >-
+      direction: "both",
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: >-
+      the flag is passed to the traversal (line 288); the filtering itself lives in traverseNodes
+    evidence: >-
+      inEffectOnly: input.inEffectOnly,
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      No merged-node handling appears in the file; the traversal is delegated to traverseNodes.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      the linkTypeIds argument of traverseNodes, line 285, resolved by resolveLinkTypeIds at lines 106-108
+    evidence: >-
+      linkTypeIds, ... const row = catalog.linkTypeByName.get(name); ids.push(row.id);
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      No node-status check is made on expansion results in the file.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      No link-status filter for superseded or deleted appears in the file. The only status checks are the "uncertain" one at line 352 and the disputed/uncertain flags.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: startingIds and the traverseNodes call, lines 271-291
+    evidence: >-
+      if (input.expand && nodeHits.length > 0) { const startingIds = nodeHits.filter((n) => items.some((it) => it.kind === "node" && it.id === n.node_id)).map((n) => n.node_id); ... startingNodeIds: startingIds,
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: line 219
+    evidence: >-
+      summary: f.text,
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file only assumes the filter: `status: "accepted"` at lines 207 and 222. searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT) passes no status. A comment refers to a "partial GIN", but the file states no filter.
+  - node: rules/knowledge-base/item-flags
+    held_at: computeFlags and LOW_CONFIDENCE_THRESHOLD, lines 58 and 486-502
+    evidence: >-
+      const LOW_CONFIDENCE_THRESHOLD = 0.4; if (args.kind === "fragment" && args.status === "accepted" && args.confidence < LOW_CONFIDENCE_THRESHOLD) { flags.push("low_confidence"); }
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      `score: f.score` and `score: n.score` are taken from repository rows. No 1.0, 0.9 or 0.6 weight appears in the file.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: line 344
+    evidence: >-
+      const summary = `${meta.source_canonical_name} -[${meta.link_type}]-> ${meta.target_canonical_name}`;
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: lines 106-108
+    evidence: >-
+      const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined;
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: line 259
+    evidence: >-
+      summary: n.canonical_name,
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      The file only calls searchNodeAliasLayer(client, input.query, PER_LAYER_FETCH_LIMIT). The alias match is in the repository.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      No filter on merged or deleted is in the file. The node status is only passed to computeFlags.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: line 244, over the rows of listProvenanceForNodes
+    evidence: >-
+      if (provenance.length === 0) continue;
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      limit and offset are required numbers (`readonly limit: number; readonly offset: number;`). No 20 and no 0 default appears in the file.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      `input.limit` is used unchecked in `filtered.slice(input.offset, input.offset + input.limit)`.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      `input.offset` is used unchecked in the same slice.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The text matching is in the repository layer calls; the file passes `input.query` and states no stemming or accent policy.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      groupProvenanceBy preserves the order of the repository rows. Any recording order is decided by listProvenanceFor*, outside this file.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file has no provenance read.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      The file has no provenance read by fragment identity.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      The file states no compliance filter on fragments or on their supporting provenance.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: resolveLayers, lines 435-438
+    evidence: >-
+      if (!(ALLOWED_LAYERS as readonly string[]).includes(layer)) { throw new InvalidSearchLayerError(layer); }
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      the layers default only, in resolveLayers, lines 431-433; the other defaults are not in this file
+    evidence: >-
+      if (layers === undefined || layers.length === 0) { return new Set(ALLOWED_LAYERS); }
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      No check on `input.query.length` appears. It is only logged as `query_length: input.query.length`.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: lines 113-119
+    evidence: >-
+      const parsed = await parseTsQuery(client, input.query); if (parsed === "") { throw new InvalidSearchQueryError("empty_after_parse", {
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      No trim or emptiness check on `input.query` appears before parseTsQuery.
+  - node: rules/knowledge-base/search-ranking
+    held_at: the sort, lines 384-389
+    evidence: >-
+      if (b.score !== a.score) return b.score - a.score; if (b.recordedAtTs !== a.recordedAtTs) return b.recordedAtTs - a.recordedAtTs; return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; The node item uses `recordedAtTs: 0`.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: lines 391-392, with the cap reported in the finding on line 56
+    evidence: >-
+      const total = filtered.length; const sliced = filtered.slice(input.offset, input.offset + input.limit);
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: >-
+      the layer calls at lines 129-147 take no as-of or in-effect argument; only the traverseNodes call at lines 287-288 takes them
+    evidence: >-
+      searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT) versus traverseNodes(... asOf: input.asOf, inEffectOnly: input.inEffectOnly, ...)
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: lines 352 and 377-379
+    evidence: >-
+      if (!input.includeUncertain && meta.status === "uncertain") continue; const filtered = input.includeUncertain ? items : items.filter((it) => it.status !== "uncertain");
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: resolveLinkTypeIds, lines 444-458
+    evidence: >-
+      const row = catalog.linkTypeByName.get(name); if (row === undefined) { throw new UnknownLinkTypeError(name); }
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no listing.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: lines 113-119
+    evidence: >-
+      if (parsed === "") { throw new InvalidSearchQueryError("empty_after_parse", { query: input.query, parsed: "", }); }
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: >-
+      total = filtered.length at line 391, where the lexical-only layer calls yield no hit
+    evidence: >-
+      const total = filtered.length; the items list is built only from fragmentHits and nodeHits returned by the lexical layer functions.
+looked_past: >-
+  The file carries many comments citing BR numbers and restating rules, which belong to the comment route rather than this judgment. It also runs a chunk-to-fragment dedup query (findChunkFragmentLinks) whose result feeds only a log metric. And the response echoes query, limit and offset, which the retrieval contract's search answer does not list.

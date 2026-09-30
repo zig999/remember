@@ -1,0 +1,360 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: ListAcceptedFragmentsQuerySchema, the `.strict()` call on the query object (line 38)
+    evidence: >-
+      .strict()
+    cost: >-
+      A request carrying any query parameter outside llm_run_id, raw_information_id, limit and offset is
+      refused here. The contract's refusals for the listing name only a missing filter, a malformed
+      identifier and out-of-range paging, so this refusal is decided in the DTO. The next reader looks
+      for it in the specification and does not find it.
+    kind: unstated
+    node: contracts/knowledge-base/retrieval
+    correction: >-
+      Either give the contract's list-accepted-fragments refusals an entry for an unrecognised request
+      parameter, or drop the strictness. Which one is the business's call.
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file holds only the REST query schema and response interfaces (ListAcceptedFragmentsQuerySchema, AcceptedFragmentList); it declares no toolset surface.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      The file declares request and response shapes only; no matching logic is present.
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      The file opens no transaction; it exports a Zod schema and interfaces only.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file carries no authentication; it exports a Zod schema and interfaces only.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file holds only the REST route DTOs; no transport handling is present.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the list-accepted-fragments operation only. The request side is ListAcceptedFragmentsQuerySchema. The response side is AcceptedFragmentItem, AcceptedFragmentSourceRef and AcceptedFragmentList.
+    evidence: >-
+      export interface AcceptedFragmentItem { readonly fragment_id: string; readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; readonly source: AcceptedFragmentSourceRef; }
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: ListAcceptedFragmentsQuerySchema fields llm_run_id, raw_information_id, limit and offset
+    evidence: >-
+      llm_run_id: z.string().uuid().optional(),
+      raw_information_id: z.string().uuid().optional(),
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flags type or field appears in the file.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      No status type appears in the file.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      No compliance deletion construct appears in the file.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      AcceptedFragmentItem carries no status field; the file declares no fragment-status vocabulary.
+  - node: domain/knowledge-base/information-fragment
+    held_at: AcceptedFragmentItem fields text, confidence, created_at and llm_run_id
+    evidence: >-
+      readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; // ISO-8601
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      No item kind appears in the file.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No link construct appears in the file.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No node construct appears in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      No link type construct appears in the file.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      No alias construct appears in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No attribute construct appears in the file.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      No node status appears in the file.
+  - node: domain/knowledge-base/page
+    held_at: limit and offset in ListAcceptedFragmentsQuerySchema, echoed in AcceptedFragmentList
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      No provenance construct appears in the file.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: AcceptedFragmentSourceRef.chunk_index
+    evidence: >-
+      readonly chunk_index: number;
+  - node: domain/knowledge-base/raw-information
+    held_at: AcceptedFragmentSourceRef fields source_type, received_at and document_title
+    evidence: >-
+      readonly source_type: SourceType; readonly received_at: string; // ISO-8601
+      readonly document_title: string | null;
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No search item appears in the file.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      No layer appears in the file.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      The file declares only the accepted-fragment listing query, not the search query.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      The file only imports the type: import type { SourceType } from "./response.dto.js";. The enumeration is not declared here.
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      No alias matching appears in the file.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      No chunk layer logic appears in the file.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      No chunk matching appears in the file.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      No chunk matching appears in the file.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      No chunk offsets appear in the file.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      No compliance deletion logic appears in the file.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      No provenance read appears in the file.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      No provenance read appears in the file.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No scoring appears in the file.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      No expansion depth appears in the file.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion appears in the file.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      AcceptedFragmentItem is a listing entry with no summary field; it is not a search item.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      No search layer logic appears in the file.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      No flags appear in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No weights appear in the file.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      No link summary appears in the file.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      No link types appear in the file.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file holds request and response shapes only; no listing selection is present.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file carries the name AcceptedFragmentList but no status selection.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      AcceptedFragmentItem carries a single source: AcceptedFragmentSourceRef, but the file states no selection of the lowest-index chunk.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      The file states no ordering.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: the `.refine` on ListAcceptedFragmentsQuerySchema
+    evidence: >-
+      (v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined,
+      { message: "at least one of llm_run_id / raw_information_id is required", params: { requires_one_of: ["llm_run_id", "raw_information_id"] } }
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file only shapes the result with `readonly total: number;`. It states nothing about how the count is taken.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      No node summary appears in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No node layer appears in the file.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      No node layer appears in the file.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      No node layer appears in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: limit and offset defaults in ListAcceptedFragmentsQuerySchema
+    evidence: >-
+      .optional().default(20)
+      .optional().default(0)
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: limit field of ListAcceptedFragmentsQuerySchema
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: offset field of ListAcceptedFragmentsQuerySchema
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0))
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      No text matching appears in the file.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      No provenance appears in the file.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      No provenance read appears in the file.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      No provenance read appears in the file.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      No layers appear in the file.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      No search options appear in the file.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      No search query text appears in the file.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      No search query text appears in the file.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      No search query text appears in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No ranking appears in the file.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      No temporal filter appears in the file.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      No uncertain inclusion option appears in the file.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      No link types appear in the file.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      The file states no listing outcome; it holds only request and response shapes.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      No search query appears in the file.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+looked_past: >-
+  The file's header and doc comments are prose in source, which the comment route answers. They also assert that every validation failure surfaces as VALIDATION_INVALID_FORMAT, while the contract gives VALIDATION_OUT_OF_RANGE for limit and offset. The error mapping itself is outside this file set. Separately, llm_run_id is typed non-null on AcceptedFragmentItem while the information-fragment node leaves llm_run optional, so that mismatch is worth a second look by whoever owns the shape.

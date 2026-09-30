@@ -1,0 +1,386 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: IsoDateOnly, lines 16-18, used by SearchQuerySchema.as_of at line 61
+    evidence: |-
+      const IsoDateOnly = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
+    cost: >-
+      The contract refuses an as-of that "is not a calendar date written as year-month-day". This
+      declaration only checks the digit shape, so a value such as 2026-13-45 passes the DTO. If no
+      later layer refuses it, the calendar-date rule is not held anywhere in this file. The next
+      reader who looks here for the as_of format rule finds a weaker one than the contract states.
+    kind: contradicts
+    correction: >-
+      The as_of schema would have to refuse non-calendar dates with VALIDATION_INVALID_FORMAT, or a
+      file the contract is bound to would have to be shown to do so.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: |-
+      the file declares no toolset surface; its only schemas are SearchQuerySchema and the three *IdParamSchema objects, for example `export const FragmentIdParamSchema = z.object({`
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: |-
+      the file declares request shapes only; `query: QueryString` is a plain string and nothing in it selects a matching method
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: |-
+      no transaction or database access appears in the file, only `import { z } from "zod";` and the shared coercion helper
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: |-
+      no authentication construct appears in the file; only Zod schemas are declared
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: |-
+      the file is a single request-side schema module with no transport-specific code
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      SearchQuerySchema (limit and offset bounds, expand_depth, as_of shape), the three path-param
+      schemas (uuid identity format) and ALLOWED_LAYERS. The refusal codes, the provenance and
+      listing operations and the response shapes are not in this file.
+    evidence: |-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+      link_id: z.string().uuid(),
+      as_of: IsoDateOnly.optional()
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: |-
+      the file declares no filter with llm_run or raw_information; the only request schema is SearchQuerySchema
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: |-
+      no flag values (uncertain, disputed, low-confidence) are declared; the only related field is `include_uncertain: BooleanQuery.optional().default(true)`
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: |-
+      no status values are declared in the file
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: |-
+      the file mentions no compliance deletion
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: |-
+      no fragment status values are declared in the file
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: |-
+      only the identity format is declared: `fragment_id: z.string().uuid(),`
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: |-
+      no item kind values (node, link, fragment) are declared; ALLOWED_LAYERS is the layer set and not the item kind set
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: |-
+      only the identity format is declared: `link_id: z.string().uuid(),`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: |-
+      the file declares no knowledge node shape
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: |-
+      link types appear only as opaque strings: `expand_link_types: ExpandLinkTypesArray.optional(),`
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: |-
+      the file declares no alias shape
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: |-
+      only the identity format is declared: `attribute_id: z.string().uuid(),`
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: |-
+      no node status values are declared in the file
+  - node: domain/knowledge-base/page
+    held_at: the limit and offset fields of SearchQuerySchema
+    evidence: |-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: |-
+      the file declares only the three path-param identity schemas for the provenance endpoints and no provenance shape
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: |-
+      the file declares no chunk shape; "chunk" appears only in `ALLOWED_LAYERS = ["fragment", "node", "chunk"]`
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: |-
+      the file declares no raw information shape
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only, as its header says: "Request-side DTOs for the searchKnowledge endpoint"
+  - node: domain/knowledge-base/search-layer
+    held_at: ALLOWED_LAYERS, line 101
+    evidence: |-
+      export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;
+      export type SearchLayer = (typeof ALLOWED_LAYERS)[number];
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      SearchQuerySchema, lines 57-74. Wire names are query, expand_link_types, limit and offset,
+      against the node's text, link_types and page.
+    evidence: |-
+      query: QueryString,
+      layers: LayersArray.optional(),
+      as_of: IsoDateOnly.optional(),
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+      expand: BooleanQuery.optional().default(true),
+      expand_depth: ..., expand_link_types: ExpandLinkTypesArray.optional(),
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: |-
+      no source type values are declared in the file
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: |-
+      the file declares no matching behaviour
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: |-
+      the file only names the layer: `["fragment", "node", "chunk"]`
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and shapes no search item
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and shapes no search item
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: |-
+      the file declares no offsets
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: |-
+      the file mentions no compliance deletion
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: |-
+      the file declares no refusal ordering; it declares only the provenance path-param schemas
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: |-
+      the file declares no provenance chain handling
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: |-
+      the file declares only the expansion options: `expand: BooleanQuery.optional().default(true),`
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: |-
+      the file only accepts the option: `as_of: IsoDateOnly.optional(),`
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: |-
+      the file declares no expansion filtering
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: |-
+      the file declares no scoring
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: expand_depth field of SearchQuerySchema, line 65
+    evidence: |-
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: |-
+      the file declares no traversal
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: |-
+      the file only accepts the switch: `in_effect_only: BooleanQuery.optional().default(false),`
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: |-
+      the file declares no traversal
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: |-
+      the file only accepts the names: `expand_link_types: ExpandLinkTypesArray.optional(),`
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: |-
+      the file declares no traversal
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: |-
+      the file declares no traversal
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: |-
+      the file declares no traversal, only the option `expand: BooleanQuery.optional().default(true),`
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and shapes no search item
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: |-
+      the file only names the layer in `ALLOWED_LAYERS` and declares no matching
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only; no 0.4 threshold or flag derivation appears
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: |-
+      the file declares no weights
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and shapes no search item
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: |-
+      `expand_link_types` is accepted independently of `expand`, and no code in the file ignores it when expand is false
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing request schema
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing or total
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and shapes no search item
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: |-
+      the file only names the layer in `ALLOWED_LAYERS`
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: |-
+      the file declares no matching
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: |-
+      the file declares no matching
+  - node: rules/knowledge-base/page-defaults
+    held_at: limit and offset fields of SearchQuerySchema, lines 69-72
+    evidence: |-
+      .optional()
+      .default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: limit field of SearchQuerySchema, line 69
+    evidence: |-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: offset field of SearchQuerySchema, line 72
+    evidence: |-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: |-
+      the file declares no matching
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: |-
+      the file declares no provenance listing
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: |-
+      the file declares only the identity params for provenance reads: `link_id`, `attribute_id`, `fragment_id`
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: |-
+      `FragmentIdParamSchema` checks only the uuid format: `fragment_id: z.string().uuid(),`
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: |-
+      the file declares no search behaviour beyond request shapes
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: >-
+      ALLOWED_LAYERS, line 101, declares the closed set the refusal is judged against. The file
+      itself does not refuse a layer outside it, since LayersArray accepts any non-empty string.
+    evidence: |-
+      export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;
+      const LayersArray = z.union([z.string().min(1), z.array(z.string().min(1))])
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      the .default() calls on in_effect_only, include_uncertain, expand and expand_depth. The
+      default of every search layer is not held here, because `layers` is `LayersArray.optional()`
+      with no default.
+    evidence: |-
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+      expand: BooleanQuery.optional().default(true),
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3)).optional().default(1),
+  - node: rules/knowledge-base/search-query-length
+    held_at: QueryString, line 51
+    evidence: |-
+      .max(1000, { message: "query exceeds 1000 characters" })
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: |-
+      the file checks only length and blankness in `QueryString`; no lexical parse or stop-word handling appears
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: QueryString, lines 48-55
+    evidence: |-
+      .transform((s) => s.trim())
+      .refine((s) => s.length > 0, {
+        message: "query is empty after trim",
+      });
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: |-
+      the file declares no ordering
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: |-
+      the file is request-side only and declares no total
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: |-
+      the file only accepts the options: `as_of: IsoDateOnly.optional(),` and `in_effect_only: BooleanQuery.optional().default(false),`
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: |-
+      the file only accepts the option: `include_uncertain: BooleanQuery.optional().default(true),`
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: |-
+      `expand_link_types` accepts any non-empty string: `z.union([z.string().min(1), z.array(z.string().min(1))])`
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: |-
+      the file declares no listing
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: |-
+      `QueryString` passes any non-blank text of up to 1000 characters, and no lexical parse is declared
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: |-
+      the file declares no matching behaviour
+looked_past: >-
+  The header and inline comments restate error-code routing, BR-04 and BR-05, and `.strict()` on SearchQuerySchema rejects unknown request keys, a refusal the contract does not list. I treated all of it as comment prose or request-boundary mechanics, not as a node's fact.

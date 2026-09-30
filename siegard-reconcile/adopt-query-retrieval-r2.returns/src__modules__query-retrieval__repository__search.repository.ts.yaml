@@ -1,0 +1,417 @@
+findings:
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      searchNodeAliasLayer, the SELECT score expression (line 123)
+    evidence: |-
+      (max(ts_rank_cd(to_tsvector($1::regconfig, na.alias), websearch_to_tsquery($1::regconfig, $2))) * $3::float)::float AS score,
+    cost: >-
+      A knowledge node's score is decided as the highest rank among its matching aliases, and the specification does not say how a node reached through several aliases is scored. Code becomes the only home of that choice. The next reader who wants to know why a node ranks where it does looks in layer-weights or search-item and finds nothing.
+    kind: unstated
+    correction: >-
+      The specification would have to say how a node's score is derived when several of its aliases match. Layer-weights or search-item would be the natural home.
+    node: rules/knowledge-base/layer-weights
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      searchNodeAliasLayer, the ORDER BY and LIMIT clauses (lines 130-131)
+    evidence: |-
+      ORDER BY score DESC, kn.canonical_name ASC, kn.id ASC
+           LIMIT $4
+    cost: >-
+      Search-ranking orders items by score, then by recording time with a node counting as never recorded, then by identifier. Here the pre-cut order for nodes puts canonical name ahead of identifier. When more nodes tie than the limit admits, the alphabetical name decides which nodes reach the ranking stage. That is a tie-break the specification does not hold, and it differs from the rule that governs it.
+    kind: contradicts
+    correction: >-
+      Either the node-layer tie-break drops canonical_name, so ties resolve by identifier ascending as search-ranking states, or the specification states a name-based tie-break for nodes.
+    node: rules/knowledge-base/search-ranking
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      listProvenanceForLinks, the FROM/JOIN and WHERE clauses (lines 306-311)
+    evidence: |-
+      FROM provenance p
+            JOIN information_fragment f ON f.id = p.fragment_id
+            JOIN fragment_source fs     ON fs.fragment_id = f.id
+            JOIN raw_chunk rc           ON rc.id = fs.raw_chunk_id
+            JOIN raw_information ri     ON ri.id = rc.raw_information_id
+       WHERE p.link_id = ANY($1::uuid[])
+    cost: >-
+      The rule says search shows no fragment from a compliance-deleted source, neither as an item nor as the support of one. This lookup takes every fragment attached to a link and applies no filter on fragment status, chunk supersession or the raw information's deletion. A link that keeps other provenance after a compliance deletion (propagation only deletes links whose sole provenance is the deleted fragments) would still show the deleted source's fragment text and excerpt as its support. Deleted content would come back through retrieval.
+    kind: contradicts
+    correction: >-
+      The link-support lookup would have to exclude fragments that are not accepted and chunks or raw information deleted for compliance, as the fragment layer already does for items.
+    node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      listProvenanceForNodes, the ORDER BY clause (line 373)
+    evidence: |-
+      ORDER BY kn.id, f.created_at DESC, f.id ASC
+    cost: >-
+      The order in which the fragments that support a node hit are presented is decided here, newest first, and no node states it. Provenance-in-recording-order covers only links and attributes. A reader looking for how a node's supporting fragments are ordered finds no rule.
+    kind: unstated
+    correction: >-
+      The specification would have to state the order of the fragments that support a node search item, on search-item or in a sibling rule.
+    node: domain/knowledge-base/search-item
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file declares no tool surface. It holds only read queries, and none lists accepted fragments.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: >-
+      the layer queries, which match only through full-text operators (searchFragmentLayer, searchNodeAliasLayer, searchChunkLayer)
+    evidence: |-
+      f.text_search @@ websearch_to_tsquery($1::regconfig, $2)
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      Every function receives an already-open `client: PoolClient` and only issues SELECTs. No transaction is opened or set read-only in this file.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      No authentication construct appears in the file.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file has no transport concern. It exports query functions only.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares no operation, answer or refusal. It exports only repository functions such as `export async function searchFragmentLayer(`.
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag is declared or computed here. Only `kl.status::text AS status` is returned.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      `readonly status: string;` in LinkMetadataRow passes the link status through without declaring the enumeration.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file never reads or refers to a compliance deletion.
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      the literal `accepted` in FragmentHitRow and in the fragment-layer WHERE clause
+    evidence: |-
+      readonly status: "accepted";
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only reads the entity, through the FragmentHitRow shape (text, confidence, status, created_at). It does not declare it.
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      No item kind is declared in this file.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The file only reads link metadata, through LinkMetadataRow. It does not declare the entity.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file only reads nodes, through NodeAliasHitRow. It does not declare the entity.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      `lt.name AS link_type` reads the name and does not declare the type.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      The file reads `node_alias na` and does not declare it.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No node attribute is read in the file.
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      NodeAliasHitRow.status and the node-layer WHERE clause, which carry the statuses active, needs_review, merged and deleted
+    evidence: |-
+      readonly status: "active" | "needs_review";
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      The only pagination-like input is a bare `limit: number` fan-out parameter. No page value object exists.
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      The file reads `provenance p` in listProvenanceForLinks and does not declare the value object.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file only reads raw_chunk columns, through ChunkHitRow. It does not declare the entity.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file only reads raw_information columns, through SearchProvenanceRow. It does not declare the entity.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      No SearchItem is built here. The file returns hit rows and provenance rows.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The three layer functions exist, but no layer enumeration is declared in the file.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      Functions take a bare `query: string`. No query value object is declared.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      `ri.source_type::text AS source_type` passes the value through as a string without declaring the enumeration.
+  - node: rules/knowledge-base/alias-matching
+    held_at: >-
+      searchNodeAliasLayer, which binds the name configuration to both sides of the match
+    evidence: |-
+      WHERE to_tsvector($1::regconfig, na.alias) @@ websearch_to_tsquery($1::regconfig, $2)
+      ...
+      FTS_NAME_CONFIG,
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: >-
+      searchChunkLayer WHERE clause
+    evidence: |-
+      AND rc.superseded_at IS NULL
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      findChunkFragmentLinks returns the fragment and chunk pairs, but the file does not show a chunk as a fragment's excerpt. That step is downstream.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      searchChunkLayer only returns ChunkHitRow. No search item is built in this file, so surfacing is decided elsewhere.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: >-
+      the substring expressions in searchChunkLayer and in the three provenance lookups
+    evidence: |-
+      substring(rc."text" FROM rc.offset_start + 1
+                     FOR rc.offset_end - rc.offset_start) AS excerpt
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      The file performs no writes.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      No refusal is decided in the file.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      The lookups return rows and no refusal is raised here. An empty result simply comes back as an empty array.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      There is no expansion in the file. findLinksMetadata reads names only.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      No validity filter is applied anywhere in the file.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      No validity filter is applied anywhere in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No hop scoring is present in the file.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      No depth parameter is present in the file.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      No traversal exists in the file.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      No in-effect filter exists in the file.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      No merged-node resolution exists in the file.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      No link-type filter exists in the file.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion exists in the file. The node-layer status filter is a different rule.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      findLinksMetadata filters only by id (`WHERE kl.id = ANY($1::uuid[])`).
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion exists in the file.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      f.text is selected, but the summary of a search item is not assigned here.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: >-
+      searchFragmentLayer WHERE clause
+    evidence: |-
+      WHERE f.status = 'accepted'
+             AND f.text_search @@ websearch_to_tsquery($1::regconfig, $2)
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      No flag is computed in the file. Confidence and status are only returned.
+  - node: rules/knowledge-base/layer-weights
+    held_at: >-
+      the weight multiplications in the three layer queries, with weights bound as parameters from the imported LAYER_WEIGHT_* constants
+    evidence: |-
+      * $3::float)::float AS score
+      ...
+      LAYER_WEIGHT_FRAGMENT,
+      LAYER_WEIGHT_NODE,
+      LAYER_WEIGHT_CHUNK,
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      findLinksMetadata supplies the two canonical names and the link type name. The `source -[type]-> target` format is not built in this file.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      No link-type input exists in the file.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      kn.canonical_name is selected, but no item summary is assigned in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: >-
+      searchNodeAliasLayer, the join from node_alias to knowledge_node grouped by node
+    evidence: |-
+      FROM node_alias na
+            JOIN knowledge_node kn ON kn.id = na.node_id
+       WHERE to_tsvector($1::regconfig, na.alias) @@ websearch_to_tsquery($1::regconfig, $2)
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: >-
+      searchNodeAliasLayer WHERE clause
+    evidence: |-
+      AND kn.status NOT IN ('merged', 'deleted')
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: >-
+      listProvenanceForNodes, the inner join to accepted fragments that mention an alias
+    evidence: |-
+      JOIN information_fragment f ON f.status = 'accepted'
+                                  AND f.text_search @@ plainto_tsquery($1::regconfig, na.alias_norm)
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      No page defaults exist in the file.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      `limit: number` is used unvalidated as a fan-out cap and no bound is stated.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      No offset appears in the file.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      the fragment layer, the chunk layer and the node-mention join in listProvenanceForNodes, each bound to the prose configuration
+    evidence: |-
+      FTS_PROSE_CONFIG,
+      query,
+      LAYER_WEIGHT_FRAGMENT,
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: >-
+      listProvenanceForLinks ORDER BY
+    evidence: |-
+      ORDER BY p.link_id, p.created_at ASC, f.id ASC
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The provenance lookups do not check for a compliance deletion and raise no refusal.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      No per-fragment provenance read with a status check exists in the file. listProvenanceForFragments takes ids and applies no status filter.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      Items are protected only by `WHERE f.status = 'accepted'` in the fragment layer. The support lookup for links, `JOIN information_fragment f ON f.id = p.fragment_id`, applies no exclusion.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      No layer input exists in the file.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      No option defaults exist in the file.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      `query: string` is passed straight through, with no length check.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      parseTsQuery only returns the parsed text (`return res.rows[0]?.q ?? "";`). The refusal is not decided in this file.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      There is no blank check in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      The fragment layer orders by `score DESC, f.created_at DESC, f.id ASC`, but the node layer orders by `score DESC, kn.canonical_name ASC, kn.id ASC`, which departs from the rule. No cross-layer ranking is performed in the file.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No total or page appears in the file. Only a `LIMIT $4` fan-out cap is applied.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      None of the layer queries carries an as-of or in-effect filter, but no such filter exists anywhere in the file either.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      No uncertain-item filter exists in the file.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      No link-type validation exists in the file.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      parseTsQuery only exposes the parsed text; the refusal outcome is not held in the file.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: >-
+      the lexical-only matching in the three layer queries, which would return no rows for a query sharing no characters
+    evidence: |-
+      f.text_search @@ websearch_to_tsquery($1::regconfig, $2)
+looked_past: >-
+  The file carries long comment blocks, notably the node-provenance docblock about a "synthetic provenance entry", a "known spec-vs-schema gap" and dropping node hits without provenance. They break the no-comments rule, and the claims in them belong to the comment route and not to this judgment. The file also imports FTS_PROSE_CONFIG, FTS_NAME_CONFIG and the LAYER_WEIGHT_* values from files outside this set, and I did not open them.

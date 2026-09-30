@@ -1,0 +1,418 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: header comment, lines 1-5
+    evidence: >-
+      // Typed sentinel errors emitted by the query-retrieval services. The route
+      // layer maps each one to its HTTP status + `error.code` envelope. [...]
+      // All error codes registered in `docs/specs/_global/error-codes.md`.
+    cost: >-
+      The comment names a document outside the specification as the registry of these error codes. The retrieval contract node holds those codes and statuses. A reader who follows the comment goes to a registry that is not the authority, and the two can move apart without anything noticing.
+    kind: contradicts
+    correction: >-
+      Remove the comment. The contract already holds the codes, and the bind from this file to the contract node is what keeps them together.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: comment above InvalidSearchQueryError, line 7
+    evidence: >-
+      /** BR-05 — parsed tsquery is empty (Zod cap on length, but stopword-only also lands here). */
+    cost: >-
+      The comment restates the refusal of a query that yields no search term, and cites a back-spec rule number as its authority. The specification holds that rule in the must-parse node, so this prose is a second home for it.
+    kind: contradicts
+    correction: Remove the comment. This is prose only. The refusal is already held by the code and by the node.
+    node: rules/knowledge-base/search-query-must-parse
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: message of InvalidSearchQueryError, line 23
+    evidence: >-
+      : "query exceeds 1000 characters"
+    cost: >-
+      The number 1000 is the search-query-length node's value, and it is written a second time as a literal in a string. If the node's limit moves, this message still says 1000, and nothing ties the string to the node.
+    kind: contradicts
+    correction: >-
+      The message should not carry the number. Otherwise the limit's home must be the bound file that enforces it.
+    node: rules/knowledge-base/search-query-length
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: comment above InvalidSearchLayerError, line 31
+    evidence: >-
+      /** BR-04 — `layers[]` element outside `{fragment, node, chunk}`. */
+    cost: >-
+      The comment restates the layer-outside-set refusal and re-lists the layer set, citing a back-spec rule number. The specification holds both the rule and the set, so this prose is a second home for them.
+    kind: contradicts
+    correction: Remove the comment. This is prose only.
+    node: rules/knowledge-base/search-layer-outside-set-refused
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: comment above FragmentNotAcceptedError, line 45
+    evidence: >-
+      /** BR-16 / partial-GIN — fragment exists but `status != 'accepted'`. */
+    cost: >-
+      The comment restates the rule that a fragment's provenance is read only when it is accepted, citing a back-spec rule number. It also mentions an index detail that no node holds.
+    kind: contradicts
+    correction: Remove the comment. This is prose only.
+    node: rules/knowledge-base/provenance-requires-accepted-fragment
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: comment above RawInformationDeletedError, line 60
+    evidence: >-
+      /** BR-17 — any underlying `raw_information` is tombstoned by `compliance_delete`. */
+    cost: >-
+      The comment restates the refusal after a compliance deletion, citing a back-spec rule number. The node holds that rule, so this prose is a second home for it.
+    kind: contradicts
+    correction: Remove the comment. This is prose only.
+    node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: comment above EmptyProvenanceError, line 77
+    evidence: >-
+      /** BR-19 — empty provenance on an existing anchor (legacy-data inconsistency). */
+    cost: >-
+      The comment restates the empty-chain refusal, citing a back-spec rule number. The node holds that rule, so this prose is a second home for it.
+    kind: contradicts
+    correction: Remove the comment. This is prose only.
+    node: rules/knowledge-base/empty-provenance-chain-refused
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: message of EmptyProvenanceError, lines 85-87
+    evidence: >-
+      `provenance chain is empty for ${anchorKind} ${anchorId} (legacy-data inconsistency).`
+    cost: >-
+      The message tells the owner that an empty provenance chain means legacy data. The node only says that a read of an existing item with an empty chain is refused, and states no cause. The owner is given a diagnosis that lives only in this string.
+    kind: unstated
+    correction: >-
+      Either the node should state that an empty chain is a legacy-data inconsistency, or the message should drop the cause.
+    node: rules/knowledge-base/empty-provenance-chain-refused
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file holds only sentinel error classes and no toolset surface. Looked at the five exported classes, from `export class InvalidSearchQueryError extends Error` to `export class EmptyProvenanceError extends Error`.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      No matching is declared here. The only lexical mention is the message text "query parsed by websearch_to_tsquery is empty".
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      No transaction is opened in this file. Looked at all five exported error classes.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      No AUTH_* error or authentication step appears. The classes carry BUSINESS_* and SYSTEM_* codes only.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The comment says "The route layer maps each one to its HTTP status". The mapping for both transports is not in this file. The classes only carry `statusCode` and `code`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      five error classes, lines 8-92. They hold the refusal answers for search-query, search-layer, fragment-not-accepted, raw-information-deleted and empty-provenance. The auth, not-found, unknown-link-type, traverse-depth and VALIDATION_* refusals sit elsewhere.
+    evidence: >-
+      public readonly statusCode = 422; public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const; ... public readonly statusCode = 404; public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const; ... public readonly statusCode = 410; public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const; ... public readonly statusCode = 500; public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      No filter type is declared. Looked at the whole file.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag vocabulary is declared. Looked at the whole file.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      No assertion status is declared. The only status is a raw `string` on FragmentNotAcceptedError.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      `public readonly deletedAt: Date;` on RawInformationDeletedError is an error field. It is not the compliance-deletion record.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      `public readonly status: string;` on FragmentNotAcceptedError is an untyped string. It is not the enumeration.
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      `public readonly fragmentId: string;` is an identifier carried by an error. The aggregate is not declared.
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      `public readonly anchorKind: "link" | "attribute" | "fragment";` is the kind of an empty-provenance anchor. It is not the search item kind.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      The aggregate is not declared. "link" appears only as a union member of `anchorKind`.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No node type or node status appears.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      No link type appears. The unknown-link-type error class is not in this file.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No alias appears.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      The aggregate is not declared. "attribute" appears only as a union member of `anchorKind`.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No node status appears.
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      No error or type here concerns a page window. Looked at all five classes.
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      `EmptyProvenanceError` names an empty chain and holds no provenance value. Its message is `provenance chain is empty for ${anchorKind} ${anchorId}`.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No chunk appears.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      `public readonly rawInformationId: string;` is an identifier carried by an error. The aggregate is not declared.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No search item appears.
+  - node: domain/knowledge-base/search-layer
+    held_at: allowed property of InvalidSearchLayerError, line 36
+    evidence: >-
+      public readonly allowed = ["fragment", "node", "chunk"] as const;
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      InvalidSearchQueryError carries only a refusal reason and details. The query value object is not declared.
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No source type appears.
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No matching logic is here.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No chunk matching is here.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No search item construction is here.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No search item construction is here.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No offsets appear.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      The file only reports a deletion. Nothing here marks any record deleted.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      The file declares the refusal classes. It holds no ordering between them.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: class EmptyProvenanceError, lines 77-92
+    evidence: >-
+      public readonly statusCode = 500; public readonly code = "SYSTEM_INTERNAL_ERROR" as const; public readonly anchorKind: "link" | "attribute" | "fragment";
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No scoring is here.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      No traverse-depth error class is here. The five classes cover query, layer, fragment status, deletion and empty provenance.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No expansion logic is here.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No summary construction is here.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No layer matching is here. The only mention of accepted is in an error message.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No flags are computed here.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No weights appear.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No summary construction is here.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No query handling is here.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No listing logic is here.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No listing logic is here.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No listing logic is here.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No ordering is here.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      No error class for a listing without a filter is here. The five classes cover query, layer, fragment status, deletion and empty provenance.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No listing logic is here.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No summary construction is here.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No layer matching is here.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No layer matching is here.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No layer matching is here.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No page defaults appear.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      No VALIDATION_OUT_OF_RANGE error is in this file. Looked at the five classes.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      No VALIDATION_OUT_OF_RANGE error is in this file. Looked at the five classes.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No matching configuration is here.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No provenance ordering is here.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: class RawInformationDeletedError, lines 61-75
+    evidence: >-
+      public readonly statusCode = 410; public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const; public readonly rawInformationId: string; public readonly deletedAt: Date;
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: class FragmentNotAcceptedError, lines 46-58
+    evidence: >-
+      public readonly statusCode = 404; public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const;
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No search filtering is here.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: class InvalidSearchLayerError, lines 32-43
+    evidence: >-
+      public readonly statusCode = 422; public readonly code = "BUSINESS_INVALID_SEARCH_LAYER" as const; public readonly invalid: string; public readonly allowed = ["fragment", "node", "chunk"] as const;
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No defaults appear.
+  - node: rules/knowledge-base/search-query-length
+    held_at: too_long reason of InvalidSearchQueryError, lines 11 and 23. The limit itself is not enforced in this file.
+    evidence: >-
+      reason: "empty_after_trim" | "empty_after_parse" | "too_long"; ... : "query exceeds 1000 characters"
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: empty_after_parse reason of InvalidSearchQueryError, lines 11 and 19-20
+    evidence: >-
+      reason === "empty_after_parse" ? "query parsed by websearch_to_tsquery is empty"
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: empty_after_trim reason of InvalidSearchQueryError, lines 11 and 21-22
+    evidence: >-
+      reason === "empty_after_trim" ? "query is empty after trim"
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No ranking appears.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No totals appear.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No temporal filtering is here.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No item filtering is here.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      No BUSINESS_UNKNOWN_LINK_TYPE error class is here. The five classes cover query, layer, fragment status, deletion and empty provenance.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No listing logic is here.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: empty_after_parse reason of InvalidSearchQueryError, lines 11 and 19-20
+    evidence: >-
+      reason === "empty_after_parse" ? "query parsed by websearch_to_tsquery is empty"
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      Looked at the whole file. No search behaviour is here.
+looked_past: >-
+  Error message wording such as "query is empty after trim" and the internal `reason` discriminator names are implementation vocabulary in error text, and I did not report them. Messages, class layout, the `Record<string, unknown>` details typing and the nested ternary are style or code-review matters.

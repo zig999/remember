@@ -1,0 +1,374 @@
+findings:
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: FragmentStatusRow.status (line 42) and ProvenanceChainRow.fragment_status (line 65)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+    cost: >-
+      The file declares its own fragment-status vocabulary with four values. The node has five, and
+      `superseded` is missing. The database enum also has `superseded`, so a superseded fragment
+      would come back through a type that says it cannot exist. The next reader takes this union as
+      the list of fragment states and never looks for the fifth in the specification.
+    kind: contradicts
+    correction: >-
+      Add `superseded` to both unions so they match the fragment-status node, or type the field as
+      the shared fragment status instead of redeclaring it here.
+    node: domain/knowledge-base/fragment-status
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: the ORDER BY clauses of the two chain queries in runChainSql (lines 154 and 179)
+    evidence: >-
+      ORDER BY p.created_at ASC, f.id, rc.chunk_index ASC, rc.id ASC
+    cost: >-
+      The order of the chunks inside each fragment (chunk index ascending, then chunk id) and the
+      fragment tie-break by fragment id decide what the owner reads first in a provenance answer.
+      The specification holds only that fragments come in recording order. The chunk order lives
+      only in this SQL, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      The analysis would give the chunk order and the tie-break a home, most likely in the
+      provenance read answers of contracts/knowledge-base/retrieval or in
+      domain/knowledge-base/provenance.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      the file only exports linkExists, attributeExists, findFragmentStatus, chainByLink, chainByAttribute, chainByFragment and findTombstone; no tool surface is declared here
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      the file's queries are keyed lookups such as `WHERE id = $1` and `WHERE f.id = $1`; none matches text
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      each function receives a `client: PoolClient` and runs a SELECT; the file never opens or configures a transaction
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      no authentication construct appears in the file; every function takes an already-acquired `client: PoolClient`
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      the file is a repository with no transport, envelope or error-code construct
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the data access behind the three provenance reads only: linkExists, attributeExists, findFragmentStatus (404 anchors), chainByLink/chainByAttribute/chainByFragment (accepted answer rows) and findTombstone (410 anchor)
+    evidence: >-
+      SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists; ... substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start) AS excerpt, rc.locator, ... ri.source_type::text AS source_type, ri.received_at, ri.metadata, ri.original_input
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      no listing or filter construct in the file
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      no search item or flag construct in the file
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      linkExists and attributeExists select only `EXISTS(SELECT 1 ...)` and never read a link or attribute status
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: findTombstone
+    evidence: >-
+      SELECT raw_information_id, executed_at AS performed_at FROM compliance_deletion WHERE raw_information_id = ANY($1::uuid[]) ORDER BY executed_at ASC LIMIT 1
+  - node: domain/knowledge-base/fragment-status
+    held_at: >-
+      FragmentStatusRow.status and ProvenanceChainRow.fragment_status, which declare four of the five values (see finding)
+    evidence: >-
+      readonly status: "accepted" | "proposed" | "rejected" | "deleted";
+  - node: domain/knowledge-base/information-fragment
+    held_at: the fragment columns selected by both chain queries in runChainSql
+    evidence: >-
+      f.id AS fragment_id, f.text AS fragment_text, f.confidence AS fragment_confidence, f.status::text AS fragment_status
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      no search item construct in the file
+  - node: domain/knowledge-base/knowledge-link
+    held_at: linkExists, and the `p.link_id` anchor of chainByLink
+    evidence: >-
+      SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      no query in the file reads knowledge_node
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      no query in the file reads a link type
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      no query in the file reads node_alias
+  - node: domain/knowledge-base/node-attribute
+    held_at: attributeExists, and the `p.attribute_id` anchor of chainByAttribute
+    evidence: >-
+      SELECT EXISTS(SELECT 1 FROM node_attribute WHERE id = $1) AS exists
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      no query in the file reads a node status
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      no LIMIT/OFFSET paging in the file; the only LIMIT is `LIMIT 1` in findTombstone
+  - node: domain/knowledge-base/provenance
+    held_at: the `FROM provenance p JOIN information_fragment f ON f.id = p.fragment_id` chain in runChainSql
+    evidence: >-
+      FROM provenance p JOIN information_fragment f ON f.id = p.fragment_id JOIN fragment_source fs ON fs.fragment_id = f.id ... WHERE ${anchorCol} = $1
+  - node: domain/knowledge-base/raw-chunk
+    held_at: the chunk columns selected by both chain queries in runChainSql
+    evidence: >-
+      rc.id AS raw_chunk_id, rc.chunk_index, rc.offset_start, rc.offset_end, substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start) AS excerpt, rc.locator
+  - node: domain/knowledge-base/raw-information
+    held_at: the raw-information columns selected by both chain queries in runChainSql
+    evidence: >-
+      ri.id AS raw_information_id, ri.source_type::text AS source_type, ri.received_at, ri.metadata, ri.original_input
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      no search item construct in the file
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      no search layer construct in the file
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      no search query construct in the file
+  - node: domain/knowledge-base/source-type
+    held_at: >-
+      the source_type column in the chain queries, passed through as text and not enumerated
+    evidence: >-
+      ri.source_type::text AS source_type
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      no alias matching in the file
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      the chain queries join raw_chunk with no superseded_at filter, and they are not a search layer
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      no chunk-layer match construct in the file
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      no chunk-layer match construct in the file
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: the excerpt expression in both chain queries in runChainSql
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start) AS excerpt
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      the file only reads compliance_deletion in findTombstone; it marks nothing deleted
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      the file exposes findTombstone, linkExists and findFragmentStatus as separate functions and orders none of them; only comments describe the precedence
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      runChainSql ends with `return res.rows;` and refuses nothing when the rows are empty
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      no scoring in the file
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      no expansion depth in the file
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      no search item summary in the file
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      no search layer in the file
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      no flag derivation in the file
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      no weighting in the file
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      no search item summary in the file
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      no expansion construct in the file
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      no search item summary in the file
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      no search layer in the file
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      no search layer in the file
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      no search item construct in the file
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      no paging in the file
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      no paging in the file
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      no paging in the file
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      no text matching in the file
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: the ORDER BY of the provenance-anchored chain query in runChainSql
+    evidence: >-
+      ORDER BY p.created_at ASC, f.id, rc.chunk_index ASC, rc.id ASC
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: >-
+      findTombstone, which finds the earliest compliance deletion among the raw information ids the chain reached; the refusal itself is not decided in this file
+    evidence: >-
+      WHERE raw_information_id = ANY($1::uuid[]) ORDER BY executed_at ASC LIMIT 1
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: >-
+      findFragmentStatus, which only supplies the status; the acceptance check is not decided in this file
+    evidence: >-
+      SELECT id, status::text AS status FROM information_fragment WHERE id = $1
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      no search in the file
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      no search option in the file
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      no query text validation in the file
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      no query parsing in the file
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      no query text validation in the file
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      no ranking in the file
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      no search total in the file
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      no temporal filter in the file
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      no search item construct in the file
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      no link type validation in the file
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      no listing in the file
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      no query parsing in the file
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      no text matching in the file
+looked_past: >-
+  The file carries header and inline comments citing back-spec rules (BR-11, BR-16, BR-17, BR-18, A22, ingestion BR-34) and stating that original_input becomes '[REDACTED]' after compliance_delete, all of which belong to the comment route. It also renames the column `executed_at` to `performed_at` in TombstoneRow, claiming that name comes from "this domain's spec", while the compliance-deletion node names `executed_at`. That is a naming matter, not a domain fact.

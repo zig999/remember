@@ -1,0 +1,355 @@
+findings:
+  - file: src/modules/query-retrieval/service/accepted-fragments.service.ts
+    where: header comment, lines 3-4
+    evidence: >-
+      // Read-only, single transaction (the route wraps the call in
+      // `withReadOnly`).
+    cost: >-
+      The file's only statement that the listing runs read-only is this comment. The service takes a bare
+      `PoolClient` and opens nothing itself. A reader who follows the comment to the route to confirm the
+      transaction cannot check it from this file, and the node's fitness check has nothing here to read.
+    kind: contradicts
+    correction: >-
+      Remove the prose. The fact is held by the node, and the read-only transaction has to be held by code
+      in the file that opens it (the route, per the comment).
+    node: constraints/retrieval-is-read-only
+  - file: src/modules/query-retrieval/service/accepted-fragments.service.ts
+    where: header comment, line 7 (step 2 of the service description)
+    evidence: >-
+      //   2. Runs the page query (deduped per fragment_id, ordered by
+      //      `r.received_at DESC NULLS LAST, f.created_at DESC, f.id ASC`).
+    cost: >-
+      The listing order is spelled out here as if decided, and it adds `NULLS LAST`, which the node does
+      not state. The node orders by source reception time descending, then fragment creation time
+      descending, then fragment identifier ascending. The file's code does none of this ordering (it is
+      delegated to `selectAcceptedFragments`). The next reader sees two homes for the order and cannot
+      tell which was decided.
+    kind: contradicts
+    correction: >-
+      Remove the prose. The order belongs to the node, and the repository SQL is where code holds it.
+    node: rules/knowledge-base/listing-order
+  - file: src/modules/query-retrieval/service/accepted-fragments.service.ts
+    where: header comment, line 7 ("deduped per fragment_id")
+    evidence: '//   2. Runs the page query (deduped per fragment_id, ordered by'
+    cost: >-
+      The one-entry-per-fragment rule is restated in prose. Nothing in this file dedups, and the
+      lowest-index-chunk attribution the node states is not mentioned. The rule appears as a claim about
+      code in another file.
+    kind: contradicts
+    correction: Remove the prose. The rule is held by the node and, in code, by the repository query.
+    node: rules/knowledge-base/listing-one-entry-per-fragment
+  - file: src/modules/query-retrieval/service/accepted-fragments.service.ts
+    where: header comment, lines 10-11
+    evidence: >-
+      // Filter validation (at-least-one-of, UUID syntax, limit/offset range) lives
+      // at the route DTO; this service receives an already-typed input.
+    cost: >-
+      The requirement that a listing name an LLM run, a raw information or both is asserted here as
+      living elsewhere. The service's own input type makes both filters optional
+      (`readonly llm_run_id?: string; readonly raw_information_id?: string;`), so this file enforces
+      nothing of it. A reader trusts the comment rather than the node.
+    kind: contradicts
+    correction: Remove the prose. The rule is held by the node and must be held in the route DTO's code.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/service/accepted-fragments.service.ts
+    where: header comment, lines 11-13
+    evidence: >-
+      // Tombstone
+      // short-circuit is in the repository SQL (`NOT EXISTS compliance_deletion`),
+      // per back-spec BR-14: tombstoned RawInformation rows are silently omitted.
+    cost: >-
+      The compliance-deletion exclusion is stated and attributed to a back-spec rule in prose. No code in
+      this file performs it, so a reader looking for where the exclusion is decided finds a citation of a
+      document that is not the specification.
+    kind: contradicks
+    correction: Remove the prose. The exclusion is held by the node and, in code, by the repository SQL.
+    node: rules/knowledge-base/listing-excludes-compliance-deleted
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file is a plain service function, with no toolset registration: `export async function
+      listAcceptedFragmentsService(`
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: The service only counts, selects and maps rows: `const total = await countAcceptedFragments(client, llmRunId, rawInformationId);`
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      Only a comment claims it: `// Read-only, single transaction (the route wraps the call in`. The code
+      takes `client: PoolClient` and opens no transaction.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: 'No authentication appears in the file: `client: PoolClient, input: ListAcceptedFragmentsInput, logger: Logger`'
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: 'The file is transport-agnostic and returns `{ total, limit: input.limit, offset: input.offset, items }`.'
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the `items` mapping and the returned page object, lines 60-73 and 91-96 (list-accepted-fragments
+      accepted answer)
+    evidence: >-
+      `text: row.fragment_text, confidence: Number(row.fragment_confidence), llm_run_id:
+      row.fragment_llm_run_id, created_at: row.fragment_created_at.toISOString(), source: {
+      raw_information_id, chunk_index, source_type, received_at, document_title }`
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: '`ListAcceptedFragmentsInput`, lines 29-34'
+    evidence: >-
+      export interface ListAcceptedFragmentsInput { readonly llm_run_id?: string; readonly
+      raw_information_id?: string; readonly limit: number; readonly offset: number; }
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: No flags are computed or mapped in the item shape (`fragment_id, text, confidence, llm_run_id, created_at, source`).
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: The file maps fragments only and never mentions a link or attribute status.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file mentions compliance deletion only in a comment: `(`NOT EXISTS compliance_deletion`)`. No
+      code reads it.
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: The service never reads or sets a fragment status. The listing only carries `AcceptedFragmentItem`.
+  - node: domain/knowledge-base/information-fragment
+    held_at: the `items` mapping, lines 60-65
+    evidence: >-
+      fragment_id: row.fragment_id, text: row.fragment_text, confidence: Number(row.fragment_confidence),
+      llm_run_id: row.fragment_llm_run_id, created_at: row.fragment_created_at.toISOString()
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: The item mapping carries no `kind` field.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: The file handles only accepted-fragment rows.
+  - node: domain/knowledge-base/page
+    held_at: 'the `limit`/`offset` input fields and the returned page, lines 32-33 and 91-96'
+    evidence: 'readonly limit: number; readonly offset: number; ... return { total, limit: input.limit, offset: input.offset, items, };'
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: The file reads no provenance.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: 'the `chunk_index` in the item source, line 68'
+    evidence: 'chunk_index: row.chunk_index,'
+  - node: domain/knowledge-base/raw-information
+    held_at: 'the item `source` object, lines 66-72'
+    evidence: >-
+      raw_information_id: row.raw_information_id, source_type: toSourceType(row.source_type), received_at:
+      row.received_at.toISOString(), document_title: row.document_title
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: The listing maps `AcceptedFragmentItem`, not a search item.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: The file never mentions layers.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: The file never mentions a search query.
+  - node: domain/knowledge-base/source-type
+    held_at: 'the `toSourceType` call in the item source, line 69'
+    evidence: 'source_type: toSourceType(row.source_type),'
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: No alias matching occurs in the file.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: No chunk layer is present in the file.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: No chunk matching is present in the file.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: No chunk matching is present in the file.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: The file reads only `chunk_index`, never offsets.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: The file performs no deletion or propagation.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: The file performs no provenance read.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: The file performs no provenance read.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: The file builds no search item summary.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: The file has no search layers.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: The file computes no flags.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: The file computes no scores.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: The file builds no link summary.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: The file has no link-type handling.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      Only a comment claims it: `// short-circuit is in the repository SQL (`NOT EXISTS
+      compliance_deletion`),`. No code in this file excludes compliance-deleted sources.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      The file states no status filter. It delegates to `selectAcceptedFragments(client, llmRunId,
+      rawInformationId, input.limit, input.offset)`.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      Only a comment claims it: `(deduped per fragment_id, ordered by`. The code maps each returned row
+      to one item without dedup.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      Only a comment claims it: `` `r.received_at DESC NULLS LAST, f.created_at DESC, f.id ASC` ``. The
+      code applies `rows.map(...)` in the returned order and sorts nothing.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      Both filters are optional in `ListAcceptedFragmentsInput`, and the file enforces neither. Only a
+      comment claims it: `// Filter validation (at-least-one-of, UUID syntax, limit/offset range) lives`.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: >-
+      the count call with no page arguments, line 44, returned as `total`, line 92
+    evidence: 'const total = await countAcceptedFragments(client, llmRunId, rawInformationId);'
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: The file builds no node summary.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: The file has no node layer.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: The file has no node layer.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: The file has no node layer.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: '`limit` and `offset` are required inputs (`readonly limit: number; readonly offset: number;`). The file applies no defaults.'
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      The file states no bounds. Only a comment mentions them: `// Filter validation (at-least-one-of,
+      UUID syntax, limit/offset range) lives`.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      The file states no bounds. Only a comment mentions them: `// Filter validation (at-least-one-of,
+      UUID syntax, limit/offset range) lives`.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: The file matches no text.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: The file reads no provenance.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: The file performs no provenance read.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: The file performs no provenance read.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: The file performs no expansion.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: the total-zero short-circuit and empty rows, lines 46-58
+    evidence: 'let rows: readonly AcceptedFragmentRow[] = []; if (total > 0) { rows = await selectAcceptedFragments('
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: The file performs no search.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: The file performs no search.
+looked_past: >-
+  The logged route string `GET /api/v1/fragments/accepted`, the log event name, the `total > 0` roundtrip-saving
+  short-circuit and the `Number(...)` coercion are transport, logging and performance choices with no domain fact
+  in them, so they belong to another judgment.

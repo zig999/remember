@@ -1,0 +1,337 @@
+findings:
+  - file: src/modules/query-retrieval/service/provenance.service.ts
+    where: header comment, lines 3-8
+    evidence: |-
+      // Precedence:
+      //   1. anchor row missing             -> RESOURCE_NOT_FOUND (404)
+      //   2. fragment anchor with status != 'accepted' -> BUSINESS_FRAGMENT_NOT_ACCEPTED (404)
+      //   3. chain reaches a tombstoned raw -> BUSINESS_RAW_INFORMATION_DELETED (410)
+      //   4. chain assembled but empty      -> SYSTEM_INTERNAL_ERROR (500) + WARN log
+    cost: >-
+      The order in which refusals win, with their codes and HTTP statuses, is written out again as the file's
+      own authority. The node holds this order: a compliance deletion is refused ahead of every other refusal
+      except a fragment that is not accepted. If the node moves, the file is the place a reader finds a second
+      answer, and the code can no longer be told apart from the decision.
+    kind: contradicts
+    correction: >-
+      Remove the comment. The precedence lives in the node and in the order of the checks in the three
+      getProvenanceBy* functions and finalise; the comment adds a second statement of it.
+    node: rules/knowledge-base/compliance-refusal-takes-precedence
+  - file: src/modules/query-retrieval/service/provenance.service.ts
+    where: comment inside finalise, step (b), lines 108-111
+    evidence: |-
+      // (b) Empty-chain alarm — BR-19. The anchor exists (step 1 already
+      //     established that); zero chain rows means we have a legacy data
+      //     inconsistency. The OpenAPI contract requires `fragments[] minItems: 1`,
+      //     so we surface a 500 with a structured WARN — never an empty array.
+    cost: >-
+      The refusal of an empty provenance chain is justified by a back-spec rule number and an OpenAPI
+      constraint, not by the node that holds it. The comment also gives a reason, "a legacy data inconsistency",
+      that no node states. A reader who looks for why the read is refused finds the code's own account rather
+      than the specification's.
+    kind: contradicts
+    correction: >-
+      Remove the comment. The node states the refusal, and the rationale belongs in the decision log if it is
+      wanted at all.
+    node: rules/knowledge-base/empty-provenance-chain-refused
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file exports only `getProvenanceByLinkService`, `getProvenanceByAttributeService` and
+      `getProvenanceByFragmentService`. It registers no toolset, and the constraint is about which tools the LLM
+      is offered.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      The file only walks provenance chains through repository functions such as
+      `chainByLink(client, linkId)`. It does no text matching.
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      Each service takes an already-open `client: PoolClient`. The file opens no transaction, so the read-only
+      setting is not visible in it.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The services take `client`, an id and a `logger`. No authentication is performed in this file.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file throws domain errors (`ResourceNotFoundError`, `RawInformationDeletedError`) and returns
+      `{ fragments }`. It holds no transport rendering.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the three provenance operations: getProvenanceByLinkService, getProvenanceByAttributeService and
+      getProvenanceByFragmentService, with finalise. Search and list-accepted-fragments are not in this file.
+    evidence: >-
+      throw new ResourceNotFoundError("KnowledgeLink", linkId); throw new
+      FragmentNotAcceptedError(fragmentId, fragment.status); throw new RawInformationDeletedError(...); throw
+      new EmptyProvenanceError(anchorKind, anchorId); return { fragments };
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: The file has no accepted-fragment listing filter.
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: The file computes no search-item flags.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file does not read or compare a link's or an attribute's assertion status. It only checks that they
+      exist.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: finalise, step (a), the tombstone lookup and the throw
+    evidence: >-
+      const tombstone = await findTombstone(client, rawIds); ... throw new
+      RawInformationDeletedError(tombstone.raw_information_id, tombstone.performed_at);
+  - node: domain/knowledge-base/fragment-status
+    held_at: getProvenanceByFragmentService, the status check
+    evidence: 'if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(fragmentId, fragment.status); }'
+  - node: domain/knowledge-base/information-fragment
+    held_at: groupChain, fragment mapping
+    evidence: >-
+      fragments.push({ id: fragment.fragment_id, text: fragment.fragment_text, confidence:
+      Number(fragment.fragment_confidence), status: fragment.fragment_status, chunks: provChunks });
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: getProvenanceByLinkService
+    evidence: >-
+      const exists = await linkExists(client, linkId); if (!exists) throw new
+      ResourceNotFoundError("KnowledgeLink", linkId); const rows = await chainByLink(client, linkId);
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: The file does not touch knowledge nodes.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: The file does not touch link types.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: The file does not touch aliases.
+  - node: domain/knowledge-base/node-attribute
+    held_at: getProvenanceByAttributeService
+    evidence: >-
+      const exists = await attributeExists(client, attributeId); if (!exists) throw new
+      ResourceNotFoundError("NodeAttribute", attributeId); const rows = await chainByAttribute(client,
+      attributeId);
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: The file does not touch node status.
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: The provenance reads take no page.
+  - node: domain/knowledge-base/provenance
+    held_at: finalise and groupChain, which assemble the chain of fragments and chunks
+    evidence: const fragments = groupChain(rows); ... return { fragments };
+  - node: domain/knowledge-base/raw-chunk
+    held_at: groupChain, chunk mapping
+    evidence: >-
+      id: c.raw_chunk_id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end,
+      excerpt: c.excerpt, locator: c.locator,
+  - node: domain/knowledge-base/raw-information
+    held_at: groupChain, the raw_information object of each chunk
+    evidence: >-
+      raw_information: { id: c.raw_information_id, source_type: toSourceType(c.source_type), received_at:
+      c.received_at.toISOString(), metadata: c.metadata, original_input: c.original_input ?? null, }
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: The file matches no layer.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: The file receives no search query.
+  - node: domain/knowledge-base/source-type
+    held_at: groupChain, through the toSourceType call
+    evidence: 'source_type: toSourceType(c.source_type),'
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: The file does no alias matching.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: The file runs no chunk-layer match.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      The file passes the offsets through unchanged (`offset_start: c.offset_start, offset_end:
+      c.offset_end`). It does not compute or count them.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: This is a read service. It marks nothing deleted.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: >-
+      the order of the checks: getProvenanceByFragmentService refuses a fragment that is not accepted first, then
+      finalise step (a) refuses on a tombstone before step (b) checks for an empty chain
+    evidence: >-
+      if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(...) } ... const tombstone =
+      await findTombstone(client, rawIds); if (tombstone !== null) { ... throw new RawInformationDeletedError(
+      ... } ... if (rows.length === 0) {
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: finalise, step (b)
+    evidence: 'if (rows.length === 0) { ... throw new EmptyProvenanceError(anchorKind, anchorId); }'
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: The file does no expansion or scoring.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: The file takes no depth.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: The file does no expansion.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: The file runs no fragment-layer match.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: The file computes no flags.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: The file scores nothing.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: The file builds no summaries.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: The file takes no link types.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: The file runs no node-layer match.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: The file runs no node-layer match.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: The file produces no search items.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: The file takes no page.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: The file takes no page.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: The file takes no page.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: The file does no text matching.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      groupChain only preserves the order in which rows arrive (`for (const row of rows)` into a Map). The file
+      states no ordering and never mentions recording time. Its comment says "Rows arrive grouped by fragment
+      from the SQL (ORDER BY fragment_id ...)", so the order is decided in the repository, which is outside
+      this file set.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: finalise, step (a)
+    evidence: >-
+      const rawIds = Array.from(new Set(rows.map((r) => r.raw_information_id))); const tombstone = await
+      findTombstone(client, rawIds); if (tombstone !== null) { ... throw new RawInformationDeletedError(
+      tombstone.raw_information_id, tombstone.performed_at );
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: getProvenanceByFragmentService
+    evidence: 'if (fragment.status !== "accepted") { throw new FragmentNotAcceptedError(fragmentId, fragment.status); }'
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: The file has no listing.
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: The file does no search.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: The file does no search.
+looked_past: >-
+  The route strings and structured log event names such as "query_retrieval_provenance_tombstone", the
+  chunk-deduplication guard in groupChain, and the many BR-nn back-spec citations in comments are operational or
+  code-review concerns, not domain facts. I did not judge them.

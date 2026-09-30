@@ -1,0 +1,423 @@
+findings:
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: QUERY_RETRIEVAL_TOOL_NAMES and the four registerTool calls, lines 118-123 and 219-284
+    evidence: >-
+      "search",
+      "get_provenance_link",
+      "get_provenance_attribute",
+      "get_provenance_fragment",
+      ... mcp.registerTool<SearchInput, unknown>("query", {
+    cost: >-
+      The retrieval contract names its operations search, read-link-provenance, read-attribute-provenance and read-fragment-provenance. The
+      names an MCP client actually calls (get_provenance_link and the others) and the toolset key "query" live only in this file. The next
+      reader who looks in the specification for what the owner's language model calls will not find them.
+    kind: unstated
+    correction: >-
+      The retrieval contract, or a node bound to this file, would have to state the MCP tool names and the toolset they belong to.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: search handler input mapping, lines 226-241, and the search description, lines 130-135
+    evidence: >-
+      query: input.query, layers: input.layers, asOf: input.as_of, inEffectOnly: input.in_effect_only, ...
+      expandLinkTypes: input.expand_link_types
+    cost: >-
+      The search-query node names its choices text and link_types, and the contract gives no wire names. The input names `query` and
+      `expand_link_types`, and the id parameters `link_id`, `attribute_id` and `fragment_id`, are fixed only in code. A reader comparing the
+      node with the tool sees two vocabularies and no node saying which one the client must send.
+    kind: unstated
+    correction: >-
+      A node bound to the DTO or to this file would have to state the wire names of the search and provenance inputs.
+    node: domain/knowledge-base/search-query
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: QueryRetrievalToolDescriptions.search, line 134
+    evidence: >-
+      `expand`, `expand_depth` (1..3),
+    cost: >-
+      The depth bound is restated as a string served over tools/list, in a file the rule is not bound to. If the node's bound moves,
+      `--check` never reaches this text and nobody can tell which of the two was decided.
+    kind: contradicts
+    correction: >-
+      Either bind this file to the rule, since it is where the tool surface is declared, or drop the restated bound from the description.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: QueryRetrievalToolDescriptions.search, line 135
+    evidence: >-
+      Pagination via `limit` (max 100) and `offset`.
+    cost: >-
+      The page limit ceiling is restated in a tool description, so it now has a second home in a file the node is not bound to. A change to
+      the ceiling leaves this text stale with nothing to flag it.
+    kind: contradicts
+    correction: >-
+      Either bind this file to the rule or remove the restated ceiling from the description.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: get_provenance_link, get_provenance_attribute and get_provenance_fragment descriptions, lines 138-147
+    evidence: >-
+      404 if missing; 410 if any underlying raw is tombstoned by a compliance delete.
+    cost: >-
+      The compliance-deletion refusal, with its status number, is restated as tool documentation in a file the rule is not bound to. The
+      wording ("tombstoned") also differs from the node's, so the two can drift without either being wrong on its face.
+    kind: contradicts
+    correction: >-
+      Either bind this file to the rule or remove the restated refusal from the descriptions.
+    node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: get_provenance_fragment description, lines 146-147
+    evidence: >-
+      404 if missing or if the fragment is not in status='accepted'
+    cost: >-
+      The accepted-only condition for a fragment's provenance is stated again in a description served to clients, in a file the rule is
+      not bound to. A change to the rule leaves the served text saying the old one.
+    kind: contradicts
+    correction: >-
+      Either bind this file to the rule or remove the restated condition from the description.
+    node: rules/knowledge-base/provenance-requires-accepted-fragment
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: >-
+      QUERY_RETRIEVAL_TOOL_NAMES and the four registerTool calls, lines 118-123 and 219-284. The set is closed at search and the three provenance reads, and no list-accepted-fragments tool is registered.
+    evidence: >-
+      "search",
+      "get_provenance_link",
+      "get_provenance_attribute",
+      "get_provenance_fragment",
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      the file only delegates, in searchKnowledgeService(client, catalog, { query: input.query, ... }, svcLogger), and the matching lives in the service
+  - node: constraints/retrieval-is-read-only
+    held_at: makeHandler, line 192
+    evidence: >-
+      const result = await withReadOnly(pool, (client) => run(parsed, client));
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      makeHandler parses the input and opens the transaction with no authentication step: const parsed = schema.parse(rawInput) as z.output<S>;
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      makeHandler lines 189-199 and the four service calls. The MCP half calls the same services and maps every throw through the shared mapper.
+    evidence: >-
+      return { ok: true, result }; } catch (err) { return mapErrorToEnvelope(err); }
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      registerQueryRetrievalToolset, lines 211-294. It exposes four of the five operations, with the { ok, result } success answer and the mapped error answer. The fifth, list-accepted-fragments, is deliberately absent.
+    evidence: >-
+      mcp.registerTool<GetProvenanceFragmentInput, unknown>("query", {
+      name: "get_provenance_fragment", ... getProvenanceByFragmentService(client, input.fragment_id, svcLogger)
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: nowhere
+    evidence: >-
+      no tool takes an LLM-run or raw-information filter: QUERY_RETRIEVAL_TOOL_NAMES lists only search and the three get_provenance_* tools
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      the file names no flag; it returns the service value unchanged: return { ok: true, result };
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      the file names no assertion status; it returns the service value unchanged: return { ok: true, result };
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      only the description prose says "410 if any underlying raw is tombstoned by a compliance delete."
+  - node: domain/knowledge-base/fragment-status
+    held_at: nowhere
+    evidence: >-
+      only the description prose says "not in status='accepted'"
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      the file calls getProvenanceByFragmentService(client, input.fragment_id, svcLogger) and holds no fragment attribute
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      the file declares no item kind; it returns the service value unchanged: return { ok: true, result };
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      getProvenanceByLinkService(client, input.link_id, svcLogger) takes only an id, and the link's attributes live in the service
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      the file declares no node attribute or status; the node is named only in the description "Full-text search across fragments, node aliases, and chunks"
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      the file only forwards expandLinkTypes: input.expand_link_types and consults no catalog entry, though it holds the catalog: const { mcp, pool, logger, catalog } = deps;
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      aliases are named only in the description prose "Full-text search across fragments, node aliases, and chunks"
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      getProvenanceByAttributeService(client, input.attribute_id, svcLogger) takes only an id
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      the file declares no node status; it returns the service value unchanged: return { ok: true, result };
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the limit and offset passthrough in the search handler, lines 238-239
+    evidence: >-
+      limit: input.limit,
+      offset: input.offset,
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      the three provenance tools delegate wholesale, e.g. getProvenanceByFragmentService(client, input.fragment_id, svcLogger)
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      the file declares no chunk attribute; chunks are named only in description prose such as "(chunks → raw_information)"
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      the file declares no raw-information attribute; it is named only in description prose such as "(fragments → chunks → raw_information)"
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      the file constructs no search item; it returns the service value unchanged: return { ok: true, result };
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      the layer set appears only in description prose: `layers[]` (fragment|node|chunk)
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      the search handler's input-to-service mapping, lines 226-241, which carries every choice: text, layers, expansion, link types, as-of, in-effect-only, uncertain inclusion and page
+    evidence: >-
+      query: input.query, layers: input.layers, asOf: input.as_of, inEffectOnly: input.in_effect_only, includeUncertain: input.include_uncertain, expand: input.expand, expandDepth: input.expand_depth, expandLinkTypes: input.expand_link_types
+  - node: domain/knowledge-base/source-type
+    held_at: nowhere
+    evidence: >-
+      the file names no source type; it returns the service value unchanged: return { ok: true, result };
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: searchKnowledgeService(client, catalog, {...}, svcLogger)
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: searchKnowledgeService(client, catalog, {...}, svcLogger)
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item: return { ok: true, result };
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      the file builds no search item: return { ok: true, result };
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      the file computes no offset: return { ok: true, result };
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      the file performs no deletion; the whole toolset is read-only: withReadOnly(pool, (client) => run(parsed, client))
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      the refusal order lives in the provenance services: getProvenanceByFragmentService(client, input.fragment_id, svcLogger)
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      the file checks no chain length: getProvenanceByLinkService(client, input.link_id, svcLogger)
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      the as-of date is only forwarded: asOf: input.as_of
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      the as-of date is only forwarded: asOf: input.as_of
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      the file carries no score computation: return { ok: true, result };
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      the bound is enforced by the imported SearchQuerySchema, not here. The file only forwards expandDepth: input.expand_depth and states the bound in description prose, "`expand_depth` (1..3)".
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      the switch is only forwarded: inEffectOnly: input.in_effect_only
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      the link types are only forwarded: expandLinkTypes: input.expand_link_types
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      expansion is delegated: expand: input.expand, expandDepth: input.expand_depth
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no summary: return { ok: true, result };
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: layers: input.layers
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      the file computes no flag: return { ok: true, result };
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      the file carries no weights: return { ok: true, result };
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no summary: return { ok: true, result };
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      the file forwards expand: input.expand and expandLinkTypes: input.expand_link_types together with no condition of its own
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/listing-order
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no summary: return { ok: true, result };
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: layers: input.layers
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: layers: input.layers
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: searchKnowledgeService(client, catalog, {...}, svcLogger)
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      the file supplies no default: limit: input.limit, offset: input.offset
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      the bound is enforced by the imported SearchQuerySchema, not here. The file only forwards limit: input.limit and states the ceiling in description prose, "`limit` (max 100)".
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      the file forwards the offset unchecked: offset: input.offset
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: searchKnowledgeService(client, catalog, {...}, svcLogger)
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      the file orders nothing: getProvenanceByLinkService(client, input.link_id, svcLogger)
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      the refusal is raised in the provenance services. This file states it only as description prose, "410 if any underlying raw is tombstoned by a compliance delete."
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      the refusal is raised in the fragment provenance service. This file states it only as description prose, "404 if missing or if the fragment is not in status='accepted'".
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      the file filters nothing: searchKnowledgeService(client, catalog, {...}, svcLogger)
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      the layer check lives in the imported schema: export const SearchInputSchema = SearchQuerySchema;
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      the file supplies no default: includeUncertain: input.include_uncertain, expand: input.expand
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      the length check lives in the imported schema: export const SearchInputSchema = SearchQuerySchema;
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      the file does no parsing of the query text: query: input.query
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      the blank check lives in the imported schema: export const SearchInputSchema = SearchQuerySchema;
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      the file ranks nothing: return { ok: true, result };
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      the file counts nothing: return { ok: true, result };
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      the file forwards asOf: input.as_of and inEffectOnly: input.in_effect_only and applies neither
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      the file forwards includeUncertain: input.include_uncertain and filters nothing itself
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      the file forwards expandLinkTypes: input.expand_link_types and checks it against no catalog entry
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: nowhere
+    evidence: >-
+      the accepted-fragment listing is not registered on this toolset: QUERY_RETRIEVAL_TOOL_NAMES
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      the refusal is produced outside this file: return mapErrorToEnvelope(err);
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      the file does no matching: searchKnowledgeService(client, catalog, {...}, svcLogger)
+looked_past: >-
+  The file's header and inline comments cite BR-23, BR-24, BR-25 and UC-number identifiers and claim things like "byte-identical error codes"; that is the comment rule's judgment, and no comment was used as evidence that a node is held.

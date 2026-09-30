@@ -1,0 +1,354 @@
+read:
+  - node: constraints/llm-toolset-omits-fragment-listing
+    held_at: nowhere
+    evidence: >-
+      The file exports only `countAcceptedFragments` and `selectAcceptedFragments`, which take a `PoolClient`. It registers no tool and no toolset, so which surface exposes the listing is not stated here.
+  - node: constraints/retrieval-is-lexical-only
+    held_at: nowhere
+    evidence: >-
+      The filter is `f.status = 'accepted' AND ($1::uuid IS NULL OR f.llm_run_id = $1::uuid) ...`. There is no text matching in this file, so lexical-only matching is neither held nor contradicted.
+  - node: constraints/retrieval-is-read-only
+    held_at: nowhere
+    evidence: >-
+      Both functions receive an already-open `client: PoolClient` and only call `client.query(sql, [...])`. No transaction is opened or its mode set here.
+  - node: constraints/retrieval-requires-owner-authentication
+    held_at: nowhere
+    evidence: >-
+      The file only exports `countAcceptedFragments(client, llmRunId, rawInformationId)` and `selectAcceptedFragments(...)`. It has no authentication step.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file is a repository and knows no transport. Its only outputs are `Promise<number>` and `Promise<readonly AcceptedFragmentRow[]>`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The list-accepted-fragments operation's success shape only: the `AcceptedFragmentRow` interface and the SELECT list of `selectAcceptedFragments`. Refusals and the other four operations are not in this file.
+    evidence: >-
+      fragment_text, fragment_confidence, fragment_llm_run_id, fragment_created_at, raw_information_id, chunk_index, source_type, received_at, document_title
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      The nullable `llmRunId` and `rawInformationId` parameters, the `limit` and `offset` parameters, and the `FILTER_WHERE` constant.
+    evidence: >-
+      ($1::uuid IS NULL OR f.llm_run_id = $1::uuid)
+         AND ($2::uuid IS NULL OR r.id = $2::uuid)
+  - node: domain/knowledge-base/assertion-flag
+    held_at: nowhere
+    evidence: >-
+      No flag is computed or returned. `AcceptedFragmentRow` has no flags field.
+  - node: domain/knowledge-base/assertion-status
+    held_at: nowhere
+    evidence: >-
+      The file reads only fragment status (`f.status = 'accepted'`). It reads no link or attribute status.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: the `NOT EXISTS` subselect in `FILTER_WHERE`
+    evidence: >-
+      AND NOT EXISTS (
+               SELECT 1 FROM compliance_deletion cd
+                WHERE cd.raw_information_id = r.id
+             )
+  - node: domain/knowledge-base/fragment-status
+    held_at: the `f.status = 'accepted'` predicate in `FILTER_WHERE`
+    evidence: >-
+      f.status = 'accepted'
+  - node: domain/knowledge-base/information-fragment
+    held_at: the `deduped` CTE select list and the `AcceptedFragmentRow` interface
+    evidence: >-
+      f.id AS fragment_id, f.text AS fragment_text, f.confidence AS fragment_confidence, f.llm_run_id AS fragment_llm_run_id, f.created_at AS fragment_created_at; sourced through `JOIN fragment_source fs ON fs.fragment_id = f.id JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id`
+  - node: domain/knowledge-base/item-kind
+    held_at: nowhere
+    evidence: >-
+      The file returns no search item and has no kind field.
+  - node: domain/knowledge-base/knowledge-link
+    held_at: nowhere
+    evidence: >-
+      No knowledge_link table or column is referenced in the file.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      No knowledge_node table or column is referenced in the file.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      No link type is referenced in the file.
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      No alias table or column is referenced in the file.
+  - node: domain/knowledge-base/node-attribute
+    held_at: nowhere
+    evidence: >-
+      No node_attribute table or column is referenced in the file.
+  - node: domain/knowledge-base/node-status
+    held_at: nowhere
+    evidence: >-
+      No node status is read.
+  - node: domain/knowledge-base/page
+    held_at: the `limit` and `offset` parameters of `selectAcceptedFragments`, bound as `$3` and `$4`
+    evidence: >-
+      LIMIT $3
+          OFFSET $4
+  - node: domain/knowledge-base/provenance
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance table. Its chain goes fragment_source to raw_chunk to raw_information only, to attribute a fragment to a source.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: the `raw_chunk rc` join and the `rc.chunk_index` column selected in `deduped`
+    evidence: >-
+      JOIN raw_chunk rc       ON rc.id = fs.raw_chunk_id
+  - node: domain/knowledge-base/raw-information
+    held_at: the `raw_information r` join and the `r.id`, `r.source_type::text`, `r.received_at` columns
+    evidence: >-
+      JOIN raw_information r  ON r.id = rc.raw_information_id
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file produces `AcceptedFragmentRow` values for the listing. It builds no search item.
+  - node: domain/knowledge-base/search-layer
+    held_at: nowhere
+    evidence: >-
+      The file names no search layer.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      The file accepts no search query; its inputs are `llmRunId`, `rawInformationId`, `limit` and `offset`.
+  - node: domain/knowledge-base/source-type
+    held_at: the `r.source_type::text AS source_type` column in `deduped`
+    evidence: >-
+      r.source_type::text AS source_type
+  - node: rules/knowledge-base/alias-matching
+    held_at: nowhere
+    evidence: >-
+      No alias matching occurs in the file.
+  - node: rules/knowledge-base/chunk-layer-matches-current-chunks
+    held_at: nowhere
+    evidence: >-
+      The file runs no chunk-layer match. It filters no chunk by `superseded_at`.
+  - node: rules/knowledge-base/chunk-match-cites-its-fragment
+    held_at: nowhere
+    evidence: >-
+      No chunk match or excerpt is produced in the file.
+  - node: rules/knowledge-base/chunk-match-never-surfaces
+    held_at: nowhere
+    evidence: >-
+      No chunk match is produced in the file.
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: nowhere
+    evidence: >-
+      No offset is read or computed in the file.
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: nowhere
+    evidence: >-
+      The file performs no deletion or propagation. It only reads `compliance_deletion` in the `NOT EXISTS` predicate.
+  - node: rules/knowledge-base/compliance-refusal-takes-precedence
+    held_at: nowhere
+    evidence: >-
+      No provenance read or refusal ordering is in the file.
+  - node: rules/knowledge-base/empty-provenance-chain-refused
+    held_at: nowhere
+    evidence: >-
+      No provenance read is in the file.
+  - node: rules/knowledge-base/expanded-link-requires-provenance
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-as-of-view
+    held_at: nowhere
+    evidence: >-
+      No expansion or as-of handling is in the file.
+  - node: rules/knowledge-base/expansion-current-view
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      No scoring is in the file.
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: nowhere
+    evidence: >-
+      No depth is handled in the file.
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-in-effect-only
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-reaches-merged-node-survivor
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-skips-deleted-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-skips-superseded-and-deleted-links
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/expansion-starts-from-matched-nodes
+    held_at: nowhere
+    evidence: >-
+      No expansion is in the file.
+  - node: rules/knowledge-base/fragment-item-summary
+    held_at: nowhere
+    evidence: >-
+      No search item summary is built. The listing row carries `fragment_text` and no summary field.
+  - node: rules/knowledge-base/fragment-layer-matches-accepted-only
+    held_at: nowhere
+    evidence: >-
+      No search fragment layer is in the file. The listing's own accepted-only predicate is `f.status = 'accepted'`, and that is held under `listing-holds-accepted-only`.
+  - node: rules/knowledge-base/item-flags
+    held_at: nowhere
+    evidence: >-
+      No flag is computed in the file.
+  - node: rules/knowledge-base/layer-weights
+    held_at: nowhere
+    evidence: >-
+      No weight is applied in the file.
+  - node: rules/knowledge-base/link-item-summary
+    held_at: nowhere
+    evidence: >-
+      No link summary is built in the file.
+  - node: rules/knowledge-base/link-types-ignored-without-expansion
+    held_at: nowhere
+    evidence: >-
+      No link types are handled in the file.
+  - node: rules/knowledge-base/listing-excludes-compliance-deleted
+    held_at: the `NOT EXISTS` predicate in `FILTER_WHERE`, shared by the count and select queries
+    evidence: >-
+      AND NOT EXISTS (
+               SELECT 1 FROM compliance_deletion cd
+                WHERE cd.raw_information_id = r.id
+             )
+  - node: rules/knowledge-base/listing-holds-accepted-only
+    held_at: the `f.status = 'accepted'` predicate in `FILTER_WHERE`, shared by the count and select queries
+    evidence: >-
+      f.status = 'accepted'
+  - node: rules/knowledge-base/listing-one-entry-per-fragment
+    held_at: the `DISTINCT ON (f.id)` in `deduped` with its `ORDER BY`, and `COUNT(DISTINCT f.id)` in the count query
+    evidence: >-
+      SELECT DISTINCT ON (f.id) ... ORDER BY f.id, rc.chunk_index ASC, rc.id ASC
+  - node: rules/knowledge-base/listing-order
+    held_at: the outer `ORDER BY` of `selectAcceptedFragments`
+    evidence: >-
+      ORDER BY received_at DESC NULLS LAST,
+                    fragment_created_at DESC,
+                    fragment_id ASC
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: nowhere
+    evidence: >-
+      Both functions accept `llmRunId: string | null, rawInformationId: string | null`, and `($1::uuid IS NULL OR ...) AND ($2::uuid IS NULL OR ...)` lets both be null. The file states no requirement that one be named.
+  - node: rules/knowledge-base/listing-total-before-pagination
+    held_at: the separate `countAcceptedFragments` query, which has no LIMIT or OFFSET and shares `FILTER_WHERE`
+    evidence: >-
+      SELECT COUNT(DISTINCT f.id)::bigint AS total
+            FROM information_fragment f ...
+           WHERE ${FILTER_WHERE}
+  - node: rules/knowledge-base/node-item-summary
+    held_at: nowhere
+    evidence: >-
+      No node summary is built in the file.
+  - node: rules/knowledge-base/node-layer-matches-through-aliases
+    held_at: nowhere
+    evidence: >-
+      No alias or node match is in the file.
+  - node: rules/knowledge-base/node-layer-skips-merged-and-deleted
+    held_at: nowhere
+    evidence: >-
+      No node match is in the file.
+  - node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+    held_at: nowhere
+    evidence: >-
+      No node surfacing is in the file.
+  - node: rules/knowledge-base/page-defaults
+    held_at: nowhere
+    evidence: >-
+      `limit: number, offset: number` are required parameters with no default in the signature `selectAcceptedFragments(client, llmRunId, rawInformationId, limit, offset)`.
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: nowhere
+    evidence: >-
+      `LIMIT $3` binds the caller's `limit` unchecked.
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: nowhere
+    evidence: >-
+      `OFFSET $4` binds the caller's `offset` unchecked.
+  - node: rules/knowledge-base/prose-matching
+    held_at: nowhere
+    evidence: >-
+      The file does no text matching.
+  - node: rules/knowledge-base/provenance-in-recording-order
+    held_at: nowhere
+    evidence: >-
+      No provenance ordering is in the file.
+  - node: rules/knowledge-base/provenance-refused-after-compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance. `compliance_deletion` is used only as an exclusion predicate in the listing.
+  - node: rules/knowledge-base/provenance-requires-accepted-fragment
+    held_at: nowhere
+    evidence: >-
+      The file reads no fragment provenance.
+  - node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+    held_at: nowhere
+    evidence: >-
+      The file runs no search. The exclusion appears only in the listing predicate.
+  - node: rules/knowledge-base/search-layer-outside-set-refused
+    held_at: nowhere
+    evidence: >-
+      No layers are handled in the file.
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: nowhere
+    evidence: >-
+      No search options are handled in the file.
+  - node: rules/knowledge-base/search-query-length
+    held_at: nowhere
+    evidence: >-
+      No query text is handled in the file.
+  - node: rules/knowledge-base/search-query-must-parse
+    held_at: nowhere
+    evidence: >-
+      No query parsing is in the file.
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: nowhere
+    evidence: >-
+      No query text is handled in the file.
+  - node: rules/knowledge-base/search-ranking
+    held_at: nowhere
+    evidence: >-
+      No search ranking is in the file. The listing order is a different rule, `listing-order`.
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No search total is in the file. The listing total is held under `listing-total-before-pagination`.
+  - node: rules/knowledge-base/temporal-filters-apply-to-expansion-only
+    held_at: nowhere
+    evidence: >-
+      No as-of or in-effect handling is in the file.
+  - node: rules/knowledge-base/uncertain-items-excluded-on-request
+    held_at: nowhere
+    evidence: >-
+      No uncertain filtering is in the file.
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: nowhere
+    evidence: >-
+      No link type is handled in the file.
+  - node: scenarios/knowledge-base/listing-for-unknown-source-is-empty
+    held_at: >-
+      The behavior of both queries when no fragment matches: the count coalesces to 0 and the select returns an empty row list.
+    evidence: >-
+      const raw = res.rows[0]?.total ?? 0;
+  - node: scenarios/knowledge-base/stop-words-only-query
+    held_at: nowhere
+    evidence: >-
+      No query parsing is in the file.
+  - node: scenarios/knowledge-base/synonym-without-shared-characters-finds-nothing
+    held_at: nowhere
+    evidence: >-
+      No text search is in the file.
+looked_past: >-
+  The file's extensive header and JSDoc comments restate the listing rules and cite openapi and back-spec identifiers (comments are another judgment's). The `NULLS LAST`, the `rc.id ASC` chunk tiebreak, and the derivation `r.metadata->>'title' AS document_title` (no title column exists in the migrations) are storage-level choices, not domain facts a node lacks.
