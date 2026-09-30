@@ -1,0 +1,148 @@
+findings:
+  - file: 0001_init.sql
+    where: >-
+      node_attribute column at line 392, and the enum declared at line 139
+    evidence: >-
+      CREATE TYPE valid_from_source AS ENUM ('stated', 'document', 'received'); -- §6.5/A14
+      ... valid_from_source       valid_from_source,
+    cost: >-
+      The node names this attribute valid_from_basis, typed by the valid-from-basis enumeration. The table
+      declares the same attribute as valid_from_source with an enum of that name. A reader who follows the node
+      to this file finds no valid_from_basis column, and a rename in the node never reaches the DDL. The
+      migration and the specification now name one fact two ways, and nothing says which name was decided.
+    kind: contradicts
+    correction: >-
+      The column, and the enum type that backs it, would have to carry the name the node gives the attribute,
+      valid_from_basis. Only the name differs; the three values already match the enumeration.
+    node: domain/knowledge-base/node-attribute
+  - file: 0001_init.sql
+    where: >-
+      node_attribute_current_dup_guard, lines 411-413
+    evidence: >-
+      CREATE UNIQUE INDEX node_attribute_current_dup_guard
+        ON node_attribute (node_id, attribute_key_id, value)
+        WHERE valid_to IS NULL AND superseded_at IS NULL;
+    cost: >-
+      The rule allows at most one current attribute that is not disputed per node, key and value, so a dispute
+      may hold a second current assertion beside the one it disputes. This index has no status predicate, so
+      it rejects that second assertion at the database. Curation then refuses a dispute resolution with the
+      duplicate-guard error that contracts/knowledge-base/curation names. The DDL enforces a stricter rule than
+      the one the business decided.
+    kind: contradicts
+    correction: >-
+      The partial index predicate would have to exempt disputed rows, for example by adding status <> 'disputed'
+      to the WHERE clause.
+    node: rules/knowledge-base/one-current-attribute-per-value
+  - file: 0001_init.sql
+    where: >-
+      knowledge_link column at line 440, and the enum declared at line 139
+    evidence: >-
+      valid_from_source  valid_from_source,
+    cost: >-
+      The node names this attribute valid_from_basis, typed by the valid-from-basis enumeration. The table
+      declares it as valid_from_source. A reader following the node to this file finds no such column, and a
+      change to the node's name never reaches the DDL.
+    kind: contradicts
+    correction: >-
+      The column would have to carry the node's name, valid_from_basis, and its enum type would follow it.
+    node: domain/knowledge-base/knowledge-link
+  - file: 0001_init.sql
+    where: >-
+      knowledge_link_current_dup_guard, lines 454-456
+    evidence: >-
+      CREATE UNIQUE INDEX knowledge_link_current_dup_guard
+        ON knowledge_link (source_node_id, target_node_id, link_type_id)
+        WHERE valid_to IS NULL AND superseded_at IS NULL;
+    cost: >-
+      The rule allows at most one current link that is not disputed per source, target and link type, so a
+      dispute may hold a second current link beside the disputed one. This index has no status predicate, so it
+      rejects that second link at the database. The DDL enforces a stricter rule than the one the business
+      decided.
+    kind: contradicts
+    correction: >-
+      The partial index predicate would have to exempt disputed rows, for example by adding status <> 'disputed'
+      to the WHERE clause.
+    node: rules/knowledge-base/one-current-link-per-target
+  - file: 0001_init.sql
+    where: >-
+      compliance_deletion.affected, line 523
+    evidence: >-
+      affected           jsonb NOT NULL DEFAULT '{}'::jsonb  -- contagens por entidade afetada
+    cost: >-
+      The node requires affected to hold four required counts: chunks, fragments, links and attributes. The
+      column declares no such shape, and its default is an empty object, which a row can carry and which holds
+      none of the four. The deletion audit trail can then record a compliance deletion whose reach is unstated.
+      Nothing in this file says the counts are required.
+    kind: contradicts
+    correction: >-
+      The column would have to hold the four counts, for example as a CHECK on the four integer keys or as four
+      columns. The empty-object default would have to go.
+    node: domain/knowledge-base/compliance-deletion
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      CREATE TABLE attribute_key, lines 189-201, and CREATE TABLE attribute_valid_value, lines 210-219
+    evidence: >-
+      key                     text NOT NULL, value_type              attribute_value_type NOT NULL,
+      is_temporal, allows_multiple_current, requires_valid_from, description, version ... and
+      attribute_valid_value (attribute_key_id, value, label, sort_order, description, version)
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      CREATE TABLE compliance_deletion, lines 518-524, held with the finding on affected
+    evidence: >-
+      raw_information_id uuid NOT NULL REFERENCES raw_information (id), reason text NOT NULL,
+      executed_at timestamptz NOT NULL DEFAULT now(), affected jsonb NOT NULL DEFAULT '{}'::jsonb
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      CREATE TABLE curation_action, lines 505-513
+    evidence: >-
+      action      text NOT NULL, target_kind text NOT NULL, target_id   uuid, payload     jsonb NOT NULL DEFAULT '{}'::jsonb,
+      reason      text, created_at  timestamptz NOT NULL DEFAULT now()
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      CREATE TABLE knowledge_link, lines 429-451, held with the findings on the basis column name and on the
+      duplicate guard
+    evidence: >-
+      source_node_id, target_node_id, link_type_id, valid_from, valid_to, recorded_at, superseded_at,
+      status assertion_status NOT NULL, confidence, valid_from_source, created_by_run_id uuid REFERENCES llm_run (id),
+      supersedes_link_id uuid REFERENCES knowledge_link (id)
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      CREATE TABLE link_type, lines 159-170, and CREATE TABLE link_type_rule, lines 173-182
+    evidence: >-
+      name text NOT NULL UNIQUE, label, description, inverse_name, is_temporal, allows_multiple_current,
+      requires_valid_from, requires_valid_to_on_change, version int NOT NULL DEFAULT 1
+  - node: domain/knowledge-base/node-alias
+    held_at: >-
+      CREATE TABLE node_alias, lines 352-361, and the enum alias_kind at line 137
+    evidence: >-
+      alias text NOT NULL CHECK (btrim(alias) <> ''), kind alias_kind NOT NULL DEFAULT 'alias',
+      created_by_run_id uuid REFERENCES llm_run (id), created_at timestamptz NOT NULL DEFAULT now()
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      CREATE TABLE node_attribute, lines 376-407, held with the findings on the basis column name and on the
+      duplicate guard
+    evidence: >-
+      value text NOT NULL, status assertion_status NOT NULL, recorded_at, valid_from, valid_to, confidence,
+      valid_from_source valid_from_source, superseded_at timestamptz, supersedes_attribute_id uuid REFERENCES node_attribute (id)
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      CREATE TABLE node_type, lines 152-157
+    evidence: >-
+      name        text NOT NULL UNIQUE, description text NOT NULL, version     int  NOT NULL DEFAULT 1
+looked_past: >-
+  I did not report these as findings because they belong to other judgments: curation_action.action and target_kind are free text with no closed vocabulary declared in this file, and the provenance table names its timestamp created_at where the provenance node names it recorded_at. The raw_information, raw_chunk, llm_run, tool_call, information_fragment and entity_match_review tables, the 1000-character fragment cap and the confidence bounds are not governed by any node in this file's set.
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis
+  - domain/knowledge-base/value-type
+  - domain/knowledge-base/curation-action-kind
+  - domain/knowledge-base/curation-target-kind
+  - domain/knowledge-base/affected-counts
+  - domain/knowledge-base/allowed-value
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/alias-kind
+  - domain/knowledge-base/provenance
+  - rules/knowledge-base/one-current-link-per-target
+  - rules/knowledge-base/one-current-attribute-per-value
+  - rules/knowledge-base/attribute-start-has-basis
+  - rules/knowledge-base/link-start-has-basis

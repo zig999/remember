@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      the header comment, lines 13-21. The same closed-domain wording recurs in the
+      docstring on `attributeValidValuesByKeyId` (lines 96-112) and the docstring on
+      `domainOf` (lines 227-249).
+    evidence: >-
+      // materializes the closed value domains per `AttributeKey` from the new
+      // `attribute_valid_value` table ... A key with
+      // zero rows = open domain (backward-compatible legacy behavior; any literal
+      // that parses against `value_type` is accepted). A key with >= 1 rows =
+      // closed domain — only the listed values are accepted by the structural
+      // validator.
+    cost: >-
+      These comments state, a second time and in prose, which attribute keys are
+      closed and what a closed key accepts. That is a fact attribute-key holds
+      through `allowed_values`. The code here already holds the distinction:
+      `domainOf` returns `null` for an open key and the set for a closed one, and
+      `buildSnapshot` accumulates the set. A reader who looks here finds a second
+      statement of the rule with its own wording, such as "backward-compatible
+      legacy behavior". When the node moves, `--check` does not reach this prose.
+      The prose also describes enforcement that happens in another file,
+      `validation/structural.ts`, which I did not read. The candidate index binds
+      that file to rules/knowledge-base/attribute-value-in-allowed-values.
+    kind: restates
+    correction: >-
+      Remove the prose. The pair conforms: the closed and open domain is held by
+      `attributeValidValuesByKeyId` and `domainOf`, and the node binds that
+      declaration.
+    node: domain/knowledge-base/attribute-key
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      `interface AttributeKeyRow`, `interface AttributeValidValueRow`, the
+      `attributeValidValuesByKeyId` field of `CatalogSnapshot`, and `domainOf`.
+    evidence: >-
+      export interface AttributeKeyRow { readonly id: string; readonly node_type_id: string; readonly key: string; readonly value_type: "date" | "number" | "text" | "bool"; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; }
+      export interface AttributeValidValueRow { readonly attribute_key_id: string; readonly value: string; }
+      readonly attributeValidValuesByKeyId: ReadonlyMap<string, ReadonlySet<string>>;
+  - node: domain/knowledge-base/link-type
+    held_at: >-
+      `interface LinkTypeRow` (line 38), loaded by `SELECT id, name, is_temporal,
+      allows_multiple_current, requires_valid_from, requires_valid_to_on_change
+      FROM link_type`.
+    evidence: >-
+      export interface LinkTypeRow { readonly id: string; readonly name: string; readonly is_temporal: boolean; readonly allows_multiple_current: boolean; readonly requires_valid_from: boolean; readonly requires_valid_to_on_change: boolean; }
+  - node: domain/knowledge-base/node-type
+    held_at: >-
+      `interface NodeTypeRow` (line 26), loaded by `SELECT id, name, description
+      FROM node_type`.
+    evidence: >-
+      export interface NodeTypeRow { readonly id: string; readonly name: string; readonly description?: string; }
+looked_past: >-
+  Two things were left unreported. The `value_type` union and the
+  `isLinkRuleActive` window (`today >= valid_to` excluded, null bounds unbounded)
+  agree with the value-type enumeration and with rules/knowledge-base/link-type-rule-in-effect.
+  Neither node is in this file's set or in the candidate index, so this file
+  carries both and neither is bound here. The comments citing BR-14, BR-15, BR-30
+  and §5.1 are prose about other nodes or documents, which this pass does not judge.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-in-allowed-values

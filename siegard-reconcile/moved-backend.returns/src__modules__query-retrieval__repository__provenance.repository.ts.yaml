@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/query-retrieval/repository/provenance.repository.ts
+    where: >-
+      runChainSql(), the `excerpt` column in both SQL branches (lines 141-142 in the fragment-anchored branch, lines 165-166 in the provenance-anchored branch)
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                                 FOR rc.offset_end - rc.offset_start) AS excerpt
+    cost: >-
+      `raw_chunk."text"` is the chunk's own text, and its excerpt is already the content between its offsets. The slice starts `offset_start` characters into that text and is `offset_end - offset_start` long. For any chunk that does not start at offset 0 of its source, the excerpt is shifted, truncated or empty. The provenance walk therefore returns a cut of the cited text, not the whole excerpt. The decision log records this as the `unstated` entry behind the node ("offsetting it again cuts away the text the entry exists to show"). The repository's header comment cites BR-11 / A22 for the +1 adjustment, so the next reader is sent to a rule that does not say this.
+    kind: contradicts
+    correction: >-
+      Select the chunk's whole text as the excerpt (`rc."text" AS excerpt`) in both branches, without the substring and offset arithmetic. I did not check whether the provenance-by-link, -attribute and -fragment reads count as a "graph read" under the node's `constrains` list. The `chunk-excerpt-is-verbatim` invariant holds for any read that shows a chunk's excerpt.
+    node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+read:
+  - node: domain/knowledge-base/knowledge-link
+    held_at: >-
+      linkExists() (existence of a `knowledge_link` row by id) and chainByLink(), which anchors the provenance walk on `p.link_id`. The link's `provenance` relationship is read through the `provenance` table. The file declares no shape for the link itself.
+    evidence: >-
+      `SELECT EXISTS(SELECT 1 FROM knowledge_link WHERE id = $1) AS exists` and `return runChainSql(client, "p.link_id", linkId, false);`
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      attributeExists() (existence of a `node_attribute` row by id) and chainByAttribute(), which anchors the provenance walk on `p.attribute_id`. The file declares no shape for the attribute itself.
+    evidence: >-
+      `SELECT EXISTS(SELECT 1 FROM node_attribute WHERE id = $1) AS exists` and `return runChainSql(client, "p.attribute_id", attributeId, false);`
+looked_past: >-
+  The file's comments (the BR-11/A22, BR-16, BR-17 and BR-18 citations, and the `original_input` '[REDACTED]' note) are prose that another judgment answers. The 410 tombstone lookup, the earliest-deletion ordering and the fragment status vocabulary in `FragmentStatusRow` belong to nodes outside this set.

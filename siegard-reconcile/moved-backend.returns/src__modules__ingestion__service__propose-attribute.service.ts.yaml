@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the comment block above the closed-domain gate, lines 85-92 ("Closed-domain gate (BR-30)" through "Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.")
+    evidence: >-
+      // key is closed and `assertValueInDomain` rejects out-of-domain literals
+      // with `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
+      // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The rule that an attribute value must be one of the allowed values exactly as written is stated in prose here, next to the call that enforces it. A reader can take this comment for the place the rule is decided. If the node moves, the comment keeps asserting the old wording, and nothing reads it or flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the fact: the `domainOf` / `assertValueInDomain` branch in this file delegates to `assertValueInDomain` in backend/src/modules/ingestion/validation/structural.ts, where the exact-match comparison lives. The fact is already held by the node, so this is the comment-only route, followed by a reconcile over the file.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: >-
+      nowhere. This file only reads the attribute_key shape (resolvedKey.node_type_id, .value_type, .requires_valid_from, .id) from the catalog snapshot and declares no shape of its own.
+    evidence: >-
+      const attrKey = deps.catalog.attributeKeyByNodeTypeAndKey.get(attributeKeyCacheKey(nodeTypeId!, args.key));
+      const resolvedKey = attrKey!;
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the closed-domain branch, lines 93-96. The file obtains the key's allowed set and calls the rejecting assertion on the proposed value. The comparison itself sits in validation/structural.ts.
+    evidence: >-
+      const domain = domainOf(deps.catalog, resolvedKey.id);
+      if (domain !== null) {
+        assertValueInDomain(args.value, domain);
+      }
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the validateTemporal call, lines 147-156. The file passes the stated start and its basis to the temporal layer, and forwards the resolved pair to consolidateAttribute. The refusal itself is in validation/temporal.ts.
+    evidence: >-
+      const resolvedTemporal = validateTemporal({
+        valid_from: args.valid_from ?? null,
+        valid_to: args.valid_to ?? null,
+        valid_from_basis: args.valid_from_basis ?? null,
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the validateTemporal call, lines 147-156. The file passes both valid_from and valid_to to the temporal layer, and the strict start-before-end check is in validation/temporal.ts.
+    evidence: >-
+      const resolvedTemporal = validateTemporal({
+        valid_from: args.valid_from ?? null,
+        valid_to: args.valid_to ?? null,
+looked_past: >-
+  Comments on the temporal fallback chain (document_date, received_at), confidence routing and fragment anchoring concern nodes outside this set, and the below-floor outcome is already held by an ingestion contract; none of it is reported here.

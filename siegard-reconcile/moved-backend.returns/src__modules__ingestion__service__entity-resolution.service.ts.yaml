@@ -1,0 +1,31 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The docstring of resolveOrCreateNode (lines 88-94) and the comment above the advisory lock (lines 114-118).
+    evidence: |-
+      *   2. Tries exact `alias_norm = norm(name)` match against active nodes of
+      ...
+      // We compute the inner string on the DB so that `norm(name)` uses the
+      // canonical implementation from migration 0001 (not a JS approximation).
+    cost: >-
+      The prose states a second time that entity resolution compares names under norm(). The queries in this file hold that fact, at `WHERE na.alias_norm = norm($1::text)` and `na.alias_norm % norm($1::text)`. If the rule moves, this prose stays behind, and a reader can take it for where the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact stays held by the `norm($1::text)` calls in the exact-match query, the trigram query and the lock-key query of this file.
+    node: rules/knowledge-base/name-normalization
+read:
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: |-
+      This file does not declare the shape of a node alias. It only inserts rows: `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id) VALUES ($1, $2, 'alias', $3) ON CONFLICT DO NOTHING`. The only types it declares are TrigramCandidate, ResolveOrCreateNodeArgs and Decision, none of which is the alias element. The values it writes, 'canonical' and 'alias', and the run reference `created_by_run_id` agree with the node's attributes.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      The exact-match query of resolveOrCreateNode (lines 131-139) and the trigram candidate query (lines 156-166). The lock-key query (lines 119-122) also runs the name through norm(). The normalization itself is the database function `norm`, which this file calls and does not define.
+    evidence: |-
+      WHERE na.alias_norm = norm($1::text)
+              AND kn.node_type_id = $2
+              AND kn.status = 'active'
+      ...
+      AND na.alias_norm % norm($1::text)
+looked_past: >-
+  The thresholds 0.85 (MATCH_STRONG) and 0.55 (MATCH_FLOOR), the trigram similarity taken over a node's aliases, and the needs-review and entity-match-review branch are held by rules/knowledge-base/strong-candidate-resolves, ambiguous-candidates-need-review and candidate-similarity. All three are outside this file's node set and the candidate index, and the code agrees with their text, so these are a missing binding and not a finding. The three comment-only points are also not findings. The `LIMIT 10` candidate cap, the advisory lock keyed on the node type and the normalized name, and the `?? \`${args.nodeTypeId}\x1F${args.name}\`` fallback that skips norm() are not stated by any of the three rules above or by the two nodes of this set, and I did not search the rest of the specification for them. The fallback is unreachable for a single-row SELECT.

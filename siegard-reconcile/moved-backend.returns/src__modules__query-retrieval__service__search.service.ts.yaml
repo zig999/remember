@@ -1,0 +1,39 @@
+read:
+  - node: rules/knowledge-base/expansion-follows-both-directions
+    held_at: >-
+      The traverseNodes call in step (g), "Graph expansion (BR-13)". It passes
+      `direction: "both"`. The fan-out over the two ends is in
+      knowledge-graph/service/traversal.service.ts, which takes `"out" | "in" | "both"`.
+    evidence: |-
+      const traversal = await traverseNodes(
+        client,
+        {
+          startingNodeIds: startingIds,
+          direction: "both",
+          linkTypeIds,
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      resolveLinkTypeIds() and the `linkTypeIds` computed in step (b). That value
+      is forwarded to traverseNodes in step (g). The filter itself is applied in
+      knowledge-graph/repository/graph.repository.ts, where the
+      `filter.linkTypeIds` branch (line 400) adds the restriction. This file
+      decides when the restriction applies and hands it on.
+    evidence: |-
+      const linkTypeIds = input.expand
+        ? resolveLinkTypeIds(catalog, input.expandLinkTypes)
+        : undefined;
+      ...
+      linkTypeIds,
+      depth: input.expandDepth,
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds(), which throws UnknownLinkTypeError for a name the
+      catalog snapshot does not hold. Step (b) calls it only when `input.expand`
+      is true, which matches "A search query that expands".
+    evidence: |-
+      const row = catalog.linkTypeByName.get(name);
+      if (row === undefined) {
+        throw new UnknownLinkTypeError(name);
+      }
+looked_past: >-
+  The file also holds the low-confidence 0.4 flag, the TRAVERSAL_DECAY scoring, the layer closed set, the dedup and ranking rules, and comments citing BR numbers. I read these as other nodes' facts (for example the search-item flag rule in the full-text projection) or as prose, so I did not judge them against this set.

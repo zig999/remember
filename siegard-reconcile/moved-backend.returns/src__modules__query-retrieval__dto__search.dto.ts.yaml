@@ -1,0 +1,99 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      QueryString, the .max(1000) call, line 51
+    evidence: >-
+      .max(1000, { message: "query exceeds 1000 characters" })
+    cost: >-
+      The 1000-character ceiling is declared in this schema and in the error text it emits. A node holds it, but that node is not bound to this file. If the node's number moves, nothing reaches this file, and the next reader cannot tell whether 1000 was decided by the business or by the code.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/search-query-length to this file, so the declaration here is where the fact is held. Code cannot read the specification, so the bind is the closing act.
+    node: rules/knowledge-base/search-query-length
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      QueryString, the .transform/.refine pair, lines 52-55
+    evidence: >-
+      .transform((s) => s.trim())
+          .refine((s) => s.length > 0, {
+            message: "query is empty after trim",
+          });
+    cost: >-
+      The refusal of a whitespace-only query is implemented here, and a node already holds it. That node is not bound to this file, so a change to the node would not reach this refinement.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/search-query-not-blank to this file.
+    node: rules/knowledge-base/search-query-not-blank
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      SearchQuerySchema, the defaults for in_effect_only, include_uncertain, expand and expand_depth, lines 62-67
+    evidence: >-
+      in_effect_only: BooleanQuery.optional().default(false),
+          include_uncertain: BooleanQuery.optional().default(true),
+          expand: BooleanQuery.optional().default(true),
+          expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+            .optional()
+            .default(1),
+    cost: >-
+      The search option defaults (uncertain included, expansion on at depth 1, in-effect-only off) are declared here a second time. The node that holds them is not bound to this file. If the node's defaults change, this schema keeps answering with the old ones, and `--check` never reaches it.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/search-option-defaults to this file. Its default for layers (every layer) is not declared here, because `layers` is left optional with no default.
+    node: rules/knowledge-base/search-option-defaults
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      SearchQuerySchema, the limit bound, lines 69-71
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+    cost: >-
+      The 1 to 100 page limit is declared in this schema. A node holds it, but that node is not bound to this file. The default of 20 is covered by page-defaults, which is in this file's set. A change to the bounds would miss this file.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/page-limit-bounds to this file.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      SearchQuerySchema, the offset bound, line 72
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+    cost: >-
+      The non-negative offset rule is declared here, and a node holds it without being bound to this file. A change to the node would not reach this schema.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/page-offset-non-negative to this file.
+    node: rules/knowledge-base/page-offset-non-negative
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      ALLOWED_LAYERS, line 101
+    evidence: >-
+      export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;
+    cost: >-
+      The search-layer vocabulary is declared in this file, and domain/knowledge-base/search-layer already holds the same three values as an enumeration. That node is not bound to this file. If a layer is added to the node, this list goes stale without anything signalling it, and the service validates `layers[]` against the stale list.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/search-layer to this file, so this declaration is where the enumeration is held.
+    node: domain/knowledge-base/search-layer
+read:
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      SearchQuerySchema.expand_depth, lines 65-67
+    evidence: >-
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      SearchQuerySchema.limit and SearchQuerySchema.offset defaults, lines 69-72
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+          .optional()
+          .default(20),
+        offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+looked_past: >-
+  The header comments cite BR-04/BR-05 and BUSINESS_INVALID_SEARCH_LAYER, and the service refuses an out-of-set layer; that refusal is not in this file and sits outside the file set, so I did not review it.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-option-defaults
+  - rules/knowledge-base/search-query-not-blank
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/page-offset-non-negative
+  - domain/knowledge-base/search-layer

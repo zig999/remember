@@ -1,0 +1,75 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      lines 89-99, the comment block above `attrKeysByNodeType` in `system()`
+    evidence: >-
+      "The runtime check (`assertValueInDomain`, BR-30) is still the authoritative
+      gate; this is a hint to steer the LLM toward in-domain values."
+    cost: >-
+      The allowed-values rule is written a second time as prose in the prompt
+      builder. A reader changing the rule can take this comment for its home.
+      The running gate is in another file, and the comment does not move with it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by
+      `assertValueInDomain` in
+      /home/siegfriedneto/projects/eternal/backend/src/modules/ingestion/validation/structural.ts,
+      which throws `VALIDATION_INVALID_FORMAT` for a value outside the domain.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      the "Dates" section of the SYSTEM prompt built by `system()`, lines 164-167
+    evidence: >-
+      "- Justify it with `valid_from_basis`: `stated` only when the start date is",
+      "  written in the chunk (and supported by a cited fragment); `document` uses",
+      "  the document date; otherwise omit `valid_from`/basis and the backend",
+      "  records `received`. NEVER invent a date. Dates are ISO `YYYY-MM-DD`."
+    cost: >-
+      The prompt tells the model that an omitted start always ends up recorded
+      as `received`. The node says the backend takes the source's document date
+      with basis `document` when the source has one, and only falls back to
+      `received` when it has none. A model that follows the prompt will believe
+      the document date is lost when it omits the start, so the prompt and the
+      backend disagree about what gets recorded.
+    kind: contradicts
+    correction: >-
+      The prompt text would have to say that an omitted start, on a type that
+      requires one, is filled from the document date with basis `document`,
+      else from the reception date with basis `received`.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for AttributeKey. It only reads fields of the
+      catalog's row, in `system()`: "`${ak.key} (${ak.value_type}${ak.is_temporal ? ", temporal" : ""}${valuesSuffix})`"
+      with "const domain = domainOf(catalog, ak.id);". The shape is declared
+      where `CatalogSnapshot` is defined, in catalog.ts.
+  - node: domain/knowledge-base/link-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no LinkType shape. It only maps fields of the catalog's
+      rows: "name: lt.name, temporal: lt.is_temporal, allowsMultipleCurrent: lt.allows_multiple_current, requiresValidFrom: lt.requires_valid_from".
+  - node: domain/knowledge-base/node-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no NodeType shape. It only maps fields of the catalog's
+      rows: ".map((nt) => ({ name: nt.name, description: nt.description }))".
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      The `valuesSuffix` construct in `system()`, lines 106-112, in the text the
+      system emits. It lists each closed-domain key's allowed values. The gate
+      that refuses other values is `assertValueInDomain` in structural.ts.
+    evidence: >-
+      "`domain !== null ? `, values: [${[...domain].sort().map((v) => JSON.stringify(v)).join(",")}]` : """
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      The "Dates" section of the SYSTEM prompt and the worked example in
+      `system()`, lines 160-167 and 207-210, in the text the system emits.
+    evidence: >-
+      "- Justify it with `valid_from_basis`: `stated` only when the start date is",
+      and "confidence:0.9, fragment_ids:[F1], valid_from:\"2026-06-11\", valid_from_basis:\"document\"}"
+looked_past: >-
+  I saw the header docblock restating BR and TC tags and the 200-character previous-tail, which the extraction-reads-chunks rule holds, and the `MAX_TOKENS = 8000` constant, which is model configuration with no matching specification node. I did not report them: they are for the comment route and for a code review, not this judgment. The confidence thresholds, the 1000-character fragment limit and the change_hint wording in the emitted prompt agree with nodes outside my set.
+candidates_opened:
+  - rules/knowledge-base/required-start-fallback

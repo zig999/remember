@@ -1,0 +1,36 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/attribute.dto.ts
+    where: >-
+      line 30, the `valid_from_source` field of AttributeDetailResponseSchema
+    evidence: >-
+      valid_from_source: ValidFromSourceSchema.nullable().optional(),
+    cost: >-
+      The node names this attribute `valid_from_basis`, typed `valid-from-basis`. This schema declares the same
+      fact as `valid_from_source`, typed `ValidFromSourceSchema`. A reader who searches the code for the node's
+      attribute name will not find it in this shape. The wire name and the domain name can also drift apart
+      with no record of which one the business decided. Every other attribute in this schema uses the node's
+      own name: value, status, recorded_at, valid_from, valid_to, confidence, superseded_at, provenance.
+    kind: contradicts
+    correction: >-
+      Declare the field under the node's attribute name, `valid_from_basis`. The same name is used in
+      `link.dto.ts` and in `graph.repository.ts` and `formatters.ts`, so the change reaches those files too. If
+      the wire name `valid_from_source` was decided deliberately, a node or the decision log has to hold that
+      decision. I found none that does.
+    node: domain/knowledge-base/node-attribute
+read:
+  - node: domain/knowledge-base/node-attribute
+    held_at: >-
+      AttributeDetailResponseSchema (lines 15-34), a read shape that declares value, status, recorded_at,
+      provenance, valid_from, valid_to, confidence and superseded_at under the node's own names. It declares
+      the basis under a different name, `valid_from_source` (see the finding), and the supersedes relationship
+      as `supersedes_attribute_id`.
+    evidence: >-
+      value: z.string(), / valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), /
+      recorded_at: z.string().datetime({ offset: true }), / superseded_at:
+      z.string().datetime({ offset: true }).nullable().optional(), / status: AssertionStatusSchema, /
+      confidence: z.number().min(0).max(1), / valid_from_source: ValidFromSourceSchema.nullable().optional(), /
+      supersedes_attribute_id: z.string().uuid().nullable().optional(), / provenance:
+      z.array(ProvenanceEntryResponseSchema)
+looked_past: >-
+  The header comment ("Mirrors `openapi.yaml` components.schemas.AttributeDetail") is prose, and it is not a node's fact. The same goes for the derived read fields (effective_status, is_current, is_in_effect, flags), which belong to other nodes outside this set and to other judgments.
+candidates_opened: []

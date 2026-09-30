@@ -1,0 +1,85 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the errata-signal block: ERRATA_MARKERS (line 66), hasErrataSignal (lines 68-76) and the
+      change_hint === "correction" branch (lines 117-126)
+    evidence: >-
+      const ERRATA_MARKERS = ["errata", "errado", "correção", "corrigir", "correction", "correcao"] as const;
+      ... if (input.change_hint === "correction") { if (!hasErrataSignal(input.fragment_texts)) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", ...
+    cost: >-
+      The marker vocabulary and the refusal of a correction proposal are implemented here. The node
+      that holds them, rules/knowledge-base/correction-requires-errata-evidence, is not bound to
+      this file. The candidate index lists no binding for it. If the node moves, the trace never
+      reaches this file, and nobody can tell whether the node or this list was the decision.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/correction-requires-errata-evidence to this file. The code already
+      agrees with the node: same six markers, case-insensitive, same error code.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the document_date branch of the requires_valid_from fallback, lines 144-158
+    evidence: >-
+      if (input.document_date !== null) { ... return { valid_from: input.valid_from, valid_from_basis: input.valid_from_basis, }; }
+    cost: >-
+      The node says a proposal that requires a start and states none takes the source's document
+      date with basis document. This branch passes the proposal through with valid_from and basis
+      both null. A row for a type that requires a validity start is left without one, and without
+      a justification. The decision log records exactly this divergence as the reason the node was
+      decided, yet the code still carries it.
+    kind: contradicts
+    correction: >-
+      When requires_valid_from is true, valid_from is null and document_date is present, resolve
+      valid_from to the document date (date portion) with valid_from_basis "document", as the
+      received branch already does for its own link. Bind
+      rules/knowledge-base/required-start-fallback to this file.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the final throw of the requires_valid_from branch, lines 167-172
+    evidence: >-
+      throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", "link_type / attribute_key requires_valid_from = true but no date is available (stated, document_date, and received_at are all absent).", { requires_valid_from: input.requires_valid_from } );
+    cost: >-
+      The refusal of a proposal that requires a start when no start, document date or reception
+      date exists is held here. The node that holds it, rules/knowledge-base/required-start-available,
+      is not bound to this file. A change to the node never reaches this refusal, and the next
+      reader looks for the rule in the specification and cannot tell it lives here too.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/required-start-available to this file. The refusal and its error
+      code already agree with the node.
+    node: rules/knowledge-base/required-start-available
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the BUSINESS_DATE_UNJUSTIFIED message for a valid_from without a basis, line 139
+    evidence: >-
+      "valid_from supplied without a valid_from_basis (stated | document | received)."
+    cost: >-
+      This is text the system emits to the caller. It lists received as a basis the caller may
+      supply. The node says a proposal must not state basis received. A caller who follows the
+      message is steered into supplying a basis that another layer refuses with
+      VALIDATION_INVALID_FORMAT, which is a different error code.
+    kind: contradicts
+    correction: >-
+      The message should name only the bases a proposal may state (stated | document).
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      validateTemporal(), the guard at lines 136-142
+    evidence: >-
+      if (input.valid_from !== null && input.valid_from_basis === null) { throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", "valid_from supplied without a valid_from_basis (stated | document | received).", { valid_from: input.valid_from } ); }
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      validateTemporal(), the semi-open interval check at lines 106-115
+    evidence: >-
+      if (input.valid_from !== null && input.valid_to !== null) { if (input.valid_from >= input.valid_to) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", "valid_from must be strictly before valid_to.", ...
+looked_past: >-
+  The file's header comment and docblocks cite BR-13, BR-16, A14, §6.5 and §13c, and the comments
+  retell the date chain and the semi-open rule. All of that is prose for the comment route, not a
+  finding, and the code holds those facts.
+candidates_opened:
+  - rules/knowledge-base/correction-requires-errata-evidence
+  - rules/knowledge-base/required-start-fallback
+  - rules/knowledge-base/required-start-available
+  - rules/knowledge-base/caller-never-states-received
