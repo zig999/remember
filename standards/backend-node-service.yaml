@@ -1,23 +1,15 @@
-# An example project standard: everything one Node/TypeScript service's source answers to, in one
+# The backend standard of Remember (eternal): everything the backend's source answers to, in one
 # registry — what it is built on and how it is arranged, together.
 #
-# This is NOT part of the distribution. It sits under src/standards/ rather than src/claude/, so no
-# assembly ships it: Siegard ships the slot a standard fits into, never its content. A consumer
-# project owns its own registry.
+# Derived from the servicedeskn1 backend registry: every rule, dependency and step of it that
+# holds for this backend is declared here, verbatim. What did not hold — rules decided by a lint
+# or secret-scan step this project does not run, rules naming servicedeskn1's modules or its
+# ports-and-adapters layout, response and error shapes this backend answers differently, and every
+# step's `decides`, which named servicedeskn1's constraints — was left out, and each is listed for
+# the project to decide on apart from this file.
 #
-# It exists because one registry per project is a legitimate shape and a consumer will want to see
-# it. What it is NOT is a recommendation. The contract's own `standard` field says "One project may
-# hold several — a backend's rules are not a frontend's — and each is named where it is used"; a
-# project whose backend and frontend genuinely differ still wants two files, one per concern, for
-# the reason stated there. What this file demonstrates is the other legitimate shape: one project,
-# one stack, one registry answering for all of it — what it runs on and how its own source is laid
-# out, together, because here they change at a pace close enough that a second file would only be
-# a second place to look.
-#
-# Its `elsewhere` states two boundaries this registry does not hold, each with where it actually
-# lives: an error's identity, which is the specification's; and which transport status an error
-# maps to, which is this file's own COR-04, stating where the mapping lives without stating the
-# mapping itself. Read them there rather than assumed from a lineage this file does not carry.
+# Where a rule says controller, this backend's controllers are its Fastify `*.routes.ts` files and
+# its MCP `*.handler.ts` files; this backend has no `*.controller.ts`, and the scopes say so.
 
 contract_version: siegard-standard/1
 standard: backend-node-service
@@ -25,6 +17,7 @@ summary: >-
   Everything a Node/TypeScript service's source answers to: which runtime, framework, driver and libraries it is built on, and how it is layered, wired, validated and named.
 
 rules:
+
   - id: STK-01
     statement: Every source file type-checks under the project's `strict` compiler configuration.
     because: >-
@@ -190,41 +183,25 @@ rules:
         suffix: .ts
         nested: true
 
-  # ---------------------------------------------------------------- layering and wiring
-
-  - id: ARC-01
-    statement: A constructor receives interfaces, never concrete implementations.
-    because: A class bound to a concrete collaborator cannot be exercised without it, so the test
-      has to stand up the collaborator's world to assert one line of this one.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
-      - { under: src, suffix: .repository.ts, nested: true }
-    seen_at: src/orders/order.service.ts
-
   - id: ARC-02
     statement: A service or controller never constructs a dependency; instantiation happens only
       inside a factory function.
     because: Wiring scattered through the layers has no single place to change, so swapping an
       implementation means finding every construction that named it.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
-    seen_at: src/factories/order.factory.ts
+      - { under: src, suffix: .routes.ts, nested: true }
+      - { under: src, suffix: .handler.ts, nested: true }
 
   - id: ARC-03
     statement: Each module wires itself in one factory function under src/factories/, named
       <resource>.factory.ts.
     because: A module whose wiring point cannot be found from its path is a module nobody can
       re-wire with confidence.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src/factories, suffix: .ts }
-    seen_at: src/factories/order.factory.ts
 
   - id: ARC-04
     statement: Business logic lives in a service; a controller maps transport to a call and back,
@@ -233,20 +210,19 @@ rules:
       be reimplemented the day a queue or a job needs it.
     decided_by: reading
     applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
+      - { under: src, suffix: .routes.ts, nested: true }
+      - { under: src, suffix: .handler.ts, nested: true }
       - { under: src, suffix: .repository.ts, nested: true }
 
   - id: ARC-05
     statement: A DTO is declared under a dto directory, never inline in a controller.
     because: A shape declared where it is used is a shape the next caller redeclares slightly
       differently, and neither copy is the contract.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
-    seen_at: src/dto/create-order.dto.ts
-
-  # ---------------------------------------------------------------- input and validation
+      - { under: src, suffix: .routes.ts, nested: true }
+      - { under: src, suffix: .handler.ts, nested: true }
+    seen_at: src/modules/compliance-audit/dto/compliance-delete.dto.ts
 
   - id: DTO-01
     statement: Validation happens at the route or middleware boundary; a service receives a typed
@@ -257,26 +233,24 @@ rules:
     applies_to:
       - { under: src, suffix: .service.ts, nested: true }
       - { under: src, suffix: .routes.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
-    seen_at: src/routes/order.routes.ts
+      - { under: src, suffix: .handler.ts, nested: true }
+    seen_at: src/modules/query-retrieval/routes/query-retrieval.routes.ts
 
   - id: DTO-02
     statement: A DTO schema is a Zod object plus the type inferred from it.
     because: A hand-written type beside a schema drifts from it silently, and the compiler cannot
       tell you which of the two the request actually satisfied.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .dto.ts, nested: true }
-    seen_at: src/dto/create-order.dto.ts
+    seen_at: src/modules/compliance-audit/dto/compliance-delete.dto.ts
 
   - id: DTO-03
     statement: A DTO is named for its use case — Create<Resource>Schema and Create<Resource>Dto in
       create-<resource>.dto.ts, and likewise for Update, Response and Query.
     because: A reader looking for the shape a route accepts should find it from the route's name
       alone, without opening three files to see which one it was.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .dto.ts, nested: true }
 
@@ -284,55 +258,28 @@ rules:
     statement: A test imports the DTO schema from the dto directory instead of redefining it.
     because: A schema redefined in a test passes against a shape production never accepted, so the
       test proves the copy rather than the contract.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .spec.ts, nested: true }
       - { under: src/__tests__, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- the shape of a response
 
   - id: API-01
     statement: A paginated response is the shared PaginatedResponse type imported from
       src/types/pagination.ts, never redeclared per module.
     because: Two declarations drift, and the day they disagree nobody can say which one the API
       promised.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
+      - { under: src, suffix: .routes.ts, nested: true }
+      - { under: src, suffix: .handler.ts, nested: true }
       - { under: src, suffix: .dto.ts, nested: true }
       - { under: src/types, suffix: .ts }
-    seen_at: src/types/pagination.ts
 
-  - id: API-02
-    statement: An empty list answers with the paginated envelope carrying an empty data array,
-      never with an absent value.
-    because: A caller that has to test for absence before iterating will forget once, and the
-      failure lands in the caller rather than here.
+  - id: API-06
+    statement: A route sits under a versioned prefix.
+    because: An unversioned route cannot be changed without breaking whoever already calls it.
     decided_by: reading
     applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
-
-  - id: API-03
-    statement: Offset pagination always computes the page count from the total and the limit, and
-      never hardcodes or omits it.
-    because: A page count the client computes itself is a page count that disagrees with the one
-      the server would have given.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
-
-  - id: API-04
-    statement: A page limit is bounded by a configured maximum, and neither the default nor the
-      maximum is written in source.
-    because: An unbounded limit is a denial of service with a query string, and a bound written in
-      source is one nobody can raise without a deploy.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
       - { under: src, suffix: .routes.ts, nested: true }
 
   - id: API-05
@@ -341,51 +288,18 @@ rules:
       not seen before.
     decided_by: reading
     applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
-      - { under: src, suffix: .middleware.ts, nested: true }
-
-  - id: API-06
-    statement: A route sits under a versioned prefix.
-    because: An unversioned route cannot be changed without breaking whoever already calls it.
-    decided_by: tool
-    tool: lint
-    applies_to:
       - { under: src, suffix: .routes.ts, nested: true }
-
-  # ---------------------------------------------------------------- how failure is raised
+      - { under: src, suffix: .handler.ts, nested: true }
+      - { under: src, suffix: .middleware.ts, nested: true }
 
   - id: COR-01
     statement: A catch either handles the error or rethrows it wrapped with the original as its
       cause; an empty catch is forbidden.
     because: A swallowed error is a failure nobody will ever see, and the symptom surfaces
       somewhere with no trace back to here.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
-
-  - id: COR-02
-    statement: A failure raises a typed error class carrying a name, a message and a
-      context field, never a generic error with a sentence in it.
-    because: A generic error cannot be mapped to a response or handled by a caller, so every layer
-      above has to match on its message.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .repository.ts, nested: true }
-    seen_at: src/errors/not-found.error.ts
-
-  - id: COR-04
-    statement: Every domain error maps to a transport status in one place, and no handler chooses a
-      status inline.
-    because: A status chosen where it is answered is a status chosen differently at the next
-      endpoint, and the one nobody remembers is the one a client branches on.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
-      - { under: src, suffix: .middleware.ts, nested: true }
-      - { under: src/errors, suffix: .ts, nested: true }
-    seen_at: src/errors/status-map.ts
 
   - id: COR-03
     statement: A service raises business errors, a repository raises data errors, and the error
@@ -416,7 +330,8 @@ rules:
     decided_by: reading
     applies_to:
       - { under: src, suffix: .service.ts, nested: true }
-      - { under: src, suffix: .controller.ts, nested: true }
+      - { under: src, suffix: .routes.ts, nested: true }
+      - { under: src, suffix: .handler.ts, nested: true }
 
   - id: EDG-03
     statement: A uniqueness violation is caught where it is raised and answered through a typed
@@ -455,15 +370,6 @@ rules:
       - { under: src, suffix: .middleware.ts, nested: true }
       - { under: src/config, suffix: .ts }
 
-  - id: EDG-07
-    statement: A rate limit is applied at the boundary, and its refusal tells the caller when to
-      try again.
-    because: A refusal that does not say when to retry turns every client into a tight retry loop.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .middleware.ts, nested: true }
-      - { under: src, suffix: .routes.ts, nested: true }
-
   - id: EDG-08
     statement: A dependency that is unavailable, slow or answers in an unexpected shape is handled
       as an error rather than allowed to crash the process.
@@ -474,33 +380,19 @@ rules:
       - { under: src, suffix: .repository.ts, nested: true }
       - { under: src/clients, suffix: .ts, nested: true }
 
-  # ---------------------------------------------------------------- what must not leak
-
-  - id: SEC-01
-    statement: Authorization is checked in the handler against the specific resource, never
-      inferred from the presence of a valid credential.
-    because: An identifier in a URL is not authorization, and a handler that only checks the
-      credential hands out every row by counting.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .controller.ts, nested: true }
-      - { under: src, suffix: .service.ts, nested: true }
-
   - id: SEC-02
     statement: Every database statement is parameterized; no query is built by concatenating or
       interpolating input.
     because: One interpolated value is a full read of the store, and the value that reaches it is
       not the one you tested with.
-    decided_by: tool
-    tool: secret-scan
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
   - id: SEC-03
     statement: No credential, token, secret or environment URL is written in source.
     because: A secret in source is a secret in every clone, every fork and every log of the clone.
-    decided_by: tool
-    tool: secret-scan
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -511,8 +403,6 @@ rules:
     decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- the code itself
 
   - id: TYP-01
     statement: The compiler runs strict, and the escape-hatch any type is never used; prefer
@@ -528,8 +418,7 @@ rules:
     statement: A type assertion is accompanied by a guard that narrows it.
     because: An assertion is a claim the compiler stops checking, so the first wrong one is found
       by a user.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -537,8 +426,7 @@ rules:
     statement: A public signature declares its parameter and return types explicitly.
     because: An inferred public type changes when the body changes, so a caller breaks from an edit
       nobody thought was a contract change.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -546,20 +434,17 @@ rules:
     statement: A value with meaning is a named constant, not a number or string spelled out where
       it is used.
     because: The same literal in three places is three places to change and two to forget.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
   - id: CON-01
     statement: Files are kebab-case, classes and types PascalCase, functions and variables
       camelCase, constants and environment variables screaming snake case, interfaces PascalCase
-      prefixed with I, database tables snake_case plural and columns snake_case, routes kebab-case
-      plural.
+      prefixed with I, database tables and columns snake_case, routes kebab-case.
     because: A name that does not say what kind of thing it is costs a reader an extra file open,
       every time.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -568,8 +453,7 @@ rules:
       beyond that, extract a named helper or pass an object.
     because: A function nobody can hold in their head is a function that gets a fourth branch
       instead of a second function.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -577,8 +461,7 @@ rules:
     statement: Commented-out code is deleted, and unused imports are removed.
     because: Code kept in a comment is code nobody maintains and everybody trusts, and it is read
       as intent long after it stopped compiling.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -594,8 +477,7 @@ rules:
   - id: PRH-01
     statement: Production code logs through the configured logger; console output is not used.
     because: A console line goes nowhere in production — no level, no correlation, no retention.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
@@ -603,28 +485,23 @@ rules:
     statement: A deferred-work marker carries a reference to the work that will settle it.
     because: An unreferenced marker is a decision deferred to nobody, and it survives every review
       by looking temporary.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
   - id: PRH-03
     statement: A lint rule is suppressed only with a comment stating why.
     because: A silent suppression removes the rule for everyone who reads the line afterwards.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src, suffix: .ts, nested: true }
 
   - id: PRH-04
     statement: A migration that destroys or alters data ships with a reverse migration beside it.
     because: A migration you cannot reverse turns a bad deploy into a restore from backup.
-    decided_by: tool
-    tool: lint
+    decided_by: reading
     applies_to:
       - { under: src/migrations, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- how tests are written here
 
   - id: TST-01
     statement: A test arranges, then acts, then asserts, in that order and visibly.
@@ -659,211 +536,6 @@ rules:
       and integration subtrees.
     because: A test nobody can find from the file it covers is a test that gets written twice and
       deleted once.
-    decided_by: tool
-    tool: lint
-    applies_to:
-      - { under: src/__tests__, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- layers, ports and adapters
-  # conventions.md, servicedeskn1's own transcription — the source for every rule from here to
-  # TST-07.
-
-  - id: LAY-01
-    statement: >-
-      Dependencies point inward: infrastructure imports domain modules; a domain module — case,
-      glossary, capability-registry, connector-registry, investigation (except its *.adapter.ts
-      files) — imports no infrastructure directory (http, http-connector, persistence, factories,
-      config) and no infrastructure package (fastify, pg, @anthropic-ai/sdk,
-      @modelcontextprotocol/sdk, jose). One departure stands, excluded by name rather than hidden:
-      connector-registry/connector-placeholder-declaration-check.ts imports
-      http-connector/connector-request-resolver.js for subjectAttributePlaceholderNamesIn, until
-      the function moves to a domain module or connector-registry is declared infrastructure.
-    because: A domain that imports an adapter cannot be tested or replaced apart from it.
-    decided_by: tool
-    tool: lint
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-    seen_at: src/case/case-store.port.ts
-
-  - id: LAY-02
-    statement: >-
-      No two modules import each other, directly or through a chain. Two cycles stand today —
-      case ↔ investigation and capability-registry ↔ connector-registry — and every review
-      reaching those modules reports them until one side of each is cut.
-    because: A cycle makes every member change together.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: LAY-03
-    statement: >-
-      Every external dependency a domain module needs — the database, the model provider, an
-      observation source, the clock — is reached through an interface named in domain terms,
-      implemented in a *.adapter.ts file or under persistence.
-    because: The domain names what it needs; which technology answers is a detail it never sees.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-    seen_at: src/case/case-store.port.ts
-
-  - id: LAY-04
-    statement: A service never imports another service.
-    because: Shared behavior descends into a domain module or ascends into a factory; a service
-      calling a service hides a transaction boundary.
-    decided_by: tool
-    tool: lint
-    applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-
-  # ---------------------------------------------------------------- the domain model (conventions.md)
-
-  - id: DOM-01
-    statement: A domain type declares every field readonly, and a domain class exposes no field
-      that is not readonly or private.
-    because: A value two callers hold is a value one of them can change unless the type forbids
-      it.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: DOM-02
-    statement: A public signature of a domain module uses a value object or an enumeration for a
-      concept with a constraint — an identity, a version, a status, a deadline — never a bare
-      primitive.
-    because: Every caller of a primitive re-learns what it means and what it admits.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: DOM-03
-    statement: A domain module performs no I/O — no HTTP, SQL, file system, system clock or
-      environment read; what comes from outside arrives as a parameter or through a port.
-    because: A domain that reads the clock cannot be tested at a chosen instant.
-    decided_by: tool
-    tool: lint
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- persistence and reads (conventions.md)
-
-  - id: PER-01
-    statement: >-
-      One store per aggregate root: its port in the domain module and one relational
-      implementation in persistence, speaking in collection terms; no store per table, and no pg
-      type crosses the port.
-    because: A store per table dissolves the consistency boundary the aggregate draws.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .port.ts }
-      - { under: persistence, suffix: .repository.ts }
-    seen_at: src/case/case-store.port.ts
-
-  - id: PER-02
-    statement: A listing reads through a dedicated query and never hydrates an aggregate to
-      discard it.
-    because: Loading a boundary to read one column pays for every invariant it will not check.
-      constraints/a-case-is-read-whole governs the case read and is not this rule's.
-    decided_by: reading
-    applies_to:
-      - { under: src, suffix: .service.ts, nested: true }
-      - { under: persistence, suffix: .repository.ts }
-
-  # ---------------------------------------------------------------- design patterns (conventions.md)
-
-  - id: PTN-01
-    statement: A class is named for its role in the domain, never for the pattern it implements —
-      HypothesisEvaluator, not EvaluationStrategyImpl — except where the pattern is the concept
-      itself (CaseRepository).
-    because: A pattern's name says how; a reader wants what.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: PTN-02
-    statement: An interface exists only with two implementations already in the tree, or one
-      implementation and a test double that exercises the interface; one with neither is removed.
-    because: An abstraction over one thing is an indirection with a name.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: PTN-03
-    statement: A design pattern enters for a variation that already exists in the code, never for
-      one imagined; the trigger and what the pattern costs are stated in the implementation
-      record's inferences. Which trigger authorizes which pattern, and what its misuse looks like,
-      is stated in conventions.md's pattern-trigger table.
-    because: A pattern without a trigger is structure nobody can remove because nobody knows what
-      it was for.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  - id: PTN-04
-    statement: The same pattern is not applied uniformly across modules for consistency's own
-      sake; PTN-01 to PTN-03, DOM-01 to DOM-03 and LAY-01 to LAY-03 are scoped to the domain
-      modules above and to nothing else — infrastructure answers to the registry's ARC, DTO and
-      API rules alone.
-    because: Structure where no invariant lives is cost without a rule to pay for it.
-    decided_by: reading
-    applies_to:
-      - { under: case, suffix: .ts, nested: true }
-      - { under: glossary, suffix: .ts, nested: true }
-      - { under: capability-registry, suffix: .ts, nested: true }
-      - { under: connector-registry, suffix: .ts, nested: true }
-      - { under: investigation, suffix: .ts, nested: true }
-
-  # ---------------------------------------------------------------- how tests prove the domain (conventions.md)
-
-  - id: TST-05
-    statement: Every adapter has one integration test against the real technology — PostgreSQL for
-      a *-store.repository.ts, the recorded provider answers the fake-*.adapter.ts files replay
-      for an Anthropic adapter — verifying the port it implements.
-    because: An adapter tested only against a stand-in is proven against nothing it will meet.
-    decided_by: reading
-    applies_to:
-      - { under: src/__tests__, suffix: .ts, nested: true }
-
-  - id: TST-06
-    statement: A service test runs with in-memory adapters and covers the transaction boundary and
-      every error the service raises; authentication is none of it
-      (constraints/no-route-enforces-authentication).
-    because: Those are what the service owns.
     decided_by: reading
     applies_to:
       - { under: src/__tests__, suffix: .ts, nested: true }
@@ -876,13 +548,23 @@ rules:
     applies_to:
       - { under: src/__tests__, suffix: .ts, nested: true }
 
-# What this standard deliberately does not hold, so a reader does not read an absence as an
-# oversight. Each is owned somewhere else, and stating it twice would create a second home that
-# drifts. Two entries that `backend-node-stack` carries are absent here on purpose; the header
-# says which and why.
-# What these rules assume already stands — the two registries' presuppositions, merged the way
-# their rules were. They concatenate cleanly here where the `elsewhere` entries did not: an
-# artifact both halves need is one artifact, and the rules it carries are simply both lists.
+  - id: LAY-04
+    statement: A service never imports another service.
+    because: Shared behavior descends into a domain module or ascends into a factory; a service
+      calling a service hides a transaction boundary.
+    decided_by: reading
+    applies_to:
+      - { under: src, suffix: .service.ts, nested: true }
+
+  - id: PER-02
+    statement: A listing reads through a dedicated query and never hydrates an aggregate to
+      discard it.
+    because: Loading a boundary to read one column pays for every invariant it will not check.
+    decided_by: reading
+    applies_to:
+      - { under: src, suffix: .service.ts, nested: true }
+      - { under: src, suffix: .repository.ts, nested: true }
+
 presupposes:
 
   - path: package.json
@@ -891,12 +573,12 @@ presupposes:
       the `lint`, `typecheck` and `secret-scan` steps every tool-decided rule below is run as, the
       declaration of every dependency the stack rules name as the only one of its kind, and the
       `secretlint` field the `secret-scan` step reads its rule set from — secretlint's config
-      loader takes that field from this file, so the configuration SEC-02 and SEC-03 are decided
-      by needs no artifact of its own and this one carries it.
+      loader takes that field from this file, so the configuration SEC-03 is to be decided by needs
+      no artifact of its own and this one carries it.
     rules: [STK-01, STK-02, STK-03, STK-04, STK-05, STK-07, STK-08, STK-09, STK-10, STK-11, STK-12,
-            ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01, SEC-02, SEC-03,
+            ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01, SEC-03,
             TYP-01, TYP-02, TYP-03, TYP-04, CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04,
-            TST-04, LAY-01, LAY-04, DOM-03]
+            TST-04, LAY-04]
 
   - path: tsconfig.json
     provides: >-
@@ -909,17 +591,12 @@ presupposes:
       The flat configuration the `lint` step reads its parser and its rule set from. Absent, eslint
       has not been told how to parse the TypeScript every scope below names, and the step fails on
       the first type annotation it meets; present but naming no rule, it exits 0 having decided
-      none of the twenty-three below. A `lint` script in the manifest is a step that runs — this is what
+      none of the twenty-one below. A `lint` script in the manifest is a step that runs — this is what
       makes it a step that decides.
     rules: [ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01,
             TYP-02, TYP-03, TYP-04, CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03,
-            PRH-04, TST-04, LAY-01, LAY-04, DOM-03]
+            PRH-04, TST-04, LAY-04]
 
-# What a delivery may install, and how this project is installed and checked — the two registries'
-# lists merged the way their rules were. The merge is clean here, and the reason is worth reading
-# beside the `elsewhere` entries that did not survive it: `backend-typescript` declared no install
-# because its sibling owned the manifest, and once both are one file that reason is gone, so the
-# install below is the stack half's and serves the whole document.
 dependencies:
 
   - package: fastify
@@ -963,21 +640,31 @@ dependencies:
     rules: [STK-01, TYP-01, TYP-02, TYP-03, TYP-04]
 
   - package: eslint
-    why: the `lint` step is it, and twenty-three of the rules above are decided by that step.
-    rules: [CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04, TST-04, LAY-01, LAY-04, DOM-03]
+    why: >-
+      the `lint` step is it (^9.0.0, the flat-config major eslint.config.js is written for), and
+      twenty-one of the rules above are to be decided by that step as eslint.config.js encodes
+      them.
+    rules: [CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04, TST-04, LAY-04]
+
+  - package: typescript-eslint
+    why: >-
+      eslint.config.js loads the TypeScript parser and rule set from it (^8.0.0, the major that
+      supports eslint 9's flat config); without it the `lint` step cannot parse the source, and
+      the typed rules TYP-02, TYP-03 and CON-01 are its rules.
+    rules: [TYP-02, TYP-03, CON-01]
 
   - package: secretlint
-    why: the `secret-scan` step is it, and it decides the two rules about credentials in source.
-    rules: [SEC-02, SEC-03]
-
-  - package: js-yaml
     why: >-
-      knowledge/rules/integration/a-malformed-or-unsupported-openapi-document-refuses-the-draft
-      decides that an OpenAPI document fetched for a connector configuration draft is read in
-      either of the two serializations the format itself defines -- JSON and YAML -- so the
-      OpenAPI 3.x reader needs a YAML parser and the project's runtime holds none natively.
-      Human-approved: already present as a transitive dependency (pulled in by eslint and
-      secretlint), widely used, MIT-licensed.
+      the `secret-scan` step is it (^8.0.0), and it is to decide SEC-03, the rule about credentials
+      in source. SEC-02 is not a secret scanner's to decide and stays a reading rule.
+    rules: [SEC-03]
+
+  - package: "@secretlint/secretlint-rule-preset-recommend"
+    why: >-
+      the rule set the `secretlint` field names (^8.0.0, secretlint's own major); secretlint with
+      an empty rule set exits 0 having decided nothing, so SEC-03 needs this preset to be decided
+      at all.
+    rules: [SEC-03]
 
 commands:
 
@@ -993,72 +680,29 @@ commands:
   - step: lint
     command: npm run lint
     timeout_seconds: 180
-    decides:
-      - constraints/the-domain-depends-on-no-infrastructure
-      - constraints/judgment-runs-behind-a-port
-      - constraints/consolidation-runs-behind-a-port
 
   - step: secret-scan
     command: npm run secret-scan
     timeout_seconds: 120
 
-  - step: test-unit
-    command: node --env-file=.env.test node_modules/.bin/vitest run src/__tests__/unit
-    timeout_seconds: 300
-    decides:
-      - constraints/a-case-is-read-whole
-      - constraints/a-domain-error-unmapped-by-status-is-refused-generically
-      - constraints/a-malformed-request-is-refused-with-a-validation-error
-      - constraints/consolidation-runs-behind-a-port
-      - constraints/hypotheses-are-judged-in-isolated-parallel-calls
-      - constraints/judgment-runs-behind-a-port
-      - constraints/listings-are-paged
-      - constraints/no-route-enforces-authentication
-      - constraints/the-capability-identity-read-is-rate-limited
-      - constraints/the-capability-identity-read-refuses-an-unregistered-identity
-      - constraints/the-concept-read-refuses-an-unanswered-concept
-      - constraints/the-consolidation-prompt-is-closed
-      - constraints/the-database-is-externally-provisioned
-      - constraints/the-domain-depends-on-no-infrastructure
-      - constraints/the-judgment-prompt-is-closed
-
   - step: test
     command: npm test
     timeout_seconds: 2400
     role: suite
-    decides:
-      - constraints/diagnosis-answers-synchronously
-      - constraints/the-schema-replays-from-its-scripts
-      - constraints/the-system-persists-to-one-relational-database
+
+# What this standard deliberately does not hold, so a reader does not read an absence as an
+# oversight. Each is owned somewhere else, and stating it twice would create a second home that
+# drifts.
 
 elsewhere:
 
   - what: Which errors exist and what each one names — the duplicate registration, the invalid
       order total, the expired credential.
-    lives_in: The knowledge base, as definitions whose kind is a domain error, where the node's own
+    lives_in: The specification, as definitions whose kind is a domain error, where the node's own
       identifier is the error's name.
     why: An error's identity is what the business decided, and a code written in source that no
       bound node holds is the archetypal base-conformance finding. Naming them here would require
       in code exactly what that pass exists to report.
-
-  - what: Which transport status each of those errors maps to — 404, 409, 422, 401, 403, 429, 201,
-      204.
-    lives_in: This file, in COR-04, which requires the mapping to live in one place — and that
-      place, in code.
-    why: This is the entry that was wrong until it was rewritten, and the mistake is worth keeping
-      visible. A status is transport, and the knowledge base excludes transport, so sending these
-      there sent them to a home that refuses them and they lived nowhere at all. But which status a
-      domain error maps to is not a domain fact either — two projects map the same error differently.
-      It is this project's decision about how it answers. So the rule above states where the mapping
-      belongs without stating any mapping, the table is code in the place it names, and the three
-      passes stop disagreeing — the base has the errors, this file requires one map, and the code
-      holds it.
-
-  - what: Who may see which resource, beyond the requirement that the check happen against the
-      resource itself.
-    lives_in: The knowledge base, as rule nodes.
-    why: An authorization outcome is a domain decision. SEC-01 above says where the check belongs;
-      what it decides is not this file's.
 
   - what: Falsifying the cause of a timeout, a flake or a performance finding — reproducing it in
       isolation and then under load, varying the knob, and recording whether the cause was verified

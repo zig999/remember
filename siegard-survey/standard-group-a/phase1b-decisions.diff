@@ -1,0 +1,160 @@
+--- /tmp/std-phase1a.yaml	2026-09-30 10:48:59.505127321 -0300
++++ standards/backend-node-service.yaml	2026-09-30 10:49:23.472780256 -0300
+@@ -7,6 +7,9 @@
+ # ports-and-adapters layout, response and error shapes this backend answers differently, and every
+ # step's `decides`, which named servicedeskn1's constraints — was left out, and each is listed for
+ # the project to decide on apart from this file.
++#
++# Where a rule says controller, this backend's controllers are its Fastify `*.routes.ts` files and
++# its MCP `*.handler.ts` files; this backend has no `*.controller.ts`, and the scopes say so.
+ 
+ contract_version: siegard-standard/1
+ standard: backend-node-service
+@@ -188,7 +191,8 @@
+     decided_by: reading
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+ 
+   - id: ARC-03
+     statement: Each module wires itself in one factory function under src/factories/, named
+@@ -206,7 +210,8 @@
+       be reimplemented the day a queue or a job needs it.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+       - { under: src, suffix: .repository.ts, nested: true }
+ 
+   - id: ARC-05
+@@ -215,7 +220,8 @@
+       differently, and neither copy is the contract.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+     seen_at: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+ 
+   - id: DTO-01
+@@ -227,8 +233,8 @@
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+       - { under: src, suffix: .routes.ts, nested: true }
+-      - { under: src, suffix: .controller.ts, nested: true }
+-    seen_at: src/routes/order.routes.ts
++      - { under: src, suffix: .handler.ts, nested: true }
++    seen_at: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+ 
+   - id: DTO-02
+     statement: A DTO schema is a Zod object plus the type inferred from it.
+@@ -264,7 +270,8 @@
+       promised.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+       - { under: src, suffix: .dto.ts, nested: true }
+       - { under: src/types, suffix: .ts }
+ 
+@@ -281,7 +288,8 @@
+       not seen before.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+       - { under: src, suffix: .middleware.ts, nested: true }
+ 
+   - id: COR-01
+@@ -322,7 +330,8 @@
+     decided_by: reading
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+ 
+   - id: EDG-03
+     statement: A uniqueness violation is caught where it is raised and answered through a typed
+@@ -432,8 +441,7 @@
+   - id: CON-01
+     statement: Files are kebab-case, classes and types PascalCase, functions and variables
+       camelCase, constants and environment variables screaming snake case, interfaces PascalCase
+-      prefixed with I, database tables snake_case plural and columns snake_case, routes kebab-case
+-      plural.
++      prefixed with I, database tables and columns snake_case, routes kebab-case.
+     because: A name that does not say what kind of thing it is costs a reader an extra file open,
+       every time.
+     decided_by: reading
+@@ -548,20 +556,14 @@
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+ 
+-# What this standard deliberately does not hold, so a reader does not read an absence as an
+-# oversight. Each is owned somewhere else, and stating it twice would create a second home that
+-# drifts. Two entries that `backend-node-stack` carries are absent here on purpose; the header
+-# says which and why.
+-
+   - id: PER-02
+     statement: A listing reads through a dedicated query and never hydrates an aggregate to
+       discard it.
+     because: Loading a boundary to read one column pays for every invariant it will not check.
+-      constraints/a-case-is-read-whole governs the case read and is not this rule's.
+     decided_by: reading
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+-      - { under: persistence, suffix: .repository.ts }
++      - { under: src, suffix: .repository.ts, nested: true }
+ 
+ presupposes:
+ 
+@@ -571,10 +573,10 @@
+       the `lint`, `typecheck` and `secret-scan` steps every tool-decided rule below is run as, the
+       declaration of every dependency the stack rules name as the only one of its kind, and the
+       `secretlint` field the `secret-scan` step reads its rule set from — secretlint's config
+-      loader takes that field from this file, so the configuration SEC-02 and SEC-03 are to be
+-      decided by needs no artifact of its own and this one carries it.
++      loader takes that field from this file, so the configuration SEC-03 is to be decided by needs
++      no artifact of its own and this one carries it.
+     rules: [STK-01, STK-02, STK-03, STK-04, STK-05, STK-07, STK-08, STK-09, STK-10, STK-11, STK-12,
+-            ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01, SEC-02, SEC-03,
++            ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01, SEC-03,
+             TYP-01, TYP-02, TYP-03, TYP-04, CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04,
+             TST-04, LAY-04]
+ 
+@@ -653,9 +655,16 @@
+ 
+   - package: secretlint
+     why: >-
+-      the `secret-scan` step is it (^8.0.0), and it is to decide the two rules about credentials
+-      in source.
+-    rules: [SEC-02, SEC-03]
++      the `secret-scan` step is it (^8.0.0), and it is to decide SEC-03, the rule about credentials
++      in source. SEC-02 is not a secret scanner's to decide and stays a reading rule.
++    rules: [SEC-03]
++
++  - package: "@secretlint/secretlint-rule-preset-recommend"
++    why: >-
++      the rule set the `secretlint` field names (^8.0.0, secretlint's own major); secretlint with
++      an empty rule set exits 0 having decided nothing, so SEC-03 needs this preset to be decided
++      at all.
++    rules: [SEC-03]
+ 
+ commands:
+ 
+@@ -681,6 +690,10 @@
+     timeout_seconds: 2400
+     role: suite
+ 
++# What this standard deliberately does not hold, so a reader does not read an absence as an
++# oversight. Each is owned somewhere else, and stating it twice would create a second home that
++# drifts.
++
+ elsewhere:
+ 
+   - what: Which errors exist and what each one names — the duplicate registration, the invalid

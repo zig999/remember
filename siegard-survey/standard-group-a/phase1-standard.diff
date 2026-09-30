@@ -1,0 +1,407 @@
+--- /tmp/std-before.yaml	2026-09-30 10:27:08.643412403 -0300
++++ standards/backend-node-service.yaml	2026-09-30 10:49:23.472780256 -0300
+@@ -7,6 +7,9 @@
+ # ports-and-adapters layout, response and error shapes this backend answers differently, and every
+ # step's `decides`, which named servicedeskn1's constraints — was left out, and each is listed for
+ # the project to decide on apart from this file.
++#
++# Where a rule says controller, this backend's controllers are its Fastify `*.routes.ts` files and
++# its MCP `*.handler.ts` files; this backend has no `*.controller.ts`, and the scopes say so.
+ 
+ contract_version: siegard-standard/1
+ standard: backend-node-service
+@@ -180,6 +183,26 @@
+         suffix: .ts
+         nested: true
+ 
++  - id: ARC-02
++    statement: A service or controller never constructs a dependency; instantiation happens only
++      inside a factory function.
++    because: Wiring scattered through the layers has no single place to change, so swapping an
++      implementation means finding every construction that named it.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .service.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
++
++  - id: ARC-03
++    statement: Each module wires itself in one factory function under src/factories/, named
++      <resource>.factory.ts.
++    because: A module whose wiring point cannot be found from its path is a module nobody can
++      re-wire with confidence.
++    decided_by: reading
++    applies_to:
++      - { under: src/factories, suffix: .ts }
++
+   - id: ARC-04
+     statement: Business logic lives in a service; a controller maps transport to a call and back,
+       and a repository only reads and writes.
+@@ -187,9 +210,20 @@
+       be reimplemented the day a queue or a job needs it.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+       - { under: src, suffix: .repository.ts, nested: true }
+ 
++  - id: ARC-05
++    statement: A DTO is declared under a dto directory, never inline in a controller.
++    because: A shape declared where it is used is a shape the next caller redeclares slightly
++      differently, and neither copy is the contract.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
++    seen_at: src/modules/compliance-audit/dto/compliance-delete.dto.ts
++
+   - id: DTO-01
+     statement: Validation happens at the route or middleware boundary; a service receives a typed
+       DTO and never a raw request body.
+@@ -199,8 +233,54 @@
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+       - { under: src, suffix: .routes.ts, nested: true }
+-      - { under: src, suffix: .controller.ts, nested: true }
+-    seen_at: src/routes/order.routes.ts
++      - { under: src, suffix: .handler.ts, nested: true }
++    seen_at: src/modules/query-retrieval/routes/query-retrieval.routes.ts
++
++  - id: DTO-02
++    statement: A DTO schema is a Zod object plus the type inferred from it.
++    because: A hand-written type beside a schema drifts from it silently, and the compiler cannot
++      tell you which of the two the request actually satisfied.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .dto.ts, nested: true }
++    seen_at: src/modules/compliance-audit/dto/compliance-delete.dto.ts
++
++  - id: DTO-03
++    statement: A DTO is named for its use case — Create<Resource>Schema and Create<Resource>Dto in
++      create-<resource>.dto.ts, and likewise for Update, Response and Query.
++    because: A reader looking for the shape a route accepts should find it from the route's name
++      alone, without opening three files to see which one it was.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .dto.ts, nested: true }
++
++  - id: DTO-04
++    statement: A test imports the DTO schema from the dto directory instead of redefining it.
++    because: A schema redefined in a test passes against a shape production never accepted, so the
++      test proves the copy rather than the contract.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .spec.ts, nested: true }
++      - { under: src/__tests__, suffix: .ts, nested: true }
++
++  - id: API-01
++    statement: A paginated response is the shared PaginatedResponse type imported from
++      src/types/pagination.ts, never redeclared per module.
++    because: Two declarations drift, and the day they disagree nobody can say which one the API
++      promised.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
++      - { under: src, suffix: .dto.ts, nested: true }
++      - { under: src/types, suffix: .ts }
++
++  - id: API-06
++    statement: A route sits under a versioned prefix.
++    because: An unversioned route cannot be changed without breaking whoever already calls it.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .routes.ts, nested: true }
+ 
+   - id: API-05
+     statement: An error answers in one envelope, carrying a code, a message and its details.
+@@ -208,9 +288,19 @@
+       not seen before.
+     decided_by: reading
+     applies_to:
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+       - { under: src, suffix: .middleware.ts, nested: true }
+ 
++  - id: COR-01
++    statement: A catch either handles the error or rethrows it wrapped with the original as its
++      cause; an empty catch is forbidden.
++    because: A swallowed error is a failure nobody will ever see, and the symptom surfaces
++      somewhere with no trace back to here.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
+   - id: COR-03
+     statement: A service raises business errors, a repository raises data errors, and the error
+       middleware formats whatever reaches it.
+@@ -240,7 +330,8 @@
+     decided_by: reading
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+-      - { under: src, suffix: .controller.ts, nested: true }
++      - { under: src, suffix: .routes.ts, nested: true }
++      - { under: src, suffix: .handler.ts, nested: true }
+ 
+   - id: EDG-03
+     statement: A uniqueness violation is caught where it is raised and answered through a typed
+@@ -289,6 +380,22 @@
+       - { under: src, suffix: .repository.ts, nested: true }
+       - { under: src/clients, suffix: .ts, nested: true }
+ 
++  - id: SEC-02
++    statement: Every database statement is parameterized; no query is built by concatenating or
++      interpolating input.
++    because: One interpolated value is a full read of the store, and the value that reaches it is
++      not the one you tested with.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: SEC-03
++    statement: No credential, token, secret or environment URL is written in source.
++    because: A secret in source is a secret in every clone, every fork and every log of the clone.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
+   - id: SEC-04
+     statement: No secret, stack trace or internal detail reaches a log or a client response.
+     because: A log is read by more people than the store is, and a stack trace tells a stranger the
+@@ -307,6 +414,57 @@
+     applies_to:
+       - { under: src, suffix: .ts, nested: true }
+ 
++  - id: TYP-02
++    statement: A type assertion is accompanied by a guard that narrows it.
++    because: An assertion is a claim the compiler stops checking, so the first wrong one is found
++      by a user.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: TYP-03
++    statement: A public signature declares its parameter and return types explicitly.
++    because: An inferred public type changes when the body changes, so a caller breaks from an edit
++      nobody thought was a contract change.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: TYP-04
++    statement: A value with meaning is a named constant, not a number or string spelled out where
++      it is used.
++    because: The same literal in three places is three places to change and two to forget.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: CON-01
++    statement: Files are kebab-case, classes and types PascalCase, functions and variables
++      camelCase, constants and environment variables screaming snake case, interfaces PascalCase
++      prefixed with I, database tables and columns snake_case, routes kebab-case.
++    because: A name that does not say what kind of thing it is costs a reader an extra file open,
++      every time.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: MNT-01
++    statement: A function stays within thirty lines and takes at most three positional parameters;
++      beyond that, extract a named helper or pass an object.
++    because: A function nobody can hold in their head is a function that gets a fourth branch
++      instead of a second function.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: MNT-02
++    statement: Commented-out code is deleted, and unused imports are removed.
++    because: Code kept in a comment is code nobody maintains and everybody trusts, and it is read
++      as intent long after it stopped compiling.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
+   - id: MNT-03
+     statement: A block of logic that already exists somewhere in this project is called, not
+       copied.
+@@ -316,6 +474,35 @@
+     applies_to:
+       - { under: src, suffix: .ts, nested: true }
+ 
++  - id: PRH-01
++    statement: Production code logs through the configured logger; console output is not used.
++    because: A console line goes nowhere in production — no level, no correlation, no retention.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: PRH-02
++    statement: A deferred-work marker carries a reference to the work that will settle it.
++    because: An unreferenced marker is a decision deferred to nobody, and it survives every review
++      by looking temporary.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: PRH-03
++    statement: A lint rule is suppressed only with a comment stating why.
++    because: A silent suppression removes the rule for everyone who reads the line afterwards.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .ts, nested: true }
++
++  - id: PRH-04
++    statement: A migration that destroys or alters data ships with a reverse migration beside it.
++    because: A migration you cannot reverse turns a bad deploy into a restore from backup.
++    decided_by: reading
++    applies_to:
++      - { under: src/migrations, suffix: .ts, nested: true }
++
+   - id: TST-01
+     statement: A test arranges, then acts, then asserts, in that order and visibly.
+     because: A test whose setup and assertions are interleaved cannot be read to find out what it
+@@ -344,6 +531,15 @@
+       - { under: src, suffix: .spec.ts, nested: true }
+       - { under: src/__tests__, suffix: .ts, nested: true }
+ 
++  - id: TST-04
++    statement: A test file mirrors the path of the unit under test, under src/__tests__/ with unit
++      and integration subtrees.
++    because: A test nobody can find from the file it covers is a test that gets written twice and
++      deleted once.
++    decided_by: reading
++    applies_to:
++      - { under: src/__tests__, suffix: .ts, nested: true }
++
+   - id: TST-07
+     statement: Every invariant a rule of the specification states has a test that violates it and
+       expects the refusal.
+@@ -352,30 +548,37 @@
+     applies_to:
+       - { under: src/__tests__, suffix: .ts, nested: true }
+ 
+-# What this standard deliberately does not hold, so a reader does not read an absence as an
+-# oversight. Each is owned somewhere else, and stating it twice would create a second home that
+-# drifts. Two entries that `backend-node-stack` carries are absent here on purpose; the header
+-# says which and why.
++  - id: LAY-04
++    statement: A service never imports another service.
++    because: Shared behavior descends into a domain module or ascends into a factory; a service
++      calling a service hides a transaction boundary.
++    decided_by: reading
++    applies_to:
++      - { under: src, suffix: .service.ts, nested: true }
+ 
+   - id: PER-02
+     statement: A listing reads through a dedicated query and never hydrates an aggregate to
+       discard it.
+     because: Loading a boundary to read one column pays for every invariant it will not check.
+-      constraints/a-case-is-read-whole governs the case read and is not this rule's.
+     decided_by: reading
+     applies_to:
+       - { under: src, suffix: .service.ts, nested: true }
+-      - { under: persistence, suffix: .repository.ts }
++      - { under: src, suffix: .repository.ts, nested: true }
+ 
+ presupposes:
+ 
+   - path: package.json
+     provides: >-
+       The `"type": "module"` STK-02 depends on, the `test` script STK-10 names its runner through,
+-      the `typecheck` script STK-01 and TYP-01 are run as, and the declaration of every dependency
+-      the stack rules name as the only one of its kind.
++      the `lint`, `typecheck` and `secret-scan` steps every tool-decided rule below is run as, the
++      declaration of every dependency the stack rules name as the only one of its kind, and the
++      `secretlint` field the `secret-scan` step reads its rule set from — secretlint's config
++      loader takes that field from this file, so the configuration SEC-03 is to be decided by needs
++      no artifact of its own and this one carries it.
+     rules: [STK-01, STK-02, STK-03, STK-04, STK-05, STK-07, STK-08, STK-09, STK-10, STK-11, STK-12,
+-            TYP-01]
++            ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01, SEC-03,
++            TYP-01, TYP-02, TYP-03, TYP-04, CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04,
++            TST-04, LAY-04]
+ 
+   - path: tsconfig.json
+     provides: >-
+@@ -383,6 +586,17 @@
+       mode that decides whether an extensionless relative import resolves at all.
+     rules: [STK-01, TYP-01]
+ 
++  - path: eslint.config.js
++    provides: >-
++      The flat configuration the `lint` step reads its parser and its rule set from. Absent, eslint
++      has not been told how to parse the TypeScript every scope below names, and the step fails on
++      the first type annotation it meets; present but naming no rule, it exits 0 having decided
++      none of the twenty-one below. A `lint` script in the manifest is a step that runs — this is what
++      makes it a step that decides.
++    rules: [ARC-02, ARC-03, ARC-05, DTO-02, DTO-03, DTO-04, API-01, API-06, COR-01,
++            TYP-02, TYP-03, TYP-04, CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03,
++            PRH-04, TST-04, LAY-04]
++
+ dependencies:
+ 
+   - package: fastify
+@@ -423,7 +637,34 @@
+     why: >-
+       The `typecheck` step is its compiler, and STK-01 and TYP-01 through TYP-04 are decided by
+       it.
+-    rules: [STK-01, TYP-01]
++    rules: [STK-01, TYP-01, TYP-02, TYP-03, TYP-04]
++
++  - package: eslint
++    why: >-
++      the `lint` step is it (^9.0.0, the flat-config major eslint.config.js is written for), and
++      twenty-one of the rules above are to be decided by that step as eslint.config.js encodes
++      them.
++    rules: [CON-01, MNT-01, MNT-02, PRH-01, PRH-02, PRH-03, PRH-04, TST-04, LAY-04]
++
++  - package: typescript-eslint
++    why: >-
++      eslint.config.js loads the TypeScript parser and rule set from it (^8.0.0, the major that
++      supports eslint 9's flat config); without it the `lint` step cannot parse the source, and
++      the typed rules TYP-02, TYP-03 and CON-01 are its rules.
++    rules: [TYP-02, TYP-03, CON-01]
++
++  - package: secretlint
++    why: >-
++      the `secret-scan` step is it (^8.0.0), and it is to decide SEC-03, the rule about credentials
++      in source. SEC-02 is not a secret scanner's to decide and stays a reading rule.
++    rules: [SEC-03]
++
++  - package: "@secretlint/secretlint-rule-preset-recommend"
++    why: >-
++      the rule set the `secretlint` field names (^8.0.0, secretlint's own major); secretlint with
++      an empty rule set exits 0 having decided nothing, so SEC-03 needs this preset to be decided
++      at all.
++    rules: [SEC-03]
+ 
+ commands:
+ 
+@@ -436,11 +677,23 @@
+     command: npm run typecheck
+     timeout_seconds: 300
+ 
++  - step: lint
++    command: npm run lint
++    timeout_seconds: 180
++
++  - step: secret-scan
++    command: npm run secret-scan
++    timeout_seconds: 120
++
+   - step: test
+     command: npm test
+     timeout_seconds: 2400
+     role: suite
+ 
++# What this standard deliberately does not hold, so a reader does not read an absence as an
++# oversight. Each is owned somewhere else, and stating it twice would create a second home that
++# drifts.
++
+ elsewhere:
+ 
+   - what: Which errors exist and what each one names — the duplicate registration, the invalid
