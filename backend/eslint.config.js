@@ -29,6 +29,12 @@ export default [
     },
   },
   {
+    files: ['src/**/*.service.ts'],
+    rules: {
+      'no-restricted-imports': ['warn', { patterns: [{ group: ['**/*.service.js'] }] }],
+    },
+  },
+  {
     files: ['src/__tests__/**/*.ts', 'src/**/*.spec.ts', 'src/**/*.test.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
