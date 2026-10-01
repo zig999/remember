@@ -1,0 +1,270 @@
+findings:
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      BLOCK_4C_DIRECTED_INGESTION, opening paragraph, lines 100-104
+    evidence: >-
+      "Frases de gatilho tipicas: \"crie\",", "\"registre\", \"linke\", \"ingerir esta informacao\". Se nao houver", "pedido explicito, NAO chame esta ferramenta — apenas responda em texto."
+    cost: >-
+      The prompt the assistant is sent names four specific phrases as what an explicit owner request to record looks like. No node holds that list. The node that governs the gate says only "when the owner's own message asks it to record knowledge". The list therefore lives only in this string, and the next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Either give the phrases a node, or take them out of the prompt so it states only the gate the specification holds.
+    node: rules/chat/assistant-writes-only-on-owner-request
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 11-13 (item 1 of the block 4C summary)
+    evidence: >-
+      "(1) `ingest_directed` is the SINGLE write-bearing entry from chat,"
+    cost: >-
+      A comment says the fact the node holds, and the prompt string BLOCK_4C_DIRECTED_INGESTION already holds it as code. The comment is a second home outside behavior, and it will drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the string at lines 99-100.
+    node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 15-17 (item 2 of the block 4C summary)
+    evidence: >-
+      "MAY use the `node_id` pin on a node item to re-affirm a known entity it just retrieved via `query`;"
+    cost: >-
+      A comment says the pin rule, and the prompt string already holds it as code (item 2 of block 4C). The comment is a second home that `--check` never reaches.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the string at lines 113-118.
+    node: rules/chat/chat-prompt-v4-pins-known-entity
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 18-20 (item 3 of the block 4C summary)
+    evidence: >-
+      "the model MUST ASK the Owner — never silently fall back to the `received` basis;"
+    cost: >-
+      A comment says the ask-the-start-date rule, and the prompt string already holds it as code (item 3 of block 4C). The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the string at lines 119-127.
+    node: rules/chat/chat-prompt-v4-asks-start-date
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 21-23 (item 4 of the block 4C summary)
+    evidence: >-
+      "the model MUST REPORT the per-item result inline (`accepted` / `consolidated` / `needs_review` / `rejected` / `dependency_failed`);"
+    cost: >-
+      A comment says the report-each-item rule, and the prompt string already holds it as code (item 5 of block 4C). The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the string at lines 140-145.
+    node: rules/chat/chat-prompt-v4-reports-each-item
+  - file: src/modules/chat/prompts/v4.ts
+    where: >-
+      header comment, lines 24-27 (item 5 of the block 4C summary)
+    evidence: >-
+      "(5) NO auto-loop — each command is a single `ingest_directed` call followed by the natural-language answer;"
+    cost: >-
+      A comment says the one-call-per-command rule, and the prompt string already holds it as code (item 5 of block 4C). The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the string at lines 136-140.
+    node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+read:
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only builds a prompt string, `export function system(catalog: CatalogSnapshot): string`. It holds no chat enablement default.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION, PLAYBOOK POS-INGESTAO item 1 and 1.a, lines 154-159
+    evidence: >-
+      "1. Use `result.run.affected_nodes` como PRIMEIRA via de consulta" ... "a. Quando `affected_nodes` estiver presente e nao-vazio, use os ids", "diretamente em `get_node(id)` e/ou `traverse(start_node_id=id,", "depth=2)`."
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE item 3, lines 90-94
+    evidence: >-
+      "use `list_node_types`, `list_link_types`", "e `list_attribute_keys` como primitivas de descoberta."
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION, PLAYBOOK POS-INGESTAO item 1.b, lines 160-165
+    evidence: >-
+      "b. Quando `affected_nodes` estiver ausente ou vazio", "`list_nodes(node_type=<tipo", "plausivel>)` ESCOLHIDO no bloco de ontologia. NUNCA uma busca", "multi-nome concatenada (bloco 4B directive 1)."
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE item 2, lines 85-87
+    evidence: >-
+      "2. `list_nodes` DEVE ser chamada COM um filtro `node_type` quando voce", "precisa enumerar uma categoria"
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE item 1, line 80
+    evidence: >-
+      "1. A ferramenta `search` e LEXICA E TEM SEMANTICA `AND` sobre o texto"
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE item 1, lines 81-83
+    evidence: >-
+      "Buscar UM NOME ESPECIFICO POR CHAMADA.", "NUNCA concatene varios nomes proprios numa unica chamada `search`"
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE item 2, lines 86-89, and BLOCK_4C_DIRECTED_INGESTION PLAYBOOK POS-INGESTAO item 3, lines 169-172
+    evidence: >-
+      "NUNCA use", "`list_nodes` SEM `node_type` para responder \"o que foi ingerido\""; "3. NUNCA apresente a primeira linha de um `list_nodes` sem filtro como", "resposta para \"o que foi ingerido\""
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The v1 prompt body is not in this file. `const v1Body = v1System();` delegates to ./v1.js. The "Cite a fonte" line at 166 belongs to the v4 post-ingestion playbook, not to the v1 prompt.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      v4 does not carry v2's body. The v4 prompt describes `ingest_directed` as "de forma sincrona", the opposite of an ingestion that returns while running.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      No directive in v4 forbids echoing the content an ingestion was given. The v2 body is not included, and the file has no such string.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      v4 retires the polling directive, and the v2 body is not included. The only related line is v4's own "NAO faca auto-loop — NAO chame `ingest_directed` repetidamente".
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 3, lines 119-127
+    evidence: >-
+      "voce DEVE perguntar a data ao", "dono ANTES de chamar `ingest_directed`. NAO chame `ingest_directed`", "sem `valid_from` confiando no fallback `received`"
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 4, lines 131-135
+    evidence: >-
+      "use", "EXATAMENTE um dos valores listados, verbatim — NUNCA traduza (ex.:", "`in_progress` NAO existe; use `em andamento`) nem invente variantes;"
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION opening, line 100
+    evidence: >-
+      "`ingest_directed` e a UNICA ferramenta de escrita disponivel no chat."
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 5, lines 136-140
+    evidence: >-
+      "5. UMA UNICA CHAMADA POR COMANDO.", "NAO faca auto-loop — NAO chame `ingest_directed` repetidamente para", "tentar consertar itens rejeitados."
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 2, lines 113-118
+    evidence: >-
+      "passe o `id` retornado no campo OPCIONAL `node_id` do item em", "`nodes[]` — isso e um PIN: bypassa a resolucao fuzzy e amarra o item", "ao no conhecido."
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 4, lines 128-131
+    evidence: >-
+      "4. ATRIBUTOS. Grave APENAS atributos que o dono declarou. NAO infira", "`status`, categorias ou qualquer valor de estado que o dono nao disse —", "se um atributo parecer util mas nao foi dito, PERGUNTE antes de gravar"
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: >-
+      BLOCK_4C_DIRECTED_INGESTION item 5, lines 140-145
+    evidence: >-
+      "Apos a resposta, RELATE ao dono,", "item por item, o que aconteceu: quais foram `accepted`, quais foram", "`consolidated`"
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration or default for directed ingestion. It builds static strings: `const BLOCK_4C_DIRECTED_INGESTION: string = [`.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no distillation or summary setting. Its only exports are PROMPT_VERSION, the v1 marker re-export and `system`.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic. It holds `system(catalog)` returning `[v1Body, block4A, BLOCK_4B_SEARCH_DISCIPLINE, BLOCK_4C_DIRECTED_INGESTION].join("\n")`.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It exports only the prompt builder `system`.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta link. It exports only the prompt builder `system`.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file renders no link labels. The ontology rendering is delegated: `renderOntologyBlock(catalog)` imported from ./v3.js.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. `CatalogSnapshot` is used only as the argument type of `system`.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no search result handling. `search` appears only inside prompt prose.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file reads no tool result. It builds only static strings and the `system` builder.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no message length limit. It has no numeric limit at all besides `depth=2` inside prompt prose.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no owner time statement. A search of its strings finds no "Data/hora atual do dono".
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file selects no messages. It builds only the system prompt.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time zone. A search of the file finds no "America/Sao_Paulo".
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      This is the chat system prompt, not a summary prompt. A search of the file finds no "(vazio)".
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      This is the chat system prompt, not a summary prompt. A search of the file finds no "Sintetizador".
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no tool execution. A search of the file finds no timeout.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file has no tool result handling and no 8000 limit.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It exports only the prompt builder `system`.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It exports only the prompt builder `system`.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It exports only the prompt builder `system`.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary and holds no `query="..."` format.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary and holds no "<n> keys" fallback.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. `traverse` appears only inside prompt prose.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn loop and no call limit of 8.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. A search of the file finds no "claude-opus".
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time and no 90 000 ms.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. A search of the file finds no "claude-haiku".
+looked_past: >-
+  The file's long header and docstring comments carry rationale and version history that belong in the decision log (the comment route), and the source-carries-no-comments rule is the framework's, not this judgment's. I filed as restates only the comments that restate a fact of a node in the set.
+candidates_opened:
+  - rules/chat/assistant-writes-only-on-owner-request

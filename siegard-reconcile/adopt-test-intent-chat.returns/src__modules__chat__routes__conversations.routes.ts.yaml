@@ -1,0 +1,251 @@
+findings:
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      sendMessage handler, steps (1) to (3): the Idempotency-Key header check and the body parse come before the kill-switch check (lines 592-633).
+    evidence: >-
+      `if (headerValue === undefined || headerValue === "") { return reply.code(422).send({ ... code: "VALIDATION_REQUIRED_FIELD", message: "Idempotency-Key header is required" ...` and `const body = sendMessageSchema.parse(request.body ?? {});` both run before `// ---- (3) Kill-switch (BR-14). if (killSwitchTripped(deps.env)) { return sendKillSwitch(reply); }`.
+      The node reads: "A sent message is checked for a disabled chat, then its idempotency key, conversation identity and content, then an absent conversation, ..., and is refused at the first check it fails."
+    cost: >-
+      A malformed message sent while the chat is disabled is answered 422 for the missing or invalid key or content, and not 503 BUSINESS_CHAT_DISABLED. Every other conversation operation in this file answers 503 first. The node's decision log says why: "A disabled surface answers that it is disabled whatever the request holds."
+    kind: contradicts
+    correction: >-
+      Move the kill-switch check ahead of the Idempotency-Key header check and the body parse in the sendMessage handler.
+    node: rules/chat/send-message-check-order
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      handleIdempotentReplay (lines 1128-1155) and mapStoredStopReason (lines 1546-1562), the replay path of sendMessage.
+    evidence: >-
+      `const storedStop = mapStoredStopReason(assistantRow.stop_reason);` is followed by `frameJson("done", { stop_reason: storedStop, ...`. In mapStoredStopReason: `case "provider_error": case "internal_error": default: return "end_turn";`.
+      The node reads: "A replay of a turn that ended as provider-error or internal-error ends in an error event as the live turn did, never in done."
+    cost: >-
+      A client that resends under the same Idempotency-Key a turn that failed live gets a successful `done` with `end_turn` instead of the `error` frame. The failure is reported to the owner as a normal answer. The rule's decision log records that "a replay exists to say again what the turn said."
+    kind: contradicts
+    correction: >-
+      On the replay path, send the `error` frame that the stored provider-error or internal-error turn closed with, and keep `done` only for the stop reasons the wire enumerates.
+    node: rules/chat/replay-reports-failure
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      Comment in emitChatBootLog, lines 1271-1274 (CHAT_RECENT_WINDOW).
+    evidence: >-
+      `// BR-31 v2.9: CHAT_RECENT_WINDOW changed UNIT (rows -> turns) and DEFAULT (10 -> 6) in chat-context-fidelity TC-01.`
+    cost: >-
+      The default of 6 is restated in prose here, and the code that holds it is `CHAT_RECENT_WINDOW: z.coerce.number().int().min(1).default(6)` in src/config/env.ts. A reader who finds the number here has a second place to maintain when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The default is held in src/config/env.ts and the file only forwards `recentLimit: deps.env.CHAT_RECENT_WINDOW`.
+    node: rules/chat/model-context-window
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      Comment in emitChatBootLog, lines 1305-1308 (OWNER_TZ).
+    evidence: >-
+      `// because `OWNER_TZ` carries a fail-closed default (`America/Sao_Paulo`) —`
+    cost: >-
+      The zone is restated in prose here, and the code that holds it is `OWNER_TZ: z.string().min(1).default("America/Sao_Paulo")` in src/config/env.ts. The comment is a second home for the default.
+    kind: restates
+    correction: >-
+      Remove the comment. The default is held in src/config/env.ts.
+    node: rules/chat/owner-time-zone-default
+read:
+  - node: rules/chat/turn-model-default
+    held_at: >-
+      The `resolvedModel` expression in the sendMessage handler, step (2), lines 625-628. A turn that names no model takes `deps.env.CHAT_MODEL`. The `claude-opus-4-8` default is declared in src/config/env.ts, not in this file.
+    evidence: >-
+      `const resolvedModel = body.model !== undefined && body.model.length > 0 ? body.model : deps.env.CHAT_MODEL;`
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only tests the already-parsed flag: `return env.CHAT_ENABLED === false;`. The default is declared in config/env.ts.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file only selects the prompt module: `cachedPromptModule = selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION);`. The prompt text lives in ../prompts.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      `blockAText: getPromptModuleLazy().system(deps.catalog ?? EMPTY_KG_CATALOG_SNAPSHOT)` only requests the prompt. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      `cachedPromptModule = selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION);` is the only prompt contact. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      `function getPromptModuleLazy(): ReturnType<typeof selectChatPromptModule>` only selects a module. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      `blockAText: getPromptModuleLazy().system(` is the only prompt contact. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      `blockAText: getPromptModuleLazy().system(` is the only prompt contact. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      `blockAText: getPromptModuleLazy().system(` is the only prompt contact. The file holds no prompt wording.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v1 prompt text.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v2 prompt text.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v2 prompt text.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v2 prompt text.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      `selectChatPromptModule(deps.env.CHAT_PROMPT_VERSION)` picks the module. The file holds no v4 prompt text.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only tests the parsed flag: `const ingestFlagOn = deps.env.CHAT_INGEST_ENABLED === true;`. The default is declared in config/env.ts.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file forwards the flags: `CHAT_SUMMARY_ENABLED: env.CHAT_SUMMARY_ENABLED, CHAT_TITLE_ENABLED: env.CHAT_TITLE_ENABLED,`. The defaults are declared in config/env.ts.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file only passes the normalizer's answer through: `if (graphDelta !== null) { const graphEvt = { type: "graph_delta" as const, ...`. Which tools yield a delta is decided in service/graph-normalizer.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      `return await normalizeToolResult(toolName, result, catalog);`. The delta content is produced in service/graph-normalizer.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      `links: graphDelta.links,` is copied as received. The link shape is produced in service/graph-normalizer.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      `links: evt.links,` is passed through in projectSseFrame. The label is resolved in service/graph-normalizer.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: >-
+      The guard on the graph_delta projection in the sendMessage drain loop, line 974. The tool_result frame is written before it, so without the snapshot the tool result is streamed alone.
+    evidence: >-
+      `tryWrite(reply, wireFrame, deps.logger);` followed by `if (evt.type === "tool_result" && evt.ok && deps.catalog !== undefined) { const graphDelta = await projectGraphDelta(`
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file only supplies a read-only client for hydration: `return await withReadOnly(pool, (client) => normalizeToolResult(toolName, result, catalog, client));`. The dropping is done in the normalizer.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file's only handling is a throw from the normalizer, which sends no frame: `logger.warn({ event: "chat.graph_delta_normalize_failure", ...` then `return null;`. Reading an unreadable result is the normalizer's.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      `const sendMessageSchema = buildSendMessageRequestSchema({ maxContentLength: deps.env.MAX_CONTENT_LENGTH });`. The limit and its default of 32 768 are declared in chat.schemas and config/env.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file only hands the clock and zone to the builder: `now: turnNow, ownerTz: deps.env.OWNER_TZ,`. The opening words are in service/datetime-block.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the configured value: `recentLimit: deps.env.CHAT_RECENT_WINDOW,`. The windowing is in service/context-builder and the default of 6 is in config/env.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the configured value: `ownerTz: deps.env.OWNER_TZ,`. The default is declared in config/env.ts.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the version: `CHAT_SUMMARY_PROMPT_VERSION: env.CHAT_SUMMARY_PROMPT_VERSION,`. The summary prompt is in the distillation service.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the version: `CHAT_SUMMARY_PROMPT_VERSION: env.CHAT_SUMMARY_PROMPT_VERSION,`. The summary prompt is in the distillation service.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file only drains events: `for await (const evt of iterable) {`. Tool dispatch, failures and the tool time belong to service/chat-agent.service.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file persists `result: evt.result` as the loop yields it. No truncation or limit appears here.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`. It is built in the chat-agent service.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file only passes the summary on: `args_summary: evt.args_summary`.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file only maps a stop reason it receives: `case "max_iterations":` in mapStoredStopReason. The call limit and its default of 8 are enforced in the chat-agent service and declared in config/env.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file only maps a stop reason it receives: `case "turn_timeout":` in mapStoredStopReason. The turn time is enforced in the chat-agent service.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the configured value: `CHAT_UTILITY_MODEL: env.CHAT_UTILITY_MODEL,`. The default is declared in config/env.ts.
+looked_past: >-
+  Most of the routes' behavior (HTTP statuses, refusal codes and messages, idempotency, recording and distillation sequencing) is held by nodes outside the pack that this file conforms to, and the file is dense with BR-numbered comments restating them. Structured-log event names and fields (chat.turn, chat.boot, chat.recent_window_resolved, chat.deprecated_env) are held by no node. All of that is another judgment's.
+candidates_opened:
+  - rules/chat/send-message-check-order
+  - rules/chat/replay-reports-failure
+  - contracts/chat/conversations
+  - rules/chat/conversation-request-check-order
+  - rules/chat/turn-cancel
+  - rules/chat/idempotent-recovery
+  - rules/chat/idempotent-replay
+  - rules/chat/iteration-recorded
+  - rules/chat/assistant-answer-recorded
+  - rules/chat/tool-call-recorded
+  - rules/chat/recording-failure-keeps-stream
+  - rules/chat/graph-delta-follows-tool-result
+  - rules/chat/distillation-follows-live-turn
+  - rules/chat/owner-message-recorded-first

@@ -1,0 +1,248 @@
+findings:
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment above the listRecentRealTurns member of the ChatRepository interface (lines 206-213) and the
+      comment above the function listRecentRealTurns (lines 656-673, with the inline comment at lines 681-687)
+    evidence: >-
+      "// BR-31 v2.9: turn-based recent window. Returns every chat_message row that
+      // belongs to one of the last `turn_count` REAL turns (a real turn is anchored
+      // by a `role='user' AND idempotency_key IS NOT NULL` row), in chronological
+      // ASC order ... When fewer than `turn_count`
+      // real turns exist, all rows from the available turns are returned (no error,
+      // no padding)."
+    cost: >-
+      The recent-window rule is written out in prose in the interface and again above the function, while the
+      WITH boundary / fallback query holds it as code. The prose is a second home that has to be kept in step with
+      rules/chat/model-context-window by hand. The next reader may take the comment, not the node, as the place the
+      window was decided.
+    kind: restates
+    correction: >-
+      Remove the two comments. The behavior is already held by the query in listRecentRealTurns, and the fact is
+      held by the node.
+    node: rules/chat/model-context-window
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      listMessagesPaginated, lines 764-804: the query that selects the page (ORDER BY created_at ASC ... LIMIT
+      limit+1, then rows.slice(0, limit)). The route that consumes the page computes next_before from page.items[0]
+      (src/modules/chat/routes/conversations.routes.ts, line 460).
+    evidence: >-
+      "WHERE conversation_id = $1${beforeClause}${displayFilter}
+      ORDER BY created_at ASC, id ASC
+      LIMIT ${limitParam}" followed by "const items = hasMore ? rows.slice(0, limit) : rows;". The node says: "A
+      message listing's page is the most recent messages created before its given moment, and the next page ends
+      before the oldest of them."
+    cost: >-
+      The query returns the oldest `limit` messages before the cursor, not the most recent ones. The node's own log
+      records this same behavior as the case the decision replaced: "The material answers a message page with the
+      oldest messages and a next-page moment that selects messages older than that page, so following it from the
+      first page finds nothing." A conversation longer than one page therefore shows its oldest messages first, and
+      following next_before does not reach the rest of the history.
+    kind: contradicts
+    correction: >-
+      Select the most recent `limit` rows created before `before` (a descending scan, then re-sorted ascending so
+      the page is still answered oldest first, ties by identity). The next page's moment is then the oldest created_at
+      of that page.
+    node: rules/chat/message-listing-pages-backwards
+read:
+  - node: rules/chat/model-context-window
+    held_at: >-
+      listRecentRealTurns (lines 674-715): the boundary CTE takes the created_at of the K-th most recent owner-written
+      message, and the outer query returns every message of the conversation from that moment on. The default of 6 is
+      not in this file; the caller passes turn_count.
+    evidence: >-
+      "WITH boundary AS ( SELECT created_at AS at FROM chat_message WHERE conversation_id = $1 AND role = 'user' AND
+      idempotency_key IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET $2 ) ... WHERE conversation_id =
+      $1 AND created_at >= COALESCE( (SELECT at FROM boundary), (SELECT at FROM fallback) ) ORDER BY created_at ASC,
+      id ASC"
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration read and no chat enabling. It holds persistence statements only, for example
+      "INSERT INTO chat_conversation (title) VALUES ($1)".
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Nothing in it is sent to a model.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration read and no directed-ingestion switch. It holds persistence statements only.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration read. setTitleIfNull and updateSummaryRolling only write what a caller hands them.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. Its only graph-related statements are "SELECT conversation_id, snapshot,
+      updated_at FROM chat_graph_view" and the matching upsert.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta and reads no catalog snapshot.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. insertToolCall stores a result without reading it: "input.result === null ?
+      null : JSON.stringify(input.result)".
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file bounds no content length. insertUserMessage stores "JSON.stringify(input.content)" and the row shape
+      declares only "readonly content: unknown[]; // jsonb".
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file builds no model context text and holds no owner date or time statement.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time zone. Its only time expressions are "clock_timestamp()" and "now()" in SQL.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file contains no summary prompt text. updateSummaryRolling only stores the summary it is given.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file contains no summary prompt text.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file only persists a tool call's outcome ("is_error, error_message, duration_ms"). It runs no tool, holds no
+      tool time limit and does not continue a turn.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      insertToolCall stores the result whole: "input.result === null ? null : JSON.stringify(input.result)". Nothing
+      in it truncates.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no model-call counter or limit. The word "max_iterations" appears only as a member of
+      AssistantStopReason, a value insertAssistantMessage stores.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no default model. The model is a caller-supplied column value: "model: string | null".
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time limit. "turn_timeout" appears only as a member of AssistantStopReason.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no utility model. It holds no model identifiers.
+looked_past: >-
+  The file also keeps listRecentMessages, listOlderMessagesForSummary and countUserTurns, which no production caller uses (a code-hygiene matter, with listRecentMessages cutting its window by message count where the node cuts it by owner-written messages), and it spells AssistantStopReason with underscores (end_turn, max_iterations, turn_timeout) where domain/chat/assistant-stop-reason uses hyphens while contracts/chat/conversations.md spells the same values with underscores; I did not judge either.
+candidates_opened:
+  - rules/chat/model-context-window
+  - rules/chat/message-listing-pages-backwards

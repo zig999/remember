@@ -1,0 +1,267 @@
+findings:
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      line 53, MAX_TOKENS_PER_ITERATION, used at line 255 in the stream request
+    evidence: >-
+      const MAX_TOKENS_PER_ITERATION = 4096;
+      ... max_tokens: MAX_TOKENS_PER_ITERATION,
+    cost: >-
+      This number caps how long each assistant answer can be, and a longer
+      answer is cut off and ends the turn as max-tokens. It is not configurable
+      and no node states it. The next reader will look for the cap in the
+      specification, find nothing, and take the code's 4096 as the business
+      decision. The turn rules in the set (turn-model-call-limit and
+      turn-time-limit) each state their number and say it is configurable.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the per-model-call output cap a node, or
+      state it as a configured value with a default, next to
+      rules/chat/turn-model-call-limit.
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      the unknown-tool branch (lines 416-423) and the timeout envelope in
+      raceToolHandler (lines 633-640)
+    evidence: >-
+      error: { code: "VALIDATION_INVALID_FORMAT", message: "unknown tool name", }
+      and error: { code: "SYSTEM_SERVICE_UNAVAILABLE", message: "tool timeout", }
+    cost: >-
+      The code and wording of the failure handed to the assistant live only
+      here. The node says that failure is handed over and the turn continues,
+      but it does not say what the assistant is told. The same text is also
+      returned to the owner in the tool_result error_message. I found no node
+      or contract that states these two messages. The next reader will not
+      find them in the specification.
+    kind: unstated
+    correction: >-
+      Analysis would have to state, in or beside
+      rules/chat/tool-failure-continues-turn, the failure the assistant
+      receives for an unknown tool and for a tool past its time.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      synthesiseInternalErrorEnvelope, lines 672-680, reached from the
+      rejection handler at line 650
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: errMessage(err) ?? "tool handler threw",
+    cost: >-
+      A tool that throws hands the assistant, and the owner via
+      error_message, the raw exception message, or the fixed text
+      "tool handler threw" when there is none. No node states this. The
+      conversations contract fixes the stream-level internal-error message
+      but not this one. The disclosure rule for a thrown tool failure lives
+      only in code.
+    kind: unstated
+    correction: >-
+      Analysis would have to state what a thrown tool failure hands the
+      assistant, as part of rules/chat/tool-failure-continues-turn or in a
+      node of its own.
+    node: rules/chat/tool-failure-continues-turn
+read:
+  - node: rules/chat/tool-call-recorded
+    held_at: nowhere
+    evidence: >-
+      The file yields events and persists nothing: `yield { type: "iteration_end", iteration, assistant_content: iterationBlocks.slice(), tool_results: toolResultBlocks.slice(), } as const;`
+      Nothing here writes a tool call row or names an assistant message.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: >-
+      the tool loop, lines 414-431 (unknown tool becomes an error envelope;
+      the handler is raced against ctx.env.TOOL_TIMEOUT_MS), and
+      raceToolHandler. The 15 000 ms default is not in this file.
+    evidence: >-
+      toolEnvelope = await raceToolHandler( tool.handler, block.input, ctx.env.TOOL_TIMEOUT_MS, invocationContext );
+      then toolResultBlocks.push({ type: "tool_result", ..., is_error: !toolEnvelope.ok }); and `continue;`
+  - node: rules/chat/tool-result-truncated
+    held_at: >-
+      the call at lines 451-455 cuts every tool result before the assistant
+      sees it. The cut and its length marker are in truncate-tool-result.ts,
+      and the 8000 default is not in this file.
+    evidence: >-
+      const truncated = truncateToolResult( bodyJson, ctx.env.TOOL_RESULT_MAX_CHARS ); ... content: truncated.value,
+  - node: rules/chat/turn-model-call-limit
+    held_at: >-
+      lines 209-221, the check at the top of the loop. The 8 default is not
+      in this file.
+    evidence: >-
+      iteration += 1; if (iteration > ctx.env.MAX_ITERATIONS) { yield* terminate( ctx, "max_iterations", ...
+  - node: rules/chat/turn-time-limit
+    held_at: >-
+      lines 151-155 (timer) and 223-236 and 320-333 (turn_timeout on abort).
+      The 90 000 ms default is not in this file.
+    evidence: >-
+      const turnTimer = setTimeout(() => { turnController.abort(TURN_TIMEOUT_REASON); }, turnTimeoutMs);
+      and stopReason = reason === TURN_TIMEOUT_REASON ? "turn_timeout" : "cancelled";
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only reads the resolved value: `if (env.CHAT_ENABLED === false) { throw new ChatDisabledError(); }`
+      The default is not declared in this file.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file only selects the prompt module: `const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION);`
+      The prompt text is not in this file.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION); (prompt text lives in ../prompts)
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      No directed-ingestion switch is read in this file. Tools come from `deps.catalog` and `buildToolDescriptors(deps.catalog, deps.logger)`.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      Neither distillation nor summarisation appears in this file. It only runs the turn loop (`runTurnGenerator`).
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file yields `tool_result` and never a graph delta; no catalog snapshot is read here.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file yields only `tool_result` and `iteration_end` events and builds no graph delta.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      No message content length is checked here. `inLoopHistory` is built with `content: m.content`.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The system text arrives built: `typeof ctx.input.system === "string" ? [{ type: "text", text: ctx.input.system, ...`.
+      The owner-time statement is not composed here.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The history arrives already windowed: `ctx.input.messages.map((m) => ({ role: m.role, content: m.content, }))`
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      No time zone appears in this file. `ctx.now()` is used only for tool duration.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      No summary prompt is built in this file.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      No summary prompt is built in this file.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The summary is delegated: `const argsSummary = buildArgsSummary(toolName, block.input);`
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The model arrives with the input: `model: ctx.input.model,` and `let lastModel = ctx.input.model;`.
+      The configured chat model and its default are not in this file.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      No utility model is referenced in this file. It uses only `ctx.input.model`.
+looked_past: >-
+  The system prompt block's cache_control: { type: "ephemeral" }, the hand-rolled stream queue, and the Zod-to-JSON-Schema fallback in toolInputSchemaFromZod name no domain fact, and the facts the file does apply (one tool per call, cancel precedence, stop-reason mapping, last model, fixed provider and internal error messages) are held by nodes outside this set, so I left them unreported.

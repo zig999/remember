@@ -1,0 +1,282 @@
+findings:
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      const SUMMARY_MAX_TOKENS = 600, line 146, passed as max_tokens in the
+      anthropic.messages.create call of maybeRefreshSummary (line 277)
+    evidence: >-
+      const SUMMARY_MAX_TOKENS = 600;
+      ...
+      max_tokens: SUMMARY_MAX_TOKENS,
+    cost: >-
+      This is a numeric ceiling on the model output of a rolling-summary refold. No
+      node holds it. The nearest node, rules/chat/rolling-summary-length, bounds the
+      trimmed summary in characters (1 to 2000) and says nothing about tokens. The
+      figure is easy to mistake for an implementation detail. A change to it changes
+      which summaries come back cut short and then pass or fail the length rule. The
+      next reader looks in the specification for the ceiling and finds nothing.
+      The docstring of maybeRefreshSummary also says max_tokens: 512, which differs
+      from this value.
+    kind: unstated
+    correction: >-
+      An analysis would either give the output-token ceiling of a refold a node, or
+      decide that it is not a business fact and record that decision.
+    node: rules/chat/rolling-summary-length
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      const TITLE_MAX_TOKENS = 64, line 147, passed as max_tokens in the
+      anthropic.messages.create call of maybeDistillTitle (line 404)
+    evidence: >-
+      const TITLE_MAX_TOKENS = 64;
+      ...
+      max_tokens: TITLE_MAX_TOKENS,
+    cost: >-
+      This is a numeric ceiling on the model output of title distillation. No node
+      holds it. rules/chat/distilled-title-length bounds the trimmed title in
+      characters (1 to 80) and says nothing about tokens. A change to it changes
+      which titles are cut short and then dropped by the length check. The next
+      reader looks in the specification for the ceiling and finds nothing.
+    kind: unstated
+    correction: >-
+      An analysis would either give the output-token ceiling of title distillation a
+      node, or decide that it is not a business fact and record that decision.
+    node: rules/chat/distilled-title-length
+read:
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file never reads a chat enabled flag. Its only flags are
+      `if (!env.CHAT_SUMMARY_ENABLED) return;` and `if (!env.CHAT_TITLE_ENABLED) return;`.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt. It only selects the title and summary
+      prompt modules: `selectTitlePromptModule()` and `selectChatSummaryPromptModule(...)`.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports the prompt modules
+      and does not declare them.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It only calls
+      `selectTitlePromptModule()` and `selectChatSummaryPromptModule(...)`.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat assistant prompt text. It imports its prompts from
+      "../prompts/index.js" and "../prompts/chat-summary/index.js".
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no directed-ingestion flag. Its `DistillationEnv` declares only
+      CHAT_UTILITY_MODEL, CHAT_RECENT_WINDOW, CHAT_SUMMARY_AFTER_TURNS,
+      CHAT_SUMMARY_ENABLED, CHAT_TITLE_ENABLED, CHAT_SUMMARY_OVERLAP_M and
+      CHAT_SUMMARY_PROMPT_VERSION.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only consumes the flags: `readonly CHAT_SUMMARY_ENABLED: boolean;
+      readonly CHAT_TITLE_ENABLED: boolean;` and `if (!env.CHAT_SUMMARY_ENABLED) return;`.
+      No default for either flag is stated in this file.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta and no tool-result handling. It contains
+      maybeRefreshSummary, maybeDistillTitle and helper functions only.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no message content length limit. The only length checks are
+      `summary_new.length > SUMMARY_MAX_CHARS` and `candidate.length > TITLE_MAX_LENGTH`,
+      which concern the distilled outputs and not a message's content.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file builds no statement of the owner's date and time. No
+      "Data/hora atual do dono" string appears in it.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `env.CHAT_RECENT_WINDOW` to the repository, as in
+      `repo.countRealTurnsOlderThanRecentWindow(client, conversationId, env.CHAT_RECENT_WINDOW)`.
+      It states neither the window semantics nor a default of 6.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone. No America/Sao_Paulo or other zone appears in it.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file hands `summary_prev` (a string or null) to `mod.buildUserTurn(summary_prev, newMessages)`.
+      The "(vazio)" rendering belongs to the prompt module, which is not in this file.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file only uses `system: mod.system`. The persona text is not in this file.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-call handling. Its catch blocks log WARN
+      `chat.summary_refresh_failure` and `chat.title_distillation_failure`.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-result handling and no 8000-character limit. Its
+      constants are SUMMARY_MAX_CHARS = 2000, SUMMARY_MAX_TOKENS = 600,
+      TITLE_MAX_TOKENS = 64 and TITLE_MAX_LENGTH = 80.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It contains maybeRefreshSummary,
+      maybeDistillTitle and helper functions only.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no turn loop and no iteration limit. Each job makes at most
+      one `anthropic.messages.create(...)` call.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file never picks the chat model. It only uses `model: env.CHAT_UTILITY_MODEL`.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no turn time limit and no timeout of 90 000 ms. It declares
+      no turn-timeout.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file only consumes the configured value: `readonly CHAT_UTILITY_MODEL: string;`
+      and `model: env.CHAT_UTILITY_MODEL`. The default claude-haiku-4-5 appears in
+      this file only in the header comment, which is prose and not code.
+looked_past: >-
+  Nodes outside the pack and the candidate index hold what this file implements as code: rules/chat/rolling-summary-length for SUMMARY_MAX_CHARS and the oversize refusal, rules/chat/distilled-title-length for TITLE_MAX_LENGTH, and the refresh, overlap, fold, failure and title policies. The file conforms to them, so they are not findings. I saw the comments and the fixed log event names and shapes, which are another judgment's. Among the comments are the header and docstrings that restate node facts (the 2000 and 80 character ceilings, "default claude-haiku-4-5", "stream: false") and the docstring's "max_tokens: 512", which differs from the code's 600.
+candidates_opened:
+  - rules/chat/rolling-summary-length
+  - rules/chat/distilled-title-length

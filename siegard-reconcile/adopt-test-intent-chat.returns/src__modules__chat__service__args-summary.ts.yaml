@@ -1,0 +1,336 @@
+findings:
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment, lines 11-12 and 26-32, plus the doc comments at lines 40 and 53
+    evidence: >-
+      "2. Bounded length — `<= 200` code points (matches the openapi.yaml
+      ToolStartEvent.args_summary `maxLength: 200` schema, line 489)."
+      and "the `args_summary` for `start_async_ingestion` MUST NEVER include the raw `content` payload"
+    cost: >-
+      The 200 cap and the ban on carrying ingestion content are said twice, once as prose
+      here and once in clampToMax / the start_async_ingestion branch. When the node moves,
+      this prose keeps saying the old figure and the next reader cannot tell which was decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact at ARGS_SUMMARY_MAX_CHARS and clampToMax() in
+      this file, and at the content_len branch of start_async_ingestion.
+    node: rules/chat/tool-start-summary-bounded
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment line 15 and the comment at line 43
+    evidence: >-
+      "- search:                        query="<first 60 chars of query>" (+ optional layers=... expand_depth=<n>)"
+    cost: >-
+      The search format and the 60-character figure appear in prose as well as in code, so a
+      change to the node leaves a stale second statement beside the code.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in the "search" case (SEARCH_QUERY_MAX_CHARS,
+      the query="..." template, and the layers and expand_depth parts).
+    node: rules/chat/tool-start-search-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment lines 16-17 and 22
+    evidence: >-
+      "- get_node, traverse:            id=<uuid> (+ depth=<n> for traverse)"
+      and "- get_provenance_*:              id=<uuid>"
+    cost: >-
+      The identity-alone format for reads, history reads and provenance reads is restated in
+      prose beside the cases that hold it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in the get_node, get_history_link,
+      get_history_attribute and get_provenance_* cases, each returning `id=${id}`.
+    node: rules/chat/tool-start-read-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment line 16
+    evidence: >-
+      "- get_node, traverse:            id=<uuid> (+ depth=<n> for traverse)"
+    cost: >-
+      The traversal format is restated in prose, and a change to the node would leave the
+      comment contradicting the code.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in the "traverse" case (`id=${id} depth=${depth}`).
+    node: rules/chat/tool-start-traversal-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment line 18
+    evidence: >-
+      "- get_history_attribute_key:     node_id=<uuid> key=<key>"
+    cost: >-
+      The attribute-key history format is restated in prose beside the case that holds it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in the "get_history_attribute_key" case.
+    node: rules/chat/tool-start-attribute-history-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment lines 19-21
+    evidence: >-
+      "- list_nodes:                    node_type=<name> limit=<n>
+      - list_node_types/link_types/
+        attribute_keys:                ""  (no args)"
+    cost: >-
+      The listing formats, including the empty catalog-listing summary, are said in prose as
+      well as in code.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in the "list_nodes" case and in the
+      list_node_types, list_link_types and list_attribute_keys cases, which return "".
+    node: rules/chat/tool-start-listing-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      header comment lines 34-38 and the comment at line 159
+    evidence: >-
+      "Fallback when the input shape is unexpected: `<n keys>` — the dispatcher
+      counts top-level keys and emits that string (e.g. `"3 keys"`). The fallback
+      also fires for an unknown tool name"
+    cost: >-
+      The fallback rule is stated again in prose, and the prose misattributes the counting to
+      the dispatcher when fallbackSummary() in this file does it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in fallbackSummary() and in the `default:`
+      branch of formatByTool.
+    node: rules/chat/tool-start-summary-fallback
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the "start_async_ingestion" case, lines 142-150
+    evidence: >-
+      const contentLen = [...content].length;
+      return `source_type=${sourceType} content_len=${contentLen}`;
+    cost: >-
+      The summary of a directed ingestion start, showing source_type and the content length in
+      code points, is a domain fact that appears only here. tool-start-summary-bounded says
+      only that the content is never carried. The next reader looks in the specification for
+      what the owner sees for an ingestion start and finds nothing.
+    kind: unstated
+    correction: >-
+      An analysis should give the start_async_ingestion tool-start summary a node, or extend
+      tool-start-summary-bounded, stating that it shows the source type and the content length
+      in Unicode code points.
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the "get_ingestion_status" case, lines 152-156
+    evidence: >-
+      const llmRunId = readString(obj, "llm_run_id");
+      if (llmRunId === undefined) return fallbackSummary(obj);
+      return `llm_run_id=${llmRunId}`;
+    cost: >-
+      The summary of an ingestion status read, showing the run identity, appears in no node.
+      The tool-start-read-summary node covers identity-alone summaries only for node reads,
+      history reads and provenance reads, so this format is held only by the code.
+    kind: unstated
+    correction: >-
+      An analysis should give the get_ingestion_status tool-start summary a node, or extend an
+      existing tool-start summary node to cover it.
+read:
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      export function buildArgsSummary(toolName: string, input: unknown): string — the file only builds tool-start summaries and holds no chat enablement default.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates such as `id=${id}`.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates such as `id=${id}`.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates such as `id=${id}`.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The "list_nodes" case only formats `node_type=${nodeType} limit=${limit}`.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The "search" case only formats `query="..."`.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The "search" case only formats `query="..."`.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The "get_ingestion_status" case only formats `llm_run_id=${llmRunId}`.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The ingestion summary omits the content from the tool-start frame, which is a different rule: `source_type=${sourceType} content_len=${contentLen}`.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text; its only strings are summary templates.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default. It only exports ARGS_SUMMARY_MAX_CHARS and buildArgsSummary.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default. It only exports ARGS_SUMMARY_MAX_CHARS and buildArgsSummary.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only returns strings, for example `case "get_provenance_link":` returns `id=${id}`.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta; there is no node or link construction in it.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta; there is no node or link construction in it.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta and reads no catalog; there is no link label in it.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file reads no catalog snapshot and builds no graph delta.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file summarizes the search arguments (`query="..."`) and reads no search result or node.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file reads tool inputs only, with `input: unknown`, and no tool result.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no message content limit. The 32 768 figure does not appear in it; the only limits are `ARGS_SUMMARY_MAX_CHARS = 200` and `SEARCH_QUERY_MAX_CHARS = 60`.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file does not build the owner's date and time. The string "Data/hora atual do dono" does not appear in it.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no message window; it has no K value and reads no conversation.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file does not mention a time zone. America/Sao_Paulo does not appear in it.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt. "(vazio)" does not appear in it.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt. "Sintetizador" does not appear in it.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file runs no tool and handles no failure or tool time. Its default branch only summarizes an unknown name: `return fallbackSummary(obj);`.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file truncates summaries (`clampToMax`), not tool results, and holds no 8000 figure.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: >-
+      the "get_history_attribute_key" case of formatByTool, lines 112-117
+    evidence: >-
+      return `node_id=${nodeId} key=${key}`;
+  - node: rules/chat/tool-start-listing-summary
+    held_at: >-
+      the "list_nodes" case, lines 119-124, and the catalog listing cases, lines 126-129
+    evidence: >-
+      return `node_type=${nodeType} limit=${limit}`;
+      case "list_node_types":
+      case "list_link_types":
+      case "list_attribute_keys":
+        return "";
+  - node: rules/chat/tool-start-read-summary
+    held_at: >-
+      the get_node, get_history_link, get_history_attribute and get_provenance_* cases, lines 89-93, 105-110 and 131-137
+    evidence: >-
+      case "get_provenance_link":
+      case "get_provenance_attribute":
+      case "get_provenance_fragment": {
+        const id = readString(obj, "id");
+        if (id === undefined) return fallbackSummary(obj);
+        return `id=${id}`;
+  - node: rules/chat/tool-start-search-summary
+    held_at: >-
+      the "search" case of formatByTool, lines 74-87
+    evidence: >-
+      const parts: string[] = [`query="${truncateCodepoints(query, SEARCH_QUERY_MAX_CHARS)}"`];
+      ... parts.push(`layers=${layers.join(",")}`); ... parts.push(`expand_depth=${expandDepth}`);
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: >-
+      fallbackSummary() lines 165-170, the missing-argument guards in each case, and the `default:` branch, lines 158-161
+    evidence: >-
+      return `${Object.keys(input as Record<string, unknown>).length} keys`;
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: >-
+      the "traverse" case, lines 95-103
+    evidence: >-
+      if (depth !== undefined) {
+        return `id=${id} depth=${depth}`;
+      }
+      return `id=${id}`;
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no model-call counter. Its only constants are `ARGS_SUMMARY_MAX_CHARS = 200` and `SEARCH_QUERY_MAX_CHARS = 60`.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. "claude-opus-4-8" does not appear in it.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time. "90 000" and "90000" do not appear in it.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. "claude-haiku-4-5" does not appear in it.
+looked_past: >-
+  The file's comments cite chat.back.md BR-09, BR-10, BR-43 and BR-45 as the authority for its formats and its code-point counting convention (a Unicode code point count rather than UTF-16 units); the comments never state a domain fact that code does not hold, so there was nothing to name beyond the restates findings.
+candidates_opened:
+  - rules/chat/tool-start-summary-bounded

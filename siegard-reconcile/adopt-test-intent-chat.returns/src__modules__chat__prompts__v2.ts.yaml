@@ -1,0 +1,234 @@
+findings:
+  - file: src/modules/chat/prompts/v2.ts
+    where: >-
+      v2Additions, directive 1 (lines 66-71), the text sent to the model as part of the system prompt
+    evidence: >-
+      "1. CHAME `start_async_ingestion` SOMENTE quando o dono pedir",
+      "   EXPLICITAMENTE para ingerir um documento — sinais tipicos sao",
+      "   frases como \"ingerir\", \"salvar este documento\", \"registrar",
+      "   este texto\".
+    cost: >-
+      The prompt makes explicit owner request the only trigger for asynchronous ingestion, and lists
+      the phrases that count as a request. No node holds that rule for start_async_ingestion.
+      rules/chat/assistant-writes-only-on-owner-request covers directed ingestion only, and
+      rules/chat/chat-prompt-v2-ingestion-returns-running, chat-prompt-v2-no-status-polling and
+      chat-prompt-v2-no-content-echo do not state it. The trigger rule and its example phrases
+      therefore live only in this prompt string. A reader who looks in the specification for when
+      the assistant may start an asynchronous ingestion finds nothing.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the fact a node: either extend
+      rules/chat/assistant-writes-only-on-owner-request to cover asynchronous ingestion, or add a
+      rule for the v2 chat prompt. The example trigger phrases would also need a decision on
+      whether they are part of the fact.
+  - file: src/modules/chat/prompts/v2.ts
+    where: >-
+      v2Additions, introduction (lines 61-64), the text sent to the model as part of the system prompt
+    evidence: >-
+      "estiverem disponiveis no catalogo, observe os limites abaixo. Se elas",
+      "nao aparecerem no catalogo, ignore esta secao — significa que a",
+      "capacidade de ingestao via chat esta desligada nesta instalacao.",
+    cost: >-
+      The prompt tells the model that absence of the two ingestion tools from its catalog means chat
+      ingestion is switched off in this installation, and that the section is then to be ignored.
+      No node holds this. The enablement nodes (chat-enabled-by-default,
+      directed-ingestion-disabled-by-default) speak of the chat and of directed ingestion, not of
+      asynchronous ingestion. The conditional behavior therefore exists only in this string.
+    kind: unstated
+    correction: >-
+      An analysis would have to state in a node that the v2 chat prompt's ingestion directives apply
+      only while the asynchronous ingestion tools are offered, and what their absence means.
+read:
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt string and holds no enablement flag or default: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2 returns the v1 body plus its three directives and says of the catalog "v2 IGNORES the argument"; nothing in v2Additions mentions affected nodes.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      A v3 rule. v2Additions holds only the INGESTAO ASSINCRONA section: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      This file does not state the v1 rule. It only delegates to the v1 module, so the v1 text is held in prompts/v1.ts, not here: `const v1Body = v1System(catalog);`
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: >-
+      the strings of directive 2 in v2Additions, lines 72-75
+    evidence: >-
+      "2. A ferramenta retorna IMEDIATAMENTE com `status: \"running\"`; a", "   extracao roda em segundo plano. Apos chamar `start_async_ingestion`,", "   INFORME ao dono que a ingestao foi iniciada E ofereca consultar o", "   status mais tarde via `get_ingestion_status`."
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: >-
+      the closing strings of v2Additions, lines 80-82
+    evidence: >-
+      "Ao chamar `start_async_ingestion`, NAO repita o argumento `content` na", "sua resposta em linguagem natural — `content` e grande e e gravado",
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: >-
+      the strings of directive 3 in v2Additions, lines 76-78
+    evidence: >-
+      "3. NAO faca polling de `get_ingestion_status` dentro do mesmo turno", "   (sem auto-poll). Reporte o status UMA UNICA VEZ, somente quando o", "   dono pedir explicitamente.",
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. Nothing in v2Additions concerns start dates: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. Nothing in v2Additions concerns closed attribute values: `"INGESTAO ASSINCRONA (FERRAMENTAS ingest)",`
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. v2 names `start_async_ingestion`, not directed ingestion: `"Quando as ferramentas `start_async_ingestion` e `get_ingestion_status`",`
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      A v4 rule about directed ingestion. v2Additions concerns `start_async_ingestion`.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. Nothing in v2Additions concerns node identity pinning.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. Nothing in v2Additions concerns recording only what the owner declared.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      A v4 rule. Nothing in v2Additions concerns per-item status of a directed ingestion.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file only passes the catalog on: `const v1Body = v1System(catalog);`
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file builds a prompt and holds no graph delta logic: `return [v1Body, ...v2Additions].join("\n");`
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no message length limit: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no owner date-time statement: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no history window: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time zone: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      This is the chat prompt, not the summary prompt: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      This is the chat prompt, not the summary prompt: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool execution: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool result handling: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-start summary: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn loop: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no model default: `export const PROMPT_VERSION = "v2" as const;`
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time limit: `export function system(catalog?: unknown): string {`
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no utility model default: `export const PROMPT_VERSION = "v2" as const;`
+looked_past: >-
+  The file's header and docstring comments restate BR-18, BR-20, BR-43, BR-44 and BR-45 and the CHAT_INGEST_ENABLED behavior, and the string tying `content` to `chat_tool_call.arguments` for audit is an unnodeed rationale; those are prose or comment-routing matters for another judgment, not reported here.
+candidates_opened:
+  - rules/chat/assistant-writes-only-on-owner-request
+  - constraints/chat-content-is-data
+  - rules/chat/tool-call-recorded

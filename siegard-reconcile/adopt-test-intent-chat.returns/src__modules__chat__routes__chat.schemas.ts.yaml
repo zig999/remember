@@ -1,0 +1,230 @@
+findings:
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: >-
+      buildChatTurnRequestSchema and the ChatTurnRequest type, lines 12-41 (with ChatMessageSchema and ChatRoleSchema, lines 3-10)
+    evidence: |-
+      messages: z
+        .array(ChatMessageSchema)
+        .min(1, "messages must contain at least 1 entry")
+        .max(opts.maxHistoryMessages, `messages must contain at most ${opts.maxHistoryMessages} entries`),
+      ...
+      .refine((v) => v.messages[0]?.role === "user", {
+        message: "first message must have role=user",
+    cost: >-
+      The file states a request shape that no node holds: a turn request carrying a list of role/content messages, at least one and at most a configured number, the first of them from the user. The specification's send-message operation takes a single content and an optional model. A grep of backend/src finds no use of buildChatTurnRequestSchema or ChatTurnRequest outside this file, and modules/chat/index.ts re-exports only ChatMessageSchema and ChatRoleSchema from this group. The rule therefore lives only here. The next reader looks for it in the specification and does not find it, and the first-message role refusal reads like a decision the business made.
+    kind: unstated
+    correction: >-
+      Either analysis gives the chat turn request shape a node, or the schema, which nothing reads, is removed by the route that answers dead code. A node cannot be chosen here.
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: >-
+      UpdateConversationRequest, the .refine at lines 53-59 (message carries the code as a text prefix)
+    evidence: |-
+      .refine(
+        (body) => body.title !== undefined || body.archived_at !== undefined,
+        {
+          message:
+            "VALIDATION_REQUIRED_FIELD: at least one of title or archived_at must be present",
+        }
+      );
+    cost: >-
+      The contract says every update naming neither field answers HTTP 422 VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present". In the source, the refine only fails Zod parsing. conversations.routes.ts calls UpdateConversationRequest.parse(request.body), and middleware/error-handler.ts maps any ZodError to code VALIDATION_INVALID_FORMAT, message "Request payload failed validation.", with the issues as details. The only path that returns VALIDATION_REQUIRED_FIELD is the route's separate empty-body check. A body holding only other keys therefore answers VALIDATION_INVALID_FORMAT. The code is written into the message text but never reaches the code field. That is the very split the contract's decision log says was resolved, and a client branching on the code is told something other than the node says.
+    kind: contradicts
+    correction: >-
+      An update body naming neither title nor archived_at, empty or holding only other keys, must answer VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present" and details { body: "PATCH /conversations/:id" }. The refine's failure has to reach that answer, instead of being carried as a message prefix that the generic ZodError mapping turns into VALIDATION_INVALID_FORMAT.
+    node: contracts/chat/conversations
+read:
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file declares request schemas only and reads no enablement setting; it contains no `enabled` or `CHAT_ENABLED` construct.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      No prompt text exists in the file. Its constructs are request schemas such as `export const ChatRoleSchema = z.enum(["user", "assistant"]);`.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file declares request schemas only and holds no directed-ingestion setting or default.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file declares request schemas only and holds no distillation or summary setting or default.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The only graph-related constructs are the saved-view snapshot schemas, such as `const GraphSnapshotNode = z.object({ id: z.string() }).passthrough();`. Nothing in the file decides whether a graph delta follows a tool result.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The only graph-related constructs are the saved-view snapshot schemas, such as `const GraphSnapshotNode = z.object({ id: z.string() }).passthrough();`. Nothing in the file builds a graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The only graph-related constructs are the saved-view snapshot schemas, such as `const GraphSnapshotLink = z.object({ id: z.string() }).passthrough();`. Nothing in the file builds a graph delta link.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The only graph-related constructs are the saved-view snapshot schemas. The file declares no graph delta link and no link-type label.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file holds no catalog snapshot and no tool-result streaming; it declares request schemas only.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta and runs no node search; it declares request schemas only.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file reads no tool result and builds no graph delta; it declares request schemas only.
+  - node: rules/chat/message-content-length
+    held_at: >-
+      buildSendMessageRequestSchema, the content bound at lines 66-82. The 32 768 default is held in config/env.ts, not in this file.
+    evidence: |-
+      content: z
+        .string()
+        .min(1, "content must be a non-empty string")
+        .max(
+          opts.maxContentLength,
+          `content must be at most ${opts.maxContentLength} characters`
+        ),
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no model-context text; it declares request schemas only.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file selects no messages for the assistant. `maxHistoryMessages` bounds only a request list in buildChatTurnRequestSchema, which nothing uses.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time-zone setting or default; it declares request schemas only.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt; it declares request schemas only.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt; it declares request schemas only.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-call handling or tool-time setting; it declares request schemas only.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file holds no tool-result handling or limit; it declares request schemas only.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary; it declares request schemas only.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file counts no model calls; it declares request schemas only.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file carries `model: z.string().min(1).optional(),` and sets no default model.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time or timeout; it declares request schemas only.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no utility model; it declares request schemas only.
+looked_past: >-
+  The bounds on conversation title length, the listing limits and defaults, the snapshot bounds and the snapshot version and layout enumeration are held by nodes outside the pack: rules/chat/conversation-title-length, conversation-listing-limit, message-listing-limit, graph-view-snapshot-bounds and contracts/chat/conversations. The file states them as the specification does, and they are not findings.
+candidates_opened:
+  - rules/chat/message-content-length
