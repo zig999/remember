@@ -1,0 +1,12 @@
+certified:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    state: partial
+    tests:
+      - file: src/__tests__/integration/compliance-audit/counts-match-marked.spec.ts
+    why: |-
+      The test runs one deletion and checks two things against the same constant, chunks 1, fragments 1, links 2, attributes 3: the counts recorded in the compliance deletion, and the rows whose status turned to deleted. Recorded counts that matched no marked rows would fail it. So would a count that included the shared attribute, or the chunk that was already superseded. Links (2) and attributes (3) differ from every other count, so if either landed in the wrong category the test would fail.
+      Raw chunks and information fragments do not differ. The fixture marks exactly one of each, so a recorded chunks count that was really the number of fragments marked, or the other way round, would still produce {1, 1, 2, 3}. The test would pass even though the fact no longer held for those two categories. Each count being the number of rows marked in its own category is exercised for links and attributes only, not for chunks and fragments.
+      Over-assertion: the "marked" side is also compared to EXPECTED_AFFECTED. That pins which rows a deletion marks, namely that the already superseded chunk and the attribute shared with another raw source are left out. That is a fact about how far a deletion reaches, not about counts matching what was marked. Change that scope and the test fails, even if the recorded counts still equal what was marked.
+    remainder: testable
+    remainder_why: |-
+      One input: a compliance deletion whose target marks a different number of raw chunks than information fragments, for example two live chunks behind one fragment. One expected result: the recorded chunks count equals the chunks whose status turned to deleted, and the recorded fragments count equals the fragments whose status turned to deleted. Each is asserted on its own.

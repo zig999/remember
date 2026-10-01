@@ -1,0 +1,28 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      line 57, the exported constant REDACTED_LITERAL
+    evidence: |-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;
+    cost: >-
+      The rule that a compliance deletion replaces content and original input with the literal [REDACTED] is declared a second time here, in a file the node is not bound to. Nothing the service runs reads this constant. The redaction that executes is the SQL in compliance-audit.repository.ts (`SET content = '[REDACTED]'`), and the only importers of the constant are the re-export in compliance-audit/index.ts and a unit test. If the node's literal changes, the constant and its test keep passing against the old value while the repository does something else, so nobody can tell which one was decided.
+    kind: contradicts
+    correction: >-
+      The literal should be held in one place that executes, the repository SQL the node is bound to. This second declaration, and the test that pins it, would then go.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+read:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      complianceDelete(), lines 152-171: the four cascade calls and the `affected` object handed to insertComplianceDeletion and insertCurationAction.
+    evidence: |-
+      const chunks = await tombstoneRawChunksOfRaw(client, body.raw_information_id);
+      const fragments = await tombstoneCascadedFragments(client, body.raw_information_id);
+      const links = await tombstoneCascadedLinks(client, body.raw_information_id);
+      const attributes = await tombstoneCascadedAttributes(client, body.raw_information_id);
+
+      const affected = { chunks, fragments, links, attributes };
+      The service stores exactly the counts the four tombstone calls return, with no arithmetic or substitution. Which rows are marked, and how they are counted, is done by the repository functions. The repository is not in this file set.
+looked_past: >-
+  Left unreported as other judgments': rowToDto's coerceNonNegativeInt turns a missing or invalid stored count into 0 on the read path, which this pass did not file against the counts node. Also left out: the BR-xx and UC-xx comments throughout the file, which are prose and not behavior.
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-redacts-content

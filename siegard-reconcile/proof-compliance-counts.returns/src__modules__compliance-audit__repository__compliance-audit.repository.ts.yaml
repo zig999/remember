@@ -1,0 +1,25 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: |-
+      the doc comments of tombstoneRawChunksOfRaw (line 85), tombstoneCascadedFragments (line 109), tombstoneCascadedLinks (line 143) and tombstoneCascadedAttributes (line 178)
+    evidence: |-
+      " * Tombstone every raw_chunk anchored to the deleted raw. RETURNING.id count\n * feeds `affected.chunks` (BR-16)."
+      " * RETURNING.id count feeds `affected.fragments` (BR-16)."
+      " * RETURNING.id count feeds `affected.links` (BR-16)."
+      " * RETURNING.id count feeds `affected.attributes` (BR-16)."
+    cost: |-
+      Four comments say, outside any behavior, that each affected count is the number of rows the cascade marked deleted. The code already holds this fact in the `return res.rowCount ?? 0;` of each function and in the `jsonb_build_object` of insertComplianceDeletion. If the node moves, these comments stay as a second statement of it. Nothing checks them against the node, and the "BR-16" citation points at a back-spec identifier the specification root does not carry.
+    kind: restates
+    correction: |-
+      Remove the four comment sentences that restate the counts. The comment route does this, followed by /reconcile over this file. The fact stays held by the code and by the node.
+    node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+read:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: |-
+      the `return res.rowCount ?? 0;` of tombstoneRawChunksOfRaw, tombstoneCascadedFragments, tombstoneCascadedLinks and tombstoneCascadedAttributes (lines 102, 136, 171, 206), carried into the `affected` column by the `jsonb_build_object('chunks', $3::int, 'fragments', $4::int, 'links', $5::int, 'attributes', $6::int)` of insertComplianceDeletion (lines 235-249)
+    evidence: |-
+      `UPDATE raw_chunk SET status = 'deleted', superseded_at = now() WHERE raw_information_id = $1 AND superseded_at IS NULL RETURNING id` followed by `return res.rowCount ?? 0;`. The fragment, link and attribute updates have the same shape, each with `RETURNING f.id`, `kl.id` or `na.id` and `return res.rowCount ?? 0;`. insertComplianceDeletion then writes `args.affected.chunks, args.affected.fragments, args.affected.links, args.affected.attributes` into the `affected` object.
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-counts-what-it-marked
+looked_past: |-
+  Other comments in this file restate facts held by nodes outside my set (the REDACTED literal, the metadata flag, the tombstone and propagation cascades, the half-open listing window, "BR-xx" and "UC-xx" citations of the back-spec); they belong to the judgments of those nodes, not to this pass.
