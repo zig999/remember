@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: A compliance deletion marks its raw information and each of its raw chunks deleted and gives them, its information fragments and every knowledge link and node attribute it marks deleted the moment of the deletion as their supersession time.
+statement: A compliance deletion marks its raw information and each of its raw chunks not already superseded deleted and gives them, its information fragments and every knowledge link and node attribute it marks deleted the moment of the deletion as their supersession time.
 constrains:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/raw-information

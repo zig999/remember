@@ -1788,6 +1788,11 @@ entries:
   unstated: The owner named the attribute valid_from_source on a knowledge link and a node attribute, and did not say whether the values a correction puts in place of an assertion's carry the same name.
   decided: valid_from_source, the same name as the assertion attribute it replaces; a proposal keeps valid_from_basis.
   why: A correction writes the basis straight onto the assertion, and the curation surface already carries valid_from_source.
+- location: rules/knowledge-base/compliance-deletion-tombstones.md
+  field: statement
+  unstated: The standing statement, decided by an earlier analysis, marked each raw chunk of the deleted raw information, while the delivered code marks only the chunks not already superseded; a proof of the counts rule exposed the case of a chunk already superseded before the deletion.
+  decided: A compliance deletion marks deleted only the raw chunks not already superseded; a chunk already superseded keeps its status and its supersession time and is not counted.
+  why: The owner decided on 2026-10-01 that the delivered behavior is the business's, since a superseded chunk is already no longer current.
 ---
 
 ## Description
@@ -6093,7 +6098,7 @@ None.
 === rules/knowledge-base/compliance-deletion-tombstones
 ---
 type: policy
-statement: A compliance deletion marks its raw information and each of its raw chunks deleted and gives them, its information fragments and every knowledge link and node attribute it marks deleted the moment of the deletion as their supersession time.
+statement: A compliance deletion marks its raw information and each of its raw chunks not already superseded deleted and gives them, its information fragments and every knowledge link and node attribute it marks deleted the moment of the deletion as their supersession time.
 constrains:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/raw-information
