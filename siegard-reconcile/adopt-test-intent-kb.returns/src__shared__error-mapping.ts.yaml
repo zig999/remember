@@ -1,0 +1,100 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      line 96, the RESOURCE_ALREADY_EXISTS entry of the codeToHttpStatus registry
+    evidence: >-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      The code and its 409 status live only in this registry. The specification names
+      RESOURCE_CONFLICT (409) and AUTH_FORBIDDEN as framework answers, and names no
+      RESOURCE_ALREADY_EXISTS anywhere. A reader looking in the specification for what the
+      system answers on a duplicate will not find it, and the registry becomes the place
+      that decision lives.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the fact a node, or the entry would have to go if no
+      sentinel emits the code. I did not check which of the two applies, because that
+      lookup is outside the file set.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      line 139, the BUSINESS_CHAT_INGEST_DISABLED entry of the codeToHttpStatus registry
+    evidence: >-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      The refusal code and its 503 status for disabled directed ingestion through the chat
+      exist only in this registry. contracts/chat/conversations holds BUSINESS_CHAT_DISABLED
+      (503) and rules/chat/directed-ingestion-disabled-by-default states only that directed
+      ingestion is disabled by default. No node holds the code or the status. The next
+      reader will look for the refusal in the specification and will not find it.
+    kind: unstated
+    correction: >-
+      The chat contract, contracts/chat/conversations, would have to hold the refusal
+      (code, status and message) through an analysis.
+    node: contracts/chat/conversations
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the codeToHttpStatus registry (lines 82-145), serviceUnavailableError() and
+      internalError() (lines 187-197), and renderErrorEnvelope() (lines 174-184)
+    evidence: >-
+      AUTH_UNAUTHORIZED: 401, VALIDATION_INVALID_FORMAT: 422, VALIDATION_OUT_OF_RANGE: 422,
+      RESOURCE_NOT_FOUND: 404, BUSINESS_NODE_DELETED: 410, BUSINESS_INVALID_SEARCH_QUERY: 422,
+      BUSINESS_INVALID_SEARCH_LAYER: 422, BUSINESS_FRAGMENT_NOT_ACCEPTED: 404,
+      BUSINESS_RAW_INFORMATION_DELETED: 410, BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,
+      BUSINESS_INVALID_TRAVERSE_DEPTH: 422, SYSTEM_INTERNAL_ERROR: 500; the messages
+      "A backing service is temporarily unavailable." and "Internal server error." agree
+      with the contract.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file carries no accepted-fragment listing and no parameter check. It is only the
+      error-code registry and the envelope builders.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-nodes handling. Its only content is
+      "export function renderErrorEnvelope(".
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window handling.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking of content. It only maps error codes to HTTP statuses.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic. Its pg helper only reads err.code:
+      "return code === "23505";".
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. It holds the registry entry
+      "BUSINESS_ITEM_NOT_UNCERTAIN: 409," and nothing that changes assertion values.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute key.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal. It holds only the status entries
+      "BUSINESS_INVALID_SEARCH_QUERY: 422," and "BUSINESS_INVALID_TRAVERSE_DEPTH: 422,".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation. Its header comment says business outcomes
+      are not errors, but no code decides re-affirmation.
+looked_past: >-
+  The header and block comments restate behavior that code in this file and in the per-domain error mappers holds, and they cite a docs/specs path and a P2.1 parity contract. That is the comment route's concern.
+candidates_opened:
+  - contracts/chat/conversations

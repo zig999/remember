@@ -1,0 +1,104 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      the docstring above ListAcceptedFragmentsQuerySchema, lines 20-24 (the llm_run_id / raw_information_id bullet)
+    evidence: >-
+      * - `llm_run_id` / `raw_information_id` are independently optional but at
+      *   least one MUST be supplied; otherwise the `.refine` raises a
+    cost: >-
+      The one-of-two-filters requirement is written in prose while the .refine on lines 39-45 already enforces it. The prose is a second home for a fact the node holds. If the node changes, the comment is not reached and keeps stating the old rule.
+    kind: restates
+    correction: >-
+      Remove the sentence. The behavior is correct, and the .refine in this file is where the code holds the fact.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      the docstring above ListAcceptedFragmentsQuerySchema, line 26 (`limit` is `[1..100]`)
+    evidence: >-
+      * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+    cost: >-
+      The limit bounds are written in prose while `.min(1).max(100)` on line 33 already enforces them. If the bound moves in the node, the comment keeps stating 100.
+    kind: restates
+    correction: >-
+      Remove the clause. The pipe on `limit` is where the code holds the bound.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      the docstring above ListAcceptedFragmentsQuerySchema, line 26 (`offset >= 0`)
+    evidence: >-
+      * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+    cost: >-
+      The offset minimum is written in prose while `z.number().int().min(0)` on line 36 already enforces it. The comment can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the clause. The pipe on `offset` is where the code holds the minimum.
+    node: rules/knowledge-base/page-offset-non-negative
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      the docstring above ListAcceptedFragmentsQuerySchema, line 26 (the defaults `20` and `0`)
+    evidence: >-
+      * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+    cost: >-
+      The page defaults are written in prose while `.default(20)` and `.default(0)` on lines 35-36 already hold them. If the node's default changes, the comment goes stale.
+    kind: restates
+    correction: >-
+      Remove the clause. The two `.default(...)` calls are where the code holds the defaults.
+    node: rules/knowledge-base/page-defaults
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Only the list-accepted-fragments operation is carried here. The request is ListAcceptedFragmentsQuerySchema. The response shape is the AcceptedFragmentList, AcceptedFragmentItem and AcceptedFragmentSourceRef interfaces.
+    evidence: >-
+      export interface AcceptedFragmentItem { readonly fragment_id: string; readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; readonly source: AcceptedFragmentSourceRef; } with AcceptedFragmentSourceRef { raw_information_id; chunk_index; source_type; received_at; document_title: string | null } and AcceptedFragmentList { total; limit; offset; items }.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      the `.strict()` call on the ListAcceptedFragmentsQuerySchema object, line 38
+    evidence: >-
+      z.object({ llm_run_id: ..., raw_information_id: ..., limit: ..., offset: ... }).strict()
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file declares only the accepted-fragment listing DTOs. Nothing in it concerns an LLM run's affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window bounds, only llm_run_id, raw_information_id, limit and offset.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file declares no chunking logic. `chunk_index` appears only as a number field of AcceptedFragmentSourceRef.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code. It declares only the query schema and the response interfaces.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation code.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and has no attribute-key code.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and has no allowed-value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and has no allowed-value code.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or graph traversal. It declares only the accepted-fragment listing DTOs.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute consolidation code.
+looked_past: >-
+  The header comment says every validation failure surfaces as 422 VALIDATION_INVALID_FORMAT, while the retrieval contract answers an out-of-range limit or offset on this listing with VALIDATION_OUT_OF_RANGE. That mapping lives in the global error handler, which is outside this file set, so I did not judge it. The trailing `// ISO-8601` comments are also prose I did not file.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-offset-non-negative
+  - rules/knowledge-base/page-defaults
+  - rules/knowledge-base/listing-requires-a-filter

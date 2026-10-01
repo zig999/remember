@@ -1,0 +1,161 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      the comment block above the attribute-key loop inside system(), lines 87-99
+    evidence: >-
+      "sorted with default `Array.prototype.sort()` (locale-default,
+      deterministic — same ordering used by `assertValueInDomain`'s
+      `allowed_values` diagnostic, keeping prompt and rejection envelope in
+      sync). Open-domain keys (no rows in `attribute_valid_value`, `domainOf`
+      returns `null`) print unchanged"
+    cost: >-
+      The comment restates the ascending-order and closed-keys-only rules in
+      prose, in a second place beside the code that already holds them
+      (`[...domain].sort()` and the `domain !== null` branch). It also calls
+      the default sort "locale-default", but the default sort compares by
+      UTF-16 code unit and is not locale-aware. A reader who trusts the
+      comment would look for locale behavior the code does not have.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact, so no code
+      change is owed. The sort claim is false as written, so no refresh of
+      the comment is called for either.
+    node: rules/knowledge-base/extraction-prompt-values-ascending
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      rule 3 of the "Inviolable rules" in the string array returned by
+      system(), lines 141-142
+    evidence: >-
+      "3. ATOMICITY: one subject–predicate–object assertion = one fragment. Split",
+      "   compound sentences (\"Ana and Bruno joined X\") into one fragment per fact."
+    cost: >-
+      This rule on how fragments are cut is sent to the model on every
+      extraction. It reaches the model as an instruction, and no node states
+      it. The specification caps a fragment's text at 1000 characters but
+      holds no rule about splitting claims. A reader looking in the
+      specification for why fragments are single facts finds nothing, and the
+      only home of the rule is this prompt string.
+    kind: unstated
+    correction: >-
+      Analysis should give the fragment-atomicity directive a node under
+      rules/knowledge-base, constraining prompt-version.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      rule 5 of the "Inviolable rules" in the string array returned by
+      system(), lines 148-151
+    evidence: >-
+      "5. LITERAL vs ENTITY: a literal value of an entity that matches a catalog",
+      "   AttributeKey → `propose_attribute`; an entity matching a NodeType →",
+      "   `propose_node` (+ `propose_link` if a relation is stated). A date, number",
+      "   or string value is NEVER a node."
+    cost: >-
+      This is a classification rule for what becomes a node and what becomes
+      an attribute. It decides which extracted facts reach the graph as
+      entities, and it is stated only in the prompt text. The specification's
+      extraction nodes cover dates, closed values and the token ceiling, but
+      none holds this rule. The next reader of node-versus-attribute
+      behavior looks in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the literal-versus-entity directive a node, bound
+      to the prompt version it belongs to.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      the comment lines inside the "Worked example" block of system(),
+      lines 211-216
+    evidence: >-
+      "  // a document/event is its own node; `concerns` (aboutness, no valid_from) links it to the topic,",
+      "  // `delivered_to` records the recipient. Do NOT leave \"a proposal\" as a bare fragment.",
+      "  propose_link {source_node_id:D, link_type:\"concerns\", target_node_id:Z,",
+      "  propose_link {source_node_id:D, link_type:\"delivered_to\", target_node_id:L,"
+    cost: >-
+      The prompt tells the model that a document or event becomes its own
+      node, linked to its topic by `concerns` and to its recipient by
+      `delivered_to`. That modeling convention is stated only in the prompt.
+      The catalog nodes say which link types are temporal, but none says a
+      document or event must become a node of its own. Anyone changing
+      extraction behavior has to find this in the code and not in the
+      specification.
+    kind: unstated
+    correction: >-
+      Analysis should state the document-and-event-as-node convention in a
+      node, or drop it from the prompt.
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      `export interface DocumentMetadata { readonly source_type: string; readonly received_at: string; readonly document_date: string | null; readonly title: string | null; }`
+      only carries four fields of the raw information into the prompt. It is
+      not the declared shape of the element.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file builds the extraction prompt and has no retrieval operation,
+      refusal or answer.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments and no query-parameter
+      handling.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never builds or reads an LLM run's affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file receives `chunkText` already cut: `readonly chunkText: string;`.
+      It does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file proposes nothing and resolves nothing. It only instructs the
+      model: "propose freely, the backend resolves and dedups".
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      the valuesSuffix expression inside the attribute-key loop of system(),
+      lines 105-115
+    evidence: >-
+      `const domain = domainOf(catalog, ak.id); const valuesSuffix = domain !== null ? `, values: [${[...domain].sort().map((v) => JSON.stringify(v)).join(",")}]` : "";`
+      The values are appended beside the key, and the suffix is the empty
+      string for an open key.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      the `.sort()` call on the spread domain inside valuesSuffix in system(),
+      line 109
+    evidence: >-
+      `${[...domain].sort().map((v) => JSON.stringify(v)).join(",")}`
+      Default string order, applied whatever order the Set holds.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      the `.map((v) => JSON.stringify(v))` step in valuesSuffix in system(),
+      line 110
+    evidence: >-
+      `.sort().map((v) => JSON.stringify(v)).join(",")`
+      The values come straight from `domainOf(catalog, ak.id)` and are not
+      altered, so accents are kept as validation compares them.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only tells the model about it in prompt text: "`none` (default):
+      a plain assertion. Re-affirming an identical current fact consolidates
+      server-side — repeating is safe." The consolidation itself is not
+      implemented here.
+looked_past: >-
+  The file's other prompt directives (the 0.75 and 0.40 confidence bands, the
+  1000-character fragment cap, the 8000-token ceiling, the never-invent-a-date
+  rule, the stated basis, the 200-character previous-chunk tail, the data
+  envelope, the receipt fallback and the change_hint guidance) match nodes the
+  specification holds, outside this file's set, so I reported none of them.

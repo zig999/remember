@@ -1,0 +1,125 @@
+findings:
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      the header comment, lines 1-22 (the BR-15 error list and the
+      envelope description)
+    evidence: >-
+      "//   - raw_information_id resolves to no row -> RESOURCE_NOT_FOUND
+      //   - UC-01 alt 4c legacy orphan -> SYSTEM_INTERNAL_ERROR
+      //   - Any unhandled exception -> SYSTEM_INTERNAL_ERROR"
+    cost: >-
+      The comment states which error code each compliance_delete refusal
+      answers, a fact the compliance-audit contract holds and this
+      file's code also holds in its renderErrorEnvelope calls and its
+      generic handler. A reader sees two homes for the same refusal
+      table, and when the contract moves the comment is not reached by
+      any check.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the contract node and
+      by the code that emits the codes.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      the docstring above mapZodErrorToEnvelope, lines 57-72
+    evidence: >-
+      " *   3. `reason` length / trim violation (`too_small` / `too_big` on the
+      `reason` path) -> `VALIDATION_OUT_OF_RANGE`.
+       *   4. Everything else -> `VALIDATION_INVALID_FORMAT`."
+    cost: >-
+      The docstring restates the contract's validation refusals for
+      compliance-delete (required field, reason length, invalid format),
+      which the function body also carries. Prose and code can drift
+      apart unnoticed, and the prose is a second home for the table.
+    kind: restates
+    correction: >-
+      Remove the docstring. The mapping stays held by the branches of
+      mapZodErrorToEnvelope and by the contract node.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      the registerTool call, lines 139-143
+    evidence: >-
+      deps.mcp.registerTool("curation", {
+          name: "compliance_delete",
+          description:
+            "Tombstone a RawInformation under LGPD or owner request. Idempotent.",
+    cost: >-
+      The tool's name, its placement in the curation toolset and its
+      description are what an MCP client sees. The compliance-audit
+      contract says only "over MCP" and names no tool, toolset or
+      description. The name and placement therefore live only in this
+      file, and a reader looking in the specification for how a client
+      reaches compliance deletion over MCP finds nothing.
+    kind: unstated
+    correction: >-
+      Give the MCP tool name, its toolset and its description a node, in
+      or beside contracts/knowledge-base/compliance-audit.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only compliance_delete via
+      deps.mcp.registerTool("curation", { name: "compliance_delete", ... });
+      it carries none of the retrieval operations (search, provenance
+      reads, listings, traverse).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing; its only tool is
+      compliance_delete with inputSchema: ComplianceDeleteRequestSchema.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not touch LLM runs or affected nodes; the handler
+      calls complianceDelete({ logger: deps.logger }, client, body).
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file lists no compliance deletions. The only window-related
+      code is the unreachable "Time range bounds must satisfy `from < to`."
+      branch in mapZodErrorToEnvelope, which is not an open-window
+      acceptance.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file performs no chunking; it only parses the request and
+      delegates to complianceDelete within withTransaction.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals or node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file handles no assertion confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt; its only emitted text is the
+      compliance_delete tool description.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file runs no search or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals or re-affirmation.
+looked_past: >-
+  The VALIDATION_OUT_OF_RANGE "from < to" branch of mapZodErrorToEnvelope
+  is a code-quality matter and was not filed: the compliance_delete
+  request schema carries no range refinement, and the "from < to" message
+  belongs to the contract's list-compliance-deletions refusal, not to
+  compliance-delete.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit

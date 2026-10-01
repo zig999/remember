@@ -1,0 +1,67 @@
+findings:
+  - file: src/modules/knowledge-graph/service/norm.ts
+    where: >-
+      The header comment block, lines 1-14, and the docblocks on collapseSpaces, stripDiacritics and norm, lines 16, 21 and 26.
+    evidence: >-
+      // norm(x) = lower(unaccent(collapseSpaces(trim(x))))
+      // This is the SINGLE normalization policy of the system (CLAUDE.md
+      // "Conventions").
+    cost: >-
+      The comment states the name-normalization policy in prose a second time. The executable form is the norm() function in this file, which trims, strips diacritics, collapses whitespace and lower-cases. A reader who changes the rule in the node, or changes this function, will also find a separate prose statement of the policy that nothing keeps in step with either. The comment also points the reader to CLAUDE.md as the authority, when the node rules/knowledge-base/name-normalization is.
+    kind: restates
+    correction: >-
+      Remove the header comment and the docblocks. The code in this file holds the fact, and the node already states it. The header comment's reference to the database function `norm()` and to the `immutable_unaccent` wrapper describes the database side. It is not this file's fact, so it goes with the prose.
+    node: rules/knowledge-base/name-normalization
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file exports only `norm(input: string): string`, which is `collapseSpaces(stripDiacritics(input.trim())).toLowerCase()`. It declares no operation, answer or refusal of the retrieval contract.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing and no query-parameter handling. Its only export is `export function norm(input: string): string`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node logic, only `function stripDiacritics(s: string): string`, `function collapseSpaces(s: string): string` and `norm`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window handling.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking, only `s.normalize("NFD").replace(/[̀-ͯ]/g, "")` and `s.replace(/\s+/g, " ")`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no locking or sequencing. It is a pure string function.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or status change.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute-key catalog.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file sorts nothing and builds no prompt. It only has `return collapseSpaces(stripDiacritics(input.trim())).toLowerCase();`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. `stripDiacritics` is applied only inside `norm()` for comparison, to no prompt value.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, change-hint or validity-start comparison logic.
+looked_past: >-
+  The file's executable behavior (trim, strip diacritics, collapse whitespace, lower-case) agrees with rules/knowledge-base/name-normalization and its decision log, so I raised no finding against the code. That node is not in this file's pack, so the `read` list has no entry for it. The application-side reimplementation of the database `norm()` function is a design question and not part of this judgment.
+candidates_opened:
+  - rules/knowledge-base/name-normalization

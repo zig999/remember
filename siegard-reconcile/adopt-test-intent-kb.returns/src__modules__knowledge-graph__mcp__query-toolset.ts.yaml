@@ -1,0 +1,109 @@
+findings:
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      QUERY_TOOL_NAMES (lines 161-171) and the nine registerTool calls with
+      name: "..." in registerQueryToolset (lines 268-412)
+    evidence: >-
+      export const QUERY_TOOL_NAMES: readonly QueryToolName[] = [ "get_node",
+      "traverse", "get_history_link", "get_history_attribute",
+      "get_history_attribute_key", "list_nodes", "list_node_types",
+      "list_link_types", "list_attribute_keys", ];
+    cost: >-
+      The specification's retrieval contract names these reads as
+      read-node, read-link-history, read-attribute-history, list-node-types
+      and so on. The names an LLM caller must use (get_node,
+      get_history_link, ...) exist only in this array and the registerTool
+      calls. A caller or reviewer who looks in the specification for the
+      tool vocabulary will not find it. A rename here would change what
+      callers see and no node would register the change.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the retrieval contract (or a
+      constraint beside the llm-toolset-* ones) holds the MCP tool name of
+      each read operation. The code cannot close this.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      registerQueryToolset, lines 260-422. It registers nine of the contract's
+      operations as MCP tools: read-node as get_node, traverse, the three
+      history reads, list-nodes, list-node-types, list-link-types and
+      list-attribute-keys. Each wraps its service call in a read-only
+      transaction and returns { ok: true, result } or the mapped error
+      envelope. The refusal codes are produced by the shared mapper and the
+      DTO schemas in other files.
+    evidence: >-
+      handler: makeHandler(GetNodeInputSchema, (input, client) =>
+      getNodeByIdService(client, {...}, svcLogger), pool) and makeHandler
+      returns `return { ok: true, result };` or `return
+      mapErrorToEnvelope(err);`. search, the three provenance reads,
+      list-accepted-fragments, read-link and read-attribute are not
+      registered in this file.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file registers no accepted-fragment listing. The nine registered
+      tools are get_node, traverse, the three history tools, list_nodes and
+      the three catalog listings.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node handling appears in the file. It only
+      registers read tools.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window
+      filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It imports only read services such as
+      `getNodeByIdService` and `traverseNodeService`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code. It only has read
+      handlers.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review or confirmation logic. It only has
+      read-only handlers.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The only text it holds is tool
+      descriptions, such as "List the active AttributeKey catalog entries,
+      optionally scoped to one NodeType via `node_type`."
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file registers no search tool. The nine tool names are get_node,
+      traverse, get_history_*, and list_*. The only graph walk is the
+      explicit `traverseNodeService` call.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or re-affirmation handling. It only has read
+      handlers.
+looked_past: >-
+  The file header and section comments (for example "mirroring the REST
+  surface 1:1 (knowledge-graph.back.md BR-23, BR-25)") are prose about
+  transport and wiring, not a node's domain fact. They belong to the comment
+  route, not to this judgment.
+candidates_opened:
+  - rules/knowledge-base/history-order
+  - rules/knowledge-base/catalog-node-types
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/traversal-substitutes-merged-ends
+  - rules/knowledge-base/lineage-history
+  - rules/knowledge-base/page-limit-bounds

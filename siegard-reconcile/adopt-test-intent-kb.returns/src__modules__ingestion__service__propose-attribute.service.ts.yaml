@@ -1,0 +1,99 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 71-80, the guard after the attribute_key lookup
+    evidence: >-
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "attribute_key.node_type_id does not match the node's node_type_id.",
+          { node_id: args.node_id, key: args.key }
+        );
+      }
+    cost: >-
+      The specification refuses an attribute key not held for the node's type with BUSINESS_UNKNOWN_ATTRIBUTE_KEY. This guard refuses the same condition with VALIDATION_INVALID_FORMAT and its own message. The catalog lookup above it is already scoped to (node_type_id, key), so the guard is unreachable today. If the catalog scope ever relaxes, callers would see a code and a message that no node holds, and the next reader would not find them in the specification.
+    kind: contradicts
+    correction: >-
+      Either remove the guard, since the scoped lookup already enforces the rule, or make it refuse with the code the node's contract names for the unknown-attribute-key case.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 85-92, the comment above the closed-domain gate
+    evidence: >-
+      // Closed-domain gate (BR-30). ... `assertValueInDomain` rejects out-of-domain literals
+      // with `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
+      // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The comment restates a rule the node holds: a value must be one of the allowed values exactly as written. Code holds it too, in the call `assertValueInDomain(args.value, domain)` in this file. The comment is a second home for the rule outside behavior. If the node moves, the comment keeps saying the old rule and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays in the node and in the gate's code.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 131-134, the comment above the source-metadata query
+    evidence: >-
+      // `received_at` is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The comment restates the rule that a proposal needing a validity start falls back to the document date and then the reception date. Code holds it too: `received_at: receivedAt` is passed into `validateTemporal`. The comment is prose outside behavior and can diverge from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays in the node and in the call to `validateTemporal`.
+    node: rules/knowledge-base/required-start-available
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a propose-attribute write service. It has no search, provenance, listing or traverse operation. It only ends with `return { ok: true, result };`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing here. The only fragment query is `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never reads or builds an LLM run's affected nodes. It only passes `runCtx` through to `consolidateAttribute`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window filter appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only calls `countFragmentsAnchoredToSource(client, { fragment_ids, expected_raw_information_id })`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file does no node-name resolution and takes no lock. Its writes are delegated: `await consolidateAttribute(client, {...}, resolvedKey, fragmentTexts, runCtx)`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file proposes assertions and does not confirm uncertain ones. It only sets `status_for_new_row: statusForNewRow`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only reads `domainOf(deps.catalog, resolvedKey.id)` to gate a value.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values. It only calls `assertValueInDomain(args.value, domain)`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The exact-match gate sits in `assertValueInDomain`, which is another file's code.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file hands the change hint and validity start to the consolidator and does not decide re-affirmation itself: `change_hint: args.change_hint, ... valid_from: resolvedTemporal.valid_from` inside `consolidateAttribute(client, {...})`.
+looked_past: >-
+  The file's Layer 1 to 5 order, the confidence floor result with reason BELOW_CONFIDENCE_FLOOR, the fragment existence, run-ownership and anchoring refusals and the unknown-node refusal all match nodes outside this pack (the attribute-proposal check-order rule and the propose-attribute contract), so I reported nothing there. The other-code-style questions and the consolidation write in graph-consolidation.service.ts belong to other judgments.
+candidates_opened:
+  - rules/knowledge-base/attribute-key-for-node-type
+  - rules/knowledge-base/attribute-value-in-allowed-values
+  - rules/knowledge-base/required-start-available

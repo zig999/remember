@@ -1,0 +1,112 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment above TraverseDirectionSchema, lines 114-117
+    evidence: >-
+      * Direction enum mirrors `openapi.yaml` traverseNode `direction` parameter.
+      * Default in this schema is `both` (matches OpenAPI).
+    cost: >-
+      The traversal default of following links from either end is stated a second time in prose,
+      and the prose names openapi.yaml as its authority, so the next reader checks that file
+      instead of the specification node. The code in this file already holds the default, so
+      nothing needs to change except the removal of the prose.
+    kind: restates
+    correction: >-
+      Remove the comment. The default stays held by `direction: TraverseDirectionSchema.optional().default("both")`
+      in TraverseQuerySchema.
+    node: rules/knowledge-base/traversal-defaults
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment above TraverseDepthCoercer, lines 130-136
+    evidence: >-
+      * Out-of-range `depth` is detected here AND re-asserted in the service layer
+      * (defence in depth, BR-05 of back spec). Zod failure surfaces as Zod parse
+      * error (422 VALIDATION_INVALID_FORMAT through the global handler); the
+      * service-layer assertion produces BUSINESS_INVALID_TRAVERSE_DEPTH
+    cost: >-
+      The depth-bounds rule and its refusal code are described in prose that cites a back spec
+      rather than the specification node. The prose also says the range is detected in this file,
+      but TraverseDepthCoercer only checks that the value is a finite number. The bounds are held
+      in ../traversal/config.js (TRAVERSAL_DEPTH_MIN, TRAVERSAL_DEPTH_MAX), which this file
+      re-exports as TRAVERSAL_DEPTH_BOUNDS. A reader trusting the comment would look for a range
+      check here that does not exist.
+    kind: restates
+    correction: >-
+      Remove the comment. The bounds are held by the traversal config constants this file
+      imports.
+    node: rules/knowledge-base/expansion-depth-bounds
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The request schemas for list-link-types, list-attribute-keys, list-nodes, read-node and
+      traverse: ListLinkTypesQuerySchema, ListAttributeKeysQuerySchema, ListNodesQuerySchema,
+      GetNodeByIdQuerySchema, TraverseQuerySchema, plus the path params NodeIdParamSchema,
+      LinkIdParamSchema, AttributeIdParamSchema and NodeIdKeyParamSchema.
+    evidence: >-
+      `.strict()` on each query object (a parameter the operation does not define is refused);
+      `z.union([z.boolean(), z.enum(["true", "false"])])` for switches;
+      `node_type: z.string().min(1).max(200).optional()` for the 1 to 200 character name;
+      `as_of: IsoDateOnly.optional()` with `/^\d{4}-\d{2}-\d{2}$/` for the year-month-day date;
+      `z.enum(["out", "in", "both"])` for direction; `z.string().uuid()` for identities;
+      `z.union([z.string().min(1), z.array(z.string().min(1))])` for an empty link-type name.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      This file declares no accepted-fragment listing query. The `.strict()` objects belong to
+      the catalog, node listing, node read and traverse operations.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file declares only request query and path schemas. Nothing in it concerns an LLM
+      run's affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion filter or execution window appears in the file. The only date
+      field is `as_of: IsoDateOnly.optional()`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file contains no chunking. It declares only `z.object({ ... }).strict()` request
+      schemas.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file contains no proposal or node-resolution logic. It declares only
+      query and path schemas.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation. It declares only read-side query and path
+      schemas.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. `ListAttributeKeysQuerySchema` carries only
+      `node_type`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and holds no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file declares no search query. `TraverseQuerySchema` is the graph traversal read,
+      not the search expansion.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal handling. It declares only read-side query and path schemas.
+looked_past: >-
+  The header comment's claim that out-of-range values map to VALIDATION_INVALID_FORMAT or VALIDATION_OUT_OF_RANGE through the global error handler describes code outside this file, so I did not report it, and the "must be an integer" message TraverseDepthCoercer attaches to a non-finite depth is wording, not a domain fact.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-defaults
+  - rules/knowledge-base/page-offset-non-negative
+  - rules/knowledge-base/node-view-defaults
+  - rules/knowledge-base/traversal-defaults
+  - rules/knowledge-base/expansion-depth-bounds

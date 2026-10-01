@@ -1,0 +1,117 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      Header docstring, lines 6-15 (the five-layer list), restated again by the
+      "---- Layer N" section comments at lines 66, 127, 138, 167 and 180.
+    evidence: >-
+      // Layered validation (BR-13) in the documented order. Each layer is a
+      // sequential `await`, so layer N+1 only runs when layer N has not thrown:
+      //   1. Structural    — cross-table refs (nodes exist, fragments exist,
+      //                      link_type known).
+      //   2. Graph rules   — active link_type_rule for the triple (BR-15).
+      //   3. Temporal      — semi-open invariant, change_hint signal, date basis.
+      //   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+      //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
+      //                      source (BR-18).
+    cost: >-
+      The order in which a link proposal is checked is written a second time in
+      prose. The running code already holds it as the sequence of awaits
+      (assertKnownType, assertFound, the fragment query, validateGraphRule,
+      validateTemporal, routeConfidence, countFragmentsAnchoredToSource). The
+      comment can drift from that sequence without anything noticing. A reader
+      who trusts it will not look in rules/knowledge-base/link-proposal-check-order.
+    kind: restates
+    correction: >-
+      Remove the docstring list and the layer comments by the comment route, then
+      run /reconcile over this file. The code in this file is untouched. The
+      order is already held by the sequential awaits in proposeLinkService.
+    node: rules/knowledge-base/link-proposal-check-order
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      Header docstring, line 13 and lines 17-20 (confidence floor), restated
+      again by the Layer 4 comment at lines 169-171.
+    evidence: >-
+      // 4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+      // On confidence < 0.40 the service returns `{ ok: true, result: { outcome:
+      // 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`. The caller maps this to
+      // `validation_outcome = 'rejected'` on the `tool_call` row (BR-17).
+    cost: >-
+      The 0.40 floor is quoted as a number in prose. The decision itself is the
+      `route.kind === "below_floor"` branch, which returns before any write. The
+      numeric value is not stated in this file's code; it comes from the imported
+      routeConfidence, which I did not open because it is outside the file set.
+      If the floor changes, the comment keeps saying 0.40 while the node and the
+      code move.
+    kind: restates
+    correction: >-
+      Remove the comment text by the comment route, then run /reconcile over this
+      file. The below_floor branch and the rejected result are already held by
+      the code in this file.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The node is the owner's read surface (search, provenance reads, catalog
+      listings, graph reads). This file only writes through
+      `consolidateLink(client, {...}, resolvedLink, fragmentTexts, runCtx)`
+      and reads no retrieval operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments. Its only query is
+      `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run's affected nodes are computed anywhere in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking occurs here. The file only counts anchored fragments with
+      `countFragmentsAnchoredToSource`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node names and takes no lock. It looks nodes up by
+      identity with `findNodeTypeIdByNodeId`. Locking is delegated to
+      `consolidateLink`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation or review appears in the file. It only proposes
+      a link.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and compares no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file runs no search query and no graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file passes `change_hint`, `valid_from` and `fragment_ids` to
+      `consolidateLink(...)`. The re-affirmation decision (same target or
+      value, change hint none, same validity start) is made in
+      graph-consolidation.service.js, not in this file.
+looked_past: >-
+  Other comments in the file (the note on the previous plain-INSERT behaviour
+  and the dup-guard index, the BR-xx/TC-011/v7 §6.5 citations, the outcome-mapping
+  comment) are prose that is another judgment's, and I did not report them.
+candidates_opened:
+  - rules/knowledge-base/link-proposal-check-order
+  - rules/knowledge-base/below-confidence-floor-records-nothing

@@ -1,0 +1,83 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the file-header comment (lines 10-15) and the docblock above selectPromptModule (lines 83-87)
+    evidence: >-
+      "// An unknown version is a configuration error, NOT a silent fallback: BR-26
+      // step 2 mandates "load the extraction.${prompt_version} module; fail with 500
+      // SYSTEM_INTERNAL_ERROR if the module is missing"." and "Throws
+      `UnknownPromptVersionError` for an unregistered version (BR-26 step 2 — fail
+      loud, never silently substitute a different prompt than the run declares)."
+    cost: >-
+      The comments restate the rule that an extraction's prompt version must be one the system holds, and
+      they cite "BR-26", a back-spec rule number, as if it were the authority. Code already holds the
+      fact in this file: `if (module === undefined) { throw new UnknownPromptVersionError(promptVersion); }`.
+      The citation can drift from the node, and the next reader will look in the comment instead of in
+      rules/knowledge-base/prompt-version-known. The comments also name a 500 SYSTEM_INTERNAL_ERROR
+      outcome that this file does not produce. I did not check whether code in another file maps
+      the error to that code.
+    kind: restates
+    correction: >-
+      Remove the comments. This is a prose-only change, because the code already holds the fact. Do not touch
+      the message of UnknownPromptVersionError, which is text the system emits.
+    node: rules/knowledge-base/prompt-version-known
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a prompt-module registry (`const REGISTRY: Readonly<Record<string, PromptModule>> = {
+      [v1.PROMPT_VERSION]: V1, ... }`). It reads, lists or traverses nothing and has no search, provenance, catalog or
+      graph-read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No fragment listing and no query-parameter handling. The only exports are `PromptModule`,
+      `DEFAULT_PROMPT_VERSION`, `UnknownPromptVersionError` and `selectPromptModule`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run affected-nodes handling. `selectPromptModule` only does `REGISTRY[promptVersion]`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing and no execution-window bounds in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking logic. `user(args: UserPromptArgs): Anthropic.Messages.TextBlockParam[]` is only forwarded
+      from the v1-v4 modules.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal, node-resolution, alias or locking logic in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation logic in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt text. It forwards `system: v1.system` (and the v2-v4 equivalents), which take a
+      `CatalogSnapshot`, and the closed-value listing happens in those modules.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No ordering of allowed values here. Prompt content is produced in extraction.v1.js to
+      extraction.v4.js (`system: v4.system`).
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No allowed values are handled or spelled in this file. Prompt content is produced in the
+      extraction.vN modules.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search or graph traversal in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation or change-hint logic in the file.
+looked_past: >-
+  The file also holds the registry of v1 to v4 and `DEFAULT_PROMPT_VERSION = v4.PROMPT_VERSION`, which agree with
+  domain/knowledge-base/prompt-version and rules/knowledge-base/default-prompt-version. Those nodes are outside this
+  file's pack. The comment "callers SHOULD send this at intake" is prose, so I name it here and do not file it.

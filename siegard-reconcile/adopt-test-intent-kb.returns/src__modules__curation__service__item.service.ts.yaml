@@ -1,0 +1,68 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      This file is the curation write path (confirmItemService, rejectItemService, correctItemService).
+      It declares no search, provenance read, listing or traverse operation; its only reads are
+      `loadItemsForUpdate(client, body.item_kind, [body.item_id])` and `findInformationFragmentById(...)`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments and parses no query parameters. The only fragment access is
+      `findInformationFragmentById(client, body.corrected.valid_from_fragment_id)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file builds no LLM run and no affected-nodes list. It returns only
+      `{ item_kind, item_id, resulting_status, action_id }` and the correct-item equivalent.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file lists no compliance deletions and takes no execution-window bounds.
+      `insertCurationAction` writes curation audit rows only.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It touches no RawChunk construct; it only copies provenance with
+      `copyProvenance(client, body.item_kind, body.item_id, newItemId)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node names or aliases and handles no proposals. The only locking it does is
+      `loadItemsForUpdate` on one existing item.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      confirmItemService only delegates, with `const updated = await confirmItem(client, body.item_kind, body.item_id);`
+      and returns `resulting_status: "active"`. It writes no confidence or date itself. Whether
+      confidence and validity and supersession dates are kept lives in the repository's confirmItem,
+      outside this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It reads the closed domain only to validate a corrected value:
+      `const domain = domainOf(deps.catalog, attrKey.id);`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts nothing. It forwards `allowed_values: detail.allowed_values ?? []`
+      from the validation failure into an error's details.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. `assertValueInDomain(body.corrected.value, domain)` is called, but the
+      comparison and spelling of the values live in ingestion/validation/structural.js, outside this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk. All its reads are keyed by a single item identity.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals and no re-affirmation. A correction does the opposite of consolidating:
+      `supersedePredecessor(...)` followed by `insertCorrectedRow(client, body.item_kind, {...})`.
+looked_past: >-
+  The file's refusals (BUSINESS_ITEM_NOT_UNCERTAIN, BUSINESS_ITEM_NOT_DELETABLE, BUSINESS_DATE_UNJUSTIFIED,
+  BUSINESS_INVALID_ATTRIBUTE_VALUE) and its result shapes are held by contracts/knowledge-base/curation and its
+  rules, which are outside this pack and which I only grepped and read in part, so they are no `unstated` finding;
+  the comments citing BR-17, BR-18, BR-19 and BR-23 are prose restating those nodes, which another judgment owns.

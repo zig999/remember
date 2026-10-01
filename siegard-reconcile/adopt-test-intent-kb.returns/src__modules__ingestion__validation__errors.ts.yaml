@@ -1,0 +1,91 @@
+findings:
+  - file: src/modules/ingestion/validation/errors.ts
+    where: >-
+      header comment, lines 27-29 (the paragraph on the extra BUSINESS_RUN_NOT_RUNNING code)
+    evidence: >-
+      // The extra `BUSINESS_RUN_NOT_RUNNING` code is emitted by the MCP handler
+      // guard when the ambient `llm_run_id` points to a row whose `status` is not
+      // `'running'` (BR-21 / catalog Ingestion section).
+    cost: >-
+      The comment states that a proposal is refused unless its run is running, which is a fact
+      a node holds. The code already holds it: handler-base.ts line 117 emits
+      "BUSINESS_RUN_NOT_RUNNING", and llm-run.service.ts defines RunNotRunningError with that
+      code. The comment is a second home for the rule outside behavior. A reader who trusts it
+      would not know it can go stale, for example if the node is later reworded to say "ambient".
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then run /reconcile over the file. The
+      union member "BUSINESS_RUN_NOT_RUNNING" stays, because it is code.
+    node: rules/knowledge-base/proposal-requires-running-run
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares a code vocabulary and answers no read operation. It holds no HTTP
+      status, refusal pairing or operation. The only overlap is the union members
+      `| "BUSINESS_UNKNOWN_LINK_TYPE"`, `| "VALIDATION_OUT_OF_RANGE"` and
+      `| "RESOURCE_NOT_FOUND"`, which name codes and do not say which operation refuses with them.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing and no parameter check. It contains only `export class
+      ValidationFailure extends Error` and `isValidationFailure`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file holds no run or affected-node logic. It contains only the error-code union and
+      the ValidationFailure class.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no compliance-deletion listing. It contains only the error-code union and
+      the ValidationFailure class.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file holds no chunking. It contains only `export type McpEnvelopeErrorCode = ...` and
+      the ValidationFailure class.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no node resolution or locking. It contains only the error-code union and
+      the ValidationFailure class.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no assertion review. It contains only the error-code union and the
+      ValidationFailure class.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt. It contains only the error-code union and the ValidationFailure
+      class.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no ordering. It contains only the error-code union and the
+      ValidationFailure class.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no allowed values. It contains only the error-code union and
+      the ValidationFailure class.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file holds no search. It contains only the error-code union and the ValidationFailure
+      class.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal consolidation. It contains only the error-code union and the
+      ValidationFailure class.
+looked_past: >-
+  The header comment's history of retired short codes (STRUCTURAL_INVALID mapped to the
+  namespaced codes) and the BR-13 note on how the handler persists the tool_call row are prose
+  about how the code came to be. They are not behavior, and the sentence about the tool_call row
+  is not named in any node of the pack.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - constraints/failures-answer-one-envelope
+  - rules/knowledge-base/proposal-requires-running-run

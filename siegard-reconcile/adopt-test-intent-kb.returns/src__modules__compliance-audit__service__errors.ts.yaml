@@ -1,0 +1,102 @@
+findings:
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the header comment, lines 1-16 (the mapping of the three error families to status and code)
+    evidence: >-
+      // Three families:
+      //   - ResourceNotFoundError -> 404 / RESOURCE_NOT_FOUND
+      //   - ValidationFailure     -> 422 / VALIDATION_*  (code set by the caller)
+      //   - InternalFailure       -> 500 / SYSTEM_INTERNAL_ERROR (BR-17 legacy-orphan alarm)
+    cost: >-
+      The status and code of each refusal appear in the header prose and again in the classes
+      below (`statusCode = 404`, `code = "RESOURCE_NOT_FOUND" as const`). A reader checking what
+      the compliance-audit surface answers sees two statements of it in one file and has to work
+      out which is the decision. The contract that holds these answers is not among the nodes
+      this file is bound to, so a change to the contract does not reach this prose.
+    kind: restates
+    correction: >-
+      Remove the header prose. The classes already carry the status and code, so the removal
+      loses nothing. Then rebind the file to contracts/knowledge-base/compliance-audit.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the doc comments on ResourceNotFoundError (line 34) and InternalFailure (lines 54-59)
+    evidence: >-
+      /** 404 — RESOURCE_NOT_FOUND. UC-01 alt 4a / UC-03 / UC-05. */
+      ... 500 — UC-01 alt `4c` legacy inconsistency: `raw_information.status =
+      'deleted'` exists with no `compliance_deletion` row. BR-17 mandates an
+      operational alarm (already emitted at the service layer) and a generic
+      500 to the client.
+    cost: >-
+      The contract refuses "The raw information is already deleted and no compliance deletion of
+      it is on record" with SYSTEM_INTERNAL_ERROR and "Unexpected internal error." The doc comment
+      restates that trigger as prose. The running code holds the same fact in
+      `public readonly code = "SYSTEM_INTERNAL_ERROR" as const;` and
+      `super("Unexpected internal error.", details);`. The prose is a second home outside
+      behavior and will not follow the contract if it changes.
+    kind: restates
+    correction: >-
+      Remove both doc comments. The code already holds the 404 and 500 answers, and the
+      legacy-inconsistency trigger belongs to the contract.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only compliance-audit error classes (`export class ResourceNotFoundError
+      extends ComplianceAuditError`, `InternalFailure`). It names no retrieval operation, no
+      BUSINESS_* code and no provenance refusal.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No query-parameter handling exists in the file; it holds only `ComplianceAuditError`,
+      `ResourceNotFoundError`, `ValidationFailure` and `InternalFailure`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run or affected-node construct, only `abstract class
+      ComplianceAuditError extends Error`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no window or filter construct. `ValidationFailure` only carries a
+      caller-supplied code, `this.code = code;`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking logic, only the error classes.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or resolution construct, only the error classes.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review construct, only the error classes.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt or attribute-key construct, only the error classes.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt or allowed-value ordering, only the error classes.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt or allowed-value spelling, only the error classes.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph-walk construct, only the error classes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute consolidation construct, only the error
+      classes.
+looked_past: >-
+  The comment claim that "BR-17 mandates an operational alarm (already emitted at the service
+  layer)" is prose only in this file, and the alarm is not code here, so I left it to the comment
+  route and to a judgment of the service file.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit

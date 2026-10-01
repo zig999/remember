@@ -1,0 +1,78 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the comment block above `const reaffirmation` in consolidateLinkOnce, lines 530-548
+    evidence: >-
+      "For MULTI-CURRENT types (`functional === false`): `valid_from` equality is NOT required. ... For FUNCTIONAL types (`functional === true`): also require `sameValidFrom`."
+    cost: >-
+      The comment states, in prose, the node's rule on when a proposal re-affirms (change hint none, same validity start only for a type that does not allow multiple current assertions). The code below it already holds that rule: `sameTarget && args.change_hint === "none" && (!functional || sameValidFrom)`. A second statement of the rule outside the node can drift from the node. The attribute branch already has, and the comment does not mention that difference.
+    kind: restates
+    correction: >-
+      Remove the comment block. The rule stays in rules/knowledge-base/reaffirmation-consolidates and in the `reaffirmation` expression.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the re-affirmation condition in consolidateAttributeOnce, lines 776-784, and the closing comment at lines 852-854
+    evidence: >-
+      "if (\n      sameValue &&\n      sameValidFrom &&\n      args.change_hint === \"none\"\n    ) {" and "different valid_from\n    // on a multi-valued attribute is coexistence)."
+    cost: >-
+      The node (statement, final decision in its log) requires the same validity start to re-affirm only for a type that does not allow multiple current assertions. The attribute branch requires `sameValidFrom` for multi-current attribute keys as well. A multi-current attribute re-stated with change hint none and a different validity start therefore falls through to (e) and inserts a new row, where the node says it re-affirms and records no new assertion. The link branch applies `(!functional || sameValidFrom)`, so links and attributes decide differently for the same case. The comment calls this "coexistence", a rule no node holds and the node's log reads against.
+    kind: contradicts
+    correction: >-
+      The attribute re-affirmation condition would have to drop the validity-start requirement when `attrKeyInfo.allows_multiple_current` is true, as the link branch does: `sameValue && args.change_hint === "none" && (!functional || sameValidFrom)`.
+    node: rules/knowledge-base/reaffirmation-consolidates
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a consolidation service with no search, provenance-read, listing or traverse operation. It only declares `export async function consolidateLink(` and `export async function consolidateAttribute(`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments and parses no query parameters. Its only SQL is provenance and fragment-status writes (`INSERT INTO provenance`, `UPDATE information_fragment`).
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never builds an LLM run's affected nodes. `RunContext` is read only for `runCtx.llmRunId` in `insertLinkRow` and `insertAttributeRow`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never divides content into chunks. It handles only link and attribute rows and their fragment ids.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node names or aliases. Its locks are on knowledge_link and node_attribute rows (`FOR UPDATE`), not on node-name proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation of an uncertain assertion. It only sets status to 'superseded' or 'disputed' and inserts new rows.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file contains no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the link branch only: `reaffirmation` in consolidateLinkOnce, lines 549-556. The attribute branch, lines 777-784, differs from the node (see the contradicts finding).
+    evidence: >-
+      "const reaffirmation =\n      sameTarget &&\n      args.change_hint === \"none\" &&\n      (!functional || sameValidFrom);\n    if (reaffirmation) {\n      await insertLinkProvenance(client, vigent.id, args.fragment_ids);\n      return { outcome: \"consolidated\", link_id: vigent.id };"
+looked_past: >-
+  The file also decides precedence, correction, succession, dispute, the retry after a concurrent insert, provenance recording and the succession-signal word list. I attributed these to nodes outside the pack (consolidation-precedence, succession-signal, consolidation-race-decided-again, consolidation-race-refuses-second-collision, consolidation-records-provenance and the correction, dispute and succession nodes), and I made no conformance claim on them. The long header and function comments restating those rules, and the 0.75 threshold named only in comments, are prose for the comment route.
+candidates_opened:
+  - rules/knowledge-base/succession-signal
+  - rules/knowledge-base/consolidation-precedence

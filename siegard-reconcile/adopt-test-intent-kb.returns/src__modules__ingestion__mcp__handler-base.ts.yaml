@@ -1,0 +1,120 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring of deriveValidationOutcome, lines 55-65
+    evidence: >-
+      "Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+       branch returns this), the audit row is `'rejected'` per BR-17. Every other
+       `ok:true` envelope is `'accepted'`."
+    cost: >-
+      The mapping from a proposal's outcome to the tool call's validation outcome is stated twice in this
+      file, once in the switch and once in prose. When the node moves, the prose keeps saying the old mapping
+      beside code that no longer matches it, and the prose is not bound to the node.
+    kind: restates
+    correction: >-
+      Remove the docstring. The switch in deriveValidationOutcome holds the mapping. Run /reconcile over
+      this file afterwards.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring of assertRunIsRunning, lines 91-102
+    evidence: >-
+      "id does not match any LLMRun row -> `RESOURCE_NOT_FOUND`
+         - id matches a row whose `status !== 'running'` -> `BUSINESS_RUN_NOT_RUNNING`"
+    cost: >-
+      The rule that a proposal is taken only within a running run is also written as prose. The code in the
+      same file holds it, so the prose is a second home that nobody reads when the rule changes.
+    kind: restates
+    correction: >-
+      Remove the docstring. The `row.status !== "running"` branch holds the rule. Run /reconcile over this
+      file afterwards.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the header comment, lines 1-14, and the docstring of runIngestHandler, lines 125-131
+    evidence: >-
+      "4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
+       //      short TX to write the audit `tool_call` row (BR-23)."
+      and "BR-23: even when the business transaction rolls back, the audit row is
+       * written via a SEPARATE short transaction (`insertToolCallStandalone`)."
+    cost: >-
+      The rule that every proposal is audited, and that a refused or failed one records only its tool call, is
+      also narrated in comments that cite BR numbers. A reader looking for what is audited finds the comments
+      before the node. The code in runIngestHandler already holds the rule.
+    kind: restates
+    correction: >-
+      Remove the header comment and the docstring. The catch block, safeWriteAuditOnRollback and
+      insertToolCall hold the behavior. Run /reconcile over this file afterwards.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries none of the read operations. Its error code `SYSTEM_INTERNAL_ERROR` with message
+      "Internal error in MCP handler." belongs to the ingestion contract's proposal refusals, not to
+      retrieval. The only retrieval-adjacent text is `export type { McpEnvelope, McpErr, McpOk } from
+      "../service/propose.types.js"`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter handling. It only wraps `runIngestHandler`'s
+      `args.run(client)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never touches an LLM run's affected nodes. `assertRunIsRunning` returns only
+      `{ input_raw_information_id: row.input_raw_information_id }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file only writes tool calls with `insertToolCall` and `insertToolCallStandalone`. It lists no
+      compliance deletions and has no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It is the shared handler shell around `await args.run(client)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file opens one transaction per call with `client.query("BEGIN")`. It holds no node-name
+      resolution, no alias read and no ordering of concurrent proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. Its only status check is
+      `if (row.status !== "running")`, on an LLM run.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The only emitted strings are error messages and log lines
+      such as "mcp_handler_internal_error".
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file does no value ordering and builds no prompt. Its only list is the `switch (tag)` over
+      outcome tags.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file spells no catalog allowed values. It does not construct a prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal. It imports `findLlmRunById` and the tool_call inserts only.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file does not decide consolidation. `deriveValidationOutcome` only passes through an
+      already-decided tag, as in `case "consolidated": return "consolidated";`.
+looked_past: >-
+  Several in-file comments cite BR-numbers or restate transaction and envelope mechanics that no node is
+  the home of, and the three-way split of the MCP envelope types across files, which belongs to a code
+  review.
+candidates_opened:
+  - rules/knowledge-base/every-proposal-audited
+  - rules/knowledge-base/proposal-requires-running-run
+  - rules/knowledge-base/refused-proposal-records-only-its-tool-call
+  - rules/knowledge-base/tool-call-validation-outcome
+  - domain/knowledge-base/tool-call
+  - domain/knowledge-base/validation-outcome
+  - contracts/knowledge-base/ingestion

@@ -1,0 +1,112 @@
+findings:
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      header comment, lines 3-5 (the enforcement of owner authentication on this module's routes)
+    evidence: >-
+      // Mounted under `/api/v1/*` by the bootstrap (`app.ts`). The parent scope
+      // already enforces Neon Auth JWT (BR-01); individual handlers do NOT
+      // re-check the token.
+    cost: >-
+      The refusal of a request without valid owner authentication is described a second time in prose in
+      a routes file that does not carry it. The next reader may take this comment for the place where
+      authentication is decided, and it will not move when the node does. Code holds the fact in
+      another file, `scoped.addHook("preHandler", auth.preHandler);` in `src/app.ts` (line 136), so the
+      pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the node and by the preHandler in `src/app.ts`.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      The handlers of GET /node-types (line 81), /links/:link_id (line 186), /attributes/:attribute_id
+      (line 205), /links/:link_id/history (line 271), /attributes/:attribute_id/history (line 290) and
+      /nodes/:node_id/attributes/:key/history (line 311). None of them parses `request.query`.
+    evidence: >-
+      app.get("/node-types", async (_req, reply) =>
+        withReadOnly(deps.pool, async (client) => {
+          const body = await listNodeTypesService(client);
+      ...
+      const params = LinkIdParamSchema.parse(request.params);
+      try {
+        return await withReadOnly(deps.pool, async (client) => {
+          const body = await getLinkByIdService(
+      The contract's refusal for list-node-types, read-link, read-attribute, read-link-history,
+      read-attribute-history and read-attribute-key-history reads: "A parameter is malformed or
+      unknown: ... or a parameter the operation does not define." -> "HTTP 422, error code
+      VALIDATION_INVALID_FORMAT". The routes that do parse a query (`ListLinkTypesQuerySchema.parse(request.query ?? {})`
+      and the others) use `.strict()` schemas from `dto/queries.dto.ts`.
+    cost: >-
+      Over REST, a request to these six operations that carries an undefined query parameter is
+      answered as accepted, where the node says HTTP 422 VALIDATION_INVALID_FORMAT. A caller who
+      misspells a parameter gets no refusal and a result that ignores it. The MCP counterpart
+      (`ListNodeTypesInputSchema = z.object({}).strict()`) does refuse, so the two transports of one
+      operation disagree.
+    kind: contradicts
+    correction: >-
+      Parse the query of these six operations with an empty strict schema, as the routes that already
+      take a strict query schema do, so an unknown parameter is refused as the contract states.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Partly. The route registrations in `registerKnowledgeGraphRoutes` (lines 81-332) carry the
+      read operations list-node-types, list-link-types, list-attribute-keys, list-nodes, read-node,
+      read-link, read-attribute, traverse, read-link-history, read-attribute-history and
+      read-attribute-key-history. The dispatch of the service errors to refusals is
+      `isMappableServiceError` plus `handleReadError`, `handleTraversalError` and
+      `handleAttributeKeyHistoryError` (lines 356-402), which hand the error to `mapErrorToHttpResponse`.
+      The file does not carry search, the three provenance reads or list-accepted-fragments. The
+      unknown-parameter refusal is missing on six routes (see the findings).
+    evidence: >-
+      app.get("/nodes/:node_id/traverse", ...);
+      const { statusCode, envelope } = mapErrorToHttpResponse(err, details);
+      return reply.status(statusCode).send(envelope);
+      return reply.status(200).send({ ok: true, result: body });
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file registers no accepted-fragment listing; it has no route that reads accepted fragments.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file registers no LLM-run route; `registerKnowledgeGraphRoutes` has only the catalog, node,
+      link, attribute, traverse and history GET routes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and takes no execution-window parameter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never touches raw chunks or content division; it only imports read services for the knowledge graph.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file is read-only (`withReadOnly(deps.pool, ...)`) and proposes nothing.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no write route and no confirmation of assertions.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and spells no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file registers no search route. Its only graph walk is `traverseNodeService` on
+      /nodes/:node_id/traverse, which is not a search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file is read-only and receives no proposals.
+looked_past: >-
+  The long comment above the error-mapper wrappers (lines 335-352) describes why unknown errors are re-thrown to the global handler, and the comments citing UC and TC numbers are implementation rationale and traceability prose, not facts of the listed nodes, so I did not report them.

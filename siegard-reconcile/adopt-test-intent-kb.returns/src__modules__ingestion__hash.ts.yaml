@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      the docstring above sha256Hex, lines 10-15
+    evidence: >-
+      `sha256(content)` -- 64 char lowercase hex string.
+      Used as `raw_information.content_hash` (BR-01); the DB CHECK constraint on
+      the column enforces the same regex.
+    cost: >-
+      The content-hash definition (SHA-256, UTF-8, 64 lowercase hex characters) is written a second time as prose.
+      If the node moves, this docstring keeps saying the old form, and the next reader may take it as the authority.
+      The code on line 17 already holds the fact.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact stays in the node and in the code of sha256Hex, which the node's bind covers.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      the docstring above composeIdempotencyKey, lines 20-27
+    evidence: >-
+      `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`,
+      concatenated WITHOUT a separator. The order is exactly as defined in §8 of
+      v7 and as documented in `ingestion.back.md` BR-08.
+    cost: >-
+      The operand order and the no-separator rule are stated again in prose that points to documents other than the node.
+      A change to the node would not reach this docstring, so a reader could take the docstring or v7 §8 for the authority.
+      The code on lines 34-39 already holds the fact.
+    kind: restates
+    correction: >-
+      Remove the docstring and the header comment on lines 1-6, which cite BR-01 and BR-08.
+      The fact stays in the node and in the code of composeIdempotencyKey.
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file exports only `sha256Hex` and `composeIdempotencyKey`; it has no search, provenance, listing or graph-read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      `export function sha256Hex(content: string): string` and `composeIdempotencyKey` handle no query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no reference to LLM-run affected nodes; `createHash("sha256").update(content, "utf8").digest("hex")` is the whole of sha256Hex.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window bound.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      `chunking_version: string` is only an operand of the hash in `h.update(args.chunking_version, "utf8")`; the file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic; it only calls `createHash`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or status change.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      `prompt_version` is only a string fed to `h.update(args.prompt_version, "utf8")`; the file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts nothing.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling or consolidation; it only computes two SHA-256 digests.
+looked_past: >-
+  The code in this file matches the two candidate nodes that hold its facts, so the only findings are the restating prose; the file's own bound nodes (the retrieval, listing, prompt, review and search nodes) concern other files.
+candidates_opened:
+  - rules/knowledge-base/content-hash-is-sha256
+  - rules/knowledge-base/idempotency-key

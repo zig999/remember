@@ -1,0 +1,82 @@
+findings:
+  - file: src/shared/health.ts
+    where: >-
+      the docstring above collectHealth, lines 18-23
+    evidence: >-
+      Never
+      throws — a DB failure surfaces as `{ ok: false, database: "unreachable" }`
+      so callers always get a usable report
+    cost: >-
+      The never-fails rule is stated in prose here as well as held in the code. The try/catch
+      returning the unreachable report already holds it, in this file. A reader can take the
+      comment as the place the rule lives, and if the node moves the comment goes stale
+      without anyone being told.
+    kind: restates
+    correction: >-
+      Remove the prose. The catch branch that returns `database: "unreachable"` already holds
+      the fact, and the rule is held by the node named here.
+    node: rules/knowledge-base/health-probe-never-fails
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries only `collectHealth` and the `HealthReport` interface. It has no search,
+      provenance, listing, catalog or graph read. The health probe belongs to another
+      contract, contracts/knowledge-base/access.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter handling. The only export besides
+      the type is `export async function collectHealth(pool: Pool): Promise<HealthReport>`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-node handling. It pings the database through
+      `await pingDatabase(pool);` and builds a report.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. The only data it builds is `{ ok, service, database, checked_at }`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals and no node resolution. It makes one `pingDatabase(pool)` call.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review and no status, confidence or validity handling.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no attribute keys.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt and no allowed-value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt and no allowed-value text.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute handling and no change hint.
+looked_past: >-
+  The file's own fact, the health report, is held by nodes outside this pack and the code
+  conforms to them: `HealthReport` declares ok, service, database ("ok" | "unreachable") and
+  checked_at, and `checked_at` is taken before `pingDatabase` is called. The header comment on
+  why the module sits apart from app.ts is implementation rationale, not a domain fact.
+candidates_opened:
+  - domain/knowledge-base/health-report
+  - domain/knowledge-base/database-status
+  - rules/knowledge-base/health-checked-at-probe-start
+  - rules/knowledge-base/health-probe-never-fails
+  - contracts/knowledge-base/access

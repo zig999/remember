@@ -1,0 +1,89 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the comments inside parseAttributeValue, lines 22-25, 37 and 57
+    evidence: >-
+      "Rejects "tomorrow" for `date`, "abc" for `number`, etc." and "// Strict ISO YYYY-MM-DD; not free-form." and "// Strict: must be a finite numeric literal (no NaN, no Infinity)."
+    cost: >-
+      The value-parsing rule has a second home in prose. If the node's expression changes, the comments keep saying the old rule beside code that no longer matches. A reader may take them for the decision. The code in this file (the regexes at lines 38 and 58, the `Date.parse` check, the `true`/`false` comparison) already holds the fact.
+    kind: restates
+    correction: >-
+      Remove the comments. The rule is already held by the node and implemented in the function body.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of assertValueInDomain, lines 88-108, and the comment at lines 116-118
+    evidence: >-
+      "exact-match string equality, no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30)." and "// `[...domain].sort()` is locale-default lexicographic, which matches the prompt builder's enumeration order"
+    cost: >-
+      The closed-domain rule (exact match, sorted allowed values) is restated as prose. It also carries a claim that is not the code's behavior: `Array.prototype.sort()` with no comparator orders by UTF-16 code unit, not by locale. A reader who trusts the comment learns a different ordering than the one the code applies. The code (`domain.has(value)` and `[...domain].sort()`) already holds the fact.
+    kind: restates
+    correction: >-
+      Remove the docstring and the comment. The rules are already held by the nodes and implemented in the function body.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the file header comment, lines 1-18, and the docstring of assertKnownType, lines 146-149
+    evidence: >-
+      "node_type, link_type, attribute_key all live in the seeded catalog." and "* `propose_attribute`: key.node_type_id == node.node_type_id;" and "Assert a catalog membership; raise the kind-specific `BUSINESS_UNKNOWN_*` code on miss"
+    cost: >-
+      The rule that an attribute key must be held for its node's type, and the refusal codes for unknown types, are restated in a header whose contents no running system emits. This file only raises the error for a `found` flag the caller computes, so the header reads as if the file decided the rule. If the node moves, the header stays and misleads.
+    kind: restates
+    correction: >-
+      Remove the header and docstring prose. The `BUSINESS_UNKNOWN_*` selection in assertKnownType is the code that holds the fact. The cross-table comparison itself is made at the call sites, which this file set does not include.
+    node: rules/knowledge-base/attribute-key-for-node-type
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The node is the owner's read surface (search, provenance, listings, graph reads). The file has no read operation. Its only `BUSINESS_UNKNOWN_*` selection is `args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : ...`, a proposal-side check.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments and no query-parameter handling. Its exports are parseAttributeValue, assertValueInDomain, assertFound and assertKnownType.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run, affected-nodes or knowledge-node reading. Nothing in it concerns an absent affected node.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window bounds.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not divide content into chunks. It only has `assertFound({ entity, id, found })`, which raises on a missing row.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node-name resolution, alias reading or serialization of proposals. It is stateless helper functions.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation, and it handles no status, confidence or date of an assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. Its only mention of the prompt is a comment. `allowed_values` appears only as a detail of a validation failure, in `{ value, allowed_values }`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file orders the allowed values only in the validation diagnostic, `const allowed_values = [...domain].sort();`. It builds no extraction prompt, so the prompt's ordering is held elsewhere.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. Its comparison is `domain.has(value)` with no normalisation, but that is the validation side, not the prompt listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation, change-hint or validity-start comparison. It does not compare a proposal against a current assertion.
+looked_past: >-
+  The caller-side checks (the key belonging to the node's type, chunk anchoring) and the `propose-*` contract's refusals are made at call sites outside this file, so nothing here could be judged against them.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses
+  - rules/knowledge-base/attribute-value-in-allowed-values
+  - rules/knowledge-base/attribute-key-for-node-type

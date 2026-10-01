@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      the docstring above ValidFromBasisSchema, lines 5-15
+    evidence: >-
+      "Only `stated` and `document` are accepted at the API boundary. The third
+      value, `received`, is a backend-only fallback that the temporal validator
+      applies internally when neither `stated` nor `document` can justify the
+      date — it is never sent by an LLM or any external caller, so it MUST NOT
+      appear in this input enum."
+    cost: >-
+      The rule that a caller never states the basis received is written in prose beside the enum.
+      The enum is the only thing that enforces it. A reader who opens the docstring finds a second
+      statement of the rule. When the node moves, nothing points at this comment, so it can drift
+      unnoticed.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact is held by the code, `z.enum(["stated", "document"])` in this
+      file, and by the node. The route is the comment route, then a reconcile over this file.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only the input and result shapes of propose_link
+      (`export const ProposeLinkInputSchema = z.object({`). It carries no read operation
+      (search, provenance, listings, traverse).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file declares no accepted-fragment listing and no query-parameter handling. It has only
+      `ProposeLinkInputSchema`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run affected-nodes handling. Its result type is `ProposeLinkResult`
+      with `link_id`, `outcome`, `superseded_link_id` and `reason`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window filter. Its date fields are
+      `valid_from` and `valid_to` only.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking logic. It references fragment ids only, in
+      `fragment_ids: z.array(z.string().uuid()).min(1)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution and no concurrency control. It is a schema and type
+      declaration, so it cannot serialize proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review or confirmation logic. It declares only the proposal
+      input and result.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. Its `.describe(...)` strings are tool-parameter
+      descriptions, not prompts that list attribute-key values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values. The only enums are
+      `z.enum(["stated", "document"])` and `z.enum(["none", "succession", "correction"])`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no accented catalog values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk. It declares the propose_link input only.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file does not decide consolidation. It declares `change_hint: ChangeHintSchema.default("none")`
+      and the outcome type `"consolidated"`. It carries only a tool description,
+      "re-affirming an identical fact consolidates, never duplicates", which is emitted text that
+      agrees with the node and is no finding. Consolidation itself lives in the service, not here.
+looked_past: >-
+  The tool-parameter `.describe(...)` strings and the `change_hint` and `valid_from_basis` enums state facts that nodes outside this pack hold (proposal confidence bounds and floors, the change-hint enumeration, validity-start-before-end), and I read them as emitted text agreeing with those nodes.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received

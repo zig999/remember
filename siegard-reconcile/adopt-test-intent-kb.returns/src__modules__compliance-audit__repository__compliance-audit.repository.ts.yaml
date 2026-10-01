@@ -1,0 +1,97 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the docstring above tombstoneRawInformation, lines 45-61
+    evidence: >-
+      * The `[REDACTED]` literal is hardcoded — never read from config (constraint
+      "[REDACTED] literal is hardcoded in the service").
+      ... `original_input` is redacted in the SAME UPDATE statement using a
+      CASE expression so null stays null ... and non-null is rewritten to the 10-character literal
+      `[REDACTED]`.
+    cost: >-
+      The redaction literal and the original-input rule are written a second time in prose.
+      The UPDATE holds them in code (`content = '[REDACTED]'` and `original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END`).
+      If the node moves, this comment keeps saying the old rule beside code that no longer matches it.
+    kind: restates
+    correction: >-
+      Remove the prose. The node and the UPDATE statement already hold the fact.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the docstring above listComplianceDeletions, lines 306-309
+    evidence: >-
+      * BR-09: `executed_from` inclusive, `executed_to` exclusive (semi-open).
+    cost: >-
+      The window-bound rule is stated in prose while the code holds it (`executed_at >= $` and `executed_at < $`).
+      The prose is a second home for the rule, and no check reaches it when the node changes.
+    kind: restates
+    correction: >-
+      Remove the prose. The node and the two WHERE conditions already hold the rule.
+    node: rules/knowledge-base/audit-listing-window-half-open
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the docstring above listCurationActions, lines 426-429
+    evidence: >-
+      * BR-09 semi-open range, BR-10 enum already enforced at API layer.
+    cost: >-
+      The window rule is restated in prose while the code holds it (`created_at >= $` and `created_at < $`).
+      A reader of this comment is sent to a back-spec rule number instead of the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The node and the two WHERE conditions already hold the rule.
+    node: rules/knowledge-base/audit-listing-window-half-open
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds only compliance-audit and curation-action persistence (`FROM compliance_deletion`, `FROM curation_action`). It has no search, provenance, catalog or graph read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments. Its only fragment query is the cascade UPDATE `UPDATE information_fragment AS f SET status = 'deleted'`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run affected-nodes read. `affected` appears only as the compliance-deletion counts in `jsonb_build_object('chunks', $3::int, ...)`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      listComplianceDeletions, lines 317-328. Each window bound is added only when present, so either bound can be given alone.
+    evidence: >-
+      if (f.executed_from) { where.push(`executed_at >= $${i++}`); ... } if (f.executed_to) { where.push(`executed_at < $${i++}`); ... }
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not divide content into chunks. It only tombstones existing rows: `UPDATE raw_chunk SET status = 'deleted', superseded_at = now()`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code. Its only lock is `SELECT id, status FROM raw_information WHERE id = $1 FOR UPDATE`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation. The only assertion updates are the compliance tombstones `UPDATE knowledge_link AS kl SET status = 'deleted'` and `UPDATE node_attribute AS na SET status = 'deleted'`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute-key catalog.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values. Its only ORDER BY clauses are `ORDER BY executed_at DESC` and `ORDER BY created_at DESC`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query. Its only graph-table access is the compliance cascade over `provenance`, `knowledge_link` and `node_attribute`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or re-affirmation path. It has no change hint, no validity-start comparison and no provenance-adding code.
+looked_past: >-
+  The file's other compliance and audit facts (cascade ownership, counts, curation-action recording, newest-first order) belong to nodes outside this pack. The code agrees with the ones read (`audit-listing-order`, `compliance-deletion-tombstones`), so nothing is reported against them; comments citing BR-/UC- numbers were not otherwise reviewed.
+candidates_opened:
+  - rules/knowledge-base/audit-listing-window-half-open
+  - rules/knowledge-base/compliance-deletion-redacts-content

@@ -1,0 +1,117 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the comment above LayersArray, lines 20-25
+    evidence: >-
+      non-enum elements raise
+       * a ZodError that the service translates to BUSINESS_INVALID_SEARCH_LAYER.
+    cost: >-
+      The refusal code for a layer outside the set is stated in a comment in the DTO file, though the DTO does not produce it. The node does not bind this file, and the comment will not follow if the node changes.
+    kind: restates
+    correction: >-
+      Remove the comment. This is the comment route, followed by /reconcile over the file. Whether the service raises the code is for the file that holds it to show. This pass did not read that file.
+    node: rules/knowledge-base/search-layer-outside-set-refused
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the comment above QueryString, lines 37-47
+    evidence: >-
+      `query` validation per BR-04 of the back spec:
+       *   - min 1 char (raw)
+       *   - max 1000 chars (raw)
+      (code: `.max(1000, { message: "query exceeds 1000 characters" })`)
+    cost: >-
+      The 1000-character ceiling is stated twice in this file: in the comment and in `.max(1000, ...)`. The comment cites a back-spec rule by number instead of the node. A reader checking the limit is sent to a source outside the specification.
+    kind: restates
+    correction: >-
+      Remove the prose. The code at line 51 holds the fact, and the node that holds the limit is not in this file's pack.
+    node: rules/knowledge-base/search-query-length
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the same comment above QueryString, lines 37-47
+    evidence: >-
+      btrim non-empty after transform (rejects whitespace-only input)
+      (code: `.transform((s) => s.trim()).refine((s) => s.length > 0, {`)
+    cost: >-
+      The blank-after-trim refusal is restated in prose beside the code that implements it, with a back-spec rule number as its cited authority.
+    kind: restates
+    correction: >-
+      Remove the prose. The refine at lines 52-55 holds the fact.
+    node: rules/knowledge-base/search-query-not-blank
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the `.strict()` closing SearchQuerySchema, line 74
+    evidence: >-
+      export const SearchQuerySchema = z
+        .object({ ... })
+        .strict();
+    cost: >-
+      A search request that names a query parameter the operation does not define is refused here. The specification states that refusal for the accepted-fragment listing, the graph reads and the catalog listings. The `search` operation's refusals in the retrieval contract do not list it. The rule lives only in this code, and a reader of the contract would expect such a request to succeed.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether `search` refuses unknown parameters and, if so, state that in the retrieval contract, or an appropriate rule, with the code it answers with.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Partly. SearchQuerySchema (lines 57-74) holds the request-side validation of `search`: the as-of date shape, the limit range and the offset floor. The three path-param schemas (lines 82-95) hold the well-formed-identifier checks for the provenance reads. The refusals' error codes, the 401 and the accepted answers are not in this file.
+    evidence: >-
+      as_of: IsoDateOnly.optional() with .regex(/^\d{4}-\d{2}-\d{2}$/, ...);
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)); offset: IntegerQuery.pipe(z.number().int().min(0));
+      link_id: z.string().uuid()
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file defines no accepted-fragment listing schema. The only `.strict()` is on SearchQuerySchema, which is a search request.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file declares only search query and path-param schemas, with no LLM run or affected-node handling.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window bounds. Its schemas are SearchQuerySchema and the three id-param schemas.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. The word `chunk` appears only in `ALLOWED_LAYERS = ["fragment", "node", "chunk"]`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code. It declares only query-side DTO schemas.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation code.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file only declares the switch: `expand: BooleanQuery.optional().default(true)`. Whether a non-expanding search walks the graph is decided where the search runs, not here.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, re-affirmation or provenance accumulation code.
+looked_past: >-
+  The file's other search-request facts (query ceiling of 1000, limit 1 to 100 defaulting to 20, offset at least 0, expansion depth 1 to 3 defaulting to 1, layers fragment/node/chunk, the option defaults) are held by nodes outside this pack (rules/knowledge-base/search-query-length, search-query-not-blank, page-limit-bounds, page-offset-non-negative, expansion-depth-bounds, search-option-defaults, domain/knowledge-base/search-layer). They agree with the code and are bound to no node here, so they are an attribution gap for the trace and no finding; the header comment on error codes at lines 1-5 and the BR-04 comment above ALLOWED_LAYERS are prose too.
+candidates_opened:
+  - domain/knowledge-base/search-query
+  - domain/knowledge-base/search-layer
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-query-not-blank
+  - rules/knowledge-base/search-query-must-parse
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/search-option-defaults
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-offset-non-negative
+  - rules/knowledge-base/expansion-depth-bounds

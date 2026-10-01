@@ -1,0 +1,124 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      line 57, the exported constant REDACTED_LITERAL (re-exported at line 19 of
+      src/modules/compliance-audit/index.ts)
+    evidence: >-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;
+      (the repository that performs the redaction does not read it; it spells the literal again:
+      "SET content        = '[REDACTED]',
+      original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END"
+      in src/modules/compliance-audit/repository/compliance-audit.repository.ts, lines 68-69)
+    cost: >-
+      The redaction literal exists as code in two places, and nothing in this file's own flow uses
+      the one declared here. A change to the node's literal can be made in one place and not the
+      other, and nobody can tell which spelling was the decision. The constant looks like the
+      authority (it is exported and carries a docstring), but the SQL that actually redacts does
+      not read it.
+    kind: contradicts
+    correction: >-
+      The literal should have a single home in code, bound to the node, or the unused exported
+      constant should be dropped. The code cannot read the specification, so the bind has to
+      claim whichever file holds it.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      lines 301-318 (rowToDto) and 338-347 (coerceNonNegativeInt)
+    evidence: >-
+      "defensively coerce missing keys to 0 so the response always satisfies the Zod contract on the
+      read path even if a legacy row carries a partial blob."
+      chunks: coerceNonNegativeInt(a.chunks),
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) { return Math.trunc(v); }
+      ... return 0;
+    cost: >-
+      A stored count that is absent, negative, non-numeric or fractional is reported to the owner as
+      0 or a truncated integer, so an audit record can state "0 fragments deleted" for a deletion
+      whose count was never recorded. The nodes say only that each count is zero or more. The
+      substitution rule lives only in this converter, and the next reader will look for it in the
+      specification and not find it.
+    kind: unstated
+    correction: >-
+      Either give this read-time substitution a node, or let the nodes decide that a malformed
+      stored count is refused or reported as absent.
+    node: rules/knowledge-base/affected-counts-non-negative
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the comment at lines 173-174, above insertCurationAction at lines 175-181
+    evidence: >-
+      // BR-08 — write CurationAction row (action='compliance_delete',
+      // target_kind='raw_information', target_id=<the raw>).
+    cost: >-
+      The comment restates, in prose, the kind, target kind and target of the curation action that
+      the node holds. The insertCurationAction call at lines 175-181 carries the same values as
+      code. A second statement of the fact outside behavior can drift from the node and from the
+      call it describes. The same applies to the BR-nn and UC-nn labels in the other comments of
+      this file.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact.
+    node: rules/knowledge-base/compliance-deletion-records-curation-action
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries compliance-audit reads (listComplianceDeletions, getComplianceDeletionById,
+      listCurationActions, getCurationActionById). None of the retrieval operations (search, the
+      provenance reads, the catalog listings, the node reads, traverse) appears in it.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. It only forwards fields of the already-parsed
+      ListComplianceDeletionsQuery: "raw_information_id: query.raw_information_id".
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-nodes handling. Its only "affected" is the deletion
+      counts, "const affected = { chunks, fragments, links, attributes };".
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The service only forwards the bounds, "executed_from: query.executed_from, executed_to:
+      query.executed_to". It does not decide whether one bound alone is accepted. That sits in the
+      DTO or repository, not in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk. It only tombstones chunks that already exist,
+      "await tombstoneRawChunksOfRaw(client, body.raw_information_id)".
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals and no node resolution. Its only row lock is
+      loadRawInformationForUpdate(client, body.raw_information_id).
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation. Its status changes are the deletion tombstones
+      (tombstoneCascadedLinks, tombstoneCascadedAttributes).
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and reads no attribute-key catalog. Its only strings are log
+      messages such as "compliance_delete_ok".
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts no allowed values. The import list shows only repository
+      and DTO functions of the compliance-audit module.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values. The only literal it spells is
+      "[REDACTED]", which is a different fact.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk. Its reads are by identity or by compliance-audit
+      listing filters, as in "findComplianceDeletionById(client, id)".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no change hint. The nearest idempotent branch is the
+      compliance-delete no-op, "outcome: \"noop_already_deleted\"", which is a different fact.
+looked_past: >-
+  The compliance-delete flow, its refusals, the no-op outcome and the cascade are held by compliance-audit nodes outside this pack (contracts/knowledge-base/compliance-audit, rules/knowledge-base/compliance-deletion-check-order, rules/knowledge-base/compliance-deletion-counts-what-it-marked, rules/knowledge-base/compliance-deletion-propagates, rules/knowledge-base/compliance-deletion-tombstones), and the code agrees with the wording I read there, so I filed no finding on them.

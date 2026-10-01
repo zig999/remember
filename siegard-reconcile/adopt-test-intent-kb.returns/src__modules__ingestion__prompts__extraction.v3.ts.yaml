@@ -1,0 +1,95 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 8-12 (the paragraph on the original and widened event_type domain)
+    evidence: |-
+      // `event_type` domain {reunião, go-live, workshop, outro} landed on `outro`
+      // with a lowered confidence (→ `uncertain`). Migration
+      // `0003_event_type_taxonomy.sql` widened that closed domain (cobrança,
+      // decisão, escalonamento, bloqueio, marco)
+    cost: >-
+      A comment in this file lists the allowed event_type values. The node rules/knowledge-base/allowed-event-types holds the same list, and the seed named in the comment carries it. If the catalog changes again, the comment keeps the old list and a reader may take it for the current domain. Nothing running reads it.
+    kind: restates
+    correction: >-
+      Remove the comment. The route is the comment-only edit followed by /reconcile over this file. The fact is already held by the node, and the prompt renders the live catalog, so no behavior changes. I did not read the seed file, which is outside the file set. The comment and the project layout name migrations/seeds/0003_event_type_taxonomy.sql as the place that holds the values.
+    node: rules/knowledge-base/allowed-event-types
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 13-14 (pick the best-fitting value, fall back to outro, lower confidence)
+    evidence: |-
+      // USE it — pick the best-fitting catalog value, fall back to `outro` only
+      // when none fits (and then lower confidence so curation sees the gap), and
+    cost: >-
+      The outro fallback rule is stated in prose here, in addition to the code. The code is the EVENT_CLASSIFICATION_DIRECTIVE text at lines 60-62, which carries the same rule with the 0.74 ceiling. If the rule moves in the node, a reader may take either the comment or the directive as the decision.
+    kind: restates
+    correction: >-
+      Remove the comment. The route is the comment-only edit followed by /reconcile over this file. The directive at lines 60-62 of this file already holds the fact, so no behavior changes.
+    node: rules/knowledge-base/extraction-event-type-fallback
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 14-15 (resolve relative dates against document_date)
+    evidence: |-
+      // and resolve relative dates ("hoje"/"ontem"/…) against `document_date`.
+    cost: >-
+      The anchor for relative dates is stated in prose here, in addition to the code. The code is the directive text at lines 63-66, which also states the omission when document_date is unknown. The comment can drift from the node, and a reader may look in the comment instead of the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The route is the comment-only edit followed by /reconcile over this file. The directive at lines 63-66 of this file already holds the fact, so no behavior changes.
+    node: rules/knowledge-base/extraction-relative-date-needs-document-date
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only builds an extraction system prompt, `return `${systemV2(catalog)}\n${EVENT_CLASSIFICATION_DIRECTIVE}``. It has no search, provenance, listing or traverse operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing of accepted fragments and no query-parameter handling appear in the file. It only exports `PROMPT_VERSION`, `EVENT_CLASSIFICATION_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling. Its only function is `system(catalog: CatalogSnapshot): string`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window bounds.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It re-exports `MAX_TOKENS` and `user` from extraction.v1.js and appends a directive to the v2 system prompt.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node-name resolution and no proposal handling. The directive only tells the model what to propose.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file does not render attribute-key values. It delegates to `systemV2(catalog)` and only points at the catalog line, `"  (text, values:[…])` line) the value that best describes the occurrence"`. The listing code is in extraction.v1.ts and v2, which are outside this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file does no sorting or listing of allowed values. It only has `return `${systemV2(catalog)}\n${EVENT_CLASSIFICATION_DIRECTIVE}``.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file does not render allowed values. The only value it spells is the example `value:"cobrança"` in the directive text, and that spelling is accented. The catalog rendering is in the delegated v1 and v2 code.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation or re-affirmation logic. The example proposals only illustrate propose_attribute and propose_link calls.
+looked_past: >-
+  The comment lines 22-28 on the prompt-version registry and on idempotency_key including prompt_version restate facts whose code lives in index.ts and hash.ts, outside this file set, so I did not judge them.
+candidates_opened:
+  - rules/knowledge-base/extraction-event-type-fallback
+  - rules/knowledge-base/extraction-relative-date-needs-document-date
+  - rules/knowledge-base/allowed-event-types
+  - rules/knowledge-base/idempotency-key
+  - rules/knowledge-base/extraction-never-invents-a-date

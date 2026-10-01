@@ -1,0 +1,168 @@
+findings:
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      line 7, ItemKindSchema (exported as ItemKind)
+    evidence: >-
+      export const ItemKindSchema = z.enum(["link", "attribute"]);
+    cost: >-
+      The vocabulary of curation item kinds is declared here, and the node that holds it is bound to no file in the trace. When the node moves, the check never reaches this file. The identifier ItemKind also names a different node, item-kind, whose values are node, link and fragment. A reader who looks up ItemKind in the specification finds the wrong vocabulary.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/assertion-kind to this file, since this declaration is where the fact is held. The code cannot read the specification, so the bind is what closes it.
+    node: domain/knowledge-base/assertion-kind
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      line 10, ReviewQueueKindSchema (exported as ReviewQueueKind)
+    evidence: >-
+      export const ReviewQueueKindSchema = z.enum(["entity_match", "disputed"]);
+    cost: >-
+      The two review queues are enumerated here, and the node holding them (values entity-match, disputed) has no bind to this file. A change to the node does not reach this declaration.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/review-queue-kind to this file.
+    node: domain/knowledge-base/review-queue-kind
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      line 13, EntityMatchDecisionSchema (exported as EntityMatchDecision)
+    evidence: >-
+      export const EntityMatchDecisionSchema = z.enum(["merge_into", "keep_separate"]);
+    cost: >-
+      The entity-match decision set lives here, and its node (values merge-into, keep-separate) is not bound to this file. The wire spelling merge_into is the one the curation contract uses.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/entity-match-decision to this file.
+    node: domain/knowledge-base/entity-match-decision
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      lines 16-21, DisputeDecisionSchema (exported as DisputeDecision)
+    evidence: >-
+      export const DisputeDecisionSchema = z.enum([
+        "prefer_one",
+        "adjust_periods",
+        "keep_disputed",
+      ]);
+    cost: >-
+      The dispute decision set is declared here, and its node (values prefer-one, adjust-periods, keep-disputed) is not bound to this file. Of the three, the contract curation.md names only prefer_one and adjust_periods. keep_disputed appears in the specification only as the node's value keep-disputed.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/dispute-decision to this file.
+    node: domain/knowledge-base/dispute-decision
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      lines 23-28, NodeStatusSchema (exported as NodeStatus)
+    evidence: >-
+      export const NodeStatusSchema = z.enum([
+        "active",
+        "needs_review",
+        "merged",
+        "deleted",
+      ]);
+    cost: >-
+      The node status vocabulary is declared here without a bind from its node (values active, needs-review, merged, deleted). When the node moves, this file is not reached.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/node-status to this file.
+    node: domain/knowledge-base/node-status
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      lines 31-37, AssertionStatusSchema (exported as AssertionStatus)
+    evidence: >-
+      export const AssertionStatusSchema = z.enum([
+        "active",
+        "uncertain",
+        "disputed",
+        "superseded",
+        "deleted",
+      ]);
+    cost: >-
+      The status vocabulary for links and attributes is declared here without a bind from its node. The values agree with the node today, but a change to the node would not reach this file.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/assertion-status to this file.
+    node: domain/knowledge-base/assertion-status
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      line 40, ValidFromSourceSchema (exported as ValidFromSource)
+    evidence: >-
+      export const ValidFromSourceSchema = z.enum(["stated", "document", "received"]);
+    cost: >-
+      The vocabulary justifying a validity start is declared here, and its node (stated, document, received) is not bound to this file.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/valid-from-basis to this file.
+    node: domain/knowledge-base/valid-from-basis
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      lines 50-56, ReasonRequiredSchema and ReasonOptionalSchema
+    evidence: >-
+      export const ReasonRequiredSchema = z.string().trim().min(1);
+    cost: >-
+      The not-blank rule for a curation reason is implemented here, a second time beside the other file the rule is bound to (src/modules/curation/mcp/error-envelope.ts per the candidate index). This file is not bound to the rule. If the rule changes, this schema is missed, and nobody can tell which implementation was decided.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/curation-reason-not-blank to this file as well, or have one implementation read from the other.
+    node: rules/knowledge-base/curation-reason-not-blank
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only curation enumerations and string primitives, such as `export const ReviewQueueKindSchema = z.enum(["entity_match", "disputed"]);`. It holds no search, provenance, catalog-listing or graph-read operation, error code, or page bound.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing parameters are declared. The file has only `z.enum([...])` declarations plus UuidSchema, IsoDateSchema and the two Reason schemas.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes handling. The nearest declaration is `export const NodeStatusSchema = z.enum(["active","needs_review","merged","deleted"])`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion filter or execution window. The file declares only `IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, ...)`, a bare date primitive.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking logic. The file declares only enumerations and primitives.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No node resolution or proposal handling. The file declares only enumerations and primitives.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      Only the status vocabulary is declared, as `AssertionStatusSchema = z.enum(["active","uncertain","disputed","superseded","deleted"])`. Nothing says confirmation changes only the status and keeps confidence and dates.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or attribute-key values. The file declares only curation enumerations and primitives.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt value ordering. The file declares only curation enumerations and primitives.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt value rendering. The file declares only curation enumerations and primitives.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or graph walk. The file declares only curation enumerations and primitives.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal handling or re-affirmation logic. The file declares only enumerations and primitives.
+looked_past: >-
+  The header comment (lines 1-3) says the enums mirror openapi.yaml component schemas, and the docstrings on UuidSchema, IsoDateSchema and the Reason schemas (lines 43 and 49) restate formats and rules. It is prose, and the comment route owns it. I also did not file the `YYYY-MM-DD` regex of IsoDateSchema, because the curation contract already holds that format.
+candidates_opened:
+  - domain/knowledge-base/assertion-kind
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/node-status
+  - domain/knowledge-base/entity-match-decision
+  - domain/knowledge-base/dispute-decision
+  - domain/knowledge-base/review-queue-kind
+  - domain/knowledge-base/valid-from-basis
+  - domain/knowledge-base/item-kind
+  - domain/knowledge-base/directed-item-kind
+  - domain/knowledge-base/curation-target-kind
+  - rules/knowledge-base/curation-reason-not-blank
+  - contracts/knowledge-base/curation

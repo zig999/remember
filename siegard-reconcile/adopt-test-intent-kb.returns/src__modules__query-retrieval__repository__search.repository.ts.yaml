@@ -1,0 +1,79 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is data access only. It declares row shapes such as
+      `export interface SearchProvenanceRow { readonly anchor_id: string; readonly fragment_id: string; readonly fragment_text: string; ... readonly source_type: string; readonly received_at: Date; }`.
+      It holds no operation surface: no `{ ok, result }` envelope, no refusal codes, and no pagination
+      (`BUSINESS_INVALID_SEARCH_QUERY` and the other search refusals are not emitted here).
+      The only query-level check is `parseTsQuery`, which returns the parsed tsquery text and refuses nothing.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and reads no query parameters. The closest construct is
+      `searchFragmentLayer(client, query, limit)`, which is a search layer, not the listing.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no LLM run or affected-nodes construct. Its only knowledge_node read is the alias-layer join
+      `JOIN knowledge_node kn ON kn.id = na.node_id`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter. Its exports are
+      `parseTsQuery`, the three layer searches, `findChunkFragmentLinks`, the four provenance and link lookups.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only reads existing chunks, for example `FROM raw_chunk rc WHERE rc.text_search @@ websearch_to_tsquery($1::regconfig, $2)`.
+      It does not divide content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is read-only and has no proposal or node-resolution construct. Its only alias access is the search
+      `FROM node_alias na JOIN knowledge_node kn ...`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no write and no confirmation of an assertion. Every statement is a SELECT, for example
+      `SELECT kl.id, src.canonical_name AS source_canonical_name ... FROM knowledge_link kl`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute-key catalog. It names no `attribute_key` or
+      `valid_values` anywhere.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values. The only ORDER BY clauses are over search
+      scores and identities, for example `ORDER BY score DESC, rc.id ASC`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values. Its `FTS_NAME_CONFIG` and
+      `FTS_PROSE_CONFIG` configurations apply to search matching only.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no expand flag and no gate on graph reading. The three layer functions touch no link table.
+      `findLinksMetadata(client, linkIds)` reads `FROM knowledge_link kl` for whatever ids the service passes, so
+      whether a non-expanding search walks the graph is decided by the caller, not here.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is read-only, with no proposal, consolidation or provenance write. Its `provenance` access is a
+      SELECT, `FROM provenance p JOIN information_fragment f ON f.id = p.fragment_id`.
+looked_past: >-
+  Every domain fact the file's SQL applies is held by a node outside this pack (found in projections/full-text.md, not opened as candidate files): accepted-only fragments, merged and deleted nodes skipped, superseded chunks skipped, layer weights, Portuguese stemming for prose and none for aliases, and the node-surfaces-only-with-accepted-mention rule. The BR-numbered header comments, docstrings and the long listProvenanceForNodes note restate or describe those facts as prose, and that comment judgment and the within-layer tie-break orderings belong to other judgments.

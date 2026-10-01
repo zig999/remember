@@ -1,0 +1,69 @@
+findings:
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the docstring above deriveFlags(), lines 99-104
+    evidence: >-
+      "Derive the display flags surfaced in `LinkDetail.flags` and `AttributeDetail.flags`. Today this mirrors the storage `status` for `uncertain` / `disputed`; `low_confidence` is reserved for a future threshold-based flag."
+    cost: >-
+      The docstring is prose that no running system emits. It restates the flag rule that deriveFlags() already implements, and it adds that low_confidence is "reserved for a future threshold-based flag". The node says a graph read "never flags it low-confidence". A reader who finds the docstring before the node may treat a future low_confidence flag on graph reads as planned. The node says the opposite.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in deriveFlags() holds the fact, and the node rules/knowledge-base/graph-item-flags states it. This is the comment-alone route, followed by a /reconcile pass over this file.
+    node: rules/knowledge-base/graph-item-flags
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      toNodeSummary(), toNodeAlias(), toAttributeDetail(), toLinkDetail() and toProvenanceEntry() map rows to the detail shapes the contract's read operations answer with. The InvariantError throws in toAssertionStatus(), toEffectiveStatus() and toSourceType() are where the file refuses a stored value outside its closed set.
+    evidence: >-
+      toLinkDetail returns { id, source_node_id, target_node_id, link_type, link_inverse_name, valid_from: formatDateOnly(row.valid_from), valid_to: formatDateOnly(row.valid_to), recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence, valid_from_source, flags: deriveFlags(status), supersedes_link_id, provenance }. toProvenanceEntry returns { fragment_id, fragment_text, confidence, raw_information_id, source_type, received_at, excerpt }. throw new InvariantError(`Unexpected source_type from DB: ${s}`);
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds only row-to-DTO mappers. It has no query-parameter handling: "export function toNodeSummary(row: KnowledgeNodeRow): NodeSummaryResponse".
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no mapper for LLM runs or affected nodes. The closest construct is "export function toNodeAlias(row: NodeAliasRow): NodeAliasResponse".
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window filter. The only date helpers are "formatDateOnly" and "formatTimestamptz".
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. The nearest code is "excerpt: row.excerpt" in toProvenanceEntry, which only passes a stored excerpt along.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, node resolution or locking. It holds pure mappers such as "groupProvenance(rows)".
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review or confirmation logic. It only maps stored status, confidence and dates to the response shape, for example "status," and "confidence: toNumber(row.confidence)".
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It has no prompt text and no attribute-key allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts nothing. The closed-set constants are lookup Sets used only for membership checks: "const SOURCE_TYPE: ReadonlySet<SourceType> = new Set([".
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no attribute-key values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or traversal code. It has only mappers and "groupProvenance".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, re-affirmation or provenance-accumulation logic. "groupProvenance" only groups existing rows by target_id.
+looked_past: >-
+  The fallback "formatTimestamptz(row.created_at) ?? new Date(0).toISOString()" (also used for recorded_at and received_at) supplies an epoch value for a null timestamp. I took it as defensive type-narrowing, which is a code-review judgment, so I filed no finding. The header comment pointing to the unit test file is not a domain fact.
+candidates_opened:
+  - rules/knowledge-base/graph-item-flags
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/effective-status

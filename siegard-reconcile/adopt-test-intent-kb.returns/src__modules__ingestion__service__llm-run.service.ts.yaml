@@ -1,0 +1,144 @@
+findings:
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      getLlmRunById, lines 104-119 (the completed-run branch that reads the
+      cache before deriving)
+    evidence: >-
+      const cached = getCachedAffectedNodes(llmRunId);
+      if (cached !== undefined) {
+        affectedNodes = cached;
+      } else {
+        try {
+          const derived = await deriveAffectedNodes(client, llmRunId);
+          setCachedAffectedNodes(llmRunId, derived);
+    cost: >-
+      A cache hit returns the stored list as it was when it was first
+      derived, with no re-check that each node is still held. The cache in
+      affected-nodes.ts is a process-scoped LRU, and the only deletes I saw
+      were LRU eviction and the test-only clear. A node deleted after that
+      first read can therefore still appear in the run's affected nodes. The
+      rule says such a node is left out, and only a cache miss applies it.
+      Whether a read shows the node then depends on whether the process has
+      the run cached.
+    kind: contradicts
+    correction: >-
+      The read path would have to apply the omission on every read, cached or
+      not, or the cache would have to be invalidated when a node stops being
+      held.
+    node: rules/knowledge-base/affected-nodes-omit-absent
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      getLlmRunById, lines 113-117 (catch around deriveAffectedNodes)
+    evidence: >-
+      } catch {
+        // Best-effort — omit the field on a transient read failure; the
+        // caller can re-derive on the next poll.
+        affectedNodes = undefined;
+      }
+    cost: >-
+      A completed run whose affected-nodes read fails is answered as a
+      success with the field absent. The caller cannot tell that from a run
+      that has none. Absence also means something else here: for a run that
+      is not completed it means "not yet available". The degradation is
+      decided only in this catch block, so the next reader looks for it in
+      the specification and does not find it. The read-llm-run contract
+      states only that affected nodes are included when the run is
+      completed. It says nothing on a failed read, which other reads answer
+      with SYSTEM_SERVICE_UNAVAILABLE or SYSTEM_INTERNAL_ERROR.
+    kind: unstated
+    correction: >-
+      A node should state what read-llm-run answers for a completed run
+      whose affected nodes cannot be read. The likely home is
+      contracts/knowledge-base/ingestion, or a rule constraining
+      domain/knowledge-base/llm-run.
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      retryLlmRun, lines 209-215 (re-read after the UPDATE returned null)
+    evidence: >-
+      const currentStatus = refreshed?.status ?? "running";
+      if (currentStatus === "failed") {
+        // Should not happen — log internally and surface as 409 conservatively.
+        throw new RunNotRetryableError(llmRunId, "running");
+      }
+    cost: >-
+      The refusal is built with status 'running' for a run the re-read just
+      showed as 'failed'. The error message and its currentStatus field are
+      emitted text, and they name a status the run does not have. The
+      contract says this refusal names the run's status, and
+      llm-run-lifecycle makes failed the one status from which retry is
+      allowed. A caller reading "is in status 'running'" is told something
+      false about the run.
+    kind: contradicts
+    correction: >-
+      The refusal should name the status the run is actually in, or the case
+      should not be answered as a retry refusal at all.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance, catalog or graph read. Its
+      exports are getLlmRunById, listRecentIngestions,
+      listToolCallsByLlmRun, retryLlmRun and closeLlmRun.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no handling of unknown
+      query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the list that deriveAffectedNodes or the cache
+      returns: `affectedNodes = cached;` and `const derived = await
+      deriveAffectedNodes(client, llmRunId);`. It filters nothing itself.
+      See the contradicts finding on the cached path.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window
+      bounds.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only reads tool calls and runs.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file does no node resolution or proposal handling. It only reads
+      and transitions runs.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only carries `prompt_version:
+      row.prompt_version`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation or re-affirmation logic.
+looked_past: >-
+  Comments in the file restate facts that nodes outside my set hold and that
+  code here or in affected-nodes.ts also holds. They are the BR-33 note on
+  affected_nodes only for a completed run, and the UC-06 ordering and 409
+  notes. The route that answers prose owns their removal, and I did not file
+  them. The file also carries other behavior held by nodes outside my set
+  (the recent-ingestions listing, the retry refusal, the tool-call
+  listing). That behavior conforms to the contract answers I read.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/llm-run-lifecycle

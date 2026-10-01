@@ -1,0 +1,85 @@
+findings:
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      the comments at lines 17-23 (docstring of ResolveEntityMatchBodySchema), line 40 (inside
+      the superRefine), and line 62 (above MergeNodesBodySchema)
+    evidence: >-
+      "ResolveEntityMatchRequest — BR-11 (reason mandatory on merge_into),
+      BR-23 (self-merge forbidden at request shape)." and
+      "// Surfaced as BUSINESS_TARGET_NODE_REQUIRED downstream." and
+      "/** MergeNodesRequest — BR-11 (reason required), BR-23 (self-merge forbidden). */"
+    cost: >-
+      These comments state, in prose, that a reason is mandatory on merge_into and that a
+      self-merge is forbidden. Code in this file already enforces both, at
+      `message: "BUSINESS_REASON_REQUIRED"` and `message: "BUSINESS_SELF_MERGE_FORBIDDEN"`. The
+      node contracts/knowledge-base/curation holds these refusals and cites no BR-11 or BR-23
+      numbering. A reader who finds the "BR-nn" labels here may take the comment, not the node,
+      for the authority. The labels also go stale on their own when the node changes.
+    kind: restates
+    correction: >-
+      Remove the three comments. The behavior is correct and the facts are already held by the
+      node, so this is the comment-only route, followed by /reconcile over the file.
+    node: contracts/knowledge-base/curation
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only request-body schemas for resolve-entity-match and merge-nodes
+      (`ResolveEntityMatchBodySchema`, `MergeNodesBodySchema`). None of the search, provenance,
+      catalog-listing or graph-read operations appears in it.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file concerns entity-match resolution and node merging, not accepted-fragment
+      listing parameters. `export const NodeIdPathSchema = z.object({ node_id: UuidSchema });`
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file carries no LLM-run affected-nodes handling. It holds only request schemas, for
+      example `export const MergeNodesBodySchema = z.object({ survivor_id: UuidSchema, ... })`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion filter or execution window. Its imports are
+      `EntityMatchDecisionSchema, ReasonRequiredSchema, UuidSchema`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It contains request validation for curation only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling or serialization of node resolution. It holds only Zod
+      request shapes and `superRefine` checks.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirm-item logic. Its only `decision` handling is
+      `if (value.decision === "merge_into") {`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no attribute-key values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph-walk code. It contains only the request schemas for
+      resolving an entity match and merging nodes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, change-hint or re-affirmation logic. Its `superRefine` checks
+      only `merge_into` fields and `survivor_id === absorbed_id`.
+looked_past: >-
+  The file's actual domain rules (target_node_id and reason required on merge_into, self-merge
+  refused, reason not blank) are held by nodes outside this pack, namely contracts/knowledge-base/curation and the
+  merge-into-requires-target, curation-reason-required and node-never-merged-into-itself rules. Those nodes
+  belong to another judgment's set, so I did not report them as unstated.

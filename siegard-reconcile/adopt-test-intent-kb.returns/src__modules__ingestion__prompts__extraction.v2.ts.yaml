@@ -1,0 +1,95 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      The header comment, lines 1-15, and the last bullet of EVENT_DATING_DIRECTIVE, lines 50-51.
+    evidence: >-
+      "- Rescheduling an event is `change_hint:\"succession\"` on `event_date` — the"
+      "  same mechanics as any functional attribute (the old date becomes history)."
+    cost: >-
+      This prompt text tells the model to mark a rescheduled event as a succession on event_date.
+      No node holds that instruction. The nodes that hold the event directive (extraction-dates-events,
+      extraction-event-date-is-the-value) cover proposing event_date and end_date and giving the
+      validity start. They say nothing on rescheduling. Succession-closes-previous holds what the
+      system does once a succession arrives, not what the model is asked to send. The next reader
+      will look in the specification for how rescheduling reaches the model and find only this prompt.
+    kind: unstated
+    correction: >-
+      Analysis should give the rescheduling instruction a node, for example a rule beside
+      extraction-dates-events stating that under prompt version v2 and later the model is asked to
+      mark a changed event date with change hint succession. Alternatively the sentence leaves the prompt.
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      The header comment, lines 1-9, and the docstring of EVENT_DATING_DIRECTIVE, lines 32-37.
+    evidence: >-
+      "// v2 = v1 + an explicit Event-dating directive. The \"go-live veio sem data\""
+      "// gap was a PROMPT gap: v1 never told the model to propose `event_date` when it"
+      "// creates an Event"
+    cost: >-
+      The comment restates, as prose, that v2 asks the model to propose event_date for an Event.
+      The directive itself holds this fact in this file (lines 41-44, the `## Events` bullets), and
+      the node holds it too. The prose is a second home that must be kept in step with both.
+    kind: restates
+    correction: >-
+      Remove the comment and docstring prose. The code in EVENT_DATING_DIRECTIVE holds the fact, and
+      the rationale for the version belongs in the node's decision log.
+    node: rules/knowledge-base/extraction-dates-events
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares no read operation or answer. It exports only
+      `export const PROMPT_VERSION = "v2" as const;` and the prompt builder `system(catalog)`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or parameter validation, only the prompt text and `system(catalog)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run affected-nodes handling, only `export function system(catalog: CatalogSnapshot): string`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It re-exports `MAX_TOKENS, user` from "./extraction.v1.js" and builds only the system prompt.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or proposal handling.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file renders no catalog values. `return `${systemV1(catalog)}\n${EVENT_DATING_DIRECTIVE}`;`
+      delegates the catalog rendering to extraction.v1.js, which is outside this file set.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file performs no ordering of allowed values. `systemV1(catalog)` produces the catalog rendering in extraction.v1.js.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file spells no allowed values. They come through `systemV1(catalog)` from extraction.v1.js.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file implements no re-affirmation logic. The only change-hint mention is the prompt line
+      "`change_hint:\"succession\"` on `event_date`", which is not the re-affirmation rule.
+looked_past: >-
+  The directive's examples and wording (the "go-live" 2026-08-01 example, `valid_from_basis`="document") agree with
+  the nodes extraction-dates-events, extraction-event-date-is-the-value, extraction-never-invents-a-date and the
+  scenario go-live-date-is-the-value, so they are emitted text agreeing with the specification and no finding.
+candidates_opened:
+  - rules/knowledge-base/extraction-dates-events
+  - rules/knowledge-base/extraction-event-date-is-the-value
+  - rules/knowledge-base/extraction-never-invents-a-date

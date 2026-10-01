@@ -1,0 +1,90 @@
+findings:
+  - file: src/modules/knowledge-graph/service/catalog.service.ts
+    where: >-
+      the comment block above the valid-values query in listAttributeKeysService, lines 110-112
+    evidence: >-
+      // BR-30 — attach closed-domain values so REST/MCP clients see the allowed
+      // set up-front (parity with the chat ontology block). Group per key id;
+      // keys with no rows stay OPEN (no `valid_values`).
+    cost: >-
+      The comment restates the retrieval contract's rule that `valid_values` appears only for a key
+      the catalog closes. The code holds that rule in the same function, in
+      `values !== undefined && values.length > 0 ? { ...base, valid_values: [...values].sort() } : base`.
+      The sentence is a second place describing the rule. If the rule changes, the comment will go
+      on describing the old one, and a reader may take it for the decision.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route. The fact is already held by the node and the
+      code implements it.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      listNodeTypesService, listLinkTypesService and listAttributeKeysService, which build the
+      accepted answers of list-node-types, list-link-types and list-attribute-keys. The unknown
+      node type refusal is the throw in listAttributeKeysService. The file holds no other
+      operation of the contract.
+    evidence: >-
+      `items: rows.map((r) => ({ id: r.id, name: r.name, description: r.description, version: r.version }))`;
+      `requires_valid_to_on_change: lt.requires_valid_to_on_change`;
+      `valid_from: r.valid_from ? formatDate(r.valid_from) : null`;
+      `const ruleRows = rulesByLinkType.get(lt.id) ?? [];`;
+      `throw new UnknownNodeTypeError(options.node_type);`
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments. It holds only the catalog listings, for example
+      `export async function listNodeTypesService(client: PoolClient)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected nodes, only `listLinkTypesService`,
+      `listAttributeKeysService` and `listNodeTypesService`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file lists no compliance deletions and has no execution window, only the three catalog
+      reads.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It imports only the catalog repository functions, for example
+      `listNodeTypes`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals or node resolution. It performs read-only catalog queries
+      through `client: PoolClient`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file does no assertion review or confirmation, only the three catalog reads.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It attaches `valid_values` to the REST/MCP listing
+      only: `{ ...base, valid_values: [...values].sort() }`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. Its `[...values].sort()` orders the attribute-key
+      listing, not a prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The values pass through unchanged,
+      `valuesByKeyId.set(vv.attribute_key_id, [vv.value])`, for the listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk, only the catalog listings.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals, links or attributes as assertions. The only reads are
+      `listLinkTypes`, `listAttributeKeys`, `listNodeTypes` and the related catalog lists.
+looked_past: >-
+  I saw the header comment about bypassing the cache and the route-naming docblocks ("UC-01 — GET /api/v1/node-types"). I also saw "BR-03 — fail fast before SQL" and the ordering of valid_values. These are prose about design, or facts held by nodes outside this pack, such as the candidate rule that lists a closed key's allowed values in ascending string order and the node-type filter rule. I did not report them as findings.
+candidates_opened:
+  - rules/knowledge-base/allowed-values-in-string-order
+  - rules/knowledge-base/node-type-filter-in-catalog

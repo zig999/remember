@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      the file-header comment, lines 18-21 (Idempotency paragraph)
+    evidence: >-
+      // Idempotency (BR-08): if the same content was already ingested,
+      // `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
+      // (the existing run is completed, or running, and re-running would either no-op
+      // or 409). The tool reports `already_ingested` with the existing ids — never an
+      // error.
+    cost: >-
+      The held-content answer is stated in prose in this file as well as in the ingestion contract. The branch `if (outcome === "noop_existing")` carries the behavior, so the prose is a second home. A reader who finds the comment first takes it for the decision, and the contract never reaches it when the answer moves.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The branch at `outcome === "noop_existing"` and the contract hold the fact. The comment route lands the removal, followed by `/reconcile` over this file.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      the docstring above `DEFAULT_INGEST_MODEL`, lines 41-49
+    evidence: >-
+      Hard-coded fallback extraction model used only when the caller omits `model`
+      AND no `ingestModel` is wired (e.g. a bare test harness). Production threads
+      `env.INGEST_MODEL` through `deps.ingestModel`. Cost-optimized to Sonnet 4.6 —
+    cost: >-
+      The default-model rule is described in a docstring while `input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL` and the constant `"claude-sonnet-4-6"` hold it in code. The docstring adds a second account of the rule, along with a cost rationale and a note about an earlier model that no node records. When the rule changes, the docstring is not updated by anything.
+    kind: restates
+    correction: >-
+      Remove the docstring. The constant and the `??` chain hold the fact. The rationale belongs in the decision log of the rule, if anywhere. The comment route lands the removal, followed by `/reconcile` over this file.
+    node: rules/knowledge-base/default-extraction-model
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries no retrieval operation. It emits `message: "A backing service is temporarily unavailable."` only on the intake path of ingest_document, an operation the retrieval contract does not list.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no query-parameter validation. Its only input type is `IngestDocumentMcpInput`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file handles no affected nodes. It forwards `run` from `runExtraction(...)` unchanged.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk. `ingest = await withTransaction(deps.pool, (client) => ingestRaw(client, body))` delegates chunking to ingestion.service.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposals or node names. It hands the run to `runExtraction`, so the orchestrator holds this fact.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. Only the intake and extraction steps appear in it.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It passes `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION` and leaves the prompt text to the prompts module.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file orders no allowed values. The prompts module builds the prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file spells no allowed values. The prompts module builds the prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file consolidates no proposal. The only idempotency it holds is at document level, `if (outcome === "noop_existing")`, which is content-hash intake and not assertion re-affirmation.
+looked_past: >-
+  Every node in this pack belongs to retrieval, curation or extraction-prompt behavior, and none governs this handler. The facts it does carry are held by nodes outside the pack: contracts/knowledge-base/ingestion for the ingest-document answers, rules/knowledge-base/default-extraction-model, rules/knowledge-base/default-prompt-version, and constraints/unreachable-store-answers-unavailable. Its emitted text agrees with them, which is why no contradicts or unstated finding was filed. The remaining comments (the step comments and the BR-30 and TC-MCI-002 citations) are prose that I did not file individually.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/default-extraction-model
+  - rules/knowledge-base/default-prompt-version
+  - constraints/unreachable-store-answers-unavailable
+  - domain/knowledge-base/raw-information

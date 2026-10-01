@@ -1,0 +1,125 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      header comment, lines 9-12 ("Error mapping (registered in docs/specs/_global/error-codes.md)")
+    evidence: |-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
+      //   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
+      //   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
+    cost: >-
+      The authentication refusals are written a second time in prose, and the prose cites a document outside the
+      specification (docs/specs/_global/error-codes.md) as their registry. A reader who trusts the comment looks there
+      rather than in the access contract. The comment also lists "wrong issuer", which the code does not check, because
+      the file's own comment says issuer hardening is off.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact: AuthError carries statusCode 401, and the throw sites
+      carry AUTH_UNAUTHORIZED, AUTH_TOKEN_EXPIRED and AUTH_TOKEN_INVALID.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: >-
+      comments above the localOperatorToken constant (lines 110-113) and above the bypass branch (lines 132-136)
+    evidence: |-
+      // DEV-ONLY local operator bypass (see config/env.ts LOCAL_OPERATOR_TOKEN).
+      // Resolved once at build time: enabled only when running in development AND a
+      // token is configured. In any other mode this is `null` and the bypass branch
+      // below is dead — production never trusts a static bearer.
+      ...
+      // DEV-ONLY bypass: a bearer equal (constant-time) to the configured local
+      // operator token is accepted as the owner WITHOUT JWKS verification
+    cost: >-
+      The development-only, constant-time rule is stated again in prose beside the code that implements it
+      (env.NODE_ENV === "development" and constantTimeEqual). The next reader can take the comment, not the
+      constraint, as where the rule was decided.
+    kind: restates
+    correction: >-
+      Remove both comments. The code in this file holds the fact: the localOperatorToken guard on
+      env.NODE_ENV === "development" and the constantTimeEqual(token, localOperatorToken) branch.
+    node: constraints/local-operator-token-development-only
+  - file: src/middleware/auth.ts
+    where: >-
+      the catch around jwtVerify (lines 146-151) and the fallback return of mapJoseError (lines 215-217)
+    evidence: |-
+      try {
+        const verified = await jwtVerify(token, jwks);
+        payload = verified.payload;
+      } catch (err) {
+        throw mapJoseError(err);
+      }
+      ...
+      // Unknown — surface as invalid (defensive). We do not leak the underlying
+      // message to the client; the global error handler logs it server-side.
+      return new AuthError("AUTH_TOKEN_INVALID", "Invalid authentication token.");
+    cost: >-
+      The access contract answers a key set that cannot be fetched with HTTP 503 SYSTEM_SERVICE_UNAVAILABLE (its
+      decision log records this as decided). Here every error that is not one of the listed jose classes, a failed
+      JWKS fetch included, becomes HTTP 401 AUTH_TOKEN_INVALID. When the auth provider is unreachable, the owner is
+      told their valid token is invalid instead of being told the service is unavailable.
+    kind: contradicts
+    correction: >-
+      The fallback would have to answer the key-set-unreachable case with the 503 SYSTEM_SERVICE_UNAVAILABLE refusal
+      with message "A backing service is temporarily unavailable." that the access node holds, not with
+      AUTH_TOKEN_INVALID. AuthError is fixed at statusCode 401 and its code union holds only the three AUTH_ codes,
+      so it cannot carry that answer.
+    node: contracts/knowledge-base/access
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file implements no operation of this contract (search, provenance reads, listings, graph reads). The only
+      overlap is the shared owner-authentication refusal (401 AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or
+      AUTH_TOKEN_EXPIRED). The access contract holds that answer, and the file implements it through
+      `throw new AuthError("AUTH_UNAUTHORIZED", ...)`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing or query-parameter handling in this file; it only reads `request.headers.authorization`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node handling in this file; its only exports are buildNeonAuth, buildJwksUrl,
+      extractBearer, AuthError and the related types.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window bounds in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file; the code is JWT verification only (`jwtVerify(token, jwks)`).
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposals, node resolution or locking in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or status change in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or attribute keys in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or value ordering in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or allowed values in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or graph traversal in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposals, links, attributes or change hints in this file.
+looked_past: >-
+  Two things in this file are not conformance questions: the hard-coded `cooldownDuration: 30_000` for JWKS refetch,
+  which is an operational tuning value that no node holds and the code-review pass can weigh, and the Provider note
+  comment about issuer/audience hardening, which is prose with no code behind it.
+candidates_opened:
+  - contracts/knowledge-base/access
+  - constraints/local-operator-token-development-only

@@ -1,0 +1,125 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above findRecentIngestions, lines 59-63
+    evidence: >-
+      * Most recent ingestions, newest first. Read-only; the caller wraps this in a
+      * `BEGIN READ ONLY` transaction. `limit` is validated (1..50) at the toolset
+      * boundary before it reaches here.
+    cost: >-
+      The 1..50 bound is a second home outside behavior. The code that enforces it is
+      ListRecentIngestionsMcpInputSchema in src/modules/ingestion/mcp/mcp-schemas.ts
+      (`.min(1).max(50)`), and this file's query forwards `limit` unchecked. If the node
+      changes the bound, this comment goes stale and misleads the next reader about what
+      this function accepts.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The bound is held by the node and enforced in
+      mcp-schemas.ts.
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above retryLlmRunRow (lines 165-171) and the inline comment before the
+      second UPDATE (lines 188-189)
+    evidence: >-
+      * In the same transaction, orphan `proposed` fragments of this run are
+      * flipped to `rejected`.
+      // Orphan-fragment cleanup (BR-10): proposed fragments of THIS run that have
+      // no provenance row are flipped to `rejected`.
+    cost: >-
+      The prose restates the retry cleanup rule while the UPDATE ... SET status = 'rejected'
+      in this same function holds it. A second statement of the rule sits outside behavior,
+      so a reader may take it for the place the rule lives and not look at the node.
+    kind: restates
+    correction: >-
+      Remove the docstring sentence and the inline comment. The rule is held by the node and
+      carried out by the UPDATE statement.
+    node: rules/knowledge-base/retry-rejects-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above aggregateToolCallOutcomes, lines 111-118, and the comment at
+      lines 148-149
+    evidence: >-
+      *   - `orphaned_fragments`, the count of this run's `proposed` fragments with
+      *     no provenance row (uncited → unsearchable; recall-gap signal). Defined
+      *     identically to the retry orphan-cleanup in `retryLlmRunRow` (BR-10).
+    cost: >-
+      The prose states the orphan count in the summary and the definition of an orphan. The
+      SELECT count(*) query in this function holds both. A second statement outside behavior
+      can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The count is held by the node and by the SELECT in this function.
+    node: rules/knowledge-base/summary-counts-orphaned-fragments
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file only reads raw_chunk columns inside queries, for example `FROM raw_chunk
+      WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`. It declares no shape for the
+      element.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares RecentIngestionRow, a projection of some raw_information columns
+      (`raw_information_id`, `source_type`, `raw_status`, `received_at`, `content_preview`)
+      and not the element's shape. It declares no type for raw_information itself.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a repository with no search, provenance or graph read operation. The
+      closest thing is `findRecentIngestions`, which belongs to the ingestion listing and
+      not to this contract.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or query-parameter check in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never reads or builds an LLM run's affected nodes. `findLlmRunById` selects
+      only `id, model, prompt_version, started_at, finished_at, status, attempts,
+      input_raw_information_id, idempotency_key`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. `countChunksInSource` only counts existing chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No node resolution, alias reading or advisory lock in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed values in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed values in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or graph walk in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation in the file. The only writes are `insertFragmentWithSources`
+      and the tool_call inserts.
+looked_past: >-
+  The file's other comments cite BR-xx numbers and restate facts held by nodes outside the pack, such as the latest-run join and the 80-character preview. I reported only the three clearest groups. The remaining comments, the dynamic-SQL note and the exports are code-review matters and not conformance.
+candidates_opened:
+  - rules/knowledge-base/retry-rejects-orphaned-fragments
+  - rules/knowledge-base/recent-ingestions-limit-bounds
+  - rules/knowledge-base/summary-counts-orphaned-fragments

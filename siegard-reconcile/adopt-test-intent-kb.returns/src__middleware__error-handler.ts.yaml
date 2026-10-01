@@ -1,0 +1,128 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: >-
+      the header comment, lines 11-19 ("Error mapping (registered in docs/specs/_global/error-codes.md)" through "logged server-side via pino.")
+    evidence: |-
+      //   - AuthError                    -> 401 (code from AuthError.code)
+      //   - ZodError                     -> 422 VALIDATION_INVALID_FORMAT
+      //   - pg error: ECONNREFUSED / ETIMEDOUT / 57P03 / 57014 -> 503 SYSTEM_SERVICE_UNAVAILABLE
+      //   - Any other unhandled error    -> 500 SYSTEM_INTERNAL_ERROR
+    cost: >-
+      The comment lists the status and code mapping that the access contract holds, and the branches of classify() already implement it. It names docs/specs/_global/error-codes.md as the registry, so a reader looks there instead of in the specification. It also omits the Fastify validation branch and the framework-status branch, so it will drift from the code.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in classify() holds the mapping, and contracts/knowledge-base/access holds the fact.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      branch 3 of classify(), the isFastifyValidationError case, lines 110-123
+    evidence: |-
+      message: err.message ?? "Request payload failed validation.",
+      details: err.validation,
+    cost: >-
+      The access contract fixes one answer for every validation failure: the message "Request payload failed validation." and `details` a bare list of `{ path, message }`. This branch sends the framework's own message and its raw validation array instead. A caller gets a different message and a different `details` shape depending on which validator rejected the request, and the log decision "Every validation failure answers ..." is not met.
+    kind: contradicts
+    correction: >-
+      Answer the fixed message with `details` as a list of `{ path, message }`, each path joined by ".", the same shape the ZodError branch already produces.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      branch 3 of classify(), the isFastifyValidationError case, lines 110-123
+    evidence: |-
+      message: err.message ?? "Request payload failed validation.",
+      details: err.validation,
+    cost: >-
+      The retrieval contract answers a malformed or unknown parameter with VALIDATION_INVALID_FORMAT, the message "Request payload failed validation.", and each failing field listed with its path and message. A retrieval request rejected by Fastify's own schema validation gets the framework message and the raw validation array instead, so the retrieval answer differs depending on which validator ran.
+    kind: contradicts
+    correction: >-
+      Same correction as for the access contract: the fixed message and a `{ path, message }` list.
+    node: contracts/knowledge-base/retrieval
+  - file: src/middleware/error-handler.ts
+    where: >-
+      branch 5 of classify(), the isFastifyHttpError case, lines 132-148, for status 503
+    evidence: |-
+      const isServerError = err.statusCode >= 500;
+      ...
+      code: codeFromHttpStatus(err.statusCode),
+      message: isServerError ? "Internal server error." : err.message,
+      ...
+      case 503:
+        return "SYSTEM_SERVICE_UNAVAILABLE";
+    cost: >-
+      The access contract answers a framework 503 with SYSTEM_SERVICE_UNAVAILABLE and the message "A backing service is temporarily unavailable.", since one code carries one message. The code sends SYSTEM_SERVICE_UNAVAILABLE with "Internal server error.", so a 503 reads as an internal failure and the same code carries two messages depending on the path that produced it.
+    kind: contradicts
+    correction: >-
+      For status 503, answer the message "A backing service is temporarily unavailable.", as serviceUnavailableError() does for an unreachable store. Keep "Internal server error." for the other statuses of 500 and above.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      the comment inside branch 5, lines 140-142
+    evidence: |-
+      // Never leak an internal message on a 5xx path (the file contract):
+      // 4xx messages are client-actionable and framework-generated, but a
+      // 5xx message may carry internal detail — use a generic string.
+    cost: >-
+      The comment restates the access contract's rule that a framework failure of 500 or above answers "Internal server error." while a refusal below 500 keeps the framework's message. The ternary on the next line already holds that rule, so the comment is a second statement of it outside behavior. It cites "the file contract", which is not a specification node.
+    kind: restates
+    correction: >-
+      Remove the comment. The `isServerError ? "Internal server error." : err.message` expression holds the rule, and contracts/knowledge-base/access holds the fact.
+    node: contracts/knowledge-base/access
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      only the validation refusal: the ZodError branch of classify(), lines 90-106. The Fastify validation branch, lines 110-123, departs from it (see findings).
+    evidence: |-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "Request payload failed validation.",
+      details: err.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      the file only maps already-thrown errors to the envelope; nothing in it names an accepted-fragment listing or checks a query parameter against a defined set.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      no LLM run or affected-node logic appears; the file contains only classify(), buildErrorHandler() and status-to-code helpers.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      no compliance-deletion listing or execution-window handling appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      no chunking appears in this file; it handles error classification only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      no proposal, node-resolution or alias logic appears in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      no assertion review or confirmation logic appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt is built in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt or allowed-value ordering appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt or allowed-value spelling appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      no search or graph traversal appears in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      no proposal consolidation or re-affirmation logic appears in this file.
+looked_past: >-
+  The comment citing "BR-18 of knowledge-graph" and the history comment at lines 33-36 are prose that carries no domain fact of its own, and the comment rule is the comment route's, not this pass's.
+candidates_opened:
+  - contracts/knowledge-base/access

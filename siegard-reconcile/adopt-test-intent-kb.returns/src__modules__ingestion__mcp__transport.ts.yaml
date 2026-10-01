@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/ingestion/mcp/transport.ts
+    where: >-
+      the mountMcpEndpoint call in registerIngestMcpTransport, lines 42-46
+    evidence: >-
+      path: "/mcp/ingest",
+      serverName: "remember-bff-ingest",
+      serverVersion: "0.1.0",
+    cost: >-
+      The address the ingestion toolset is served at, and the name and
+      version it announces to MCP clients, are fixed here and in no
+      specification node. A search of the specification for "mcp/ingest"
+      and "remember-bff-ingest" found nothing. A reader who needs to know
+      where a client reaches ingestion over MCP will look in the
+      specification and find only the statement that REST and MCP answer
+      alike, with no route. The route lives only in this file.
+    kind: unstated
+    correction: >-
+      Give the ingestion MCP endpoint's address to a node, for example a
+      published-API contract for the ingest toolset, through the analysis
+      route. The code should not be changed.
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file mounts only the ingest toolset: `path: "/mcp/ingest"` and
+      `deps.mcp.getTool("ingest", name)`. It declares no search, provenance,
+      catalog, node or traverse operation and no refusal of the retrieval
+      contract.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file contains no listing of accepted fragments and no query
+      parameter handling; it only forwards `inputSchema: t.inputSchema`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file contains nothing about LLM runs' affected nodes; it only
+      maps tool descriptors to `McpHttpTool`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window
+      filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking logic; it only calls `mountMcpEndpoint(scope, {...})`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution, proposal ordering or locking; it
+      only exposes the tools via `getTools`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation behavior.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. `description: t.description`
+      forwards a tool description, which is not an extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, re-affirmation or change-hint
+      logic; it only registers the transport.
+looked_past: >-
+  The header comment (lines 1-17) states facts of other nodes in prose: four
+  propose_* tools, no ambient run-id header (llm_run_id is a per-call
+  argument), the per-call transaction and tool_call audit row, and "tools/list
+  always returns all four tools". The nodes in this pack do not hold those
+  facts, and no running code in this file carries them; they belong to the
+  comment route and to the ingestion nodes outside this pack.

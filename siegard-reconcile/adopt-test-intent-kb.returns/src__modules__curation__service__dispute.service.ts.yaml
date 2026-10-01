@@ -1,0 +1,90 @@
+findings:
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      resolveDisputeService, prefer_one branch, the BusinessError thrown when winner_id is absent (lines 118-123)
+    evidence: >-
+      throw new BusinessError(
+          "BUSINESS_DISPUTE_WINNER_REQUIRED",
+          "decision=prefer_one requires winner_id"
+        );
+    cost: >-
+      The contract curation answers this refusal with the message "decision=prefer_one requires winner_id (member of item_ids)". This file emits the message without "(member of item_ids)". A client or test that reads the message gets different words depending on whether the request was refused here or at the body check. Nothing in this file checks that winner_id is a member of item_ids.
+    kind: contradicts
+    correction: >-
+      Make the emitted message match the contract's text. The contract is bound to no file in this pack, so this file's refusal text has no node that tracks it.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      resolveDisputeService, adjust_periods branch, the BusinessError thrown when periods are absent or empty (lines 201-206)
+    evidence: >-
+      throw new BusinessError(
+          "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+          "decision=adjust_periods requires periods[]"
+        );
+    cost: >-
+      The contract curation answers this refusal with the message "decision=adjust_periods requires periods[] (one entry per item_id)". This file emits the message without "(one entry per item_id)". The same refusal therefore reads differently depending on where it is raised. This file only tests for an empty list, so the one-entry-per-item expectation is not visible here.
+    kind: contradicts
+    correction: >-
+      Make the emitted message match the contract's text.
+    node: contracts/knowledge-base/curation
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The node holds the owner's read surface (search, provenance reads, listings, graph reads). The file's only entry point is `resolveDisputeService`, a write that resolves disputes, and it contains no read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter handling. Its only input is `body: ResolveDisputeBody`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-nodes handling. It only locks, checks and updates disputed items.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. It records one `resolve_dispute` curation action via `insertCurationAction`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk content. It handles `ItemKind` rows (link or attribute) only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution and no proposals. Its `loadItemsForUpdate` lock serialises dispute items, not node-name proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirm-item path. Only the dispute decisions `prefer_one`, `adjust_periods` and `keep_disputed` appear.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no attribute-key values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and spells no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no re-affirmation. Its only status transitions are `resolveDisputeWinner`, `resolveDisputeLosers` and `adjustItemPeriod`, all on items already in status `disputed`.
+looked_past: >-
+  The pack holds none of this file's dispute-resolution facts; they sit in nodes outside it, such as rules/knowledge-base/dispute-resolution-check-order, prefer-one-outcome, adjust-periods-outcome, keep-disputed-changes-nothing, adjusted-periods-single-open and dispute-resolution-single-scope, and the file's branches agree with them. Two things went unreported. The `?? true` fallback when the catalog lacks a link type or attribute key row is a defensive default, not a visible domain rule. Membership of winner_id and of each period's item_id in item_ids is not checked here, and I did not see where it is checked.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/dispute-resolution-check-order
+  - rules/knowledge-base/adjusted-periods-single-open
+  - rules/knowledge-base/prefer-one-outcome
+  - rules/knowledge-base/adjust-periods-outcome
+  - rules/knowledge-base/keep-disputed-changes-nothing
+  - rules/knowledge-base/dispute-resolution-single-scope
+  - rules/knowledge-base/dispute-resolution-records-curation-action
+  - rules/knowledge-base/prefer-one-requires-winner

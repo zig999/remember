@@ -1,0 +1,56 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Only the catalog-listing part of the contract, in the SELECT lists of listNodeTypes, listLinkTypes, listLinkTypeRules, listAttributeKeys and listAttributeValidValues, and in the AttributeKeyJoined and LinkTypeRuleJoined row types. The file declares no operation, refusal or envelope.
+    evidence: |-
+      SELECT id, name, description, version FROM node_type
+      SELECT id, name, label, description, inverse_name, is_temporal, allows_multiple_current, requires_valid_from, requires_valid_to_on_change, version FROM link_type
+      SELECT r.id, r.link_type_id, src.name AS source_node_type, tgt.name AS target_node_type, r.valid_from, r.valid_to
+      SELECT ak.id, ak.node_type_id, nt.name AS node_type, ak.key, ak.value_type, ak.is_temporal, ak.allows_multiple_current, ak.requires_valid_from, ak.description, ak.version
+      SELECT avv.attribute_key_id, avv.value FROM attribute_valid_value avv
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file only reads catalog tables (node_type, link_type, link_type_rule, attribute_key, attribute_valid_value). It has no accepted-fragment listing and no query-parameter check.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never touches llm_run or knowledge_node. Its only queries are the catalog SELECTs, such as `FROM node_type ORDER BY name ASC`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. Its only filter is `filter: { node_type_id?: string }` on the attribute-key and valid-value reads.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking and never reads raw_chunk. It contains only the catalog SELECTs.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, no node resolution and no locking. It contains only the read-only catalog SELECTs.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file performs no writes and does no assertion review. Every statement is a SELECT over catalog tables.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. listAttributeValidValues only returns `{ attribute_key_id, value }` rows via `SELECT avv.attribute_key_id, avv.value FROM attribute_valid_value avv`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. Its `ORDER BY avv.attribute_key_id, avv.value ASC` orders the catalog listing rows, and the rule concerns the order of the prompt's listed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It returns `avv.value` unmodified, but no prompt text is produced here.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph walk. It reads only catalog tables, with no knowledge_link or knowledge_node access.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no assertion consolidation. It contains no writes and no reference to knowledge_link or node_attribute.
+looked_past: >-
+  The listing orders in this file (node types by name, link types by name, rules by source then target node-type name, attribute keys by node-type name then key, valid values ascending) are governed by nodes outside the pack and agree with them: rules/knowledge-base/link-type-listing-order, attribute-key-listing-order and allowed-values-in-string-order. The comments citing BR-03 and BR-30 ("Keys with no rows here have an OPEN domain and get no `valid_values`") are prose, so I did not file them.

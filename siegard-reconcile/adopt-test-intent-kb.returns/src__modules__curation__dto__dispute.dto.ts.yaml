@@ -1,0 +1,144 @@
+findings:
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the AdjustedPeriodSchema declaration, line 15
+    evidence: >-
+      valid_from: IsoDateSchema.nullable(),
+      valid_to: IsoDateSchema.nullable().optional(),
+    cost: >-
+      The adjusted-period node lists valid_from and valid_to alike as optional dates, with only item_id required. This
+      schema makes valid_from a mandatory key that may be null, and lets only valid_to be left out. A caller who gives
+      only item_id and valid_to is refused here, which the node does not say. The next reader looks in the
+      specification for why the two bounds differ and finds nothing.
+    kind: contradicts
+    correction: >-
+      Either the node states that an adjusted period must always carry a validity start key, or the schema accepts an
+      omitted valid_from as it does valid_to.
+    node: domain/knowledge-base/adjusted-period
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the docstring of ResolveDisputeBodySchema, lines 21-26, the `prefer_one` line
+    evidence: >-
+      `decision = prefer_one`  -> winner_id required, member of item_ids, reason required
+    cost: >-
+      The docstring restates the winner rule as prose. The rule is held by code in this same file, in the
+      superRefine branch that adds BUSINESS_DISPUTE_WINNER_REQUIRED. The prose is a second home that can drift from the
+      node, and it is never read by `--check`.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the fact.
+    node: rules/knowledge-base/prefer-one-requires-winner
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the docstring of ResolveDisputeBodySchema, lines 21-26, the `adjust_periods` lines
+    evidence: >-
+      `decision = adjust_periods` -> periods[] required with one entry per item_id;
+    cost: >-
+      The one-period-per-item rule is stated again in prose, while this file's superRefine already enforces it with the
+      BUSINESS_DISPUTE_PERIODS_REQUIRED checks on length, membership and duplicates. A later change to the node leaves
+      this sentence stale.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the fact.
+    node: rules/knowledge-base/adjust-periods-one-per-item
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the docstring of ResolveDisputeBodySchema, lines 21-26, the `reason` clause on the prefer_one line
+    evidence: >-
+      reason required
+    cost: >-
+      The reason requirement for prefer-one is repeated in prose. The code holds it too, as the BUSINESS_REASON_REQUIRED
+      issue in the prefer_one branch of the superRefine. The prose is a second statement of the node's fact and
+      nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the fact.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the inline comment above the uniqueness check, line 41
+    evidence: >-
+      // Item_ids unique
+    cost: >-
+      The comment states the distinct-items rule. The code beneath it holds the rule through the Set size comparison
+      that raises VALIDATION_INVALID_FORMAT. The comment is prose that will not follow the node if the rule moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact.
+    node: rules/knowledge-base/dispute-resolution-distinct-items
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the inline comment above the period-ordering check, line 113
+    evidence: >-
+      // Semi-open invariant: valid_from < valid_to when both supplied.
+    cost: >-
+      The comment states the start-before-end rule. The code below it enforces the rule with
+      `p.valid_from >= p.valid_to` and BUSINESS_TEMPORAL_INCOHERENT. The comment is a second home for the fact,
+      outside any behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only the dispute-resolution request schema (`export const ResolveDisputeBodySchema = z`). It
+      carries no search, provenance, listing or graph-read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file concerns dispute resolution and says nothing about listings of accepted fragments or their query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling. It declares only `ResolveDisputeBodySchema` and `AdjustedPeriodSchema`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window. It declares only the dispute-resolution schemas.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking or raw-content handling. Its imports are `DisputeDecisionSchema, IsoDateSchema, ItemKindSchema, UuidSchema`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic. It validates the shape of one dispute-resolution body.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file does not deal with confirming an uncertain assertion. Its only decisions are prefer_one, adjust_periods and keep_disputed.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt and no attribute-key catalog.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt and no allowed-value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction prompt and no allowed-value spelling.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, change hint or provenance accumulation. It declares only the dispute-resolution request schema.
+looked_past: >-
+  Everything else the file declares for dispute resolution is held by code and agrees with its governing nodes, so it is no finding: the winner rule, one period per item, start strictly before end, a reason for prefer-one and distinct items. The 1000-character reason bound and the single-open-period rule are not in this file, and I did not look for where they live.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-not-blank
+  - rules/knowledge-base/dispute-resolution-distinct-items
+  - rules/knowledge-base/prefer-one-requires-winner
+  - rules/knowledge-base/adjust-periods-one-per-item
+  - rules/knowledge-base/validity-start-before-end
+  - rules/knowledge-base/curation-reason-required
+  - rules/knowledge-base/curation-action-reason-length
+  - rules/knowledge-base/adjusted-periods-single-open
+  - domain/knowledge-base/adjusted-period
+  - domain/knowledge-base/dispute-resolution

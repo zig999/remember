@@ -1,0 +1,105 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      validateTemporal, the document_date branch inside `if (input.requires_valid_from && input.valid_from === null)`, lines 145-158
+    evidence: >-
+      if (input.document_date !== null) { ... return { valid_from: input.valid_from, valid_from_basis: input.valid_from_basis, }; }
+    cost: >-
+      The node says a proposal that requires a validity start and states none takes the document date with basis document. Here the layer returns valid_from null and basis null, and the proposal passes with no start and no basis. The next reader goes to the node, sees a document-dated source filling the start, and does not learn that the code leaves it empty. A required start can reach the consolidator as null whenever the source has a document date, but is filled whenever only a reception date exists. The comment at lines 148-153 says this keeps the previous version's behavior, which is a decision recorded only in the code.
+    kind: contradicts
+    correction: >-
+      The branch would have to resolve valid_from to the source's document date and valid_from_basis to "document", as the node states for the second link of the chain. The node is not the one to change.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 4-5 and the throw at lines 107-114
+    evidence: >-
+      // - semi-open invariant: `valid_from < valid_to` when both are provided
+      //   (BR-16 / §13.3 / §5.2).
+    cost: >-
+      The comment restates a rule that rules/knowledge-base/validity-start-before-end holds and that the code at `input.valid_from >= input.valid_to` enforces in this file. The pair conforms. The prose is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then run /reconcile over the file. The behavior stays as it is.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 10-13 and the ERRATA_MARKERS docstring lines 61-66
+    evidence: >-
+      // - correction signal: `change_hint = 'correction'` requires textual errata
+      //   evidence in at least one cited fragment.
+    cost: >-
+      The comment and the docstring restate the rule and its marker list, and the code holds both in `ERRATA_MARKERS` and `hasErrataSignal` in this file. The pair conforms. The prose is a second home for the marker list.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring through the comment route, then run /reconcile over the file.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 6-9 and the comment at lines 128-135, beside the throw at lines 136-142
+    evidence: >-
+      // - date justification chain (A14 / §6.5): when `requires_valid_from = true`
+      // ... the caller must declare a non-null `valid_from_basis`.
+    cost: >-
+      The comment restates the rule that a stated validity start needs a basis. The code at `input.valid_from !== null && input.valid_from_basis === null` enforces it in this file. The pair conforms. The prose is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then run /reconcile over the file.
+    node: rules/knowledge-base/stated-start-requires-basis
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a pure validation layer with no search, provenance, catalog or graph read; `export function validateTemporal(input: TemporalLayerInput): TemporalResolved`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing of accepted fragments or query parameter appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file is pure and has no node resolution or concurrency; "The layer is pure (no DB calls)" is a comment, and the code makes no calls.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file does no consolidation. The only mention is a comment, "the consolidator's branch decision compares `vigent.valid_from` against `args.valid_from`"; the code holds no re-affirmation logic.
+looked_past: >-
+  The error messages in the ValidationFailure throws and the exported __testing__ hook are emitted text and test plumbing, and no node in the set governs them.
+candidates_opened:
+  - rules/knowledge-base/required-start-fallback
+  - rules/knowledge-base/validity-start-before-end
+  - rules/knowledge-base/stated-start-requires-basis
+  - rules/knowledge-base/correction-requires-errata-evidence
+  - rules/knowledge-base/required-start-available

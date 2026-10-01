@@ -1,0 +1,101 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe (lines 1041-1091), whose result feeds the `run` block of the returned envelope at lines 813-823
+    evidence: >-
+      const fallback = {
+          started_at: new Date(0).toISOString(),
+          finished_at: new Date(0).toISOString(),
+          attempts: 1,
+        };
+      ... finished_at:
+          row.finished_at === null
+            ? new Date(0).toISOString()
+            : row.finished_at.toISOString(),
+    cost: >-
+      When the closed run row cannot be read, or has no finish time, the caller gets a completed run stamped 1970-01-01T00:00:00.000Z with attempts 1, and nothing marks the values as invented. No node holds this substitution. The contract's ingest-directed answer promises "the completed run" and names no placeholder. A reader of the specification would take these timestamps to be real, and only this file says they may not be.
+    kind: unstated
+    correction: >-
+      A node, most likely in contracts/knowledge-base/ingestion, would have to state what the directed answer carries when the run row cannot be read. Otherwise the analysis would have to decide that this case is not answered with invented values.
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      closeRunCompletedSafe (lines 1006-1034), together with the hard-coded `status: "completed"` in the result at line 817
+    evidence: >-
+      } catch (err) {
+          try {
+            await client.query("ROLLBACK");
+          } catch {
+            /* swallow */
+          }
+          logger.warn(
+      ... status: "completed",
+    cost: >-
+      If closing the run fails, the error is only logged. The response still says `status: "completed"` while the stored run may still be open. The rule rules/knowledge-base/directed-run-completes says a directed ingestion completes its run whatever its items' statuses. It is silent on a failed close, so the code is where this decision lives, and the next reader will look for it in the specification.
+    kind: unstated
+    correction: >-
+      A node would have to state what the directed answer reports when the close of the run fails. The analysis would decide between reporting the failure and the present behavior of reporting completion.
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 5, the catch around resolveAffectedNodes (lines 767-787)
+    evidence: >-
+      } catch (err) {
+          deps.logger.warn(
+      ...
+          // resolvedAffected stays []; the run is still completed.
+        }
+    cost: >-
+      If resolving the affected nodes fails as a whole, the response carries an empty `affected_nodes` list as though the run touched nothing. The only node close to this, rules/knowledge-base/affected-nodes-omit-absent, covers a node that is no longer held being left out. It does not cover the whole resolution failing. The caller cannot tell "touched nothing" from "resolution failed", and the specification does not say which the owner is meant to see.
+    kind: unstated
+    correction: >-
+      A node would have to state what the directed answer's affected nodes are when resolving them fails.
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is the directed-ingestion write path. It declares no search, provenance, listing or traverse operation. The only reads are `SELECT status FROM knowledge_node WHERE id = $1 LIMIT 1` for the pin check and `findLlmRunById`, neither of which is a retrieval operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in this file. `DirectedIngestionInputSchema = z.object({ fragments: ..., nodes: ... })` is a write payload.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only calls `resolveAffectedNodes(client, affectedNodes.ids())` from affected-nodes.js. Any omission of absent nodes happens there, not here. The only local branch is the failure fallback `resolvedAffected stays []`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk. It reads `chunks` from `intake.body` and takes `const anchorChunkId = chunks[0]!.id;`. The chunker lives in another file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The loops `for (const item of payload.nodes) { ... await proposeNode(nodeInput, {...}) }` call the node handler sequentially, but the file takes no lock and does no alias reading. It only delegates to `proposeNodeHandler`, so the node's fact is held in that handler.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation exists in this file. The only assertion-related code is the proposal dispatch to `proposeAttribute` and `proposeLink`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. `DIRECTED_PROMPT_VERSION = "directed-v1"` is a sentinel and the run calls no model.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query. It performs no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only passes `change_hint: item.change_hint ?? "none"` and `valid_from_basis: item.valid_from_basis ?? "stated"` to the propose handlers, and maps the returned outcome (`mapAttributeOutcomeToStatus(envelope.result.outcome)`). The re-affirmation decision is made inside those handlers, not here.
+looked_past: >-
+  The long header and inline comments that restate directed-ingestion rules (rules/knowledge-base/directed-defaults, directed-full-confidence, directed-dependency-failed, directed-fragments-anchor-first-chunk and the like), which are not in this pack and whose code is held in this file, belong to the comment route and to the pass over those nodes. The code itself agrees with them as far as I read.

@@ -1,0 +1,100 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      the header comment, lines 13-17 (mode 1, "current view"), above the lines array in applyTemporalFilter
+    evidence: |-
+      //   1. asOf undefined            -> "current view" (query (a), BR-07):
+      //        AND <alias>.valid_to IS NULL
+      //        AND <alias>.superseded_at IS NULL
+    cost: >-
+      The current-view rule is written out a second time in prose beside the code that holds it. When the node
+      moves, the comment keeps stating the old rule, and the next reader may take it for the decided one.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact in this file, in the `lines` array that emits `AND ${alias}.valid_to IS NULL` and `AND ${alias}.superseded_at IS NULL`.
+    node: rules/knowledge-base/graph-read-current-view
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      the header comment, lines 19-22 (mode 2, "valid-time travel")
+    evidence: |-
+      //   2. asOf provided             -> "valid-time travel" (query (b), BR-08):
+      //        AND <alias>.superseded_at IS NULL
+      //        AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= $asOf)
+      //        AND (<alias>.valid_to   IS NULL OR <alias>.valid_to   >  $asOf)
+    cost: >-
+      The as-of window rule (validity start on or before the date, validity end after it) is restated in prose
+      while the same predicate is in the `sql` array below it. A change to the node leaves two statements of
+      the window that can disagree.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact in this file, in the `sql` array of the `opts.asOf !== undefined` branch.
+    node: rules/knowledge-base/graph-read-as-of-view
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      the header comment, lines 16-17 and 24-25 (the in-effect clause and the `inEffectOnly` note)
+    evidence: |-
+      //        [AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= current_date)]
+      //          (the bracketed clause is added when `inEffectOnly = true`)
+      // Note: the `inEffectOnly` flag is meaningful only in mode 1 — when
+    cost: >-
+      The in-effect-only rule (no as-of date, validity start no later than today) is stated in prose as well as
+      in the `inEffectOnly` branch. The comment would keep saying the old rule after the node changed.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact in this file, in `if (opts.inEffectOnly) { lines.push(...valid_from <= current_date...) }`.
+    node: rules/knowledge-base/graph-read-in-effect-only
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file builds a SQL fragment and does not answer any operation or refusal of the contract. `readonly asOf?: string;` is only typed, and nothing checks that the as-of date is a calendar date, so VALIDATION_INVALID_FORMAT is not raised here.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no parameter parsing or listing logic. It only exports `applyTemporalFilter(alias, nextParamIdx, opts)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not touch LLM-run affected nodes. Its only output is `return { sql: lines.join("\n         "), params: [] };`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file does not touch compliance-deletion listings. Its only window logic is the validity window over `valid_from` and `valid_to`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only contains `isValidIdentifier` and `applyTemporalFilter`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, locking or alias reads. It only composes WHERE fragments.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no write or confirmation path. It only returns `{ sql, params }`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It only returns SQL and bound parameters.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts no values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or expansion logic. It is a pure filter-fragment builder, and nothing in it decides whether a graph is walked.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, re-affirmation or provenance logic. It only filters rows by `valid_from`, `valid_to` and `superseded_at`.
+looked_past: >-
+  The InvariantError message and the `isValidIdentifier` check are programming-guard code and state no domain fact, and the JSDoc on `TemporalFilterOptions` and `applyTemporalFilter` is an ordinary parameter description; both belong to the code review, not this pass.
+candidates_opened:
+  - rules/knowledge-base/graph-read-as-of-view
+  - rules/knowledge-base/graph-read-current-view
+  - rules/knowledge-base/graph-read-in-effect-only

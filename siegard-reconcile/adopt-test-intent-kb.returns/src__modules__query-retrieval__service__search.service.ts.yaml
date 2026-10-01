@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      line 56, the PER_LAYER_FETCH_LIMIT constant, used at lines 129-147 for the fragment, node and chunk layer queries
+    evidence: |-
+      const PER_LAYER_FETCH_LIMIT = 200;
+    cost: >-
+      Each layer contributes at most 200 candidates, and `total` is computed as `filtered.length` over those candidates. A search with more matches than that reports a smaller total than the real one and cannot page past the cap. The cap is not in any node I opened (the search-total-before-pagination node says the total counts every search item), so a reader checking the specification will not find it.
+    kind: unstated
+    correction: >-
+      Give the per-layer candidate ceiling a node, or state that the total counts only the candidates retrieved. Alternatively, the code could drop the cap.
+    node: rules/knowledge-base/search-total-before-pagination
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 178-184, the BR-10 comment block above the items list
+    evidence: |-
+      // list never carries a chunk row"), we DROP all chunk hits unconditionally
+    cost: >-
+      The comment restates that a chunk-layer match never surfaces. The code already holds that, because `chunkHits` is never pushed into `items`. The comment is a second home for the fact and only needs removing.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file (the `items` construction at lines 189-265, which never reads `chunkHits`) holds the fact.
+    node: rules/knowledge-base/chunk-match-never-surfaces
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 241-243, the comment above the node-hit provenance check
+    evidence: |-
+      // hit without ANY accepted-fragment trace is dropped — we never
+      //      // surface a node without a provenance chain.
+    cost: >-
+      The comment restates that a matched node surfaces only when an accepted fragment mentions it. The branch `if (provenance.length === 0) continue;` holds it, so the prose duplicates a node's fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The `provenance.length === 0` branch at line 244 holds the fact.
+    node: rules/knowledge-base/node-surfaces-only-with-accepted-mention
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 293-295, the comment above the expanded-link score computation
+    evidence: |-
+      // Score = TRAVERSAL_DECAY ** hop * <source node score>.
+    cost: >-
+      The comment restates the expansion decay rule. The code `Math.pow(TRAVERSAL_DECAY, hop) * sourceScore` holds it, with the constant imported from the knowledge-graph module. The prose is a second home for the formula.
+    kind: restates
+    correction: >-
+      Remove the comment. Line 322 holds the formula.
+    node: rules/knowledge-base/expansion-decay
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 331-332, the comment in the empty-provenance branch of the expanded links
+    evidence: |-
+      // BR-13 / OpenAPI: links without provenance are an alarm but
+      //             // we MUST NOT emit a `provenance: []` row. Log warn and drop.
+    cost: >-
+      The comment restates that an expanded link surfaces only when it holds provenance. The `provenance.length === 0` branch with `continue` holds it, so the prose adds a second home.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch at lines 330-342 holds the fact.
+    node: rules/knowledge-base/expanded-link-requires-provenance
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      line 381, the comment above the sort at lines 384-389
+    evidence: |-
+      // (i) Rank (BR-15): score DESC, recordedAtTs DESC, id ASC.
+    cost: >-
+      The comment restates the ranking order. The comparator holds it, with a node counting as never recorded through `recordedAtTs: 0`. The prose is a second home for the order.
+    kind: restates
+    correction: >-
+      Remove the comment. The comparator at lines 384-389 holds the order.
+    node: rules/knowledge-base/search-ranking
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      searchKnowledgeService (lines 90-422): the layer gate resolveLayers throwing InvalidSearchLayerError, the unparseable-query refusal throwing InvalidSearchQueryError, the unknown-link-type refusal in resolveLinkTypeIds, and the response with total, limit, offset and items.
+    evidence: |-
+      throw new InvalidSearchLayerError(layer);
+      throw new InvalidSearchQueryError("empty_after_parse", {
+      throw new UnknownLinkTypeError(name);
+      const total = filtered.length;
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file is the search service. It has no accepted-fragment listing and no query-parameter validation.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never handles an LLM run's affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file never handles a compliance-deletion listing or an execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only reads chunk hits (`searchChunkLayer`). It never divides content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file never handles proposals or node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file never confirms an assertion. It only computes display flags in `computeFlags`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      The guard at line 271, `if (input.expand && nodeHits.length > 0)`, around the only call to traverseNodes. Link-type resolution is also skipped when `expand` is false (lines 106-108).
+    evidence: |-
+      if (input.expand && nodeHits.length > 0) {
+      const traversal = await traverseNodes(
+      const linkTypeIds = input.expand
+        ? resolveLinkTypeIds(catalog, input.expandLinkTypes)
+        : undefined;
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals, links or attributes being recorded. It only reads them for display.
+looked_past: >-
+  The remaining BR-numbered comments and the header pipeline comment also restate facts that other nodes hold, which are the same prose route as the restates findings above. The chunk-excerpt promotion described at lines 150-154 (chunk-match-cites-its-fragment) is only counted in this file, with the excerpt coming from the repository rows, which I did not read because the repository is outside the file set.
+candidates_opened:
+  - rules/knowledge-base/search-ranking
+  - rules/knowledge-base/item-flags
+  - rules/knowledge-base/expansion-decay
+  - rules/knowledge-base/uncertain-items-excluded-on-request
+  - rules/knowledge-base/node-surfaces-only-with-accepted-mention
+  - rules/knowledge-base/chunk-match-never-surfaces
+  - rules/knowledge-base/expanded-link-requires-provenance
+  - rules/knowledge-base/expansion-starts-from-matched-nodes
+  - rules/knowledge-base/chunk-match-cites-its-fragment
+  - rules/knowledge-base/search-total-before-pagination
+  - rules/knowledge-base/expansion-follows-both-directions
+  - rules/knowledge-base/link-item-summary
+  - rules/knowledge-base/search-query-must-parse
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/layer-weights
+  - domain/knowledge-base/search-item

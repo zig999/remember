@@ -1,0 +1,72 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      registerQueryRetrievalToolset(), lines 211-294. The file registers four of the contract's sixteen operations
+      (search, read-link-provenance, read-attribute-provenance, read-fragment-provenance) as MCP tools on the
+      "query" toolset. The refusals for those operations sit in the imported SearchQuerySchema, the services and
+      mapErrorToEnvelope, not here. Where the file does emit text, the tool descriptions at lines 130-147 agree
+      with the contract: 404 for a missing identity, 404 for a fragment not accepted, 410 for deleted raw
+      information, depth 1..3, limit max 100.
+    evidence: >-
+      mcp.registerTool<GetProvenanceLinkInput, unknown>("query", { name: "get_provenance_link", ...
+      handler: makeHandler(GetProvenanceLinkInputSchema, (input, client) => getProvenanceByLinkService(client,
+      input.link_id, svcLogger), pool) }); on failure `return mapErrorToEnvelope(err);`; description
+      "404 if missing; 410 if any underlying raw is tombstoned by a compliance delete."
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file registers no accepted-fragment listing tool. Its four tools are search and the three
+      get_provenance_* tools.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes handling in the file. QUERY_RETRIEVAL_TOOL_NAMES lists only "search",
+      "get_provenance_link", "get_provenance_attribute" and "get_provenance_fragment".
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing and no execution-window parameters appear in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It forwards read-only queries to services.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals. Every handler runs inside `withReadOnly(pool, (client) => run(parsed, client))`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no curation or confirmation path. All four tools are read-only.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only exports tool descriptions for tools/list.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt and no allowed-value ordering in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt and no allowed-value spelling in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the flag to the service: `expand: input.expand, expandDepth: input.expand_depth,
+      expandLinkTypes: input.expand_link_types`. Whether a non-expanding search walks the graph is decided in
+      searchKnowledgeService, not here.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals and writes nothing. makeHandler runs only inside a read-only transaction.
+looked_past: >-
+  The header and block comments (lines 1-24, 47-49, 57-66, 88-94, 150-154, 166-183, 202-210) cite BR-23/24/25
+  and describe wiring, schema reuse and the transaction wrapper, which are code-structure prose and state no
+  domain fact of any node.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - rules/knowledge-base/expansion-depth-bounds
+  - domain/knowledge-base/search-layer

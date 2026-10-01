@@ -1,0 +1,93 @@
+findings:
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment block inside the mismatch branch of proposeFragmentService, lines 50-55
+    evidence: >-
+      "//  - chunk_id resolves to no row -> RESOURCE_NOT_FOUND (UC-08 alt 2b)."
+    cost: >-
+      The comment states in prose that a cited chunk must exist, which is a second home for
+      rules/knowledge-base/fragment-chunks-exist. The `throw new ValidationFailure("RESOURCE_NOT_FOUND", ...)`
+      below it already holds the fact, so the comment adds nothing. It cites a "UC-08 alt 2b"
+      that no node carries, and it will go stale without anyone noticing if the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch that throws RESOURCE_NOT_FOUND already holds the fact. Use
+      the comment route and then /reconcile over this file.
+    node: rules/knowledge-base/fragment-chunks-exist
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment block inside the mismatch branch of proposeFragmentService, lines 50-55
+    evidence: >-
+      "//  - chunk_id belongs to a different source -> VALIDATION_INVALID_FORMAT
+      //    (cross-table FK mismatch, alt 2c)."
+    cost: >-
+      The comment states in prose that a cited chunk must belong to the run's raw information,
+      which is a second home for rules/knowledge-base/fragment-chunks-in-run-source. The code
+      already holds it, in the `expected_raw_information_id: runCtx.rawInformationId` argument to
+      countChunksInSource and in the VALIDATION_INVALID_FORMAT throw. The comment adds an
+      "alt 2c" citation that no node carries.
+    kind: restates
+    correction: >-
+      Remove the comment. The count against the run's raw information and the throw below it
+      already hold the fact. Use the comment route and then /reconcile over this file.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is the propose-fragment write path. It has no search, provenance, listing or graph
+      read: `export async function proposeFragmentService(client: PoolClient, args: ProposeFragmentInput, runCtx: RunContext)`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments and takes no query parameters. It only calls
+      `countChunksInSource` and `insertFragmentWithSources`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never reads or builds an LLM run's affected nodes. It returns `{ fragment_id: fragment.id, status: "proposed" }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk content. It only checks chunk identities with
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node name and takes no lock, and it handles fragments only. The call is
+      `insertFragmentWithSources(client, { llm_run_id: runCtx.llmRunId, text: args.text, confidence: args.confidence, chunk_ids: args.chunk_ids })`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. It only inserts a fragment with status
+      "proposed".
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute key.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and does not traverse the graph.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file consolidates no link or attribute and has no change hint. It always inserts a new
+      fragment: `const fragment = await insertFragmentWithSources(client, {`.
+looked_past: >-
+  The file's other facts (chunk existence and run-source membership refused with RESOURCE_NOT_FOUND and VALIDATION_INVALID_FORMAT, the result status "proposed") are held by nodes outside this pack (contracts/knowledge-base/ingestion and the two fragment-chunks rules) and the code conforms to them. The header comment's BR-13 layer list, which claims what Zod enforces upstream, and its UC-08, BR-19 and BR-23 citations are prose, not code. They belong to the comment route.
+candidates_opened:
+  - rules/knowledge-base/fragment-chunks-exist
+  - rules/knowledge-base/fragment-chunks-in-run-source

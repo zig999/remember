@@ -1,0 +1,153 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      Header comment, lines 19-25 (the CONTRACT paragraph)
+    evidence: >-
+      // `affected_nodes` is attached to a `LlmRunResponse` ONLY when the run's
+      // status === 'completed'. Empty array is a valid completed-run payload
+    cost: >-
+      The completed-only rule is said a second time in prose. The code that
+      holds it is in llm-run.service.ts, where the "BR-33 — attach
+      `affected_nodes` ONLY when the run is `completed`" branch returns
+      `{ ...base, affected_nodes: [...affectedNodes] }`. This file never
+      attaches the field. If the node moves, this comment keeps saying the old
+      rule, and a reader of this file takes it for where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The fact is held by the node and by the code in
+      llm-run.service.ts.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      isContributingOutcome, lines 87-99 (the switch), as used by
+      affectedIdsFromEnvelope at line 131 for propose_link and propose_attribute
+    evidence: >-
+      case "created_new":
+          case "matched_existing":
+          case "needs_review":
+          case "accepted":
+          case "consolidated":
+          case "superseded_previous":
+          case "disputed":
+            return true;
+    cost: >-
+      The node limits the link and attribute proposals that contribute to those
+      that were accepted, consolidated, superseded a previous assertion or were
+      disputed. This allow-list also admits created_new, matched_existing and
+      needs_review for those two tools, so an envelope with such an outcome
+      would add its nodes to a run's affected nodes. The graph-consolidation
+      service emits only the four outcomes the node names for links and
+      attributes, so the extra three are unreachable today. The list the code
+      applies is nonetheless wider than the one the business decided. The
+      comment at lines 79-86 defends the union as what "the spec says", which
+      the node does not say.
+    kind: contradicts
+    correction: >-
+      Limit the outcomes that qualify a link or attribute proposal to the four
+      the node names. Node proposals are already collected on any ok:true
+      envelope with a node_id, which matches "node proposals resolved to".
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      resolveAffectedNodes docstring, lines 225-228
+    evidence: >-
+      *   - Rows whose `knowledge_node.status = 'merged_into'` are resolved
+      *     transparently to the surviving node via `merged_into_node_id`.
+    cost: >-
+      A comment restates the merge-following rule. The code of step 3 in this
+      same function holds it (`row = survivor;`). The prose is a second home
+      for the fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the bullet. The node and the code in step 3 hold the fact.
+    node: rules/knowledge-base/affected-nodes-follow-merges
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      resolveAffectedNodes docstring, lines 229-231
+    evidence: >-
+      *   - Ids the lookup does not find at all (e.g. a node compliance-deleted
+      *     between the tool call and run-completion) are skipped silently
+    cost: >-
+      A comment restates the omit-absent rule. The code in this file
+      (`if (row === undefined) continue;`) holds it. The prose is a second home
+      for the fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the bullet. The node and the `continue` in step 3 hold the fact.
+    node: rules/knowledge-base/affected-nodes-omit-absent
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a projection helper with no route, operation or refusal. It
+      declares `export interface AffectedNode { readonly id: string; readonly
+      canonical_name: string; readonly node_type: string; }`, and no search,
+      provenance, listing or graph-read operation appears in it.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or query-parameter validation appears in the
+      file. Its queries are `SELECT kn.id, kn.canonical_name ... FROM
+      knowledge_node kn JOIN node_type nt` and `SELECT tool_name, result,
+      validation_outcome FROM tool_call`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      resolveAffectedNodes, step 3 (lines 306-308 and 310-311), plus the
+      batched lookup at lines 245-261
+    evidence: >-
+      let row = byId.get(id);
+      if (row === undefined) continue;
+      ...
+      const survivor = byId.get(row.merged_into_node_id);
+      if (survivor === undefined) continue;
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window filter appears in the
+      file. The only queries are the knowledge_node/node_type lookups and the
+      tool_call read.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never divides content into chunks. It imports only `PoolClient`
+      and `McpEnvelope`, and works on node ids.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file does no entity resolution and takes no locks. It reads
+      `knowledge_node` rows with `WHERE kn.id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file never changes an assertion's status. It only reads
+      `result.outcome` and node ids from tool envelopes.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no attribute-key
+      catalog.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query or graph walk. The one traversal-like step
+      follows `merged_into_node_id` for affected nodes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only reads the resulting `outcome` ("consolidated" among the
+      allow-listed values). It does not decide re-affirmation, change hints or
+      validity starts.
+looked_past: >-
+  The process-scoped LRU of capacity 256 (`const CACHE_CAPACITY = 256 as const;`) and the in-memory-only persistence are performance and implementation choices with no observable effect on the wire payload (the derived fallback is byte-equivalent), so no domain judgment applies; the comment claiming "BR-33" authority for them, and the one at lines 79-86 claiming the spec says to collect the union, are prose only.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-of-a-run
+  - rules/knowledge-base/affected-nodes-follow-merges
+  - rules/knowledge-base/affected-nodes-only-when-completed

@@ -1,0 +1,187 @@
+findings:
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the file header comment, lines 4-7, and the comment at line 81
+    evidence: >-
+      // Steps inside the open transaction (BR-13 layered validation):
+      //   1. SELECT ... FOR UPDATE on both rows (BR-26).
+      //   2. Inspect status: 404 if missing, 410 if deleted, 409/422 mismatch.
+      //   3. Enforce node_type match (BR-06).
+      ... // BR-12: 410 for tombstones; explicit before 409/422 status checks.
+    cost: >-
+      The order in which a merge refuses is written a second time in prose beside the code that
+      applies it. When the node changes the order, a reader of this header sees a sequence nothing
+      reads and nothing keeps in step.
+    kind: restates
+    correction: >-
+      Remove the header steps and the line-81 comment. The order is held by the guards in
+      performMerge, and the node holds it as well.
+    node: rules/knowledge-base/merge-check-order
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the file header comment, line 8, and the comment at lines 129-130
+    evidence: >-
+      //   4. UPDATE absorbed node: status='merged', merged_into_node_id=survivor.
+    cost: >-
+      The merged status and the survivor pointer are described a second time in prose. The code
+      calls updateNodeMerged, so the prose carries no fact of its own and only invites a reader to
+      trust it over the node.
+    kind: restates
+    correction: >-
+      Remove the comment. updateNodeMerged is called at line 131, and its body is at
+      curation.repository.ts line 48.
+    node: rules/knowledge-base/merge-marks-absorbed-merged
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the file header comment, line 9
+    evidence: >-
+      //   5. Path compression (BR-07).
+    cost: >-
+      The path-compression rule is cited by a back-spec number (BR-07) the specification does not
+      use, so a reader is sent to a place that does not hold it.
+    kind: restates
+    correction: >-
+      Remove the comment. pathCompressMergedInto is called at line 147, and its body is at
+      curation.repository.ts line 65.
+    node: rules/knowledge-base/merge-compresses-paths
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the file header comment, line 10
+    evidence: >-
+      //   6. Alias copy (BR-08).
+    cost: >-
+      The alias-copy rule is cited by a back-spec number (BR-08) the specification does not use.
+      The prose leaves the reader unsure which of the two is current.
+    kind: restates
+    correction: >-
+      Remove the comment. copyAliases is called at line 152, and its body is at
+      curation.repository.ts line 80.
+    node: rules/knowledge-base/merge-copies-aliases
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the file header comment, line 11
+    evidence: >-
+      //   7. Repoint links / attributes (BR-09).
+    cost: >-
+      The repointing rule is cited by a back-spec number (BR-09) the specification does not use.
+      The prose is a second statement of what the node holds.
+    kind: restates
+    correction: >-
+      Remove the comment. repointLinks and repointAttributes are called at lines 157 and 162, and
+      their bodies are at curation.repository.ts lines 97 and 114.
+    node: rules/knowledge-base/merge-repoints-assertions
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment before the self-merge guard, lines 54-55
+    evidence: >-
+      // Defence in depth (BR-23). Route layer rejects but the service must not
+      // trust upstream.
+    cost: >-
+      The comment cites the rule by a back-spec number (BR-23) and claims what the route layer
+      does. Nothing in this file shows that claim, so a reader may take it as a statement of the
+      rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard `if (args.survivorId === args.absorbedId)` at line 56 holds the
+      rule.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment at line 81
+    evidence: >-
+      // BR-12: 410 for tombstones; explicit before 409/422 status checks.
+    cost: >-
+      The refusal of a deleted node is cited by a back-spec number (BR-12). The prose adds a second
+      statement of the rule next to the two `status === "deleted"` guards.
+    kind: restates
+    correction: >-
+      Remove the comment. The guards at lines 82 and 88 hold the rule.
+    node: rules/knowledge-base/curation-refuses-deleted-node
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment at line 95
+    evidence: >-
+      // Survivor must be active.
+    cost: >-
+      This sentence says the same as the node's statement in prose. The guard beneath it already
+      refuses.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard `if (survivor.status !== "active")` at line 96 holds the rule.
+    node: rules/knowledge-base/merge-survivor-active
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment at line 120
+    evidence: >-
+      // BR-06: matching node_type.
+    cost: >-
+      The same-node-type rule is cited by a back-spec number (BR-06) the specification does not
+      use.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard `if (survivor.node_type_id !== absorbed.node_type_id)` at line
+      121 holds the rule.
+    node: rules/knowledge-base/merge-requires-same-node-type
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The node governs the owner's read surface (search, provenance, listings, graph reads). This
+      file is a curation merge service, and it states no read operation or its refusals.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The node governs a listing of accepted fragments. This file has no listing and no query
+      parameters, only `performMerge(client, args)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The node governs an LLM run's affected nodes. This file returns only the merge counts
+      `{ links_repointed, attributes_repointed, aliases_copied, path_compressed_nodes }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The node governs the compliance-deletion listing window. This file has no listing and no
+      execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The node governs the chunking of raw content. This file does not divide content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The node governs concurrent proposals of one node name. This file locks rows with
+      `loadNodesForUpdate(client, [args.survivorId, args.absorbedId])` for a merge and handles no
+      proposal.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The node governs confirming an uncertain assertion. This file performs no confirmation and
+      touches no assertion status.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The node governs the content of an extraction prompt. This file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The node governs the order of the allowed values in an extraction prompt. This file has no
+      prompt and no ordering of values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The node governs how the allowed values in an extraction prompt are spelled. This file has no
+      prompt and no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The node governs a search query that does not expand. This file has no search and no graph
+      walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The node governs a proposal that meets a current assertion with the same target or value.
+      This file receives no proposal. It moves existing assertions with
+      `repointLinks(client, args.absorbedId, args.survivorId)` and `repointAttributes(...)`.
+looked_past: >-
+  The pack names none of the merge rules this file applies (the guards, the status flip, the path compression, the alias copy and the repointing); the nodes that hold them (merge-check-order, merge-survivor-active, merge-requires-same-node-type, node-never-merged-into-itself, curation-refuses-deleted-node, merge-marks-absorbed-merged, merge-compresses-paths, merge-copies-aliases, merge-repoints-assertions) are outside this pack and I read their statements and found no disagreement with the code, but I did not judge the repository SQL behind them, the details payload of the thrown errors (for example the self-merge refusal carries no `details` here) or the wording of the error messages, which belong to other judgments.

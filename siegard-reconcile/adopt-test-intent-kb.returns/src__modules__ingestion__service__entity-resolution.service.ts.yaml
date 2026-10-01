@@ -1,0 +1,130 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the file-header comment, lines 10-14 ("Why the lock comes first (BR-20)")
+    evidence: >-
+      // Why the lock comes first (BR-20): two concurrent `propose_node` calls for
+      // the same `(node_type, norm(name))` must NOT race on the resolve-or-create
+      // branch. Acquiring the advisory lock before the first SELECT serialises both
+      // the candidate scan AND the subsequent INSERT inside the same transaction;
+    cost: >-
+      The serialisation of concurrent proposals of one name under one node type is stated a second time in prose. The lock call in resolveOrCreateNode (pg_advisory_xact_lock, lines 125-128) already holds it. When the node moves, this comment stays behind and reads as a current statement of the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the node already holds the fact, so this is the comment-only route followed by a reconcile over the file.
+    node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of MATCH_STRONG, lines 26-32
+    evidence: >-
+      /**
+       * Trigram-similarity ceiling above which a SINGLE candidate is taken as a
+       * strong match (reuse the existing node). BR-25 / A12.
+    cost: >-
+      The strong-match rule is restated in prose beside the constant `MATCH_STRONG = 0.85` that holds it. A reader can take the docstring as a second authority for the threshold.
+    kind: restates
+    correction: >-
+      Remove the docstring. The constant and decideFromCandidates carry the rule, and the node holds the fact.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of MATCH_FLOOR, lines 34-41
+    evidence: >-
+      * Trigram-similarity floor below which a candidate is ignored entirely.
+       * Candidates with `sim < MATCH_FLOOR` do not feed the decision and do not
+       * produce `entity_match_review` rows. BR-25 / A12.
+    cost: >-
+      The floor rule (0.55, and no review rows below it) is restated in prose. `MATCH_FLOOR = 0.55`, the `aboveFloor` filter and the review-row loop already hold it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code holds the floor and the node holds the fact.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the constant TRIGRAM_CANDIDATE_LIMIT (lines 43-47) and its use in the candidate query (`LIMIT ${TRIGRAM_CANDIDATE_LIMIT}`, line 165)
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10;
+      ...
+      ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}
+    cost: >-
+      The code caps the candidates a proposal is compared against at 10, and no node states the cap. The ambiguous-candidates rule says a review is recorded for "each such node" at similarity 0.55 or more. The cap leaves the 11th and later candidates out of the strong-unique check and out of the review rows. The decision lives only here, where the next reader will not look for it. I searched the whole projection for the figure and found no node holding it.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether the candidate set is capped and give that fact a node, or drop the cap.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of decideFromCandidates, lines 249-262
+    evidence: >-
+      *   - Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no
+      *     other candidate has `sim >= MATCH_FLOOR`.
+      *   - Ambiguous: any candidate has `sim ∈ [MATCH_FLOOR, MATCH_STRONG)` OR two
+      *     or more candidates have `sim >= MATCH_STRONG`.
+      *   - Novel: every candidate has `sim < MATCH_FLOOR` (empty set included).
+    cost: >-
+      The three-way resolution rules are restated in prose above the branches (`strong.length === 1 && aboveFloor.length === 1`, the `novel` return, the `ambiguous` return) that hold them. Prose and code can drift apart, and the prose then reads as a decision.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code holds the decision and the nodes hold the facts.
+    node: rules/knowledge-base/strong-candidate-resolves
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is the entity-resolution pipeline, `resolveOrCreateNode(client, args)`. It holds no search, provenance read, listing or traverse operation and no refusal code.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or query parameter appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never reads or builds an LLM run's affected nodes. The only run reference is `created_by_run_id` on aliases.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never touches raw chunks or chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      resolveOrCreateNode, lines 119-128, the advisory lock taken before the first node_alias read
+    evidence: >-
+      await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+          [lockKey]
+        );
+      The key is built from `node_type_id || E'\\x1F' || norm($2::text)`. The lock is taken before the exact-match SELECT on node_alias (line 131) and the trigram candidate query (line 156).
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. It handles only node and alias inserts.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute key. `catalog` is only typed on the arguments and never read.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed-value ordering appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed-value spelling appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file resolves nodes and attaches aliases with `ON CONFLICT DO NOTHING`. It handles no link or attribute assertion, change hint or validity start.
+looked_past: >-
+  The unused `catalog` argument kept "for forward compatibility", the defensive fallback lock key built without norm() when the key query returns no row, and the exact-match query's `LIMIT 1` without an ordering are code-quality matters for another judgment, and no node speaks to them.
+candidates_opened:
+  - rules/knowledge-base/strong-candidate-resolves
+  - rules/knowledge-base/ambiguous-candidates-need-review
+  - rules/knowledge-base/no-candidate-creates-active-node

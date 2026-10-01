@@ -1,0 +1,98 @@
+findings:
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      countDisputedLinks (lines 642-647) and countDisputedAttributes (lines 690-697)
+    evidence: >-
+      `SELECT count(*)::text AS total FROM knowledge_link WHERE status = 'disputed'` and
+      `SELECT count(*)::text AS total FROM node_attribute WHERE status = 'disputed'`
+    cost: >-
+      Each count returns one per disputed item. The disputed queue lists one entry per dispute scope, and a scope can hold several items. The total therefore exceeds the number of entries the queue holds whenever a dispute has more than one item. The decision log beside the node names this as the material it replaced. A reader of the queue total gets a count of items, not of entries.
+    kind: contradicts
+    correction: >-
+      Count dispute scopes (entries) for the disputed part of the total, the way the queue lists them, rather than disputed rows.
+    node: rules/knowledge-base/review-queue-total-before-pagination
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      listEntityMatchQueue (lines 565-588), listDisputedLinks (lines 614-640) and listDisputedAttributes (lines 663-688)
+    evidence: >-
+      listEntityMatchQueue joins `LEFT JOIN entity_match_review em ON em.node_id = kn.id`, then `ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST LIMIT $1 OFFSET $2`. listDisputedLinks and listDisputedAttributes each end with `ORDER BY kl.recorded_at ASC, kl.id ASC LIMIT $1 OFFSET $2` or the `na` equivalent, over individual disputed rows.
+    cost: >-
+      The page limit and offset are applied to candidate rows (one per entity match review) and to individual disputed items. They are not applied to whole queue entries. A page can split one node's candidates across pages, or split one dispute's items. The limit then does not bound the entries returned. The decision log beside the rule says this is the material it replaced.
+    kind: contradicts
+    correction: >-
+      Cut the page over whole entries (one per needs_review node, one per dispute scope) in listing order, and fetch their candidates or items after the cut.
+    node: rules/knowledge-base/review-queue-page-windows-entries
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: >-
+      the disputedQueueRes query in aggregateCurationMetrics (lines 776-787)
+    evidence: >-
+      `SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id FROM knowledge_link WHERE status = 'disputed' UNION ALL SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid FROM node_attribute WHERE status = 'disputed'`
+    cost: >-
+      The metric counts distinct source, target and link type groups. The node says it is the number of entries the disputed queue holds, one per dispute scope. The decision log beside the node names this source-target-link-type grouping as the divergence. The count can differ from the queue whenever one dispute holds links to different targets. The owner reads it as how many disputes await a decision.
+    kind: contradicts
+    correction: >-
+      Count the same dispute scopes the queue lists, so the metric and the queue share one definition of an entry.
+    node: rules/knowledge-base/metrics-disputed-queue-count
+read:
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      countEntityMatchQueue (lines 590-597) counts nodes in needs_review without limit or offset. countDisputedLinks and countDisputedAttributes (lines 642-647 and 690-697) count items without limit or offset. All three are taken before the page is cut, but the disputed counts are per item, not per entry.
+    evidence: >-
+      `SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'` and `SELECT count(*)::text AS total FROM knowledge_link WHERE status = 'disputed'`. The disputed counts are not entry counts, so a finding of kind contradicts stands against this node.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a curation repository of SQL helpers. None of its queries (`FROM knowledge_node`, `FROM knowledge_link`, `INSERT INTO curation_action`) is a search, provenance, catalog or graph read operation or its refusal.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no query-parameter check. Its only fragment access is `SELECT id, status FROM information_fragment WHERE id = $1`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run affected-nodes read. `loadNodesForUpdate` is a `FOR UPDATE` lock on nodes by id.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of compliance deletions and no execution window. It only reads and updates curation, node, link and attribute rows.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never divides content into chunks. It has no raw_chunk query.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposals. Its `FOR UPDATE` locks (`loadNodesForUpdate`, `loadItemsForUpdate`) serve curation actions, not the proposal resolution of one node name under one node type.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      confirmItem (lines 198-221)
+    evidence: >-
+      `UPDATE knowledge_link SET status = 'active' WHERE id = $1 AND status = 'uncertain'` and `UPDATE node_attribute SET status = 'active' WHERE id = $1 AND status = 'uncertain'`. Only status is set; confidence, valid_from, valid_to and superseded_at are left untouched.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute-key valid values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph expansion.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal matching or change-hint logic. `appendProvenanceFragment` only inserts a provenance row with `ON CONFLICT (link_id, fragment_id) DO NOTHING` for a successor it is handed.
+looked_past: >-
+  Rules the file implements correctly that belong to nodes outside this pack's set (accept-rate and its ACCEPT_ACTIONS list, reject-rate-by-code, metrics-review-counts), and status-transition predicates in rejectItem and supersedePredecessor, were seen and not reported.
+candidates_opened:
+  - rules/knowledge-base/review-queue-page-windows-entries
+  - rules/knowledge-base/metrics-disputed-queue-count
+  - rules/knowledge-base/accept-rate
+  - rules/knowledge-base/reject-rate-by-code
+  - rules/knowledge-base/metrics-review-counts

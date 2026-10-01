@@ -1,0 +1,92 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the JSDoc above IngestRawInformationRequestSchema, the `content` bullet (lines 16-18), against the `content` field (lines 27-30)
+    evidence: >-
+      " * - `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+       *    in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+       *    coarser pre-filter; this Zod check is the precise contract from A5."
+    cost: >-
+      The limit is held by the code (`.min(1, ...)` and `.max(10 * 1024 * 1024, ...)`), and rules/knowledge-base/content-length holds it too. The comment is a second home for it and gives the wrong unit. The node counts UTF-16 code units, and the comment says code points. A reader who trusts the comment will misread what a 10 MiB document is. It also sends them to "A5" instead of to the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/content-length and by the `.min`/`.max` calls in this file.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the JSDoc above `original_input` (lines 35-39), against the `original_input` field (lines 40-44)
+    evidence: >-
+      "Never factored into `content_hash`. Capped at 10 MiB to match `content`."
+    cost: >-
+      The cap is held by the code (`.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")`), and rules/knowledge-base/original-input-length holds it too. The comment repeats it and ties it to `content` by analogy. If the node moves, the comment keeps stating the old cap and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The cap is held by rules/knowledge-base/original-input-length and by the `.max` call in this file.
+    node: rules/knowledge-base/original-input-length
+
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ChunkRefSchema (lines 56-61), which declares part of the chunk's shape
+    evidence: >-
+      export const ChunkRefSchema = z.object({ id: z.string().uuid(), chunk_index: z.number().int().nonnegative(), offset_start: z.number().int().nonnegative(), offset_end: z.number().int().positive(), });
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestRawInformationRequestSchema (lines 25-45), which declares source_type, content, storage_ref, metadata and original_input of the raw information
+    evidence: >-
+      source_type: SourceTypeSchema, content: z.string().min(1, ...).max(10 * 1024 * 1024, ...), storage_ref: z.string().nullable().optional(), metadata: z.record(z.string(), z.unknown()).default({}), original_input: z.string().max(...).nullable().optional()
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only the ingestion request and response shapes, such as `IngestRawInformationResponseSchema`. It has no search, provenance or graph read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing or query-parameter handling, only `IngestRawInformationRequestSchema` and the response schemas.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run affected-nodes construct. The response carries only `llm_run_id: z.string().uuid()`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only describes chunks returned (`chunks: z.array(ChunkRefSchema)`). It has no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution construct.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation construct.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt construct. `prompt_version: z.string().min(1, ...)` is only a request field.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or allowed-value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or allowed-value spelling.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal construct.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute consolidation construct.
+
+looked_past: >-
+  The comment "storage_ref: nullable; must be `null` in v1.0.0 (BR carve-out, A5)" is prose that no code backs, since the field accepts any string, and no node holds it, so I filed no finding and left it to the comment route.
+
+candidates_opened:
+  - rules/knowledge-base/content-length
+  - rules/knowledge-base/original-input-length

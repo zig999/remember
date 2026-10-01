@@ -1,0 +1,97 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the doc comment above ingestRawInformation, step 2 (lines 80-81), against the
+      composeIdempotencyKey call at lines 104-109
+    evidence: >-
+      "2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`."
+      The code beside it is: const idempotencyKey = composeIdempotencyKey({ content_hash: contentHash,
+      prompt_version: input.prompt_version, model: input.model, chunking_version: CHUNKING_VERSION });
+    cost: >-
+      The key's composition is written a second time in prose. If the node changes, this comment
+      keeps stating the old composition, and a reader who trusts it will believe the old rule is
+      the current one.
+    kind: restates
+    correction: >-
+      Remove the comment. The call at lines 104-109 already holds the fact, and the digest is
+      computed in composeIdempotencyKey, which this file imports from ../hash.js. I did not open
+      that file because it is outside the file set.
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no chunk shape. It passes chunk inputs to insertRawChunks and reads
+      chunk fields only to build a response: "id: c.id, chunk_index: c.chunk_index,
+      offset_start: c.offset_start, offset_end: c.offset_end". The shape is declared elsewhere.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no raw-information shape. It only forwards values to insertRawInformation:
+      "source_type: input.source_type, content: input.content, content_hash: contentHash,
+      metadata: input.metadata, original_input: input.original_input ?? null".
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds ingestion intake and the raw-information and chunk reads, not search,
+      provenance, catalog or graph reads. The only overlap is the generic
+      "throw new ResourceNotFoundError("raw_information", id)", which belongs to the ingestion
+      contract's reads.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter handling. Its reads are
+      getRawInformationById and listChunksByRawInformationId.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never touches an LLM run's affected nodes. insertLlmRun is called with model,
+      prompt_version, input_raw_information_id and idempotency_key only.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only calls "const chunkInputs = chunkV1(input.content, input.source_type);".
+      Whether the same content always yields the same chunks is decided inside the chunker,
+      not here.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no node resolution. The only concurrency handling is the
+      unique-violation branch on content_hash, which is intake idempotency.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation path.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only records the prompt_version string on the run.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute consolidation. Its idempotent branch,
+      "outcome: "noop_existing"", concerns intake of held content, not re-affirmed assertions.
+looked_past: >-
+  Other prose in the file (the layering header, "BR-02 is enforced by the absence of code", and
+  the doc comments on the noop path and on the read operations) restates facts of the ingestion
+  contract and the intake rules, which are outside this pack. The emitted outcomes and statuses
+  (201 "created", 200 "noop_existing", the 500 InvariantError when no run exists for the held
+  content) agree with specification/contracts/knowledge-base/ingestion and its log.
+candidates_opened:
+  - rules/knowledge-base/idempotency-key

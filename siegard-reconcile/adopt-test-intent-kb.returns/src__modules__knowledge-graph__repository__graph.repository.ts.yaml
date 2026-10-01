@@ -1,0 +1,92 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listNodes, the optional alias join, lines 98-102
+    evidence: >-
+      aliasJoin = `JOIN node_alias na ON na.node_id = kn.id
+                         AND na.alias_norm LIKE $${params.length} || '%'`;
+    cost: >-
+      The prefix goes into LIKE as a pattern, with no escaping and no ESCAPE clause. A percent sign or an underscore the owner types matches as a wildcard instead of as itself. The only caller I found, service/node.service.ts, applies norm() and nothing else (`norm(input.name_prefix)`). A listing can therefore return nodes whose aliases do not start with the typed prefix. The specification reads the prefix literally, and the next reader will look there for that rule.
+    kind: contradicts
+    correction: >-
+      The prefix has to reach the comparison as literal text, either by escaping LIKE metacharacters or by a literal starts-with comparison.
+    node: rules/knowledge-base/node-listing-name-prefix
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listProvenanceByTargets, the excerpt column, lines 322-323
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                                FOR rc.offset_end - rc.offset_start) AS excerpt
+    cost: >-
+      The node says a graph read's provenance entry shows the whole text of the raw chunk it cites. The query instead cuts a substring of the chunk's text using the chunk's own source offsets. A chunk that does not start at offset 0 of its source gets a shifted or empty excerpt, and the provenance entry loses the text it exists to show. The decision log beside the node records this same slicing as the unstated material the rule replaced.
+    kind: contradicts
+    correction: >-
+      Select the chunk's text whole as the excerpt, without offsetting it again.
+    node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      listProvenanceByTargets, the FROM and WHERE clauses, lines 324-330
+    evidence: >-
+      JOIN raw_information ri    ON ri.id = rc.raw_information_id
+                WHERE ${targetCol} = ANY($1::uuid[])
+    cost: >-
+      The provenance query joins raw_information and applies no condition on whether that raw information was deleted for compliance. A grep of the knowledge-graph module's non-test source found no compliance filter anywhere else in it. A compliance-deleted source's trace is therefore still presented by link and attribute reads. The compliance deletion exists to prevent exactly that.
+    kind: contradicts
+    correction: >-
+      Provenance entries whose raw information was deleted for compliance have to be left out of what this assembler returns.
+    node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a read-only data-access layer (`export async function findNodeById(`, `listNodes(`, `fetchTraversalHop(`). It declares no operation, envelope or refusal code of the contract. Those sit in the services.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or query-parameter handling appears in this file; the nearest construct is `listNodes(client, filter: ListNodesFilter)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes handling appears. `findNodesByIds` only returns the rows found: `WHERE kn.id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only reads chunks (`JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id`). It does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file is read-only. It has no proposal, alias-writing or locking construct; the nearest is `SELECT ... FROM node_alias WHERE node_id = $1`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No confirmation or write of status appears. Every query in the file is a SELECT.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or attribute-key valid-values handling appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value ordering appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value spelling appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or expansion decision appears. `fetchTraversalHop` fetches one traversal hop at the caller's request, with no search logic.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file is read-only and has no proposal, re-affirmation or provenance-adding write. The nearest construct is `listProvenanceByTargets`, which only reads provenance.
+looked_past: >-
+  The file's comments cite back-spec identifiers (BR-xx, UC-xx) and several read-side rules whose queries conform (alias order, attribute order, history order, provenance order, include_uncertain, deleted-link exclusion in traversal) are held by nodes outside this pack; I did not judge the comments' form, since comment placement is the comment route's concern.
+candidates_opened:
+  - rules/knowledge-base/node-listing-name-prefix
+  - rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+  - rules/knowledge-base/graph-provenance-hides-compliance-deleted

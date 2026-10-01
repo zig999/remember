@@ -1,0 +1,107 @@
+findings:
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the /search handler, line 60 (the parse sits before the try block), with handleSearchError / isMappableSearchError, lines 200-221
+    evidence: >-
+      const query = SearchQuerySchema.parse(request.query ?? {});
+      ... err instanceof InvalidSearchQueryError ||
+      err instanceof InvalidSearchLayerError ||
+      err instanceof UnknownLinkTypeError
+    cost: >-
+      The contract answers a blank, over-long or unparseable search query with HTTP 422 BUSINESS_INVALID_SEARCH_QUERY, and an expansion depth outside the bounds with HTTP 422 BUSINESS_INVALID_TRAVERSE_DEPTH. Here the query schema is parsed outside the try block, and the mappable set has no depth error. In search.dto.ts the schema rejects those inputs (min 1, max 1000, empty after trim, `expand_depth` min(1).max(3)). middleware/error-handler.ts maps every ZodError to 422 VALIDATION_INVALID_FORMAT with the message "Request payload failed validation.". A REST caller therefore gets a code the contract does not give for these refusals, and a client that branches on the contract's codes never sees them.
+    kind: contradicts
+    correction: >-
+      The REST search refusals for a blank, over-long or unparseable query and for an out-of-bounds depth must reach the caller as the contract's BUSINESS_INVALID_SEARCH_QUERY and BUSINESS_INVALID_TRAVERSE_DEPTH, instead of falling into the generic ZodError mapping.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the /search handler line 60 and the /fragments/accepted handler line 168, where the query is parsed with no mapping of limit or offset refusals
+    evidence: >-
+      const query = SearchQuerySchema.parse(request.query ?? {});
+      ...
+      // ZodError -> 422 VALIDATION_INVALID_FORMAT via the global handler.
+      const query = ListAcceptedFragmentsQuerySchema.parse(request.query ?? {});
+    cost: >-
+      For search and for the accepted-fragment listing the contract answers a page limit or offset out of bounds with HTTP 422 VALIDATION_OUT_OF_RANGE. These routes hand the ZodError to the global handler, which answers VALIDATION_INVALID_FORMAT. The code a client receives differs from the one the contract publishes.
+    kind: contradicts
+    correction: >-
+      A limit or offset outside its bounds on these two operations must answer VALIDATION_OUT_OF_RANGE, as the contract states.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      route registrations: "/search", "/provenance/links/:link_id", "/provenance/attributes/:attribute_id", "/provenance/fragments/:fragment_id", "/fragments/accepted" (lines 59, 90, 112, 136, 164)
+    evidence: >-
+      app.get("/provenance/links/:link_id", ... app.get("/fragments/accepted", ...
+    cost: >-
+      The contract names the operations (search, read-link-provenance, list-accepted-fragments and so on) but not the addresses they are served at. The paths exist only in this file's route table, so a reader of the specification cannot learn where the owner's read surface lives, and a change of address would not be a change to any node.
+    kind: unstated
+    correction: >-
+      The contract should state the address of each operation it publishes, or a node should state that the operations are served at these paths.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the comment block above the /fragments/accepted handler, lines 158-163
+    evidence: >-
+      // filtered by `llm_run_id` and/or `raw_information_id` (at least
+      // one required). Tombstoned sources are silently omitted.
+    cost: >-
+      The comment restates a rule a node already holds, and the code holds it in another file. fragment.dto.ts carries `.refine((v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined`. A second home in prose means a reader may take the comment, not the node, as where the rule lives. The pair conforms, so what is owed is the prose's removal.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and enforced in src/modules/query-retrieval/dto/fragment.dto.ts.
+    node: rules/knowledge-base/listing-requires-a-filter
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the route table of registerQueryRetrievalRoutes (lines 59-183) serves search, read-link-provenance, read-attribute-provenance, read-fragment-provenance and list-accepted-fragments. Each success answers `reply.status(200).send({ ok: true, result: body })`, and the business refusals go through handleSearchError / handleProvenanceError into mapErrorToHttpResponse. The other operations of the contract (list-node-types, read-node, traverse and the rest) are not in this file. Two refusal codes are not held; see the findings.
+    evidence: >-
+      return reply.status(200).send({ ok: true, result: body });
+      ... const { statusCode, envelope } = mapErrorToHttpResponse(err, extras);
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file only calls `ListAcceptedFragmentsQuerySchema.parse(request.query ?? {})`. The strictness (`.strict()`) is declared in dto/fragment.dto.ts, not here.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No route here reads LLM runs or affected nodes. The handlers are search, three provenance reads and the accepted-fragment listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window filter is registered in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It forwards to services such as `listAcceptedFragmentsService(client, {...}, deps.logger)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      Only GET read routes (`app.get(...)`) wrapped in `withReadOnly`. No proposal or node resolution is present.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation route exists in this file. Every handler is a read.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt is built or sent here.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt is built or sent here, and nothing is sorted.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt is built or sent here.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The route only forwards `expand: query.expand` and `expandDepth: query.expand_depth` to searchKnowledgeService. Whether a graph walk occurs is decided in the service, not here.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no write path. It never receives a proposal, so it cannot consolidate a re-affirmation.
+looked_past: >-
+  The comment blocks that restate BR-24 and the error mappers (lines 186-198) and the header endpoint list name back-spec rules that no node in this pack holds, and the sentence "Tombstoned sources are silently omitted" is a fact only prose states in this file.
+candidates_opened:
+  - rules/knowledge-base/listing-requires-a-filter

@@ -1,0 +1,116 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      dispatchToolUse, default branch of the switch (lines 282-293)
+    evidence: |-
+      default:
+        return {
+          ok: false,
+          error: {
+            code: "VALIDATION_INVALID_FORMAT",
+            message: `Unknown tool '${toolName}'.`,
+            details: { tool_name: toolName },
+          },
+        };
+    cost: >-
+      How an extraction answers the model when it names a tool outside the four proposals (the code
+      VALIDATION_INVALID_FORMAT, the message text, the details) is decided only here. The specification
+      holds the Zod-failure message and the chat toolset rule, but no rule for an unknown tool inside an
+      extraction. The next reader will look for it in the specification and find nothing.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the extraction's answer to an unrecognised tool name a node, or
+      decide that it is not a business fact.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      runChunkLoop, MAX_TURNS_PER_CHUNK and the exit after the loop (lines 625-627 and 749-755)
+    evidence: |-
+      const MAX_TURNS_PER_CHUNK = 64;
+      ...
+      input.logger.warn(
+        { llm_run_id: input.llmRunId, turns: MAX_TURNS_PER_CHUNK },
+        "extraction_chunk_turn_cap_reached"
+      );
+      return { kind: "completed" };
+    cost: >-
+      A chunk that has not ended its conversation after 64 turns is treated as read successfully. The run
+      can then complete as `completed` with that chunk only partly extracted. The specification gives the
+      per-turn token ceiling, the bounded call time, the three-in-a-row failure and the refusal skip,
+      but no turn limit per chunk and no rule that reaching one counts as completion. The limit and its
+      outcome live only in this file, where someone reading the specification will not look.
+    kind: unstated
+    correction: >-
+      An analysis would have to state the per-chunk turn limit and what a chunk that reaches it does to
+      the run. It could be a new node near rules/knowledge-base/extraction-closes-its-run.
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries no retrieval operation. Its only tools are the four propose_* handlers, for
+      example `case "propose_fragment":` and `proposeFragmentHandler(parsed.data, {`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no query-parameter check. It calls
+      `findChunksByRawInformationId` and `findLlmRunById` only.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only calls `resolveAffectedNodes(client, collectedIds)` and
+      `setCachedAffectedNodes(llmRunId, resolved)`. Omitting a node that is no longer held is done in
+      ./affected-nodes.js, which this file does not carry.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. Its only repository calls are
+      `closeLlmRunRow`, `findLlmRunById` and `aggregateToolCallOutcomes`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only reads chunks already cut, `findChunksByRawInformationId(client, rawInfo.id)`, and
+      never divides content.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The tool uses are dispatched one after another, `for (const block of toolUseBlocks) { const envelope = await dispatchToolUse(`.
+      Resolving a node name under one node type belongs to `proposeNodeHandler`, which is not in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or curation path. It only drives the extraction loop and closes the run.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file only delegates, `const systemText = input.prompt.system(input.catalog);`. It renders no
+      attribute key values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file orders no allowed values. The prompt text comes from `input.prompt.system(input.catalog)`
+      in the prompts module.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file spells no allowed value. It passes `input.catalog` to `input.prompt.system(...)` and holds
+      no accent handling.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search. Its only reads are `findRawInformationById`, `findChunksByRawInformationId`
+      and the run lookups.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `proposeLinkHandler(parsed.data, {` and `proposeAttributeHandler(parsed.data, {`.
+      The decision on the same target or value and the change hint is made inside those handlers.
+looked_past: >-
+  The prompt-caching breakpoint (`cache_control: { type: "ephemeral" }`), the adaptive-thinking setting and
+  the file-header and docstring prose citing BR-26, BR-19 and UC-12 are cost, mechanism or comment matters
+  and not domain facts. The facts this file holds that nodes outside its set already hold (five-minute
+  timeout with two retries, three errors in a row, last 200 characters of the previous chunk, the 409 and
+  502 codes, refusal skipping a chunk, the running-only precondition, the chunk-anchored fragment) conform
+  and are no finding.
+candidates_opened:
+  - constraints/extraction-model-call-bounded
+  - rules/knowledge-base/extraction-fails-on-repeated-system-errors
+  - rules/knowledge-base/model-refusal-skips-chunk

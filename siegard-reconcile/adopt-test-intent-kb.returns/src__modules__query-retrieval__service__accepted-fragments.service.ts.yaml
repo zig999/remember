@@ -1,0 +1,71 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The item mapping and returned page in listAcceptedFragmentsService. This is the success shape of list-accepted-fragments only. None of the node's refusals sit in this file.
+    evidence: |-
+      fragment_id: row.fragment_id,
+          text: row.fragment_text,
+          confidence: Number(row.fragment_confidence),
+          llm_run_id: row.fragment_llm_run_id,
+          created_at: row.fragment_created_at.toISOString(),
+          source: {
+            raw_information_id: row.raw_information_id,
+            chunk_index: row.chunk_index,
+            source_type: toSourceType(row.source_type),
+            received_at: row.received_at.toISOString(),
+            document_title: row.document_title,
+          }
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the chunk. It only forwards one field of a row declared elsewhere: `chunk_index: row.chunk_index`.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the raw information. It only passes values along from the row: `raw_information_id: row.raw_information_id`, `received_at: row.received_at.toISOString()`, `document_title: row.document_title`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The service receives an already typed `ListAcceptedFragmentsInput` with `llm_run_id`, `raw_information_id`, `limit` and `offset`. It refuses nothing and never inspects query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not touch affected nodes or LLM-run node sets. It only lists fragments through `selectAcceptedFragments`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file does not touch compliance deletions or execution windows. Its only inputs are `llm_run_id`, `raw_information_id`, `limit` and `offset`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk any content. It only reads `chunk_index` from rows already persisted.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic, and no locking. It is a read-only listing: `countAcceptedFragments` followed by `selectAcceptedFragments`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation or review logic. It only maps fragment rows to `AcceptedFragmentItem`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no attribute keys.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file implements no search and no graph traversal. It is a fragment listing.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no consolidation of links or attributes. It is a read-only listing.
+looked_past: >-
+  The route and log-event strings in the logger.info call ("GET /api/v1/fragments/accepted", "query_retrieval_list_accepted_fragments_ok"), and the skipping of the select when the count is zero, are observability and implementation choices that say nothing about a domain fact.

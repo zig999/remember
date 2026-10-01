@@ -1,0 +1,66 @@
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      The RawChunkRow interface (lines 54-63) declares the chunk's shape. The insertRawChunks and findChunksByRawInformationId statements write and read these columns.
+    evidence: >-
+      export interface RawChunkRow { readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly offset_end: number; readonly locator: ChunkLocator; readonly chunking_version: string; ... }.
+      The file declares no status or superseded_at attribute, so the shape is held in part.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      The RawInformationRow interface (lines 36-51) declares the shape. insertRawInformation and the two find functions write and read it.
+    evidence: >-
+      export interface RawInformationRow { readonly source_type: SourceType; readonly content: string; readonly storage_ref: string | null; readonly content_hash: string; readonly received_at: Date; readonly metadata: Record<string, unknown>; readonly original_input: string | null; ... }.
+      The file declares no title, document_date, status or superseded_at attribute, so the shape is held in part.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds only write and lookup functions for ingestion: insertRawInformation, insertRawChunks, insertLlmRun and the find* functions.
+      It has no search, provenance, listing, traversal or refusal code.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and reads no query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run affected-nodes logic. LlmRunRow carries no affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      insertRawChunks only stores chunks it is given (`chunks: readonly RawChunkInput[]`). The division of content into chunks is done in the chunker module, outside this file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution, no proposal handling and no locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or status update. It only inserts and selects raw_information, raw_chunk and llm_run rows.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It carries only the `prompt_version` string column of llm_run.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, no link or attribute assertion and no change hint. It only inserts and reads raw_information, raw_chunk and llm_run.
+looked_past: >-
+  Block comments cite task-contract and business-rule numbers (BR-09, BR-19, TC-01 and BR-34). One restates that original_input never enters content_hash, while the code that computes the hash sits in ingestion.service.ts. These are prose, so the comment route covers them rather than this judgment.
+candidates_opened:
+  - domain/knowledge-base/llm-run

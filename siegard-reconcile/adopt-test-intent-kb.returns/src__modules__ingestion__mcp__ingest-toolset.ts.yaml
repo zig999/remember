@@ -1,0 +1,92 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the ingest_document handler's Zod-failure branch, lines 255-267
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "ingest_document arguments failed validation.",
+    cost: >-
+      The ingestion contract gives the refusal's code and the failing-field listing for ingest-document but no message. The message is told to the MCP caller, and it lives only in this handler. The contract names the equivalent directed wording ("ingest_directed arguments failed validation."), so a reader checking the contract for this one finds nothing.
+    kind: unstated
+    correction: >-
+      The analysis would give the ingest-document validation refusal its message in the ingestion contract, as was done for ingest-directed.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      mapReadError, the ZodError branch, lines 402-413. It serves get_ingestion_status and list_recent_ingestions.
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "Request payload failed validation.",
+      details: err.issues.map((i) => ({
+    cost: >-
+      The ingestion contract states VALIDATION_INVALID_FORMAT with the failing fields for list-recent-ingestions and read-llm-run, but not this message. The message is told to the caller and exists only here. The contract's silence leaves a reader unable to tell whether this wording was decided or just happened.
+    kind: unstated
+    correction: >-
+      The analysis would state, in the ingestion contract, the message that the recent-ingestions listing and the MCP run read answer on a malformed argument.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      runZodFailureAudit, the ValidationFailure thrown inside run, lines 465-468. Through runIngestHandler it becomes the envelope message of all four propose_* tools on a failed parse.
+    evidence: >-
+      throw new ValidationFailure(
+        "VALIDATION_INVALID_FORMAT",
+        "MCP tool args failed Zod parse.",
+    cost: >-
+      The contract says that over MCP a proposal refused for its shape answers the message "Input failed Zod parse." for all four proposals. handler-base.ts copies this failure's message verbatim into the envelope (`message: validationFailure.message`). The MCP caller therefore gets a different message from the one decided, and callers that match on the decided wording will miss it.
+    kind: contradicts
+    correction: >-
+      The message on this path would have to be the contract's "Input failed Zod parse.".
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only propose_*, ingest_document, ingest_directed, health, get_ingestion_status and list_recent_ingestions. None is a retrieval operation (search, list-*, read-*, traverse). Its only similar text is the mapReadError message "Request payload failed validation.", and that serves non-retrieval tools.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file contains no accepted-fragment listing. Its read tools call getLlmRunById and listRecentIngestions.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `getLlmRunById(client, llm_run_id)` and does not build or filter affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file registers no compliance-deletion listing and no execution-window parameters.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It delegates to `ingestDocumentHandler(parsed.data, {` and `ingestDirectedHandler(`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file only dispatches `proposeNodeHandler(input, {`. Resolution of concurrent node-name proposals is not in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation logic. It has only the registration of the ingest tools.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It passes `anthropicApiKey: deps.env.ANTHROPIC_API_KEY` and `ingestModel` to the ingest_document handler.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file registers no search tool.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `proposeLinkHandler(input, {` and `proposeAttributeHandler(input, {`. Consolidation is not decided in this file.
+looked_past: >-
+  Header and inline comments cite back-spec rule codes (BR-21, BR-23, BR-24, BR-28, BR-32, BR-34, TC-02, TC-03) and restate run binding, audit-on-rejection and always-registered behavior of code held in other files, which belongs to the comment route and not to this pass.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

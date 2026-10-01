@@ -1,0 +1,102 @@
+findings:
+  - file: src/modules/curation/mcp/error-envelope.ts
+    where: >-
+      ZOD_CUSTOM_CODE_PRIORITY (lines 22-31) and its use in mapZodError (lines 70-79)
+    evidence: >-
+      const ZOD_CUSTOM_CODE_PRIORITY: readonly string[] = [
+        "BUSINESS_TARGET_NODE_REQUIRED",
+        "BUSINESS_REASON_REQUIRED",
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+        "BUSINESS_TEMPORAL_INCOHERENT",
+        "BUSINESS_CORRECTION_NO_CHANGES",
+        "BUSINESS_DATE_UNJUSTIFIED",
+      ];
+      ... for (const code of ZOD_CUSTOM_CODE_PRIORITY) { if (seen.has(code)) { ... return mapped(status, "warn", {
+    cost: >-
+      This list decides which refusal code and message a person sees when a curation request fails
+      on several grounds at once, and no node states that precedence. The contract lists its refusals
+      per operation, but it nowhere says which wins when several apply. For correct-item the contract
+      lists BUSINESS_CORRECTION_NO_CHANGES, then BUSINESS_DATE_UNJUSTIFIED, then
+      BUSINESS_TEMPORAL_INCOHERENT. This list puts BUSINESS_TEMPORAL_INCOHERENT first. For merge-nodes
+      the contract lists the self-merge refusal first. This list puts BUSINESS_REASON_REQUIRED first.
+      The next reader looks in the specification for which refusal wins and finds nothing. The code is
+      then the only place the decision lives.
+    kind: unstated
+    correction: >-
+      Analysis would state the precedence among simultaneous curation refusals in the curation contract
+      (or a rule it cites), so that the order here has a node to answer to.
+    node: contracts/knowledge-base/curation
+read:
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: nowhere
+    evidence: >-
+      The file only maps a Zod custom issue message to a code, as in
+      `case "BUSINESS_REASON_REQUIRED": return "reason is required for the requested operation";`.
+      It holds no trim or minimum-length check on a reason. The rule lives in whatever schema raises the issue.
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: nowhere
+    evidence: >-
+      The file holds no check on item_ids count or duplicates. It maps only the winner, periods and
+      temporal custom codes and the generic fallback `code: "VALIDATION_INVALID_FORMAT"`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file maps curation errors only. Its Zod fallback is
+      `message: "Request payload failed validation."` with `details: { issues: zodIssuesAsDetails(err) }`.
+      The retrieval operations (search, reads, listings, traverse) are not served here. The unavailable
+      and internal answers come from the shared `serviceUnavailableError()` and `internalError()`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing or query-parameter handling appears in the file. It holds only
+      error-to-envelope mapping.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run or affected-nodes logic. Its functions are mapZodError,
+      mapErrorToHttpResponse and mapErrorToEnvelope.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window handling appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking logic appears in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution logic appears in the file. The only store-related branch is
+      `if (isPgUniqueViolation(err)) { return mapped(422, "warn", { code: "BUSINESS_TEMPORAL_INCOHERENT", ...`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No confirmation logic or status/confidence/date handling appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or value ordering appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or allowed-value handling appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search or graph traversal appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal or re-affirmation logic appears in the file.
+looked_past: >-
+  The curation contract holds the codes, messages, HTTP statuses and details shape the file emits, so
+  they conform and are no finding. The Zod schemas that decide when the reason-required and
+  reason-not-blank answers apply are in other files, outside this set.
+candidates_opened:
+  - contracts/knowledge-base/curation

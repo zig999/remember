@@ -1,0 +1,71 @@
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getProvenanceByLinkService, getProvenanceByAttributeService and getProvenanceByFragmentService, plus finalise() and groupChain(), cover the three provenance reads. The 404 and 410 refusals and the empty-chain refusal are thrown as typed errors. The error codes themselves are declared in ./errors.ts, which this file does not hold.
+    evidence: |-
+      if (!exists) throw new ResourceNotFoundError("KnowledgeLink", linkId);
+      if (!exists) throw new ResourceNotFoundError("NodeAttribute", attributeId);
+      throw new ResourceNotFoundError("InformationFragment", fragmentId);
+      throw new FragmentNotAcceptedError(fragmentId, fragment.status);
+      throw new RawInformationDeletedError(tombstone.raw_information_id, tombstone.performed_at);
+      throw new EmptyProvenanceError(anchorKind, anchorId);
+      return { fragments };
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the element. groupChain() only copies row fields into an imported ProvenanceChunk: `chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end, excerpt: c.excerpt, locator: c.locator`.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the element. groupChain() only copies row fields into the nested object: `raw_information: { id: c.raw_information_id, source_type: toSourceType(c.source_type), received_at: c.received_at.toISOString(), metadata: c.metadata, original_input: c.original_input ?? null }`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no query-parameter handling. It only contains getProvenanceBy{Link,Attribute,Fragment}Service and their helpers.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-nodes handling. It only builds provenance responses from `ProvenanceChainRow` rows.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter. Its only use of compliance deletions is the `findTombstone(client, rawIds)` lookup in finalise().
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not divide content into chunks. It only groups existing chunk rows per fragment: `entry.chunks.some((c) => c.raw_chunk_id === row.raw_chunk_id)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code. It is read-only and contains no write path.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review or confirmation code. It only reads provenance chains.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The only strings it emits are log messages such as `"query_retrieval_provenance_ok"`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph-traversal code. It only has `chainByLink`, `chainByAttribute` and `chainByFragment` calls.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, consolidation or re-affirmation code. It is read-only.
+looked_past: >-
+  The three provenance rules read from the specification root agree with the file's refusals. The log lines (`query_retrieval_provenance_*`) and the repository-owned row order, tombstone lookup and chain queries belong to the repository judgment, not this one.
+candidates_opened:
+  - rules/knowledge-base/provenance-requires-accepted-fragment
+  - rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - rules/knowledge-base/empty-provenance-chain-refused
+  - rules/knowledge-base/provenance-in-recording-order

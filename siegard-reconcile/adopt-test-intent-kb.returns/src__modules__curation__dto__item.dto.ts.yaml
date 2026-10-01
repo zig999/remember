@@ -1,0 +1,139 @@
+findings:
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the docstring above RejectItemBodySchema, line 21
+    evidence: >-
+      /** reject_item — reason mandatory (destructive, BR-11). */
+    cost: >-
+      The reason-required rule is restated in prose beside the schema that enforces it
+      (reason: ReasonRequiredSchema), citing a back-spec rule code, BR-11, instead of
+      the node. When the node moves, this comment is the second place a reader finds
+      the old rule, and nothing keeps it in step.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code holds the fact through
+      `reason: ReasonRequiredSchema`, and the node carries it.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment inside CorrectItemBodySchema.superRefine, line 53
+    evidence: >-
+      // BR-18: at least one of value/target_node_id/valid_from/valid_to.
+    cost: >-
+      The at-least-one-change rule is restated in a comment citing a back-spec code, BR-18.
+      The node and the `someProvided` check hold it, so a reader of the comment has a
+      second statement to reconcile with the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The `someProvided` check below it holds the fact.
+    node: rules/knowledge-base/correction-changes-something
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment inside CorrectItemBodySchema.superRefine, line 67
+    evidence: >-
+      // Cross-field: value only on attribute, target_node_id only on link.
+    cost: >-
+      The rule that a correction cannot change a link's value or an attribute's target node
+      is restated in prose beside the two branches that enforce it. A second statement of
+      the rule sits where the next reader will not look for it.
+    kind: restates
+    correction: >-
+      Remove the comment. The two `ctx.addIssue` branches hold the fact.
+    node: rules/knowledge-base/correction-fits-assertion-kind
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment inside CorrectItemBodySchema.superRefine, line 87
+    evidence: >-
+      // valid_from change requires valid_from_source.
+    cost: >-
+      The rule that a stated validity start must state its basis is restated in a comment.
+      The branch that raises BUSINESS_DATE_UNJUSTIFIED holds it, and the node also holds it.
+    kind: restates
+    correction: >-
+      Remove the comment. The `c.valid_from_source === undefined || c.valid_from_source === null`
+      branch holds the fact.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      the comment inside CorrectItemBodySchema.superRefine, line 112
+    evidence: >-
+      // Semi-open invariant on the new pair when both supplied.
+    cost: >-
+      The rule that a validity start falls strictly before the end is restated in prose beside
+      the `c.valid_from >= c.valid_to` check that enforces it. It is a second statement of a
+      fact the node holds.
+    kind: restates
+    correction: >-
+      Remove the comment. The `c.valid_from >= c.valid_to` check holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only curation request bodies (`ConfirmItemBodySchema`,
+      `RejectItemBodySchema`, `CorrectItemBodySchema`). It carries none of the retrieval
+      operations, such as search, provenance reads, catalog listings or traverse.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file defines no accepted-fragment listing and no query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run, no affected-nodes handling and no knowledge-node reads.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It declares only the curation bodies confirm_item,
+      reject_item and correct_item.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling, no node resolution and no ordering of concurrent
+      work.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      `ConfirmItemBodySchema` is only the request shape: `item_kind`, `item_id` and an
+      optional `reason`. The file does not apply a confirmation, so it states nothing about
+      which values are kept.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no attribute-key values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and spells no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal re-affirmation. Its only change hint is none; it declares
+      only `CorrectedValuesSchema` and the three curation body schemas.
+looked_past: >-
+  The file's code states curation rules (reason not blank, correction changes something, start
+  needs basis, stated start cites a fragment, start before end) that nodes outside this pack
+  hold and agree with, and it has no max length on `reason`, which node
+  rules/knowledge-base/curation-action-reason-length places on the curation action and which may
+  be enforced in another file; none of that is a judgment for this pack.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-required
+  - rules/knowledge-base/curation-reason-not-blank
+  - rules/knowledge-base/curation-action-reason-length
+  - rules/knowledge-base/correction-changes-something
+  - rules/knowledge-base/correction-fits-assertion-kind
+  - rules/knowledge-base/stated-start-requires-basis
+  - rules/knowledge-base/corrected-stated-start-cites-fragment
+  - rules/knowledge-base/validity-start-before-end

@@ -1,0 +1,113 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      the CHUNK_TARGET declaration, line 19, and the doc comment above it, lines 12-18
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+    cost: >-
+      The lower bound 1500 is a size threshold for chunking that no node holds. The nodes state
+      only the 4000 block limit and the 2000 closing size (long-block-sentence-chunks,
+      short-block-one-chunk). The next reader will look for the 1500 in the specification, find
+      nothing, and read this file as the decision. v1.ts uses only CHUNK_TARGET[1], so the 1500
+      is declared here and applied nowhere.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether a 1500 lower bound is a business fact. If it is,
+      a node on raw-chunk would hold it. If it is not, the value has no home in the specification.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      the READING_TAIL declaration, line 30, and its doc comment, lines 24-29
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+    cost: >-
+      The 200-character tail is a fact the node extraction-reads-chunks-in-order already holds
+      ("the last 200 characters of the chunk before it"). It is declared a second time here,
+      and nothing imports this constant. The code that applies it is PREV_TAIL_CHARS = 200 in
+      src/modules/ingestion/service/extraction.service.ts, used as chunk.text.slice(-PREV_TAIL_CHARS).
+      The comment says the overlap is "computed at read time by the future retrieval layer",
+      which differs from the node, where an extraction shows the tail to the model. If the
+      node's 200 moves, this constant stays at 200 and nothing signals it, and --check does not
+      reach it through the node.
+    kind: contradicts
+    correction: >-
+      Remove the unread second declaration. The node's fact is held in extraction.service.ts.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      the doc comment on CHUNK_HARD_MAX, line 21, and the file header comment, lines 1-7
+    evidence: >-
+      /** Hard ceiling on a single chunk. A block above this size is sentence-split. */
+    cost: >-
+      The comment restates the rule that a block of more than 4000 code points is cut at
+      sentence boundaries. The code holds that rule in v1.ts (`if (blockSize <= CHUNK_HARD_MAX)`
+      emits one chunk, else the block is split by sentences), so the pair conforms. The prose is
+      a second home for the node's fact outside behavior. The comment also calls the 4000 a
+      "ceiling on a single chunk", but the node long-sentence-own-chunk lets a single sentence
+      exceed it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by rules/knowledge-base/long-block-sentence-chunks and
+      by the code in src/modules/ingestion/chunker/v1.ts.
+    node: rules/knowledge-base/long-block-sentence-chunks
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only chunker constants (`export const CHUNKING_VERSION = "v1" as const;`).
+      It carries nothing of the retrieval surface.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing or query-parameter handling appears in the file. It holds only `CHUNK_TARGET`,
+      `CHUNK_HARD_MAX` and `READING_TAIL`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling, only chunker constants.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance deletion listing or execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file declares fixed constants (`export const CHUNK_HARD_MAX = 4000 as const;`) and no
+      division logic. Determinism of the cut is in the algorithm in v1.ts, not here.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node resolution code.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review code.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt or attribute-key code.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt allowed-value code.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search code.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation code.
+looked_past: >-
+  The header comment's claims about bumping CHUNKING_VERSION and about measuring in code points
+  appear only as prose in this file, and the unit rule is held in v1.ts, so they are comment-route
+  matters and not reported here.
+candidates_opened:
+  - rules/knowledge-base/extraction-reads-chunks-in-order
+  - rules/knowledge-base/chunking-version
+  - rules/knowledge-base/short-block-one-chunk
+  - rules/knowledge-base/long-block-sentence-chunks

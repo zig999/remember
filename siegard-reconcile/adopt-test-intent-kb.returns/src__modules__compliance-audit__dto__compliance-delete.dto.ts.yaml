@@ -1,0 +1,92 @@
+findings:
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the docstring above ReasonSchema, lines 12-19
+    evidence: >-
+      /** `reason` — non-empty after trim, ≤ 1000 chars (BR-01). ... Implementation note: `z.string().trim().min(1).max(1000)` runs `trim()` then checks the length AFTER the trim.
+    cost: >-
+      The 1 to 1000 character bound on a compliance deletion's reason is stated in prose beside the code that enforces it. A change to the node would leave this comment stating the old bound, and it cites a back-spec rule id (BR-01) as the authority instead of the node.
+    kind: restates
+    correction: >-
+      Remove the docstring. `z.string().trim().min(1).max(1000)` on line 20 already holds the fact, and the node holds it as well.
+    node: rules/knowledge-base/compliance-deletion-reason-length
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the docstring above ListComplianceDeletionsQuerySchema, lines 74-79
+    evidence: >-
+      When both bounds are supplied, the parser rejects `from >= to` with `VALIDATION_OUT_OF_RANGE`.
+    cost: >-
+      The start-before-end requirement on the time window is restated in prose, with a back-spec id (BR-09) as its authority. When the node moves, this comment will not be reached by `--check` and will go on stating the old rule.
+    kind: restates
+    correction: >-
+      Remove the docstring. The `superRefine` on lines 88-98 holds the fact in this file (`Date.parse(value.executed_from) >= Date.parse(value.executed_to)`).
+    node: rules/knowledge-base/audit-window-ordered
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The retrieval contract covers search, the provenance reads, the catalog listings and the graph reads. This file declares only compliance-deletion schemas, for example `export const ComplianceDeleteRequestSchema = z.object({`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no accepted-fragment listing. `ListComplianceDeletionsQuerySchema` is a compliance-deletion listing and carries no `.strict()`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no LLM-run schema and no affected-nodes list. Its `affected` field is `ComplianceDeletionAffectedSchema`, four counts.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      ListComplianceDeletionsQuerySchema, lines 80-98: both window bounds are optional, and the ordering check runs only when both are present.
+    evidence: >-
+      executed_from: z.string().datetime({ offset: true }).optional(),
+      executed_to: z.string().datetime({ offset: true }).optional(), ... if (value.executed_from && value.executed_to) {
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file divides no content into chunks. It only counts them: `chunks: z.number().int().min(0),`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no proposal or node-resolution construct.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no assertion-review or confirmation schema.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and declares no attribute-key shape.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no search query and walks no graph.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no proposal, change-hint or consolidation construct.
+looked_past: >-
+  I did not report four things. The first is the file's other code-held facts: the deleted and noop_already_deleted outcomes, the non-negative counts, the page limit of 1 to 100 with its default of 50, and the offset of at least 0. Nodes outside this pack hold them, so they are not unstated. The second is the header comment claiming the schemas mirror openapi.yaml. The third is the "BR-14" citation. Both are prose that no code or node restates, so I did not file them. The fourth is the half-open window claim (BR-09, "from inclusive, to exclusive") in the list docstring. This file does not implement it, and I could not check where else in the tree it is held without scanning outside the file set.
+candidates_opened:
+  - rules/knowledge-base/audit-listing-accepts-open-window
+  - rules/knowledge-base/compliance-deletion-reason-length
+  - rules/knowledge-base/audit-window-ordered
+  - rules/knowledge-base/audit-listing-window-half-open

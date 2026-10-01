@@ -1,0 +1,131 @@
+findings:
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      warnIfEmptyProvenance, lines 141-162, called from getNodeByIdService at line 127
+    evidence: >-
+      logger.warn({ route: ctx.route, node_id: ctx.nodeId, attribute_id: r.id, status: r.status }, "knowledge_graph_empty_provenance")
+    cost: >-
+      The service emits a WARN log whenever a node read meets a non-deleted attribute with no provenance. The
+      specification states only that such an attribute is shown with an empty provenance list. It does not say the
+      anomaly is logged, at what level, or under what event name. The next reader who looks in the specification for
+      what an empty provenance chain does on a node read will not find this behavior.
+    kind: unstated
+    correction: >-
+      Give the warning a node, for example a constraint beside the logging constraints, or an amendment to
+      rules/knowledge-base/graph-read-shows-empty-provenance. Otherwise remove the log.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment at line 52 above the node_type lookup in listNodesService
+    evidence: >-
+      // BR-03 — resolve node_type name to id via cache.
+    cost: >-
+      The comment restates, as a BR number, the refusal of a node type the catalog does not hold. A second home
+      outside behavior will drift when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The throw of UnknownNodeTypeError at line 57 holds the fact.
+    node: rules/knowledge-base/node-type-filter-in-catalog
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment at line 62 above the status default in listNodesService
+    evidence: >-
+      // BR-15 — default to active when caller omits status.
+    cost: >-
+      The comment restates the node's default-to-active rule, which the code holds in the same file. The comment is
+      a second home that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the comment. The expression `input.status ?? "active"` at line 63 holds the fact.
+    node: rules/knowledge-base/node-listing-by-status
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment at line 101 above the deleted check in getNodeByIdService
+    evidence: >-
+      // BR-11 — deleted -> 410 (row exists but tombstoned).
+    cost: >-
+      The comment restates the refusal of a node read for a deleted node, and the HTTP 410 mapping with it. It is a
+      second home for a fact the code and the node already hold.
+    kind: restates
+    correction: >-
+      Remove the comment. The `node.status === "deleted"` branch throwing NodeDeletedError holds the fact.
+    node: rules/knowledge-base/deleted-node-read-refused
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment at line 105 after the deleted check in getNodeByIdService
+    evidence: >-
+      // Merged nodes return 200 with the merged_into pointer; caller follows.
+    cost: >-
+      The comment states that a merged node is answered as itself. The code holds this by having no branch for
+      status "merged". The comment is a second home, and it adds that the caller follows the pointer, which the
+      node does not say.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/merged-node-read-as-itself
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Only the list-nodes and read-node operations, in listNodesService (lines 47-83) and getNodeByIdService
+      (lines 92-139). The read-node unknown-identity 404 is the throw at line 99, the deleted-node 410 is the
+      throw at line 103, and the list-nodes unknown-node-type refusal is the throw at line 57. The accepted
+      shapes are the returned objects.
+    evidence: >-
+      throw new ResourceNotFoundError("KnowledgeNode", input.nodeId); throw new NodeDeletedError(input.nodeId); throw new UnknownNodeTypeError(input.node_type); return { total: repoResult.total, limit: input.limit, offset: input.offset, items: repoResult.items.map(toNodeSummary) }; return { node: toNodeSummary(node), aliases: aliases.map(toNodeAlias), attributes: attributeRows.map(...) }
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has only the node listing and the node read. It has no accepted-fragment listing and no
+      query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never reads an LLM run's affected nodes. It reads one node by identity and lists nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. ListNodesInput carries only node_type,
+      name_prefix, status, limit and offset.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never chunks content. It imports no chunker and handles no raw information.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file only reads. It makes no proposal, no node resolution, and takes no lock. Its repository calls are
+      findNodeById, listAliasesByNodeId, listAttributesByNodeId, listNodes and listProvenanceByTargets.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file performs no assertion review or confirmation. It only reads attributes through
+      listAttributesByNodeId.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no attribute-key valid values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search and no graph traversal. It reads one node's aliases and attributes and lists nodes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file makes no proposals and consolidates nothing. It has no write path.
+looked_past: >-
+  The file header and the BR-09, BR-16 and BR-17 comments (lines 1-7, 117, 126) are further prose citing business-rule
+  numbers over behavior the code holds. They fall under the framework's comment rule and not under this judgment.
+candidates_opened:
+  - rules/knowledge-base/graph-read-shows-empty-provenance
+  - rules/knowledge-base/deleted-node-read-refused
+  - rules/knowledge-base/node-type-filter-in-catalog
+  - rules/knowledge-base/node-listing-by-status
+  - rules/knowledge-base/merged-node-read-as-itself

@@ -1,0 +1,96 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment block above the GET /metrics handler, lines 125-136
+    evidence: >-
+      // Wraps the shared mapper with a graceful-degradation override: ANY residual
+      // 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front
+      // spec MetricsStrip (R1) can fall back to per-kind totals from /queue.
+    cost: >-
+      The metrics-unavailable answer is also written in prose beside the code that holds it
+      (`const degradedStatus = statusCode === 500 ? 503 : statusCode;` and the
+      SYSTEM_SERVICE_UNAVAILABLE envelope in this file). Two homes now state it, so a change to
+      the contract's refusal could leave the comment saying the old answer.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the contract
+      contracts/knowledge-base/curation (operation read-curation-metrics) holds the fact.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment inside the GET /metrics success path, lines 145-149
+    evidence: >-
+      // Bare success body — consistent with every other curation REST
+      // endpoint (queue/confirm/reject/...). The SPA's httpCuration returns
+      // the raw 2xx JSON, so an `{ ok, result }` wrapper here would surface
+    cost: >-
+      The no-envelope success shape is restated as prose next to `return reply.status(200).send(result);`,
+      which holds it. A second home for the contract's accepted answer ("HTTP 200 carrying, with no
+      envelope") can drift from it.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact and the contract
+      contracts/knowledge-base/curation holds it as the authority.
+    node: contracts/knowledge-base/curation
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file mounts only curation endpoints (`app.get("/queue"`, `app.get("/metrics"`,
+      `app.post("/items/confirm"` and so on). It carries no search, provenance, catalog listing,
+      node read or traverse operation. The curation answers it implements belong to
+      contracts/knowledge-base/curation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in this file. Its routes are
+      `/queue`, `/metrics`, `/entity-matches/:node_id/resolve`, `/nodes/merge`,
+      `/disputes/resolve`, `/items/confirm`, `/items/reject` and `/items/correct`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes list is handled here. The file only forwards bodies to curation services.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking occurs in this file. It has no import of a chunker and no raw-chunk handling.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-name resolution is done here. The entity-match route only calls
+      `resolveEntityMatchService(...)`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The confirm route only calls `confirmItemService({ pool, logger, catalog: deps.ingestionCatalog }, body)`.
+      What confirming changes lives in the service and is not stated in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built here. The file has no prompt text and no attribute-key value listing.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value ordering appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value spelling appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or graph walk is performed here.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal or re-affirmation logic is in this file. It handles curation decisions only.
+looked_past: >-
+  The file's other comments (the endpoint list and the sendError docstring) describe wiring and the
+  mapper's behavior, and the pack's nodes do not govern them. The curation answers the file
+  implements belong to contracts/knowledge-base/curation, whose route set is not in this pack.
+candidates_opened:
+  - contracts/knowledge-base/curation

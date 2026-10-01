@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      traverseNodeService, lines 99-111, together with the finalNodes loop in traverseNodes, lines 326-332
+    evidence: |-
+      if (
+        starting.status === "merged" &&
+        starting.merged_into_node_id !== null
+      ) {
+        const survivor = await findNodeById(client, starting.merged_into_node_id);
+        if (survivor !== null && survivor.status !== "deleted") {
+          startingResolved = survivor;
+        }
+      }
+      ...
+      starting_node_id: startingResolved.id,
+      ...
+      if (row.status === "merged") continue;
+      finalNodes.push(row);
+    cost: >-
+      When a merged starting node's survivor is missing or deleted, startingResolved stays the merged node. The response names it in starting_node_id, but the finalNodes loop drops every merged row, so it is absent from nodes. A reader who looks up starting_node_id in nodes finds nothing. The node's decision log records this exact case as decided: the traversal always lists its starting node.
+    kind: contradicts
+    correction: >-
+      The starting node would have to be listed in nodes whatever its status. Only reached nodes that are merged are left out.
+    node: rules/knowledge-base/traversal-lists-reached-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      traverseNodes, line 180: the frontier is seeded without a status check
+    evidence: |-
+      let frontier: readonly string[] = input.startingNodeIds;
+    cost: >-
+      The frontier takes the starting ids as given, and the first hop fetches links from them. When traverseNodeService leaves a merged starting node in place (survivor missing or deleted), that merged node is expanded. A deleted starting id passed directly to traverseNodes, the internal entry point, would be expanded in the same way. Only nodes reached after the first hop are filtered with `if (row.status === "deleted") continue;` and `if (row.status === "merged") continue;`.
+    kind: contradicts
+    correction: >-
+      The starting ids would have to pass the same deleted-or-merged exclusion as the reached nodes before they are expanded.
+    node: rules/knowledge-base/traversal-expands-live-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, lines 7-8, and the doc comment of traverseNodeService, line 72
+    evidence: |-
+      //   - `depth ∈ [1, 3]`; out-of-range -> `InvalidTraverseDepthError`
+      //     (BR-05).
+      ...
+      *   - InvalidTraverseDepthError (BR-05) — depth outside [1, 3].
+    cost: >-
+      The depth bound is written as prose twice more in this file. The code holds it in assertDepth, using TRAVERSAL_DEPTH_MIN and TRAVERSAL_DEPTH_MAX from ../traversal/config.js. The next reader finds a third copy of the 1..3 bound that nothing reads, and it can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the node and by assertDepth with the config constants.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 11
+    evidence: |-
+      //   - Score = `TRAVERSAL_DECAY ** hop` (BR-14).
+    cost: >-
+      The scoring rule is stated in prose beside the code that applies it, `const score = Math.pow(TRAVERSAL_DECAY, hop);`, with the 0.5 value in ../traversal/config.ts. The comment is a second home for the rule that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by the node and by the Math.pow line with TRAVERSAL_DECAY from config.ts.
+    node: rules/knowledge-base/traversal-link-score
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment at lines 259-261, inside the hop loop
+    evidence: |-
+      // Dedup links by underlying knowledge_link.id (BR-22). Keep the
+      // SMALLEST hop number seen so far (BFS guarantees the first sight is
+      // the minimum hop), so we only insert on first encounter.
+    cost: >-
+      The show-each-link-once-at-first-hop rule is restated in prose above `if (linksById.has(row.id)) continue;`, which already holds it. The comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by the node and by the linksById guard.
+    node: rules/knowledge-base/traversal-link-once
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the traverse operation only: the return of traverseNodeService (line 126), the checks assertDepth, resolveLinkTypeIds and the findNodeById/deleted guards, and the per-link hop and score in traverseNodes
+    evidence: |-
+      return {
+        starting_node_id: startingResolved.id,
+        nodes: result.nodes.map(toNodeSummary),
+        links: result.links.slice(),
+      };
+      ...
+      throw new ResourceNotFoundError("KnowledgeNode", input.startingNodeId);
+      ...
+      throw new NodeDeletedError(input.startingNodeId);
+      ...
+      ...toLinkDetail(substitutedRow, []),
+      hop,
+      score,
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file is the traversal service. Nothing in it lists accepted fragments or reads query parameters.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never builds an LLM run's affected nodes. Its only node list is `finalNodes`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk content. It touches only knowledge nodes and links.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file is read-only. It has no proposal handling and no alias resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation. Its only writes are to in-memory maps.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and spells no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query. It is the traversal walk itself and exports traverseNodeService and traverseNodes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file is read-only. It handles no proposal, change hint or provenance accumulation.
+looked_past: >-
+  Another judgment's: the logger.warn call under the log name "knowledge_graph_empty_provenance", which warns for a non-deleted link with no provenance, is operational telemetry, not a domain refusal. Most of the file's other comments, with their BR-nn citations, restate behavior that the same file or traversal/config.ts and graph.repository.ts hold. Those are prose for the comment route.
+candidates_opened:
+  - rules/knowledge-base/traversal-lists-reached-nodes
+  - rules/knowledge-base/traversal-expands-live-nodes
+  - rules/knowledge-base/traversal-link-score
+  - rules/knowledge-base/traversal-link-once
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/empty-provenance-chain-refused
+  - rules/knowledge-base/graph-read-shows-empty-provenance

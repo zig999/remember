@@ -1,0 +1,108 @@
+findings:
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      assembleLinkHistory, lines 150-155, and assembleAttributeHistory, lines 174-179 (the same branch in both)
+    evidence: >-
+      if (row.status !== "deleted" && provenance.length === 0) {
+        logger.warn(
+          { route, link_id: row.id, status: row.status },
+          "knowledge_graph_empty_provenance"
+        );
+      }
+    cost: >-
+      The code decides that a non-deleted version with no provenance is worth an alarm, and that a deleted one is not. That rule is also the only place the log event name knowledge_graph_empty_provenance is defined. No node holds either. The nearest node, rules/knowledge-base/graph-read-shows-empty-provenance, only says such a read shows an empty provenance list. A later reader who looks in the specification for what the history reads do with a provenance-less version will find no mention of the alarm.
+    kind: unstated
+    correction: >-
+      Give the alarm a node, either in the retrieval contract's history operations or as a rule beside graph-read-shows-empty-provenance. Otherwise drop the branch.
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the comment above the final return of getAttributeKeyHistoryService, lines 121-123
+    evidence: >-
+      // Note: an empty result is a valid response — the caller queried a key
+      // that exists in the catalog but has no attributes recorded yet on this
+      // node. Return `{ versions: [] }` rather than 404.
+    cost: >-
+      Prose restates the retrieval contract's answer for read-attribute-key-history, "an empty list when the knowledge node holds none for the key". The code already behaves this way, because empty rows pass through assembleAttributeHistory to `{ versions }`. The sentence is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by the code in this file and by the node.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the comment above the node lookup in getAttributeKeyHistoryService, line 96
+    evidence: >-
+      // BR-11 — resolve the node first; 404 if absent, 410 if tombstoned.
+    cost: >-
+      Prose restates the node-absent (404) and node-deleted (410) refusals of read-attribute-key-history. The throws of ResourceNotFoundError and NodeDeletedError in the next lines hold them. The comment also cites a back-spec rule number, so the fact has a second named home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      the comment above the catalog lookup in getAttributeKeyHistoryService, lines 105-108
+    evidence: >-
+      // BR-20 — resolve `(node_type_id, key)` via the catalog cache. The
+      // attribute_key id is required to scope the history listing; a miss
+      // surfaces as 404 (BUSINESS_UNKNOWN_ATTRIBUTE_KEY) because the segment
+      // is part of the URL hierarchy, not a free query parameter.
+    cost: >-
+      Prose restates the read-attribute-key-history refusal "HTTP 404, error code BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the node type and key". The code holds it through `throw new UnknownAttributeKeyError(node.node_type, input.key)`. The comment also gives a rationale and a back-spec rule number that no node carries.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The three history operations (read-link-history, read-attribute-history, read-attribute-key-history), in getLinkHistoryService, getAttributeHistoryService, getAttributeKeyHistoryService and the two assemblers. The refusal codes themselves sit in errors.ts, which is outside this file.
+    evidence: >-
+      `throw new ResourceNotFoundError("KnowledgeLink", linkId);` ... `throw new NodeDeletedError(input.nodeId);` ... `throw new UnknownAttributeKeyError(node.node_type, input.key);` ... `return { versions };`
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file only walks lineage chains; it has no accepted-fragment listing or query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes handling appears in the file. It exports getLinkHistoryService, getAttributeHistoryService and getAttributeKeyHistoryService only.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window filter appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution logic appears in the file. It only reads.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation or curation write appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value ordering appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value rendering appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query appears in the file. The only graph walks are walkLinkHistory and walkAttributeHistory, which are lineage reads.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal, re-affirmation or provenance accumulation appears in the file. It only reads versions and their provenance.
+looked_past: >-
+  The header comment's claims that the chain is walked up and down and ordered ASC by recorded_at describe the repository's SQL (walkLinkHistory and the other repository calls), which is outside this file, so I did not judge them. The comments' back-spec "BR-nn" and "UC-nn" citations belong to the comment route.
+candidates_opened:
+  - rules/knowledge-base/graph-read-shows-empty-provenance

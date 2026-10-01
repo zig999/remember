@@ -1,0 +1,125 @@
+findings:
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      lines 24-44, the file's header comment (TC-13 specifics)
+    evidence: >-
+      "Perform a run-state pre-check inside the open transaction that
+      distinguishes 404 (`RESOURCE_NOT_FOUND`, llm_run row absent) from 409
+      (`BUSINESS_RUN_NOT_RUNNING`, row present but `status != 'running'`)." and
+      "Return HTTP 200 for any reachable handler. The `ok: true/false` flag on
+      the body is the outcome indicator — a layered-validation rejection
+      (ValidationFailure) is a *business result*, not a transport error"
+    cost: >-
+      The header says the contract's refusal answers (404 for an unknown run, 409
+      BUSINESS_RUN_NOT_RUNNING for a run that is not running, HTTP 200 carrying
+      `{ ok: false, error }` for a layered-validation rejection) a second time as
+      prose. The code in this file already holds them, in handleProposeMirror and
+      its error mapping. When the contract changes, the comment is not reached and
+      says what was once decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held by handleProposeMirror in this
+      file and by the services in service/propose-*.service.ts, so the comment
+      route applies.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      lines 484-497, the docstring of handleProposeMirror
+    evidence: >-
+      "loads the `llm_run` row first to distinguish 404 (unknown id) vs 409
+      (status != 'running')" and "`RunNotRunningError`    -> HTTP 409 with
+      `BUSINESS_RUN_NOT_RUNNING` envelope." and "`ValidationFailure`     -> HTTP 200
+      with `{ ok: false, error: ... }` envelope (BR-28 envelope semantics)"
+    cost: >-
+      The docstring restates the proposal-requires-running-run refusal and the
+      HTTP 200 `{ ok: false, error }` envelope. The same function holds both in
+      code (`if (run.status !== "running") { throw new RunNotRunningError(...) }`
+      and `reply.status(409)`), so the prose is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring and the inline comments that restate the same mapping.
+      The code in handleProposeMirror holds the fact.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      lines 125-126, POST_INGEST_BODY_LIMIT, used as the bodyLimit of POST /raw-information at line 144
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
+      app.post("/raw-information", { bodyLimit: POST_INGEST_BODY_LIMIT }, ...
+    cost: >-
+      A request-size ceiling of 11 MiB is applied to ingest-raw-information, and
+      no node holds it. The comment cites "ingestion.back.md §1", which is not a
+      node. The nodes rules/knowledge-base/content-length and
+      rules/knowledge-base/original-input-length each cap one field at
+      10,485,760 UTF-16 code units. A request with both fields near their caps, or
+      with multi-byte content, would be refused by this ceiling, with a status the
+      contract does not list. Anyone reading the contract for what the endpoint
+      accepts would not find this cap.
+    kind: unstated
+    correction: >-
+      The analysis should decide whether ingest-raw-information has a request-size
+      refusal and give it a home. contracts/knowledge-base/ingestion is the node
+      that lists the operation's refusals.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      This file mounts only ingestion routes (`app.post("/raw-information"`,
+      `app.get("/llm-runs/:llmRunId"`, the propose-* mirrors). It has no search,
+      provenance, catalog-listing, node-listing or traverse operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing is registered here. The only listing is
+      `ListToolCallsQuerySchema.parse(request.query)` for tool calls.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      `getLlmRunById(client, params.llmRunId)` returns the body unchanged. Affected
+      nodes are composed in the service, not in this route file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window filter appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      `ingestRawInformation(client, body)` and `listChunksByRawInformationId(...)`
+      are delegated to the service. No chunking is done here.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      `proposeNodeService(client, input, runCtx, { catalog })` is delegated. No
+      ordering or locking of proposals appears in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion-review or confirmation operation is registered in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The extraction trigger only calls `runLlmExtraction(deps.pool,
+      params.llmRunId, deps.logger, orchestratorCatalog, {...})`. No prompt is built here.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or value ordering appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction or allowed-value spelling appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search operation is registered in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      `proposeLinkService(client, input, runCtx, { catalog, now })` and
+      `proposeAttributeService(...)` are delegated. This file does not consolidate
+      or re-affirm.
+looked_past: >-
+  The routes' conformance to contracts/knowledge-base/ingestion, such as the 404/409/502/500 mappings and the 422 refusals, is a pair this node set does not cover, and the node is bound elsewhere. The logger.info and logger.warn lines are log output and not a domain fact.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

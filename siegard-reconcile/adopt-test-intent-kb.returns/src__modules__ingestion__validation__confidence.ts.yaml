@@ -1,0 +1,97 @@
+findings:
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      header comment, lines 3-5 (the 0.75 and 0.40 to 0.75 routing table)
+    evidence: >-
+      //   confidence >= 0.75            -> assertion status = 'active'
+      //   0.40 <= confidence < 0.75     -> assertion status = 'uncertain'
+    cost: >-
+      The same thresholds are written in prose beside the constants that enforce them
+      (CONFIDENCE_UNCERTAIN_UPPER = 0.75, CONFIDENCE_FLOOR = 0.4). The comment is a second
+      home for a number the node already holds. If the node's thresholds move, the comment
+      goes stale without anything flagging it, and a reader may take it for the decision.
+    kind: restates
+    correction: >-
+      Remove the prose. Code in this file holds the fact in routeConfidence() and the two
+      constants. The route is the comment route followed by a /reconcile over the file.
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      header comment, lines 6-7 (the below-0.40 branch)
+    evidence: >-
+      //   confidence < 0.40             -> link/attribute NOT created;
+      //                                    supporting fragments stay `proposed`,
+      //                                    surfaced with `low_confidence` flag.
+    cost: >-
+      The comment states the below-floor outcome in prose, next to code that carries only the
+      classification (the "below_floor" route). The no-record rule is therefore written in two
+      places, and a reader can take the comment for its home. The rest of the sentence, about
+      fragments and flags, describes behavior this file does not implement.
+    kind: restates
+    correction: >-
+      Remove the prose. The `return { kind: "below_floor" }` branch and `CONFIDENCE_FLOOR`
+      hold the threshold in this file. The route is the comment route followed by a
+      /reconcile over the file.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only `export const CONFIDENCE_FLOOR = 0.4 as const;`,
+      `export const CONFIDENCE_UNCERTAIN_UPPER = 0.75 as const;` and `routeConfidence`. It
+      has no search, provenance, listing or traversal operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      `export function routeConfidence(confidence: number): ConfidenceRoute` is the only
+      function. It does no listing and no query-parameter refusal.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file references no LLM run and no affected nodes. It only has `type ConfidenceRoute
+      = { kind: "active" } | { kind: "uncertain" } | { kind: "below_floor" }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. `routeConfidence` takes a single number.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no locking, no node resolution and no alias reading. `routeConfidence` is
+      a pure comparison.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or review of an assertion. It only classifies a confidence
+      into a route: `if (confidence >= CONFIDENCE_UNCERTAIN_UPPER) return { kind: "active" };`
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and reads no attribute key.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and sorts no values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no re-affirmation, no same-target or same-value comparison, no change hint
+      and no validity start. Its only decision is the threshold comparison in
+      `routeConfidence`.
+looked_past: >-
+  The code holds the 0.75 and 0.40 thresholds, and two nodes outside this file's set carry them (rules/knowledge-base/new-assertion-status-from-confidence and rules/knowledge-base/below-confidence-floor-records-nothing), with values that agree, so I raised no contradicts or unstated finding. The file is not bound to either node. The header comment also describes what the handler does with the outcome (BELOW_CONFIDENCE_FLOOR, tool_call validation_outcome), which this file does not emit and which is another file's judgment.
+candidates_opened:
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/below-confidence-floor-records-nothing

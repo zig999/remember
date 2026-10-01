@@ -1,0 +1,83 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      the doc comment above isLinkRuleActive, lines 265-270
+    evidence: >-
+      * validity window includes today (semi-open `[valid_from, valid_to)`; nulls
+      * mean unbounded — §5.1).
+    cost: >-
+      The in-effect window of a link type rule is written a second time in prose beside the code that
+      applies it. The node does not bind a comment, so when the window changes, the prose goes on stating
+      the old window and a reader trusts it over the node.
+    kind: restates
+    correction: >-
+      Remove the sentence from the doc comment. The code in this file holds the fact in
+      `if (from !== null && today.getTime() < from.getTime()) continue;` and
+      `if (to !== null && today.getTime() >= to.getTime()) continue;`.
+    node: rules/knowledge-base/link-type-rule-in-effect
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only loads rows into a snapshot, with `SELECT id, name, description FROM node_type` and the
+      other SELECTs in loadCatalog. It answers no operation and produces no refusal or listing.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing or query-parameter handling. It only builds the catalog
+      snapshot in `buildSnapshot`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling. Only the catalog rows and `domainOf` /
+      `isLinkRuleActive` are present.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing. The only window logic is the link type rule check in
+      `isLinkRuleActive`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking. It reads node_type, link_type, link_type_rule, attribute_key and
+      attribute_valid_value.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or locking. The only mention is in the comment on
+      `attributeKeyCacheKey`: "same convention as the advisory-lock key in BR-20".
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. It is a read-only catalog cache.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It only exposes the sets `attributeValidValuesByKeyId` and
+      `domainOf(snapshot, keyId)`, which a prompt builder in another file may read.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file orders nothing. Allowed values are accumulated unsorted with `bucket.add(r.value)` into a
+      Set.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It stores values as read from the table (`bucket.add(r.value)`) and
+      applies no normalization to them.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal. It has only catalog loading and lookup.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling. It exposes the flags `allows_multiple_current` and
+      `requires_valid_from` on the rows and applies no consolidation.
+looked_past: >-
+  Other comments restate catalog and validation facts that nodes outside the pack hold, among them the
+  header's BUSINESS_UNKNOWN_* and BUSINESS_LINK_RULE_VIOLATION refusals and the closed-versus-open domain
+  prose above domainOf. Whether code in other files holds them is outside this file's reading, so they are
+  left to the comment route; migration and BR-numbered references in comments are likewise prose.
+candidates_opened:
+  - rules/knowledge-base/link-type-rule-in-effect

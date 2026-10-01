@@ -1,0 +1,149 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      lines 81-123, the StartAsyncIngestionMcpInputSchema declaration and its docstring
+    evidence: >-
+      `export const StartAsyncIngestionMcpInputSchema = z.object({` with
+      "`start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for caller symmetry. The only difference is the new-run return semantics (immediate vs. awaited)"
+      and the content description "runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance."
+    cost: >-
+      The specification says the ingest toolset offers no tool that starts an ingestion and returns before it completes. This file still declares the input shape and the advertised description of such a tool. If a registrar lists it, `tools/list` announces a tool the business has retired. A reader looking in the specification for what the toolset offers would not find it.
+    kind: contradicts
+    correction: >-
+      The schema declaration is the thing that would have to go, or the constraint would have to be reopened by an analysis. The file cannot be bound to the constraint while it declares the tool's input.
+    node: constraints/ingest-toolset-offers-no-async-ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      line 215, GetIngestionStatusSummarySchema (the per-outcome counters)
+    evidence: >-
+      `const GetIngestionStatusSummarySchema = z.object({ accepted: z.number().int().nonnegative(), consolidated: ..., superseded_previous: ..., needs_review: ..., uncertain: ..., disputed: ..., rejected: ..., error: ..., orphaned_fragments: z.number().int().nonnegative(), });` preceded by "Per-outcome counters — mirror of `LlmRunSummarySchema` (BR-12)."
+    cost: >-
+      The nine counters of an LLM run's summary are declared in this file as well as where the run's response shape lives. A change to the run-summary node has to reach both, and `--check` reaches only the files the node is bound to. If the two drift, nobody can tell which counter set was decided.
+    kind: contradicts
+    correction: >-
+      Derive this schema from the single declaration of the run summary, or bind this file to the node as a second declaration. Code never reads the specification, so the bind is what closes it.
+    node: domain/knowledge-base/run-summary
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      line 234, GetIngestionStatusOutputSchema
+    evidence: >-
+      `export const GetIngestionStatusOutputSchema = z.object({ id: ..., model: z.string(), prompt_version: z.string(), started_at: ..., finished_at: ....nullable(), status: z.enum(["running", "completed", "failed"]), attempts: z.number().int().positive(), input_raw_information_id: ..., idempotency_key: z.string().regex(/^[0-9a-f]{64}$/), summary: GetIngestionStatusSummarySchema, affected_nodes: ... })` preceded by "It mirrors `LlmRunResponseSchema` (`dto/llm-run.dto.ts`)".
+    cost: >-
+      The attributes of an LLM run, its status values and the idempotency-key format are declared a second time in this file, which the run node is not bound to. The day the run changes, the schema in `dto/llm-run.dto.ts` moves with it and this one is not reached.
+    kind: contradicts
+    correction: >-
+      Extend or pick from the run's response schema instead of restating its fields, or bind this file to the node.
+    node: domain/knowledge-base/llm-run
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      comment at line 276, in the `ingest_directed` block
+    evidence: >-
+      "`ref` strings are local to the call (1..120 chars, must be non-empty)."
+    cost: >-
+      A second statement of the reference bounds sits in prose beside the code that holds them (`IngestDirectedRefSchema = z.string().min(1).max(120)`). It adds a number someone has to keep in step when the rule moves. The comment route removes it.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by `IngestDirectedRefSchema` in this file.
+    node: rules/knowledge-base/directed-reference-length
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      comment at lines 281-283, in the `ingest_directed` block
+    evidence: >-
+      "`valid_from_basis` is restricted to the public `'stated' | 'document'` enum (the `'received'` fallback is server-internal, never accepted from callers — BR-16)."
+    cost: >-
+      The rule that a caller never states the received basis is repeated in prose. The code that holds it is `z.enum(["stated", "document"])` in `IngestDirectedValidFromBasisSchema`. The comment gives a reader a second place to look.
+    kind: restates
+    correction: >-
+      Remove the comment. The restriction is held by `IngestDirectedValidFromBasisSchema` in this file.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      docstring at line 299 above IngestDirectedIsoDateSchema
+    evidence: >-
+      "/** ISO date `YYYY-MM-DD`. Mirrors the service-side regex (`directed-ingestion.service.ts`). */"
+    cost: >-
+      The validity-start shape is stated in prose and by the regex `/^\d{4}-\d{2}-\d{2}$/` that follows. The docstring also says a second regex exists in the service, so the shape is held in two code places and a third in prose.
+    kind: restates
+    correction: >-
+      Remove the docstring. The shape is held by the regex in this file and, per the docstring itself, in `directed-ingestion.service.ts`.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the `describe` text of `node_id` in IngestDirectedNodeItemSchema, lines 343-349
+    evidence: >-
+      "Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node."
+    cost: >-
+      This text is advertised to the client calling the tool. The contract answers a pinned identity that names no knowledge node with RESOURCE_NOT_FOUND, and a pinned node that is not active with VALIDATION_INVALID_FORMAT. The description gives one code for both, so a client reading it expects the wrong code for an unknown id.
+    kind: contradicts
+    correction: >-
+      The description should state the two refusals as the contract does: RESOURCE_NOT_FOUND for an identity that names no node, VALIDATION_INVALID_FORMAT for a node that is not active.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestDocumentMcpInputSchema, lines 125-156 (part of the shape: content, source_type, metadata)
+    evidence: >-
+      `content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, ...)`, `source_type: SourceTypeSchema.describe(...)`, `metadata: z.record(z.string(), z.unknown()).optional()`
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares ingest-side input and status schemas only. `ListRecentIngestionsMcpInputSchema` and `GetIngestionStatusMcpInputSchema` are not retrieval operations, and there is no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing schema in the file. The nearest is `export const HealthMcpInputSchema = z.object({});`
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      `affected_nodes: z.array(AffectedNodeOutputSchema).optional()` declares the field's shape. Dropping a node that is no longer held is done by a serializer outside this file, and the comment mentioning omission describes the key, not the node.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only says in a description that "the server chunks it"; it holds no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file declares only proposal input schemas, e.g. `ProposeNodeInputSchema.extend(LlmRunIdField)`. It holds no resolution or ordering of concurrent proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No curation or confirmation schema in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt in the file. The descriptions are tool argument text, such as "Catalog AttributeKey for the node's type".
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No allowed-value listing or sorting in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No allowed-value listing in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query schema in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file declares proposal inputs and the directed item shapes only, with no consolidation logic. `valid_from_basis: IngestDirectedValidFromBasisSchema.optional()` is an input field.
+looked_past: >-
+  The limits the file enforces in code (content up to 10 MiB, fragment text 1..1000, node name and alias 1..500, attribute value 1..2000, source label 1..200, recent-ingestions limit 1..50 default 10, at least one fragment and one node) match nodes outside this pack and conform. The block comments in the `ingest_directed` section also restate other directed-ingestion facts (full confidence, the directed run's model and prompt sentinels, the pin skipping resolution, the label carried into metadata), whose code sits in the service and not in this file. I did not read that service, so I filed no `restates` for them.
+candidates_opened:
+  - contracts/knowledge-base/retrieval
+  - rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+  - rules/knowledge-base/affected-nodes-omit-absent
+  - rules/knowledge-base/audit-listing-accepts-open-window
+  - rules/knowledge-base/chunking-deterministic
+  - rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - rules/knowledge-base/confirmation-keeps-assertion-values
+  - rules/knowledge-base/extraction-prompt-lists-closed-values
+  - rules/knowledge-base/extraction-prompt-values-ascending
+  - rules/knowledge-base/extraction-prompt-values-verbatim
+  - rules/knowledge-base/non-expanding-search-walks-no-graph
+  - rules/knowledge-base/reaffirmation-consolidates

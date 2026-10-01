@@ -1,0 +1,68 @@
+findings:
+  - file: src/modules/curation/mcp/curation-toolset.ts
+    where: >-
+      CurationToolDescriptions.merge_nodes, lines 171-175 (the description served over tools/list)
+    evidence: >-
+      "Merge two `active` KnowledgeNodes directly (no review queue). `absorbed_id` " +
+      "is set to `status=merged` with `merged_into_node_id=survivor_id`; every " +
+      "link / attribute / alias is repointed to the survivor in the same " +
+      "transaction (BR-04, BR-07). `reason` is mandatory."
+    cost: >-
+      This text is what the LLM client is told over tools/list. It says aliases are repointed to the survivor. The rule says the survivor receives a copy of each alias whose normalized form it does not hold, and the absorbed node keeps its own aliases. A client reasoning from the description expects the absorbed node to lose its aliases, and it does not.
+    kind: contradicts
+    correction: >-
+      The description should say that links and attributes move to the survivor and that aliases are copied, with the absorbed node keeping its own. The node itself is not the one that is wrong.
+    node: rules/knowledge-base/merge-copies-aliases
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only the seven curation tools, for example `mcp.registerTool("curation", { name: "list_review_queue", ...`. None of the retrieval operations (search, traverse, read-node, the provenance reads, the catalog listings) appears in it.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. Its only listing tool is `list_review_queue`, built on `ListReviewQueueQuerySchema`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file handles no LLM run and no affected-node listing. The handlers only forward to the curation services, as in `return { ok: true, result };`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file registers no compliance-deletion listing. It states that `compliance_delete` is "registered separately by `registerComplianceToolset`".
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. Its imports are curation DTOs and services.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposals and takes no locks. Each handler delegates to a service, as in `resolveEntityMatchService({ pool, logger }, input.node_id, {`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The `confirm_item` handler only forwards to `confirmItemService({ pool, logger, catalog: ingestionCatalog }, input)`. The rule that a confirmation changes only the status is carried by the service, not by this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It builds only tool descriptions and input JSON schemas.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search tool and no graph walk. `CURATION_TOOL_NAMES` lists "list_review_queue", "resolve_entity_match", "merge_nodes", "resolve_dispute", "confirm_item", "reject_item" and "correct_item".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals and no re-affirmation. It is a curation-side transport that only wraps the curation services.
+looked_past: >-
+  The header comments and the JSDoc blocks cite back-spec rules (BR-xx) and describe tool wiring, transaction ownership and the eight-name whitelist. I did not report them: they carry transport structure, not a fact of any node in this pack.
+candidates_opened:
+  - rules/knowledge-base/merge-copies-aliases

@@ -1,0 +1,99 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchLayerError, the `allowed` field (line 28)
+    evidence: >-
+      public readonly allowed = ["fragment", "node", "chunk"] as const;
+    cost: >-
+      The three search layers are declared a second time here. The same list is already declared as
+      `export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;` in
+      backend/src/modules/query-retrieval/dto/search.dto.ts line 101. The node
+      domain/knowledge-base/search-layer holds the enumeration, but this file is not bound to it.
+      If the layers change, the node and the DTO will be updated and this copy can stay behind.
+      Then the refusal would name layers that no longer match the set the search accepts, and
+      nobody could say which list was decided.
+    kind: contradicts
+    correction: >-
+      The refusal should take its allowed layers from the one declaration of the enumeration
+      instead of declaring them again here. The adopt-scope bind for domain/knowledge-base/search-layer
+      should name the file that declares the enumeration.
+    node: domain/knowledge-base/search-layer
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      InvalidSearchQueryError (BUSINESS_INVALID_SEARCH_QUERY, 422), InvalidSearchLayerError
+      (BUSINESS_INVALID_SEARCH_LAYER, 422, `allowed`), FragmentNotAcceptedError
+      (BUSINESS_FRAGMENT_NOT_ACCEPTED, 404), RawInformationDeletedError
+      (BUSINESS_RAW_INFORMATION_DELETED, 410, `deletedAt`) and EmptyProvenanceError
+      (SYSTEM_INTERNAL_ERROR, 500). These are the refusal codes and statuses the contract names for
+      search and the provenance reads.
+    evidence: >-
+      public readonly statusCode = 422; public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const;
+      public readonly statusCode = 404; public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const;
+      public readonly statusCode = 410; public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const;
+      public readonly statusCode = 500; public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file declares only the five error classes (InvalidSearchQueryError, InvalidSearchLayerError,
+      FragmentNotAcceptedError, RawInformationDeletedError, EmptyProvenanceError). None of them
+      refuses an unknown query parameter on the accepted-fragment listing.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns the affected nodes of an LLM run. The classes are only
+      `class InvalidSearchQueryError extends Error` and four sibling error classes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns compliance-deletion listing windows.
+      RawInformationDeletedError only carries `deletedAt`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns chunking. It declares error classes only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns proposals or node resolution. It declares retrieval error
+      classes only.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns assertion confirmation. It declares retrieval error classes only.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns extraction prompts. It declares retrieval error classes only.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns extraction prompts or the order of their values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns extraction prompts or the spelling of their values.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns search expansion or graph walking. The search-related classes
+      are InvalidSearchQueryError and InvalidSearchLayerError, which are refusals only.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns re-affirmation of assertions. It declares retrieval error
+      classes only.
+looked_past: >-
+  The message text in the constructors ("query exceeds 1000 characters", "query is empty after trim")
+  agrees with rules/knowledge-base/search-query-length and rules/knowledge-base/search-query-not-blank,
+  so I did not report it. The `status` and `reason` fields on the error classes are carried
+  attributes with no node of their own, and I judged them as error plumbing rather than domain facts.
+candidates_opened:
+  - domain/knowledge-base/search-layer
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-query-not-blank
+  - rules/knowledge-base/search-query-must-parse
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/provenance-requires-accepted-fragment
+  - rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - rules/knowledge-base/empty-provenance-chain-refused

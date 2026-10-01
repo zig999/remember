@@ -1,0 +1,113 @@
+findings:
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the header comment, lines 7-13 (endpoint list)
+    evidence: >-
+      // Endpoints implemented (BR-13 — append-only; only POST is the destructive
+      // `compliance_delete`; everything else is GET):
+      //   - POST /api/v1/compliance/deletions                     (UC-01)
+      //   - GET  /api/v1/compliance/deletions                     (UC-02)
+    cost: >-
+      The list of operations the owner's compliance and audit surface offers is written a second time
+      in prose. A reader finds it here and takes it for the place the surface is decided. When the
+      contract's operations change, this list goes stale with no tool to flag it.
+    kind: restates
+    correction: >-
+      Remove the comment. The routes registered below (app.post and app.get) hold the operations, and
+      the contract holds what each one answers.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the docstring above VALIDATION_STATUS and handleZodError, lines 182-189, and the Priority 1
+      comment, line 197
+    evidence: >-
+      * Translate ZodError into our standard envelope. Two special-case mappings:
+      *  - issue.message === 'VALIDATION_OUT_OF_RANGE' (from `superRefine` for
+      *    semi-open range guards) -> error.code: VALIDATION_OUT_OF_RANGE.
+    cost: >-
+      The rule that a time window must have its start strictly before its end is restated in prose.
+      The code holds it in two places: the superRefine in compliance-delete.dto.ts and
+      curation-action.dto.ts, and this handler's branch that answers 422 VALIDATION_OUT_OF_RANGE. A
+      reader would take the docstring for the rule's home, and it would go stale unnoticed.
+    kind: restates
+    correction: >-
+      Remove the docstring and the Priority comments. The branch
+      `err.issues.some((i) => i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE")` holds
+      the mapping, and the audit-window-ordered node holds the rule.
+    node: rules/knowledge-base/audit-window-ordered
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the Priority 3 comment, lines 239-241
+    evidence: >-
+      // Priority 3 — `reason` length / trim violations. We can detect those by
+      // the path being "reason" and the issue being `too_small` (empty after
+      // trim) or `too_big` (> 1000 chars). Both map to OUT_OF_RANGE.
+    cost: >-
+      The 1 to 1000 character bound on a deletion's reason is stated in prose beside a handler that
+      does not enforce it. The bound is enforced in `ReasonSchema = z.string().trim().min(1).max(1000)`
+      in compliance-delete.dto.ts. A reader looking for the limit could take this comment for its
+      home.
+    kind: restates
+    correction: >-
+      Remove the comment. The 1000 limit lives in ReasonSchema, and the compliance-deletion-reason-length
+      node holds the rule.
+    node: rules/knowledge-base/compliance-deletion-reason-length
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only compliance and audit routes (`app.post("/compliance/deletions"`,
+      `app.get("/audit/curation-actions"`). It declares none of retrieval's operations (search,
+      provenance reads, catalog listings, traverse).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing appears in the file, which only calls `ListComplianceDeletionsQuerySchema.parse(request.query ?? {})` and similar.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node handling. It imports only compliance-audit services.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The route hands `request.query` to `ListComplianceDeletionsQuerySchema.parse(...)`. The
+      open-window acceptance is decided in the filter schema in the dto file, which is not this file.
+      The only window logic here is the mapping of a failed `from < to` to VALIDATION_OUT_OF_RANGE.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code, only route registration and error mapping.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation, only compliance deletion and audit reads.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph traversal.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation. It only calls `complianceDelete({ logger: deps.logger }, client, body)` and the audit readers.
+looked_past: >-
+  The file's emitted behavior (201 or 200 on compliance-delete, 422 validation codes and messages, 404 from ResourceNotFoundError) agrees with contracts/knowledge-base/compliance-audit, a node outside this pack, so it is no finding. Other comments in the file (the auth-scope remark in the header, and the section banners) are prose of another judgment's.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit
+  - rules/knowledge-base/audit-window-ordered
+  - rules/knowledge-base/compliance-deletion-reason-length
