@@ -1,0 +1,17 @@
+findings: []
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      The DO block, lines 8-34. It makes two inserts into compliance_deletion, one omitting `affected` and one passing an explicit NULL. It raises unless each is refused with check_violation or not_null_violation. This is the node's `affected` attribute (type affected-counts, required: true) asserted as required.
+    evidence: |-
+      INSERT INTO compliance_deletion (raw_information_id, reason)
+          SELECT id, 'test' FROM raw_information WHERE content_hash = repeat('a', 64);
+        EXCEPTION WHEN check_violation OR not_null_violation THEN
+          refused := true;
+      ...
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+          SELECT id, 'test', NULL FROM raw_information WHERE content_hash = repeat('a', 64);
+      ...
+      RAISE EXCEPTION 'criterion 7: a compliance deletion with an explicit null affected was accepted';
+looked_past: >-
+  The fixture values (the first source_type enum member, the literal 'fixture' content, the repeated-'a' hash) are test scaffolding, not domain facts, and the file has no comments.

@@ -1,0 +1,19 @@
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      The DO block, lines 19-41. It builds a good `affected` value with exactly the four counts, `chunks`, `fragments`, `links` and `attributes`, and asserts that dropping any one is refused and that a non-integer value for any one is refused.
+    evidence: >-
+      good constant jsonb := '{"chunks":3,"fragments":2,"links":1,"attributes":0}';
+      FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP
+      IF NOT pg_temp.is_refused(good - k) THEN
+      FOREACH v IN ARRAY ARRAY['"5"', '1.5', 'null', 'true', '{}', '[]'] LOOP
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      Lines 8-17, the `pg_temp.is_refused` function. It inserts into `compliance_deletion` the `raw_information_id` reference, a `reason` and the `affected` value, and treats a check or not-null violation as a refusal.
+    evidence: >-
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+        SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);
+      EXCEPTION WHEN check_violation OR not_null_violation THEN
+        RETURN true;
+looked_past: >-
+  The failure message on line 26 says "non-negative integers", but the file never inserts a negative count. That fact is held by rules/knowledge-base/affected-counts-non-negative, which is outside this file's node set, and how far the test covers it is a coverage judgment, not a conformance one.

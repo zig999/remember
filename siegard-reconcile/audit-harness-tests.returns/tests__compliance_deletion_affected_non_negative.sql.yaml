@@ -1,0 +1,27 @@
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      the DO block (lines 19-34): the `zeros` literal and the FOREACH loop over the four
+      count keys, which exercises the four counts as the shape `affected` takes.
+    evidence: >-
+      zeros constant jsonb := '{"chunks":0,"fragments":0,"links":0,"attributes":0}';
+      FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP
+      IF NOT pg_temp.is_refused(jsonb_set(zeros, ARRAY[k], '-1'::jsonb)) THEN
+      The file declares no shape. It checks that the four-count value is accepted at zero
+      and refused at -1 for each key. The specification holds the non-negativity in
+      rules/knowledge-base/affected-counts-non-negative, which constrains this node. The
+      test asserts that rule and does not restate it as its own authority.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the insert inside pg_temp.is_refused (lines 11-12), which writes a compliance_deletion
+      row with raw_information_id, reason and affected, the three attributes the node lists.
+    evidence: >-
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+      SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);
+      The file only exercises the aggregate's refusal of a negative count in `affected`. It
+      declares nothing, and the rule that constrains this node and holds the fact is
+      rules/knowledge-base/affected-counts-non-negative.
+looked_past: >-
+  The label "criterion 6" in the raised exception text, the fixture literals ('fixture', 'test',
+  repeat('a', 64)) and the choice of the first source_type enum member are test scaffolding that
+  states no domain fact.
