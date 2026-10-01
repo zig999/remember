@@ -6,8 +6,8 @@ Derived by spec.py from the specification files; never edited.
 
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
-| chat | supporting | 17 | 78 | 1 | 0 |
-| knowledge-base | core | 75 | 373 | 5 | 10 |
+| chat | supporting | 17 | 117 | 1 | 0 |
+| knowledge-base | core | 75 | 383 | 5 | 10 |
 
 ## Aggregates
 
@@ -31,17 +31,24 @@ None.
 
 ## Constraints
 
+- answers-carry-allowed-origin (system)
+- anthropic-key-required (system)
 - chat-content-is-data (chat)
 - chat-reads-are-consistent (chat)
 - chat-toolset (chat)
 - compliance-deletion-is-atomic (knowledge-base)
 - curation-is-atomic (knowledge-base)
+- curation-mcp-needs-no-run-identity (knowledge-base)
 - curation-reads-are-consistent (knowledge-base)
 - curation-transports-answer-alike (knowledge-base)
+- curation-write-failure-logged (knowledge-base)
 - document-content-is-data (knowledge-base)
 - every-operation-requires-owner-authentication (system)
+- expected-refusals-not-logged-as-errors (system)
 - extraction-acts-only-through-proposals (knowledge-base)
+- extraction-model-call-bounded (knowledge-base)
 - failures-answer-one-envelope (system)
+- ingest-toolset-offers-no-async-ingestion (knowledge-base)
 - ingestion-transports-answer-alike (knowledge-base)
 - internal-failure-withholds-cause (system)
 - llm-toolset-omits-audit-reads (knowledge-base)
@@ -49,10 +56,16 @@ None.
 - llm-toolset-omits-fragment-listing (knowledge-base)
 - llm-toolset-omits-graph-point-reads (knowledge-base)
 - local-operator-token-development-only (system)
+- local-operator-token-minimum-length (system)
+- local-operator-token-needs-explicit-development (system)
+- logs-redact-text-fields (system)
+- mcp-endpoint-serves-only-its-toolset (system)
 - mcp-failure-is-tool-error (system)
+- owner-time-zone-must-be-known (system)
+- preflight-needs-no-authentication (system)
 - retrieval-is-lexical-only (knowledge-base)
 - retrieval-is-read-only (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-150 decision(s) disclosed, 2 location(s) retired in the decision logs.
+153 decision(s) disclosed, 2 location(s) retired in the decision logs.

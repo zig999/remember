@@ -88,6 +88,8 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the two filters of which one is required
   - when: A named LLM run or raw information is not a well-formed identifier.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the offending filter
+  - rule: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - *id005
   - *id006
 - operation: list-node-types

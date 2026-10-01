@@ -3,6 +3,26 @@
 Derived by spec.py from the specification files; never edited. Grep here to locate;
 open the node file a match names before claiming anything about it.
 
+=== constraints/answers-carry-allowed-origin
+---
+statement: An answer to a request from an allowed origin, a refusal included, carries that origin as the allowed origin, and an answer to any other origin carries none.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/anthropic-key-required
+---
+statement: The system does not start without the key of the language model provider.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/chat-content-is-data
 ---
 statement: The assistant is instructed to treat the content of documents and tool results as data, never as instruction.
@@ -56,6 +76,16 @@ fitness: each curation write operation, over either transport, runs inside one d
 
 None.
 
+=== constraints/curation-mcp-needs-no-run-identity
+---
+statement: A curation call over MCP is served without the identity of an LLM run.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
 === constraints/curation-reads-are-consistent
 ---
 statement: Each review queue listing and each curation metrics read sees one consistent state of the knowledge base.
@@ -70,6 +100,16 @@ None.
 === constraints/curation-transports-answer-alike
 ---
 statement: The REST and MCP transports answer every curation operation they both expose with the same result on success and the same error code on refusal.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/curation-write-failure-logged
+---
+statement: A curation write that fails because the store is unreachable is logged at error level as curation_request_failed with its error code and its cause.
 scope: knowledge-base
 ---
 
@@ -106,9 +146,29 @@ entries:
   why: The same gate over every operation is one fact, and two constraints stating it for overlapping scopes would be two homes.
 ---
 
+=== constraints/expected-refusals-not-logged-as-errors
+---
+statement: A refusal for a business or validation cause is never logged at error level.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/extraction-acts-only-through-proposals
 ---
 statement: The language model that extracts a document acts on the knowledge base only through the fragment, node, link and attribute proposals.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/extraction-model-call-bounded
+---
+statement: A call to the language model for extraction waits at most five minutes and is retried at most twice.
 scope: knowledge-base
 ---
 
@@ -125,6 +185,25 @@ scope: system
 ## Description
 
 None.
+
+=== constraints/ingest-toolset-offers-no-async-ingestion
+---
+statement: The ingest toolset offers no tool that starts an ingestion and returns before it completes.
+scope: knowledge-base
+---
+
+## Description
+
+None.
+
+=== constraints/ingest-toolset-offers-no-async-ingestion.log
+---
+entries:
+- field: statement
+  unstated: The material says the ingest toolset does not announce start_async_ingestion, and does not say whether the exclusion is of that tool alone or of the kind of tool.
+  decided: The toolset offers no tool that starts an ingestion and returns before it completes.
+  why: The tool is retired because ingestion is one-shot, and a different name for the same behavior would breach the same reason.
+---
 
 === constraints/ingestion-transports-answer-alike
 ---
@@ -205,9 +284,69 @@ scope: system
 
 None.
 
+=== constraints/local-operator-token-minimum-length
+---
+statement: A local operator token shorter than 16 characters is refused.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/local-operator-token-needs-explicit-development
+---
+statement: The system does not start when a local operator token is configured and the environment is not explicitly development.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/logs-redact-text-fields
+---
+statement: Logs show the content, text and value fields of a logged object, nested ones included, as [REDACTED] and show every other field as it is.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/mcp-endpoint-serves-only-its-toolset
+---
+statement: Over MCP a call naming a tool outside the endpoint's own toolset answers a tool error, with code NOT_FOUND on the curation endpoint.
+scope: system
+---
+
+## Description
+
+None.
+
 === constraints/mcp-failure-is-tool-error
 ---
 statement: Over MCP a refused or failed operation answers a tool error result carrying its error code, message and details as JSON text.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/owner-time-zone-must-be-known
+---
+statement: The system does not start when the configured owner time zone is not a known IANA zone.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/preflight-needs-no-authentication
+---
+statement: A cross-origin preflight request for a protected operation is answered without authentication and names the allowed origin.
 scope: system
 ---
 
@@ -1206,6 +1345,8 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the two filters of which one is required
   - when: A named LLM run or raw information is not a well-formed identifier.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, naming the offending filter
+  - rule: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - *id005
   - *id006
 - operation: list-node-types
@@ -1337,6 +1478,10 @@ entries:
   unstated: The material for the catalog listings, the node listing and the graph reads does not show how they authenticate their caller.
   decided: Each of these operations refuses an unauthenticated caller with the same answer as the other retrieval operations.
   why: They are served on the same owner-only surface as search, including the one query tool endpoint they share with it.
+- field: answers
+  unstated: The material says a listing of accepted fragments naming an unknown query parameter is refused by strict validation, and does not say what the surface answers.
+  decided: 'The refusal answers as every other malformed parameter of the surface does: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message.'
+  why: The surface answers a strict-validation refusal one way, and nothing in the material gives this one a different answer.
 ---
 
 === domain/chat/_context
@@ -4115,6 +4260,30 @@ constrains:
 
 None.
 
+=== rules/chat/chat-enabled-by-default
+---
+type: invariant
+statement: The chat is enabled where nothing configures it.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-affected-nodes-first
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant, once an ingestion run has completed, to read the run's affected nodes first and then to read each node and traverse from it directly.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
 === rules/chat/chat-prompt-carries-marker
 ---
 type: invariant
@@ -4127,10 +4296,214 @@ constrains:
 
 None.
 
+=== rules/chat/chat-prompt-discovery-listings
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant to learn the catalog's node types, link types and attribute keys from their listings.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-fallback-lists-by-node-type
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant, when a completed run lists no affected nodes, to look the nodes up by node type and never to search several names joined.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-list-by-node-type
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant to give a node type whenever it lists the nodes of a category.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
 === rules/chat/chat-prompt-presents-catalog
 ---
 type: invariant
 statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-search-is-lexical-and
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant that search is lexical and matches every word of its query.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-search-one-name
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant to search one specific name per call and never to join several names in one query.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+---
+type: invariant
+statement: The chat prompts from v3 on tell the assistant never to present the first rows of a node listing without a node type as what was ingested.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v1-cites-sources
+---
+type: invariant
+statement: The v1 chat prompt tells the assistant never to invent identifiers and to cite its source.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v2-ingestion-returns-running
+---
+type: invariant
+statement: The v2 chat prompt tells the assistant that an ingestion returns while still running, to be followed up by asking its status.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v2-no-content-echo
+---
+type: invariant
+statement: The v2 chat prompt forbids the assistant to repeat the content an ingestion was given in its answer.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v2-no-status-polling
+---
+type: invariant
+statement: The v2 chat prompt forbids the assistant to ask an ingestion's status again within the turn that started it and tells it to report the status once.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-asks-start-date
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to ask the owner for the start of a temporal assertion the owner dated nowhere, never to ingest it without one or to fall back silently to the reception date.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-closed-values
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to use exactly one of a closed attribute key's allowed values, never translating or inventing one.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-directed-ingestion-writes
+---
+type: invariant
+statement: The v4 chat prompt names directed ingestion as the assistant's only way to write.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-one-ingestion-per-command
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to call directed ingestion once per owner command and never to repeat it of its own accord.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-pins-known-entity
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant that the node identity it gives for an entity pins the entity a directed ingestion re-affirms, bypassing its fuzzy resolution.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-records-only-declared
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to record only what the owner declared, never to infer a status or a state, and to ask the owner before recording.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-reports-each-item
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to report to the owner the status of each item of a directed ingestion.
 constrains:
 - domain/chat/chat-prompt-version
 ---
@@ -4307,6 +4680,30 @@ constrains:
 
 None.
 
+=== rules/chat/directed-ingestion-disabled-by-default
+---
+type: invariant
+statement: Directed ingestion through the chat is disabled where nothing configures it.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/distillation-enabled-by-default
+---
+type: invariant
+statement: Title distillation and rolling summaries are both enabled where nothing configures them.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
 === rules/chat/distillation-failure-changes-nothing
 ---
 type: invariant
@@ -4357,6 +4754,20 @@ constrains:
 
 None.
 
+=== rules/chat/graph-delta-absent-for-catalog-history-provenance
+---
+type: invariant
+statement: A catalog listing, a history read, a provenance read and an asynchronous ingestion are followed by no graph delta.
+constrains:
+- domain/chat/turn
+- domain/chat/graph-delta
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
 === rules/chat/graph-delta-content
 ---
 type: invariant
@@ -4371,12 +4782,36 @@ constrains:
 
 None.
 
+=== rules/chat/graph-delta-directed-empty
+---
+type: invariant
+statement: A directed ingestion that affected no node and recorded no accepted link is followed by a graph delta with no nodes and no links.
+constrains:
+- domain/chat/graph-delta
+---
+
+## Description
+
+None.
+
 === rules/chat/graph-delta-directed-links
 ---
 type: invariant
 statement: A directed ingestion's graph delta holds only the links whose item status is a taken outcome and whose two ends are nodes the same ingestion resolved.
 constrains:
 - domain/chat/graph-delta
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-directed-links-bare
+---
+type: invariant
+statement: A directed ingestion's graph delta links carry no effectiveness, status or flags.
+constrains:
 - domain/chat/graph-delta-link
 ---
 
@@ -4424,12 +4859,51 @@ constrains:
 
 None.
 
+=== rules/chat/graph-delta-link-label
+---
+type: invariant
+statement: A graph delta link carries the label its link type has in the catalog and none when the catalog does not hold the link type.
+constrains:
+- domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
 === rules/chat/graph-delta-link-temporal
 ---
 type: invariant
 statement: A graph delta link is temporal as its link type states, and not temporal when the catalog does not hold its link type.
 constrains:
 - domain/chat/graph-delta-link
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-requires-catalog-snapshot
+---
+type: invariant
+statement: A tool result is followed by a graph delta only while the catalog snapshot is held; without it the tool result is streamed alone.
+constrains:
+- domain/chat/turn
+- domain/chat/graph-delta
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-search-drops-vanished-node
+---
+type: invariant
+statement: A node search found that is no longer held when the graph delta is built is left out of that graph delta.
+constrains:
+- domain/chat/graph-delta
+- domain/chat/graph-delta-node
 ---
 
 ## Description
@@ -4534,6 +5008,18 @@ constrains:
 
 None.
 
+=== rules/chat/message-content-length
+---
+type: invariant
+statement: A message's content holds at most the configured number of characters, 32 768 where none is configured.
+constrains:
+- domain/chat/message
+---
+
+## Description
+
+None.
+
 === rules/chat/message-idempotency-key-unique
 ---
 type: invariant
@@ -4606,6 +5092,18 @@ constrains:
 
 None.
 
+=== rules/chat/model-context-owner-time-opening
+---
+type: invariant
+statement: 'The statement of the owner''s current date and time given to the assistant opens with the words "Data/hora atual do dono: ".'
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
 === rules/chat/model-context-rolling-summary
 ---
 type: invariant
@@ -4635,7 +5133,7 @@ None.
 === rules/chat/model-context-window
 ---
 type: invariant
-statement: The assistant is given every message of the conversation from its K-th most recent owner-written message on, K the configured recent window.
+statement: The assistant is given every message of the conversation from its K-th most recent owner-written message on, K the configured recent window, 6 where none is configured.
 constrains:
 - domain/chat/turn
 - domain/chat/conversation
@@ -4666,6 +5164,18 @@ statement: A turn records the owner's message verbatim, with its idempotency key
 constrains:
 - domain/chat/turn
 - domain/chat/message
+---
+
+## Description
+
+None.
+
+=== rules/chat/owner-time-zone-default
+---
+type: invariant
+statement: The owner's time zone is America/Sao_Paulo where none is configured.
+constrains:
+- domain/chat/turn
 ---
 
 ## Description
@@ -4793,6 +5303,30 @@ entries:
   why: A disabled surface answers that it is disabled whatever the request holds.
 ---
 
+=== rules/chat/summary-prompt-v2-empty-previous
+---
+type: invariant
+statement: The v2 summary prompt shows a missing previous summary as "(vazio)", never as null.
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/summary-prompt-v2-persona
+---
+type: invariant
+statement: The v2 summary prompt has the synthesizer answer in Brazilian Portuguese as the "Sintetizador", in about eight sentences at most.
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
 === rules/chat/summary-prompt-version-known
 ---
 type: invariant
@@ -4850,7 +5384,7 @@ None.
 === rules/chat/tool-failure-continues-turn
 ---
 type: invariant
-statement: A tool call that fails, names a tool outside the assistant's toolset or runs past the configured tool time hands its failure to the assistant, and the turn continues.
+statement: A tool call that fails, names a tool outside the assistant's toolset or runs past the configured tool time, 15 000 ms where none is configured, hands its failure to the assistant, and the turn continues.
 constrains:
 - domain/chat/turn
 ---
@@ -4874,9 +5408,61 @@ None.
 === rules/chat/tool-result-truncated
 ---
 type: invariant
-statement: A tool result longer than the configured limit reaches the assistant cut to that many characters and marked with its full length.
+statement: A tool result longer than the configured limit, 8000 characters where none is configured, reaches the assistant cut to that many characters and marked with its full length.
 constrains:
 - domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-attribute-history-summary
+---
+type: invariant
+statement: A tool-start summary of a history read by attribute key shows the node identity and the key.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-listing-summary
+---
+type: invariant
+statement: A tool-start summary of a node listing shows its node type and its limit, and that of a catalog listing is empty.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-read-summary
+---
+type: invariant
+statement: A tool-start summary of a node read, a history read by identity or a provenance read shows the identity alone.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-search-summary
+---
+type: invariant
+statement: A tool-start summary of a search shows the first 60 characters of its query as query="...", followed by its layers and expansion depth only when given.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
 ---
 
 ## Description
@@ -4887,6 +5473,32 @@ None.
 ---
 type: invariant
 statement: A tool-start event summarizes the tool's arguments in at most 200 characters and never carries the content an ingestion was given.
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-summary-fallback
+---
+type: invariant
+statement: A tool-start summary of a tool the assistant does not know, or of a call lacking an argument its tool requires, shows only the number of its arguments as "<n> keys".
+constrains:
+- domain/chat/turn
+- domain/chat/turn-event-kind
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-start-traversal-summary
+---
+type: invariant
+statement: A tool-start summary of a traversal shows the start node's identity and, when given, its depth.
 constrains:
 - domain/chat/turn
 - domain/chat/turn-event-kind
@@ -4964,7 +5576,7 @@ None.
 === rules/chat/turn-model-call-limit
 ---
 type: invariant
-statement: A turn calls the model at most the configured number of times and ends as max-iterations when it would call it once more.
+statement: A turn calls the model at most the configured number of times, 8 where none is configured, and ends as max-iterations when it would call it once more.
 constrains:
 - domain/chat/turn
 - domain/chat/assistant-stop-reason
@@ -4977,7 +5589,7 @@ None.
 === rules/chat/turn-model-default
 ---
 type: invariant
-statement: A turn that names no model is answered by the configured chat model.
+statement: A turn that names no model is answered by the configured chat model, claude-opus-4-8 where none is configured.
 constrains:
 - domain/chat/turn
 ---
@@ -5026,7 +5638,7 @@ None.
 === rules/chat/turn-time-limit
 ---
 type: invariant
-statement: A turn still running when the configured turn time has passed ends as turn-timeout.
+statement: A turn still running when the configured turn time, 90 000 ms where none is configured, has passed ends as turn-timeout.
 constrains:
 - domain/chat/turn
 - domain/chat/assistant-stop-reason
@@ -5048,6 +5660,18 @@ constrains:
 
 None.
 
+=== rules/chat/utility-model-default
+---
+type: invariant
+statement: The model that distills a conversation's title or refolds its rolling summary is claude-haiku-4-5 where none is configured.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/accept-rate
 ---
 type: invariant
@@ -5055,6 +5679,18 @@ statement: A curation metrics accept rate is the share of curation actions of ki
 constrains:
 - domain/knowledge-base/curation-metrics
 - domain/knowledge-base/curation-action-kind
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+---
+type: invariant
+statement: A listing of accepted fragments is refused when it names a query parameter the listing does not define.
+constrains:
+- domain/knowledge-base/accepted-fragment-filter
 ---
 
 ## Description
@@ -5169,6 +5805,20 @@ entries:
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
 ---
+
+=== rules/knowledge-base/affected-nodes-omit-absent
+---
+type: policy
+statement: An affected knowledge node that is no longer held is left out of an LLM run's affected nodes.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/knowledge-node
+consistency: eventual
+---
+
+## Description
+
+None.
 
 === rules/knowledge-base/affected-nodes-only-when-completed
 ---
@@ -5624,6 +6274,18 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/audit-listing-accepts-open-window
+---
+type: invariant
+statement: A listing of compliance deletions that gives only the start of its execution window, or only the end, is accepted with the other bound open.
+constrains:
+- domain/knowledge-base/compliance-deletion-filter
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/audit-listing-order
 ---
 type: invariant
@@ -5882,6 +6544,18 @@ type: invariant
 statement: A raw information holds at most one raw chunk of one chunking version at one index.
 constrains:
 - domain/knowledge-base/raw-information
+- domain/knowledge-base/raw-chunk
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/chunking-deterministic
+---
+type: invariant
+statement: The same content under the same source type is always divided into the same chunks.
+constrains:
 - domain/knowledge-base/raw-chunk
 ---
 
@@ -6169,6 +6843,28 @@ entries:
   why: The documentation states this precedence explicitly as the order of the three provenance refusals.
 ---
 
+=== rules/knowledge-base/concurrent-proposals-resolve-in-turn
+---
+type: invariant
+statement: Concurrent proposals of one node name under one node type are resolved one after another, each reading the aliases the earlier one left.
+constrains:
+- domain/knowledge-base/node-resolution
+- domain/knowledge-base/proposal
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/concurrent-proposals-resolve-in-turn.log
+---
+entries:
+- field: statement
+  unstated: The material states that resolution takes a lock per node type and normalized name before reading any alias and before the similarity lookup, and not what the lock is for in domain terms.
+  decided: Concurrent proposals of one node name under one node type are resolved one after another, each reading the aliases the earlier one left.
+  why: The lock is the means and the serialization is the observable condition a test can fail, and the domain states conditions, not mechanisms.
+---
+
 === rules/knowledge-base/confirmation-activates
 ---
 type: policy
@@ -6179,6 +6875,18 @@ constrains:
 - domain/knowledge-base/knowledge-link
 - domain/knowledge-base/node-attribute
 consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/confirmation-keeps-assertion-values
+---
+type: invariant
+statement: Confirming an uncertain assertion changes only its status, keeping its confidence and its validity and supersession dates.
+constrains:
+- domain/knowledge-base/assertion-review
 ---
 
 ## Description
@@ -7636,6 +8344,45 @@ type: invariant
 statement: An extraction asks the model never to invent a date.
 constrains:
 - domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-prompt-lists-closed-values
+---
+type: invariant
+statement: An extraction prompt lists the allowed values of each closed attribute key beside that key and lists none for an open attribute key.
+constrains:
+- domain/knowledge-base/prompt-version
+- domain/knowledge-base/attribute-key
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-prompt-values-ascending
+---
+type: invariant
+statement: The allowed values an extraction prompt lists for a key are in ascending string order, whatever order the catalog holds them in.
+constrains:
+- domain/knowledge-base/prompt-version
+- domain/knowledge-base/allowed-value
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-prompt-values-verbatim
+---
+type: invariant
+statement: The allowed values an extraction prompt lists keep their accents, spelled as validation compares them.
+constrains:
+- domain/knowledge-base/prompt-version
+- domain/knowledge-base/allowed-value
 ---
 
 ## Description
@@ -9231,6 +9978,18 @@ type: invariant
 statement: A node read that omits an option names no as-of date, does not ask for in-effect-only items and includes uncertain items.
 constrains:
 - domain/knowledge-base/node-view
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/non-expanding-search-walks-no-graph
+---
+type: invariant
+statement: A search query that does not expand walks no part of the knowledge graph.
+constrains:
+- domain/knowledge-base/search-query
 ---
 
 ## Description

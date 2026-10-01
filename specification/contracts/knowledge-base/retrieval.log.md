@@ -8,4 +8,8 @@ entries:
   unstated: The material for the catalog listings, the node listing and the graph reads does not show how they authenticate their caller.
   decided: Each of these operations refuses an unauthenticated caller with the same answer as the other retrieval operations.
   why: They are served on the same owner-only surface as search, including the one query tool endpoint they share with it.
+- field: answers
+  unstated: The material says a listing of accepted fragments naming an unknown query parameter is refused by strict validation, and does not say what the surface answers.
+  decided: 'The refusal answers as every other malformed parameter of the surface does: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message.'
+  why: The surface answers a strict-validation refusal one way, and nothing in the material gives this one a different answer.
 ---
