@@ -1,0 +1,20 @@
+findings: []
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      The CHECK constraint compliance_deletion_affected_ck (lines 3-9). It names the four attributes chunks, fragments, links and attributes, and requires each to be an integer.
+    evidence: |-
+      COALESCE((affected -> 'chunks')::text     ~ '^[0-9]+$', false)
+          AND COALESCE((affected -> 'fragments')::text  ~ '^[0-9]+$', false)
+          AND COALESCE((affected -> 'links')::text      ~ '^[0-9]+$', false)
+          AND COALESCE((affected -> 'attributes')::text ~ '^[0-9]+$', false)
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      Line 1 and the CHECK constraint at lines 3-9. Line 1 drops the empty-object default, so a row cannot be written without an affected value. The constraint rejects a missing value, because the COALESCE turns a null into false. The column itself (jsonb NOT NULL) is declared in 0001_init.sql, outside this file.
+    evidence: |-
+      ALTER TABLE compliance_deletion ALTER COLUMN affected DROP DEFAULT;
+
+      ALTER TABLE compliance_deletion
+        ADD CONSTRAINT compliance_deletion_affected_ck CHECK (
+looked_past: >-
+  The constraint is added NOT VALID, so rows already in compliance_deletion are not checked. That is a migration and deployment concern, not a question of whether a domain fact matches the specification.
