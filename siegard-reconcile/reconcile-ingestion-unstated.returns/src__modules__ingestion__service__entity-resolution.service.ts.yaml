@@ -1,0 +1,120 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The doc comments on MATCH_STRONG and MATCH_FLOOR (lines 26-41).
+    evidence: >-
+      /** Trigram-similarity ceiling above which a SINGLE candidate is taken as a strong match (reuse the existing node). BR-25 / A12. ... */ export const MATCH_STRONG = 0.85; /** Trigram-similarity floor below which a candidate is ignored entirely. Candidates with `sim < MATCH_FLOOR` do not feed the decision and do not produce `entity_match_review` rows. BR-25 / A12. ... */ export const MATCH_FLOOR = 0.55;
+    cost: >-
+      The two thresholds are stated again in prose that no running system emits. The code holds them in this file, in the constants and in decideFromCandidates. If a node's threshold changes, a reader who finds the comment first will believe it still describes what was decided.
+    kind: restates
+    correction: >-
+      Remove the doc comments through the route that answers prose. The constants and the node already carry the fact.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      TRIGRAM_CANDIDATE_LIMIT (line 47) and its use in the candidate query's `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}` (line 165). Those candidates feed the entity_match_review inserts in the ambiguous branch (lines 200-207).
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10; ... ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC LIMIT ${TRIGRAM_CANDIDATE_LIMIT}
+      Node statement: "creates a knowledge node in status needs-review and records an entity match review pairing it with each such node and its similarity."
+    cost: >-
+      The node says a review is recorded for each active node of the type at a similarity of 0.55 or more. The code silently drops every qualifying node past the tenth. The owner's entity-match queue would then show fewer candidates than the rule promises. The cap of ten is a domain value that only this file holds, and no node states it.
+    kind: contradicts
+    correction: >-
+      Either the node states the cap of ten candidates, decided through analysis, or the query stops limiting the set that feeds the entity_match_review inserts.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The advisory-lock acquisition at the start of resolveOrCreateNode (lines 114-128).
+    evidence: >-
+      SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      (the key is built as `node_type_id || E'\x1F' || norm(name)`)
+    cost: >-
+      This serialises concurrent node proposals for the same node type and normalised name, so that they resolve to one node instead of creating duplicates. I searched the specification root for a node stating that guarantee and found none; the consolidation-race nodes cover only link and attribute proposals. The behavior lives only in this file, and the next reader looking for it in the specification will not find it.
+    kind: unstated
+    correction: >-
+      A node should state that concurrent node proposals for the same node type and normalised name resolve as if one after the other. It would sit beside the node-resolution rules.
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      The doc comment on decideFromCandidates (lines 249-262).
+    evidence: >-
+      * Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no other candidate has `sim >= MATCH_FLOOR`.
+      * Ambiguous: any candidate has `sim ∈ [MATCH_FLOOR, MATCH_STRONG)` OR two or more candidates have `sim >= MATCH_STRONG`.
+      * Novel: every candidate has `sim < MATCH_FLOOR` (empty set included).
+    cost: >-
+      The three-way resolution table is restated in prose. The code holds it in decideFromCandidates, in the `strong.length === 1 && aboveFloor.length === 1` branch. Nodes hold it too: strong-candidate-resolves, ambiguous-candidates-need-review and no-candidate-creates-active-node. A fourth, uncounted copy drifts without notice when a node moves.
+    kind: restates
+    correction: >-
+      Remove the comment through the route that answers prose. The function and the nodes already carry the fact.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file resolves node proposals only. It contains no link or attribute proposal and no fragment citation, and the only inserts are `INSERT INTO knowledge_node`, `INSERT INTO entity_match_review` and `INSERT INTO node_alias`.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file never records a link or attribute. Its only concurrency handling is `pg_advisory_xact_lock(hashtextextended($1::text, 0))` for node resolution.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file contains no second decision and no refusal. Its returns are only `matched_existing`, `needs_review` and `created_new`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file handles no validity start. It references no `valid_from`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file never touches raw information metadata. Its argument type is `ResolveOrCreateNodeArgs { nodeTypeId, name, aliases, llmRunId, catalog }`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no chat turn conversation or message identities. Its argument type is `ResolveOrCreateNodeArgs { nodeTypeId, name, aliases, llmRunId, catalog }`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and has no validity basis. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and does not mention event_date. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and does not mention event_date. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and has no event type. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and resolves no relative date. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt and resolves no relative date. It runs only SQL in `resolveOrCreateNode`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no language-model call and has no token limit. It runs only SQL in `resolveOrCreateNode`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file contains no extraction or event-date logic. It runs only SQL in `resolveOrCreateNode`.
+looked_past: >-
+  The file's own nodes are the entity-resolution rules (exact-alias-resolves, strong-candidate-resolves, ambiguous-candidates-need-review, no-candidate-creates-active-node, candidate-similarity, new-node-aliases, matched-node-gains-only-aliases). The pack did not carry them, and their facts are held by the code here, so I report no unstated finding for them. The remaining comments that cite BR-20, BR-25 and A12, and the `ResolveOrCreateNodeArgs` doc about the unused catalog, are prose with no node fact of their own, and the missing binding of this file to those nodes belongs to the trace.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review
+  - rules/knowledge-base/strong-candidate-resolves
+  - rules/knowledge-base/no-candidate-creates-active-node
+  - rules/knowledge-base/exact-alias-resolves
+  - rules/knowledge-base/candidate-similarity
+  - rules/knowledge-base/new-node-aliases
+  - rules/knowledge-base/matched-node-gains-only-aliases
+  - rules/knowledge-base/alias-matching

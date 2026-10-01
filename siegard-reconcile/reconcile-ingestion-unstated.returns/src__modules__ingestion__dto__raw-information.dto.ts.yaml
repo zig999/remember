@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      The JSDoc on ChunkLocatorSchema, line 11.
+    evidence: >-
+      /** Optional readable anchor (page/line/speaker/ts) — shape per A23. */
+    cost: >-
+      The comment lists the locator's four members a second time and cites an
+      ADR number, "A23", as the authority for the shape. A reader who follows
+      that citation looks outside the specification, where chunk-locator
+      already holds the shape. The schema directly below it holds the same
+      four members, so the comment adds a second home with nothing running
+      behind it.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already declares the shape,
+      and chunk-locator holds the fact.
+    node: domain/knowledge-base/chunk-locator
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      The chunk_index member of RawChunkResponseSchema, line 40.
+    evidence: >-
+      chunk_index: z.number().int().nonnegative(),
+    cost: >-
+      The file requires a chunk's position to be zero or greater. The raw-chunk
+      node declares chunk_index as a required integer with no lower bound, and
+      no other node in the specification states one. The bound lives only in
+      this schema, so a reader who looks for the rule in the specification
+      does not find it.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether chunk_index has a lower bound and, if so,
+      state it in raw-chunk or in an invariant that constrains raw-chunk.
+    node: domain/knowledge-base/raw-chunk
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkResponseSchema (lines 37-46) and ChunkLocatorSchema (lines 12-19).
+      The shape is declared in part: chunk_index, text, offset_start,
+      offset_end, locator and chunking_version. status and superseded_at are
+      not carried.
+    evidence: >-
+      export const RawChunkResponseSchema = z.object({ id: z.string().uuid(),
+      raw_information_id: z.string().uuid(), chunk_index:
+      z.number().int().nonnegative(), text: z.string(), offset_start:
+      z.number().int().nonnegative(), offset_end: z.number().int().positive(),
+      locator: ChunkLocatorSchema, chunking_version: z.string(), });
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationResponseSchema (lines 23-31). The shape is declared in
+      part: source_type, content, storage_ref, content_hash, received_at and
+      metadata. title, original_input, document_date, status and superseded_at
+      are not carried.
+    evidence: >-
+      export const RawInformationResponseSchema = z.object({ id:
+      z.string().uuid(), source_type: SourceTypeSchema, content: z.string(),
+      storage_ref: z.string().nullable(), content_hash:
+      z.string().regex(/^[0-9a-f]{64}$/), received_at: z.string().datetime({
+      offset: true }), metadata: z.record(z.string(), z.unknown()), });
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only response shapes for raw_information and raw_chunk,
+      such as `export const ListRawChunksResponseSchema = z.object({ total:
+      z.number().int().nonnegative(), items: z.array(RawChunkResponseSchema),
+      });`. No proposal or fragment citation appears.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      There is no proposal, consolidation or concurrency construct. The file
+      holds only response schemas, for example `RawInformationResponseSchema`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      There is no proposal, consolidation or refusal construct in the file,
+      only `RawChunkResponseSchema` and the other response schemas.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      There is no validity-start field and no date-shape pattern for one. The
+      only date field is `received_at: z.string().datetime({ offset: true })`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      metadata is passed through as an open record,
+      `metadata: z.record(z.string(), z.unknown())`. The file records no
+      directed flag, label or chat identities.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      `metadata: z.record(z.string(), z.unknown())` is an opaque record. No
+      conversation or message identity, and no together-or-not-at-all check,
+      appears.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt or model instruction. It holds only
+      response DTOs.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt and no validity-start basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt and no event_date or end_date
+      handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt and no event_date or validity-start
+      instruction.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt and no event-type or confidence
+      instruction.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt and no relative-date resolution.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction prompt. `received_at` is only a response
+      field: `received_at: z.string().datetime({ offset: true })`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file carries no LLM call and no token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file carries no extraction behaviour. It holds only response shapes
+      such as `RawInformationResponseSchema`.
+looked_past: >-
+  The regex on content_hash (/^[0-9a-f]{64}$/) agrees with
+  rules/knowledge-base/content-hash-is-sha256, and the offset_start and
+  offset_end bounds are consistent with rules/knowledge-base/chunk-offsets-ordered,
+  so I reported neither. The header comment citing openapi.yaml and the
+  repository layer is prose that states no fact of any node and is another
+  judgment's.
+candidates_opened:
+  - domain/knowledge-base/chunk-locator
+  - rules/knowledge-base/content-hash-is-sha256
+  - rules/knowledge-base/chunk-offsets-ordered

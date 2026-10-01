@@ -1,0 +1,130 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment above ANTHROPIC_REQUEST_TIMEOUT_MS, lines 190-199 ("A single extraction turn emits at most `MAX_TOKENS` (8000) output tokens")
+    evidence: >-
+      // cannot keep an extraction turn pending for the SDK's loose implicit default
+      // (~10 min). A single extraction turn emits at most `MAX_TOKENS` (8000) output
+      // tokens plus adaptive thinking and completes in well under a minute in
+    cost: >-
+      The 8000-token ceiling is written a second time in prose. The running code that holds it is `export const MAX_TOKENS = 8000 as const;` in src/modules/ingestion/prompts/extraction.v1.ts, passed on as `max_tokens: input.prompt.MAX_TOKENS`. If the ceiling moves, this comment keeps saying 8000 and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the "(8000)" claim from the comment. The pair conforms, and the prose is all that is owed.
+    node: rules/knowledge-base/extraction-turn-token-ceiling
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the constants ANTHROPIC_REQUEST_TIMEOUT_MS and ANTHROPIC_MAX_RETRIES and their use in defaultAnthropicFactory, lines 200-209
+    evidence: >-
+      const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+      const ANTHROPIC_MAX_RETRIES = 2;
+      ... new AnthropicClient({ apiKey, timeout: ANTHROPIC_REQUEST_TIMEOUT_MS, maxRetries: ANTHROPIC_MAX_RETRIES, })
+    cost: >-
+      A five-minute wait ceiling and two retries decide when a stalled extraction turn is aborted and retried. No node holds either value. I searched specification/projections/full-text.md for timeout, retries and related terms and found only the chat turn-timeout, which governs chat turns, not extraction. The next reader looks in the specification and finds neither value. The extraction-turn-token-ceiling log records that such per-call extraction settings are rules of extraction.
+    kind: unstated
+    correction: >-
+      An analysis should give the request wait ceiling and the retry count a node about extraction, next to extraction-turn-token-ceiling.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the default branch of dispatchToolUse, lines 282-293
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: `Unknown tool '${toolName}'.`,
+      details: { tool_name: toolName },
+    cost: >-
+      This is a refusal, and it is sent back to the model as a tool result, so it is behavior. The spec holds the refusals for a proposal with a malformed field ("Input failed Zod parse."). No node holds a refusal for a tool name outside the four ingest tools, with this code, message and details. The next reader looks in the specification and finds no such refusal.
+    kind: unstated
+    correction: >-
+      An analysis should give the refusal of an unknown ingest tool name a node, naming its code, message and details.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the turn loop in runChunkLoop, lines 620-627 and 749-755
+    evidence: >-
+      const MAX_TURNS_PER_CHUNK = 64;
+      ...
+      "extraction_chunk_turn_cap_reached"
+      );
+      return { kind: "completed" };
+    cost: >-
+      A chunk that has not reached end_turn after 64 turns is closed as a normal completion, and the run goes on to the next chunk. No node holds the 64-turn cap or the rule that hitting it counts as completion. The spec's max-iterations node is chat's and does not apply to extraction. The run therefore completes with a chunk possibly only partly read, and the only record is a log line.
+    kind: unstated
+    correction: >-
+      An analysis should decide whether an extraction caps the turns it takes per chunk and what the run does at the cap, then give that a node.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the stop_reason "refusal" branch of runChunkLoop, lines 661-667
+    evidence: >-
+      if (response.stop_reason === "refusal") {
+        input.logger.warn(
+          { llm_run_id: input.llmRunId },
+          "extraction_chunk_refused"
+        );
+        return { kind: "refused" };
+    cost: >-
+      When the model refuses a chunk, the extraction skips that chunk and goes on, and the run can still end as completed. This is the opposite of failing the run. extraction-closes-its-run says the run fails "when it stops on an error", and no node says a refused chunk is skipped. The skipped content leaves no trace beyond a log line.
+    kind: unstated
+    correction: >-
+      An analysis should decide what an extraction does with a chunk the model refuses, then give that a node on extraction.
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the proposals to their handlers (`proposeLinkHandler(parsed.data, {...})`, `proposeAttributeHandler(parsed.data, {...})`). It states no check that a proposal cites a fragment.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file does no consolidation. It hands each tool call to `proposeLinkHandler` or `proposeAttributeHandler` and records the envelope.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the call to the handlers. No second-collision refusal is stated here.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file is the undirected extraction orchestrator and states no validity-start format.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file reads only `document_date` and `title` from the source metadata (`stringOrNull(metadataObj["document_date"])`). It records nothing about directed ingestion.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file does not write or read a chat conversation or message identity.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The instruction text lives in the modules behind `input.prompt.system(input.catalog)` and `input.prompt.user({...})`, not in this file. This file builds no date instruction.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file states no instruction about a validity-start basis. The prompt text comes from `selectPromptModule(run.prompt_version)`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file states no event-date instruction. It only selects the prompt module: `const prompt = selectPromptModule(run.prompt_version);`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file states no event_date or validity-start instruction. The prompt text is built in the prompts modules.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file states no event-type "outro" or 0.74 instruction. The prompt text is built in the prompts modules.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file states no relative-date instruction. It only passes `metadata` (document_date, title, received_at) to `input.prompt.user({...})`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file states no relative-date fallback instruction. It only supplies `received_at: rawInfo.received_at.toISOString()` to the prompt builder.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the value: `max_tokens: input.prompt.MAX_TOKENS,`. The value 8000 is declared in src/modules/ingestion/prompts/extraction.v1.ts as `export const MAX_TOKENS = 8000 as const;`. The 8000 in this file appears only in a comment.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file states no go-live or event-date instruction. The scenario is held by the prompt modules, not here.
+looked_past: >-
+  The file also states the request's `thinking: { type: "adaptive" }`, the `cache_control: { type: "ephemeral" }` prompt-caching breakpoint and the pause_turn resume, which are request and loop mechanics rather than domain facts. The 200-character prev_tail, the three-in-a-row SYSTEM_ error burst, the run-not-running refusal and the run-closing behavior are held in nodes outside this pack (extraction-reads-chunks-in-order, extraction-fails-on-repeated-system-errors, extraction-requires-running-run, extraction-closes-its-run), and the code agrees with them.

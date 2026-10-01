@@ -1,0 +1,138 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the guard at lines 71-80, after the attribute_key lookup
+    evidence: >-
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "attribute_key.node_type_id does not match the node's node_type_id.",
+          { node_id: args.node_id, key: args.key }
+        );
+      }
+    cost: >-
+      The node requires that the attribute key be one the catalog holds for the node's type. The contract refuses that case with BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key. This guard repeats the same check and refuses with VALIDATION_INVALID_FORMAT and its own message. The catalog lookup above it is already scoped to (node_type_id, key), so the branch is unreachable today. If the lookup scope ever changes, a caller would get an error code and message that no node holds, and a reader would look for them in the specification and not find them.
+    kind: contradicts
+    correction: >-
+      Remove the second guard so that the lookup scoped to (node_type_id, key) alone holds the rule. The alternative is to have the guard refuse with the code the contract names for this rule.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the comment block at lines 85-92 above the domainOf / assertValueInDomain gate
+    evidence: >-
+      // Closed-domain gate (BR-30). Runs IMMEDIATELY after parseAttributeValue
+      // and BEFORE any subsequent layer ... Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The comment restates the allowed-values rule (carry one allowed value exactly as written) and cites a back-spec BR instead of the node. The code already holds the rule. This file calls domainOf and assertValueInDomain, and the exact-match behaviour belongs to assertValueInDomain in validation/structural.ts. The prose is a second home that will not follow the node when it moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The call to assertValueInDomain is the behaviour.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the comment at lines 130-134 above the source metadata query in Layer 3
+    evidence: >-
+      // Pull document_date AND received_at from the run's source. `received_at`
+      // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The comment states the node's rule that a required validity start falls back to the document date and then to the reception date. It cites v7 sections instead of the node. The code holds that rule, because this file passes document_date and received_at into validateTemporal, which lives in validation/temporal.ts. The prose is a second statement of the rule outside behaviour.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the layer-labelled comments at lines 52, 126-128, 130, 158 and 169, and the header lines 5-14
+    evidence: >-
+      // ---- Layer 1: Structural ---- ... // ---- Layer 2: Graph rules (attributes have none beyond catalog scope) ---- ... // ---- Layer 3: Temporal ---- ... // ---- Layer 4: Confidence ---- ... // ---- Layer 5: Anti-hallucination ----
+    cost: >-
+      These comments narrate the order in which an attribute proposal is checked: node, key, value, fragments, dates, confidence, anchoring. That order is held by the node. The statement order of the function body also holds it, so the comments are a second copy outside behaviour. The "Layer 2" comment describes a layer that has no code.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/knowledge-base/attribute-proposal-check-order
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file tests fragment_ids only for existence, run ownership and anchoring (`fragRes.rows.length !== args.fragment_ids.length`, `anchored !== args.fragment_ids.length`). It states no minimum count, so any at-least-one rule is held outside this file.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file hands the write to `consolidateAttribute(client, {...}, resolvedKey, fragmentTexts, runCtx)` and holds no retry or second decision of its own.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only returns `consolidation.outcome` and `consolidation.attribute_id`. The refusal on a second collision is not in this file.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: args.valid_from ?? null` is passed to validateTemporal. The file declares no date-shape check for a directed item.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only metadata the file reads is `(metadata->>'document_date') AS document_date`. It records no directed-ingestion metadata.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file neither reads nor writes conversation or message identities.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. It validates a proposal that has already been made.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. It passes `valid_from_basis: args.valid_from_basis ?? null` to validateTemporal.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text and no prompt version.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text and no handling of the event type outro.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It reads `document_date` only to pass it to validateTemporal.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It reads `received_at` only to pass it to validateTemporal.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no token ceiling and makes no language-model call.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt, so the scenario's expectation of asking the model for event_date is not exercised here.
+looked_past: >-
+  The comment-style citations of back-spec identifiers (UC-11, BR-14, BR-19, BR-25, BR-27, BR-30, TC-011) and the non-null assertions `nodeTypeId!` and `attrKey!` are style and traceability concerns for the comment route and for code review. They are not reported here.
+candidates_opened:
+  - rules/knowledge-base/attribute-key-for-node-type
+  - rules/knowledge-base/attribute-proposal-check-order
+  - rules/knowledge-base/attribute-value-in-allowed-values
+  - rules/knowledge-base/required-start-fallback

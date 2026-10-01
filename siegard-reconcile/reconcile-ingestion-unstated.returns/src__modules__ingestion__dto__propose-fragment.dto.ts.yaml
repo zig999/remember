@@ -1,0 +1,114 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the header comment, lines 1-6, above ProposeFragmentInputSchema
+    evidence: >-
+      // error from pg. -- the comment reads: "The DB CHECK on
+      // `information_fragment.text` (≤ 1000 chars) is mirrored here so the failure
+      // surfaces as a typed `VALIDATION_INVALID_FORMAT` instead of a SQLSTATE"
+    cost: >-
+      The 1-to-1000-character limit on a fragment's text is written a second time in prose,
+      beside the `.min(1).max(1000)` that enforces it. When the node moves, the comment keeps
+      saying the old figure and a reader trusts it. The comment's "≤ 1000" also leaves out the
+      lower bound the node states.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact with
+      `.string().min(1).max(1000)`. Rationale and the file-to-node link belong in the decision
+      log and the trace, not in source.
+    node: rules/knowledge-base/fragment-text-length
+  - file: src/modules/ingestion/dto/propose-fragment.dto.ts
+    where: >-
+      the `.describe(...)` on `confidence` in ProposeFragmentInputSchema, lines 22-24
+    evidence: >-
+      "Confidence 0–1 that this claim is correctly extracted. ≥0.75 stored active; 0.40–0.74 kept but flagged uncertain; <0.40 dropped."
+    cost: >-
+      This text is part of the tool schema the model reads. It tells the model that a
+      fragment's own confidence decides whether the fragment is stored active, flagged
+      uncertain or dropped. The node says a fragment proposal is recorded in status proposed
+      whatever its confidence. The 0.75 and 0.40 thresholds belong to link and attribute
+      proposals, not to fragments. The model is therefore told that low-confidence fragments
+      are discarded when the system records them as proposed. The next reader would also look
+      for these thresholds in the wrong place.
+    kind: contradicts
+    correction: >-
+      The description of a fragment's confidence has to say what the node holds: the fragment
+      is recorded as proposed whatever its confidence. The thresholds apply to the link or
+      attribute proposals that cite the fragment. The text must not attribute them to the
+      fragment.
+    node: rules/knowledge-base/fragment-recorded-proposed
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only the fragment proposal (`text`, `confidence`, `chunk_ids`). It has
+      no link or attribute proposal, so nothing here cites a fragment.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      `export interface ProposeFragmentResult { readonly fragment_id: string; readonly status: "proposed"; }`
+      -- a fragment proposal carries no consolidation or concurrent-commit decision.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file holds only a fragment input schema and a result type, with no second-decision
+      or collision logic.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The schema has no `valid_from` or `valid_to` field: `text`, `confidence`, `chunk_ids` only.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file records no raw-information metadata and has no directed or chat-turn concept.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no conversation or message identities, only `chunk_ids: z.array(z.string().uuid()).min(1)`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file is a tool input contract, not an extraction prompt, and it carries no date field.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The schema has no `valid_from_basis` field, and the file sends no prompt to a model.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no `event_date`, `end_date` or prompt-version content.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no event date or validity start. The schema is `text`, `confidence`, `chunk_ids`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no event type and no prompt text, so there is nothing about `outro`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file does no date resolution and sends no extraction prompt.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file does no date resolution and sends no extraction prompt.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file sets no model call and no output-token limit. It declares only
+      `ProposeFragmentInputSchema` and `ProposeFragmentResult`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no go-live, event-date or document-date handling. It declares the
+      fragment proposal's input and result shape only.
+looked_past: >-
+  The `.describe` on `chunk_ids` says the server injects the current chunk automatically. That is the extraction anchoring rule's behavior, held in other files and not in this one, so I judged nothing there.
+candidates_opened:
+  - rules/knowledge-base/fragment-text-length
+  - rules/knowledge-base/fragment-recorded-proposed
+  - rules/knowledge-base/proposal-confidence-range
+  - rules/knowledge-base/fragment-chunks-exist
+  - domain/knowledge-base/proposal
+  - domain/knowledge-base/information-fragment

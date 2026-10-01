@@ -1,0 +1,88 @@
+findings:
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      the comment block on lines 1-44 and the comment blocks above the propose-* mirrors (lines 409-427) and above handleProposeMirror (lines 484-497)
+    evidence: >-
+      "4. Return HTTP 200 for any reachable handler. The `ok: true/false` flag on the body is the outcome indicator — a layered-validation rejection (ValidationFailure) is a *business result*, not a transport error, and surfaces as `{ ok: false, error: { code, message, details } }` with HTTP 200." and "(`BUSINESS_RUN_NOT_RUNNING`, row present but `status != 'running'`)" and " *   - `RunNotRunningError`    -> HTTP 409 with `BUSINESS_RUN_NOT_RUNNING` envelope."
+    cost: >-
+      The status and code answers of these routes are written a second time in prose. The contract holds them: HTTP 200 carrying `{ ok: false, error }` for a validation refusal, HTTP 409 BUSINESS_RUN_NOT_RUNNING for a proposal on a run that is not running, HTTP 404 RESOURCE_NOT_FOUND for an unknown run. The code in this same file holds them too (`reply.status(409).send({ ok: false, error: { code: err.code ...`). When the contract moves, nothing reaches these comments, so the next reader can find two answers in the tree and not know which was decided.
+    kind: restates
+    correction: >-
+      Remove the prose from the comment blocks. The code in this file already carries the behavior, and the contract node already holds the answers.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      POST_INGEST_BODY_LIMIT, line 126, applied at line 144 on the POST /raw-information route
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;  ...  { bodyLimit: POST_INGEST_BODY_LIMIT },
+    cost: >-
+      The code sets a request-size ceiling of 11 MiB (11,534,336 bytes) on intake, and no node holds it. The specification holds only the 10,485,760 UTF-16 code unit limit on content (rules/knowledge-base/content-length) and on original input (rules/knowledge-base/original-input-length). A request over the ceiling is refused by the transport before those rules are reached. The threshold is therefore decided in this file, and a reader who looks in the specification for what size intake accepts will not find it. The comment cites "ingestion.back.md §1", which is a document and not a node.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the intake request-size ceiling is a fact of the business. If it is, it needs a node, most likely a rule constraining contracts/knowledge-base/ingestion or raw-information, and the 11 MiB figure would be stated there.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only calls `ProposeLinkInputSchema.parse(request.body)` and `ProposeAttributeInputSchema.parse(request.body)`. The rule that a proposal cites at least one fragment lives in the dto schemas, which are in another file.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file delegates to `proposeLinkService(client, input, runCtx, { catalog, now })` and `proposeAttributeService(...)`. It holds no re-decision on a collision.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file maps only `isValidationFailure(err)` to the `{ ok: false, error }` envelope and rethrows everything else. It holds no second-collision refusal.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      No directed-ingestion route is mounted here. The routes are raw-information, llm-runs, run, retry and propose-*.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion. `ingestRawInformation(client, body)` is called with the parsed request and no metadata is written here.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file records no chat-turn identities. Intake is `IngestRawInformationRequestSchema.parse(request.body)` followed by `ingestRawInformation(client, body)`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It calls `runLlmExtraction(deps.pool, params.llmRunId, deps.logger, orchestratorCatalog, {...})`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Extraction is delegated to `runLlmExtraction`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file sets no token ceiling. It passes only `{ env: orchestratorEnv, ...anthropicFactory }` to `runLlmExtraction`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt or go-live date handling. Extraction is delegated to `runLlmExtraction`.
+looked_past: >-
+  The logger.info and logger.warn event names ("ingest_raw_information_ok", "llm_run_retried", "propose_node_link_attribute_mirrors_skipped_no_catalog") and the 404 details shape `{ entity, id }` are operational text and response shape that no node in the pack governs. I judged them neither a domain fact nor a contradiction of the ingestion contract.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

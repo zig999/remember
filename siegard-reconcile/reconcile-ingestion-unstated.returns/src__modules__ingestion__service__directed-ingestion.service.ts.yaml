@@ -1,0 +1,205 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the doc comment above IsoDateSchema, line 99
+    evidence: >-
+      /** ISO date `YYYY-MM-DD`. */
+      const IsoDateSchema = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+    cost: >-
+      The comment is prose, not emitted text. It states the date shape that the regex on the next lines
+      already enforces in this file, so the shape reads as written in two places. A change to the node
+      would have the next reader updating code and comment separately.
+    kind: restates
+    correction: >-
+      Remove the comment. The regex in this same file holds the fact and the node stays bound to this file.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the doc comment on DirectedIngestionDeps.metadataPointer, lines 282-294
+    evidence: >-
+      * Non-PII pointer back to the chat row that triggered this directed run
+      * (TC-02 / BR-34). When the chat-agent dispatch invoked the tool the route
+      * supplies `{ conversation_id, message_id }` so the orchestrator can merge
+      * it into the `RawInformation.metadata` jsonb. REST / MCP-direct callers
+      * omit this field; the orchestrator emits a metadata document without the
+      * pointer keys.
+    cost: >-
+      The comment is prose. It restates that the conversation and message identities are recorded together
+      or not at all. The type declares both fields required and one branch writes both, so the code already
+      holds the fact. The comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The `metadataPointer` type and the single `if (deps.metadataPointer !== undefined)`
+      branch in this file hold the fact.
+    node: rules/knowledge-base/directed-chat-pointer-whole
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 1, the Zod-failure return of directedIngestionService, lines 309-322
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "Input failed Zod parse.",
+    cost: >-
+      The contract fixes the message "ingest_directed arguments failed validation." for every validation
+      refusal of ingest-directed. This service answers VALIDATION_INVALID_FORMAT with a different message.
+      I did not open the handler, so I cannot say whether a caller reaches this branch. If the handler
+      validates first, the branch is a second, unreachable validation. If the service is called without the
+      handler, as the chat dispatch may do, the caller is told a message no node holds.
+    kind: contradicts
+    correction: >-
+      Align the service's refusal message with the contract's wording. Alternatively, have the specification
+      state that the service answers its own message when called without the tool handler.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 5, the catch around resolveAffectedNodes, lines 767-787
+    evidence: >-
+      let resolvedAffected: readonly AffectedNode[] = [];
+      ...
+      // resolvedAffected stays []; the run is still completed.
+    cost: >-
+      When resolving the affected nodes fails, the response reports `affected_nodes: []` on a completed run.
+      That is indistinguishable from a run that touched no nodes. No node states this degradation, so a
+      reader of the specification would take an empty list to mean nothing was affected.
+    kind: unstated
+    correction: >-
+      Have the contract's ingest-directed answer, or affected-nodes-of-a-run, state what the response
+      carries when the affected nodes cannot be read.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      refForAttribute and refForLink, lines 929-934, used as the `ref` of every attribute and link report entry
+    evidence: >-
+      return `${item.node_ref}.${item.key}`;
+      ...
+      return `${item.source_ref}->${item.link_type}->${item.target_ref}`;
+    cost: >-
+      Attributes and links carry no reference of their own, yet each report entry has one. The composed
+      format is what a caller reads back and matches on. directed-item says only that an item is "named by
+      the reference the other items use for it", so the format lives only in this file and the next reader
+      will not find it in the specification.
+    kind: unstated
+    correction: >-
+      State in domain/knowledge-base/directed-item, or in a rule, the reference a report gives an attribute
+      and a link.
+    node: domain/knowledge-base/directed-item
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe and its fallbacks, lines 1041-1091
+    evidence: >-
+      const fallback = {
+        started_at: new Date(0).toISOString(),
+        finished_at: new Date(0).toISOString(),
+        attempts: 1,
+      };
+      ...
+      row.finished_at === null
+          ? new Date(0).toISOString()
+          : row.finished_at.toISOString(),
+    cost: >-
+      When the closed run cannot be read, or has no finish time, the response reports a run that started and
+      finished at 1970-01-01T00:00:00.000Z with one attempt. These are values the system made up, and no node
+      states them. A caller cannot tell them from real timestamps, and the specification gives the reader no
+      way to learn that the value is a placeholder.
+    kind: unstated
+    correction: >-
+      State in the ingest-directed answer what the completed run carries when its row cannot be read. If the
+      placeholder values are wanted, say so there. If they are not, the answer should say the fields are
+      absent.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      3c and 3d, the attribute and link proposal inputs, lines 628-638 and 708-718, guarded by checkCascade and checkLinkCascade
+    evidence: >-
+      fragment_ids: [fragmentId],
+      ...
+      if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref;
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards to `proposeAttribute(attrInput, {...})` and `proposeLink(linkInput, {...})`.
+      It holds no second decision against a concurrently committed assertion.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards to `proposeAttribute(attrInput, {...})` and `proposeLink(linkInput, {...})`.
+      It holds no refusal of a second collision.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IsoDateSchema, lines 100-102, used by valid_from in DirectedAttributeItemSchema and DirectedLinkItemSchema
+    evidence: >-
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+      ...
+      valid_from: IsoDateSchema.optional(),
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      intakeMetadata, built in Step 2 and passed to ingestRaw, lines 339-351
+    evidence: >-
+      const intakeMetadata: Record<string, unknown> = {
+        directed: true,
+      };
+      if (payload.source_label !== undefined) {
+        intakeMetadata.source_label = payload.source_label;
+      }
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      the metadataPointer type (both fields required) and its single merge branch, lines 291-294 and 348-351
+    evidence: >-
+      if (deps.metadataPointer !== undefined) {
+        intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+        intakeMetadata.message_id = deps.metadataPointer.message_id;
+      }
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt to a model. Its runs use `model: DIRECTED_MODEL` and `prompt_version: DIRECTED_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt. It only defaults `valid_from_basis: item.valid_from_basis ?? "stated"`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no prompt versions v2 or later.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event type handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date resolution.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date resolution.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no model call. Its header comment says "NEVER calls Anthropic".
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction under prompt version v2 or later. Its only prompt version is `DIRECTED_PROMPT_VERSION = "directed-v1"`.
+looked_past: >-
+  The header and inline comments restate further directed-* nodes outside this pack (sentinels, confidence 1.0, defaults, cascade, dispatch order) while the code holds them. The schema also accepts valid_to and change_hint, which directed-validity-start-shape.log and directed-defaults.log record as never arriving.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - domain/knowledge-base/directed-item

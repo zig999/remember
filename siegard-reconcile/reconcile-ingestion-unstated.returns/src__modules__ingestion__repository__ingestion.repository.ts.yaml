@@ -1,0 +1,124 @@
+findings:
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      interface LlmRunRow, lines 65-76 (the whole llm_run row shape)
+    evidence: >-
+      export interface LlmRunRow {
+        readonly id: string;
+        readonly model: string;
+        readonly prompt_version: string;
+        readonly started_at: Date;
+        readonly finished_at: Date | null;
+        readonly status: "running" | "completed" | "failed";
+        readonly attempts: number;
+        readonly input_raw_information_id: string;
+        readonly idempotency_key: string;
+      }
+    cost: >-
+      This file declares the LLMRun attribute set (model, prompt_version, status, attempts, started_at, finished_at, idempotency_key) as its own shape. The node domain/knowledge-base/llm-run holds that shape and is not among the nodes bound to this file. If the node gains or renames an attribute, `--check` does not reach this file, and the next reader cannot tell whether the node or this interface is what was decided.
+    kind: contradicts
+    correction: >-
+      Either bind domain/knowledge-base/llm-run to this file so the declaration here is the node's declared home, or keep the LLMRun shape in the one file that is bound to it. Code cannot read the specification, so the bind is what closes this.
+    node: domain/knowledge-base/llm-run
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the status member of LlmRunRow, line 72
+    evidence: >-
+      readonly status: "running" | "completed" | "failed";
+    cost: >-
+      The run-status vocabulary is written out a second time as a string-literal union. The node domain/knowledge-base/run-status holds it and is not bound to this file. If a state is added to or removed from the enumeration, this union keeps the old values and nothing flags it.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/run-status to this file, or take the status type from the file that is bound to it. Code cannot read the specification, so the bind is what closes this.
+    node: domain/knowledge-base/run-status
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      interface RawChunkRow, lines 54-63. It declares part of the shape: id, raw_information_id, chunk_index, text, offset_start, offset_end, locator, chunking_version. status and superseded_at are not declared here.
+    evidence: >-
+      export interface RawChunkRow {
+        readonly id: string;
+        readonly raw_information_id: string;
+        readonly chunk_index: number;
+        readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly locator: ChunkLocator;
+        readonly chunking_version: string;
+      }
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      interface RawInformationRow, lines 36-51. It declares part of the shape: source_type, content, storage_ref, content_hash, received_at, metadata, original_input. title, document_date, status and superseded_at are not declared here.
+    evidence: >-
+      export interface RawInformationRow {
+        readonly id: string;
+        readonly source_type: SourceType;
+        readonly content: string;
+        readonly storage_ref: string | null;
+        readonly content_hash: string;
+        readonly received_at: Date;
+        readonly metadata: Record<string, unknown>;
+        readonly original_input: string | null;
+      }
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only inserts and selects raw_information, raw_chunk and llm_run rows, for example `INSERT INTO raw_information (source_type, content, content_hash, metadata, original_input)`. It handles no link or attribute proposal and no fragment citation.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal recording and no current-assertion collision. Its queries are `INSERT INTO raw_chunk ...`, `INSERT INTO llm_run ...` and lookups by id, content_hash or idempotency_key.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal decision and no refusal logic. The only error it raises is `throw new InvariantError("insertLlmRun: no row returned")`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      No validity start (`valid_from`) is read, written or checked in the file. It handles no directed item.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file persists `metadata` as it is handed in, with no directed, label or conversation/message keys: `JSON.stringify(args.metadata)` bound to `$4::jsonb`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no check that the conversation and message identities are present together. `metadata` is written as an opaque object: `metadata: Record<string, unknown>`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. `insertLlmRun` only records `model`, `prompt_version`, `input_raw_information_id` and `idempotency_key`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no basis handling. Its SQL covers `raw_information`, `raw_chunk` and `llm_run` only.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no event_date or end_date. `prompt_version` appears only as a passed-through column value: `readonly prompt_version: string;`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It has no event_date, no validity start and no basis.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no event-type or confidence ceiling. No `outro` and no 0.74 appear in it.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no document-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no relative-date resolution. `received_at` is only mapped through: `received_at: row.received_at.toISOString()`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no call to a language model and holds no token limit. No 8000 appears in it.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction behavior, no event_date and no prompt text for a go-live date.
+looked_past: >-
+  Comments and docstrings that cite BR-19, BR-34, TC-01 and §11, and that state the llm_run defaults (`status = 'running'`, `attempts = 1`), are prose, not code. They belong to the comment route, and the defaults sit in the database, not in this file.

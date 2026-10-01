@@ -1,0 +1,163 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the header comment, lines 4-5, and the comment at line 106, "// Semi-open interval invariant."
+    evidence: >-
+      //   - semi-open invariant: `valid_from < valid_to` when both are provided
+      //     (BR-16 / §13.3 / §5.2).
+    cost: >-
+      The start-before-end rule is written as prose beside the branch that enforces it
+      (`if (input.valid_from >= input.valid_to) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", ...`).
+      A reader can take the comment for the rule's home and not look in the node. The comment also
+      cites BR/§ numbers, which are not specification nodes.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch at lines 107-115 holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the header comment, lines 6-10, and the comment at lines 128-135
+    evidence: >-
+      //   - date justification chain (A14 / §6.5): when `requires_valid_from = true`
+      //     for the link_type or attribute_key, AND `valid_from` is supplied, the
+      //     caller must declare a non-null `valid_from_basis`.
+    cost: >-
+      The basis requirement is stated again as prose. The code that holds it is
+      `if (input.valid_from !== null && input.valid_from_basis === null) { throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", ...`.
+      The comment's wording makes the rule conditional on `requires_valid_from = true`. The
+      code and the node apply it to any stated start. A reader of the comment learns a
+      narrower rule than the node holds.
+    kind: restates
+    correction: >-
+      Remove the comments. The branch at lines 136-142 holds the fact.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the header comment, lines 11-13, and the comment above ERRATA_MARKERS, lines 61-65
+    evidence: >-
+      //   - correction signal: `change_hint = 'correction'` requires textual errata
+      //     evidence in at least one cited fragment.
+    cost: >-
+      The errata rule and its marker vocabulary are described in prose beside the code that holds
+      them (`const ERRATA_MARKERS = ["errata", "errado", "correção", "corrigir", "correction", "correcao"] as const;`).
+      The comment points to a "domain glossary" as the vocabulary's source, but the vocabulary is
+      held in a node. Two descriptions can drift apart.
+    kind: restates
+    correction: >-
+      Remove the comments. ERRATA_MARKERS and the `change_hint === "correction"` branch hold the fact.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the document_date branch of validateTemporal, lines 143-158
+    evidence: >-
+      if (input.requires_valid_from && input.valid_from === null) {
+          // No stated date. Try document_date next.
+          if (input.document_date !== null) {
+            ...
+            return {
+              valid_from: input.valid_from,
+              valid_from_basis: input.valid_from_basis,
+            };
+          }
+    cost: >-
+      The node says a proposal that requires a validity start and states none takes the document
+      date with basis document. The code lets it pass with valid_from and valid_from_basis still
+      null. Only a source with a reception date and no document date gets a resolved start, and
+      that start has basis received. A required start can therefore be stored empty, which the node
+      forbids. The decision log beside the node (required-start-fallback.log.md) records that
+      this exact divergence was settled the other way. The code still carries the earlier
+      behavior, and its comment names "accepts requires_valid_from = true when document_date is
+      available" as the behavior it preserves.
+    kind: contradicts
+    correction: >-
+      With a non-null document_date and no stated start, resolve valid_from to the document date
+      and valid_from_basis to "document". Keep the received fallback for the case where the source
+      has no document date.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file receives `readonly fragment_texts: readonly string[];` and only searches them for
+      errata markers. It has no check that a proposal cites at least one fragment.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file is a pure date-validation function. It has no consolidation or retry logic. Its
+      only mention of the consolidator is a comment about the values it returns.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation, collision or SYSTEM_INTERNAL_ERROR handling. It throws only
+      BUSINESS_TEMPORAL_INCOHERENT and BUSINESS_DATE_UNJUSTIFIED.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      `function toIsoDate(ts: string | null)` tests `/^\d{4}-\d{2}-\d{2}$/` on the first 10
+      characters of received_at. That is the format check for the reception-date fallback, not
+      for a directed item's validity start. The file has no notion of directed items.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file reads no raw-information metadata and has no directed-ingestion concept. Its input
+      shape is `TemporalLayerInput`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no chat conversation or message identities. `TemporalLayerInput` carries only
+      dates, basis, change_hint and fragment_texts.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and has no model call. The only mention of the model is a comment,
+      "the LLM is the only producer of `valid_from`".
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It checks only that a supplied valid_from has a
+      non-null valid_from_basis. It does not check that a stated basis is supported by the text.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt module, no prompt version handling and no event_date or end_date.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt content and no event handling. The go-live scenario of this node
+      concerns prompt text, and nothing here is prompt text.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no event_type handling, no confidence handling and no prompt text.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file does not resolve relative dates and builds no prompt. `document_date` is only
+      tested against null.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. Its received_at fallback is `const receivedDate = toIsoDate(input.received_at);`
+      for a missing required validity start. That fallback is the subject of
+      rules/knowledge-base/required-start-fallback, not of this prompt-directive node.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file has no model call and no max_tokens value.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no event handling. The scenario describes what an
+      extraction asks the model, and nothing in this file asks the model anything.
+looked_past: >-
+  The input type admits valid_from_basis "received" and nothing in this file refuses a caller-stated
+  received, which rules/knowledge-base/caller-never-states-received places in the structural
+  layer. I did not read that layer, so I did not judge it.
+candidates_opened:
+  - rules/knowledge-base/required-start-fallback
+  - rules/knowledge-base/required-start-available
+  - rules/knowledge-base/correction-requires-errata-evidence
+  - rules/knowledge-base/validity-start-before-end
+  - rules/knowledge-base/stated-start-requires-basis
+  - rules/knowledge-base/date-check-order
+  - rules/knowledge-base/caller-never-states-received

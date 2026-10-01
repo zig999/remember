@@ -1,0 +1,100 @@
+findings:
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 3-5 (the first two routing rows)
+    evidence: >-
+      //   confidence >= 0.75            -> assertion status = 'active'
+      //   0.40 <= confidence < 0.75     -> assertion status = 'uncertain'
+    cost: >-
+      The 0.75 and 0.40 thresholds are written a second time as prose beside the code that holds them
+      (CONFIDENCE_UNCERTAIN_UPPER, CONFIDENCE_FLOOR and routeConfidence). A later change to the node
+      does not reach the comment. It will go on telling a reader a boundary the node no longer states.
+    kind: restates
+    correction: >-
+      Remove the comment rows. The code in routeConfidence holds the fact, and the node holds the rule.
+      The file is not bound to the node in this pack's set, so the bind belongs with the node.
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 5-12 (the third routing row and the paragraph that follows)
+    evidence: >-
+      //   confidence < 0.40             -> link/attribute NOT created;
+      //                                    supporting fragments stay `proposed`,
+      //                                    surfaced with `low_confidence` flag.
+    cost: >-
+      The rule that a proposal below 0.40 records nothing is restated as prose. The code that refuses
+      it sits in another file (propose-link.service.ts and propose-attribute.service.ts, which branch
+      on route.kind === "below_floor"). This file only classifies. If the node moves, the comment
+      becomes a second, stale statement of the outcome.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal is held by code in
+      src/modules/ingestion/service/propose-link.service.ts and
+      src/modules/ingestion/service/propose-attribute.service.ts.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only classifies a number: `export function routeConfidence(confidence: number): ConfidenceRoute`. It never touches fragments.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No concurrency or recording logic appears in the file, only `if (confidence >= CONFIDENCE_UNCERTAIN_UPPER) return { kind: "active" };`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No concurrency or recording logic appears in the file, only `return { kind: "below_floor" };`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file holds no date handling, only `export const CONFIDENCE_FLOOR = 0.4 as const;`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file holds no raw information metadata. Its exports are CONFIDENCE_FLOOR, CONFIDENCE_UNCERTAIN_UPPER, ConfidenceRoute and routeConfidence.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat-turn identities, only `export type ConfidenceRoute = | { kind: "active" } | { kind: "uncertain" } | { kind: "below_floor" };`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no date logic.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no validity-start basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file's only confidence values are 0.4 and 0.75. It has no event type "outro" and no 0.74 ceiling: `export const CONFIDENCE_FLOOR = 0.4 as const;`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no relative-date logic.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no relative-date logic.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file holds no token limit and no model call.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction scenario, only confidence routing.
+looked_past: >-
+  The file's own facts (active at 0.75 and above, uncertain from 0.40 to below 0.75, below_floor under 0.40) are held in code by routeConfidence. The nodes that govern them, rules/knowledge-base/new-assertion-status-from-confidence and rules/knowledge-base/below-confidence-floor-records-nothing, are outside this pack's set, and the code agrees with both.
+candidates_opened:
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/below-confidence-floor-records-nothing

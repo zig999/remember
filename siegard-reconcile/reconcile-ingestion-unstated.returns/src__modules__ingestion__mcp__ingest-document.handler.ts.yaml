@@ -1,0 +1,119 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      file header comment, lines 18-22 (the "Idempotency (BR-08)" paragraph)
+    evidence: >-
+      "Idempotency (BR-08): if the same content was already ingested,
+      `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
+      (the existing run is completed, or running, and re-running would either no-op
+      or 409). The tool reports `already_ingested` with the existing ids — never an
+      error."
+    cost: >-
+      The already_ingested answer is now written in two places. The contract holds it, and the
+      code holds it at `if (outcome === "noop_existing")` returning `outcome: "already_ingested"`.
+      This comment says it a third time in prose. When the contract changes, the comment keeps
+      saying the old behavior, and a reader who trusts the comment is misled. Its "(BR-08)"
+      citation also points at a back-spec rule rather than at a node.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The already_ingested answer stays held by the code in this file and
+      by the ingest-document operation of the contract.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      docblock above `DEFAULT_INGEST_MODEL`, lines 41-48
+    evidence: >-
+      "Hard-coded fallback extraction model used only when the caller omits `model`
+      AND no `ingestModel` is wired (e.g. a bare test harness). Production threads
+      `env.INGEST_MODEL` through `deps.ingestModel`."
+    cost: >-
+      The default-model order (the configured ingestion model, otherwise claude-sonnet-4-6) is
+      held by a node. The code holds it too, at
+      `model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL` and
+      `export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6"`. The docblock restates the order
+      and the constant's rationale outside behavior. When the model default moves, the docblock
+      still names the old one.
+    kind: restates
+    correction: >-
+      Remove the docblock. The fact stays held by the code in this file and by the node.
+    node: rules/knowledge-base/default-extraction-model
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file persists a document and drives `runExtraction(...)`. It has no code that handles a
+      link or attribute proposal or a fragment citation.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No consolidation or recording logic appears in this file. It only calls `ingestRaw` and
+      `runExtraction`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file maps only `LlmProviderFatalError`, `ExtractionFatalError` and unknown errors. It
+      has no second-collision refusal.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      This handler is the document tool. No validity-start shape check exists in it.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The body is `metadata: input.metadata ?? {}`. It passes metadata along and records no
+      directed marker, label or chat identities.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No conversation or message identities are handled in this file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It delegates to `runExtraction` and passes
+      `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text. It only calls the orchestrator.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      No output-token limit appears in this file. `extractionDeps` carries only
+      `env: { ANTHROPIC_API_KEY: deps.anthropicApiKey }`, `anthropicFactory` and `now`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt or event-date handling. It forwards
+      `content: input.content` and the prompt version to the orchestrator.
+looked_past: >-
+  The docblock above DEFAULT_INGEST_MODEL says Sonnet 4.6 is "Cost-optimized" and was chosen over
+  Opus 4.8. Only prose states that rationale, so it is no finding. The comments citing
+  "TC-MCI-002", "BR-19" and "BR-30" are also prose only. The log messages and structured log
+  fields are not domain facts. Whether the error codes carried by `LlmProviderFatalError` and
+  `ExtractionFatalError` (`err.code`) match the contract's SYSTEM_LLM_PROVIDER_UNAVAILABLE and
+  SYSTEM_INTERNAL_ERROR is decided in the files that declare those classes, not in this file.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/default-extraction-model
+  - rules/knowledge-base/default-prompt-version
+  - constraints/unreachable-store-answers-unavailable

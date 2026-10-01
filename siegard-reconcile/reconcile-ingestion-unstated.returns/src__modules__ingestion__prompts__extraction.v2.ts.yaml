@@ -1,0 +1,124 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      header comment, lines 3-9 ("v2 = v1 + an explicit Event-dating directive ...")
+    evidence: >-
+      v1 never told the model to propose `event_date` when it
+      creates an Event (the catalog has had Event.event_date — temporal, functional
+      — all along, §15.3). v2 appends that directive (plus the value-vs-valid_from
+      distinction) to v1's SYSTEM prompt
+    cost: >-
+      The header comment says in prose what EVENT_DATING_DIRECTIVE already says in code: v2 asks the model to propose event_date. It is a second home outside behavior. If the rule moves, the comment keeps saying the old thing and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the EVENT_DATING_DIRECTIVE constant in this file, and the node binds it.
+    node: rules/knowledge-base/extraction-dates-events
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      header comment, lines 11-15 ("Why a new version ...")
+    evidence: >-
+      `idempotency_key` — which includes
+      prompt_version (hash.ts) — changes, so re-ingesting a document under v2 yields
+      a NEW, distinct run instead of deduping to the stale v1 run.
+    cost: >-
+      The comment restates how the idempotency key is composed. That composition is held by code in hash.ts (`h.update(args.prompt_version, "utf8")`) and by the node. The prose is a third home that goes stale silently.
+    kind: restates
+    correction: >-
+      Remove the comment. The key's composition is held in hash.ts and in the node.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      EVENT_DATING_DIRECTIVE, third bullet, lines 50-51
+    evidence: >-
+      "- Rescheduling an event is `change_hint:\"succession\"` on `event_date` — the",
+      "  same mechanics as any functional attribute (the old date becomes history).",
+    cost: >-
+      This prompt text tells the model to mark a rescheduled event as change hint succession. No node holds an extraction rule asking for that. The succession rule governs how a received proposal is handled, not what the extraction asks of the model. The behavior lives only in this prompt, so a reader checking what v2 asks of the model will not find it in the specification. The rule is also carried into any later prompt built on v2.
+    kind: unstated
+    correction: >-
+      Analysis should give the rescheduling instruction a node, for example an extraction rule alongside rules/knowledge-base/extraction-dates-events. It would state that, under prompt version v2 and later, the model is asked to give a rescheduled event's new event_date change hint succession.
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds only the Event-dating directive and composes it onto v1's system prompt; it contains no citation requirement for proposals.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export function system(catalog: CatalogSnapshot): string { return `${systemV1(catalog)}\n${EVENT_DATING_DIRECTIVE}`; }` — no recording or consolidation logic.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains only a prompt directive and re-exports; no recording or consolidation logic.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive only shows date examples (`valid_from`="2026-06-20"); it declares no validity-start shape for directed ingestion.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns the extraction prompt; it records no raw-information metadata.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file concerns the extraction prompt; it records no conversation or message identities.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      the last line of the first bullet of EVENT_DATING_DIRECTIVE
+    evidence: >-
+      "  `end_date` when there is a distinct end). Justify it with `valid_from_basis`;",
+      "  NEVER invent a date.",
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive tells the model to give the basis `document` for the example's validity start; it never states when the basis `stated` may be given. That condition sits outside this file (v1's system prompt).
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      the first bullet of EVENT_DATING_DIRECTIVE, and `system()`, which appends it
+    evidence: >-
+      "- When you create an `Event` (meeting, go-live, workshop…), ALWAYS propose its",
+      "  `event_date` when the document states the date of the occurrence (and",
+      "  `end_date` when there is a distinct end)."
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      the second bullet of EVENT_DATING_DIRECTIVE
+    evidence: >-
+      "- CRUCIAL distinction: `event_date` is the VALUE — the date the event happens.",
+      "  `valid_from` is when that date started to hold / became known (typically the",
+      "  document date)."
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive says nothing about the event type `outro` or about lowering confidence. This is a v3 rule and v2 does not carry it.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive has no instruction about resolving relative dates. This is a v3 rule and v2 does not carry it.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive has no instruction about resolving relative dates or about the date of reception. This is a v4 rule and v2 does not carry it.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      `export { MAX_TOKENS, user };` — the file only passes MAX_TOKENS along from "./extraction.v1.js" and declares no value.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      the example in the second bullet of EVENT_DATING_DIRECTIVE
+    evidence: >-
+      "  document date). E.g. a go-live on 2026-08-01 announced in minutes dated",
+      "  2026-06-20 → `event_date`=\"2026-08-01\" (value), `valid_from`=\"2026-06-20\"",
+      "  with `valid_from_basis`=\"document\".",
+looked_past: >-
+  The file's other comments (the registry dispatch in `./index.ts`, the v1 reuse of the USER builder, MAX_TOKENS and the anti-injection envelope, the unit-test naming) are implementation rationale, not a node's fact, so I left them alone.

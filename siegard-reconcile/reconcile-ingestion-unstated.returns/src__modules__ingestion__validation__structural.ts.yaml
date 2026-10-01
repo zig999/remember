@@ -1,0 +1,140 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, case "date", line 38, the comment above the regex test
+    evidence: >-
+      // Strict ISO YYYY-MM-DD; not free-form.
+    cost: >-
+      The comment states the date shape of attribute-value-parses a second time, as prose. The regex on the next line already holds that shape. If the node's shape moves, this text stays behind and still looks authoritative.
+    kind: restates
+    correction: >-
+      Remove the comment. The regex /^\d{4}-\d{2}-\d{2}$/ in this file already holds the fact.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, case "date", lines 45-53, the calendar check
+    evidence: >-
+      // Validate it's a real calendar date by parsing.
+      const ts = Date.parse(`${v}T00:00:00Z`);
+      if (Number.isNaN(ts)) {
+    cost: >-
+      The node says a date value "MUST" be "a real calendar date" and "naming an existing day". Its log says the earlier material "leaves to the runtime's date parser whether a well-formed but impossible date such as 2024-02-30 is refused", and that this was decided as "Only a real calendar date is a date value." This code is that same delegation to the runtime parser. It refuses only what Date.parse returns NaN for. I did not run it. As far as I know, V8's ISO parser accepts any day from 1 to 31 and rolls it over, so a value such as 2024-02-30 would be accepted and recorded as a date attribute. The scenario impossible-calendar-date-refused requires that proposal to be refused, so the behavior would differ from the node and the scenario.
+    kind: contradicts
+    correction: >-
+      Check that the day exists in its month and year, for example by comparing the parsed year, month and day back to the input, instead of relying on Date.parse returning NaN.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, the details of the VALIDATION_INVALID_FORMAT failures in the date calendar branch (lines 49-52), the number finite branch (lines 67-71) and the bool branch (lines 77-81)
+    evidence: >-
+      "value is not a calendar-valid date.",
+      { value: v }
+      ...
+      "value is not a finite number.",
+      { value: v }
+      ...
+      "value does not parse as a bool (expected 'true' or 'false').",
+      { value: v }
+    cost: >-
+      The ingestion contract's refusal under attribute-value-parses is "error code VALIDATION_INVALID_FORMAT naming the value and its value type". Three of the five failure sites name only the value. A caller refused for a bad bool is not told the value type, although the date-format and number-format branches in the same function do carry `value_type: args.value_type`. The same refusal therefore carries different details depending on which branch raised it.
+    kind: contradicts
+    correction: >-
+      Carry value_type in the details of the calendar-valid, finite-number and bool failures as the other branches already do.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of assertValueInDomain, lines 89-97
+    evidence: >-
+      * `AttributeKey` has an open domain — `domainOf(keyId)` returning `null`
+      ...
+      * structural check on a known-closed domain: exact-match string equality,
+      * no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30).
+    cost: >-
+      The docstring states the allowed-values rule a second time, as prose. The node holds the rule: carry "one of them exactly as written". The code holds it too, as `domain.has(value)` in this file. A reader who finds the rule here may take this prose as its home, and it will not follow the node if the node changes.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement of exact-match semantics. `domain.has(value)` already holds it.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no fragment-citation check. Its exports are parseAttributeValue, assertValueInDomain, assertFound and assertKnownType, and none looks at a proposal's cited fragments.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      No export decides a proposal against a current assertion. The file only validates structure.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      No consolidation or collision handling exists in the file. The last export is assertKnownType.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The date regex `/^\d{4}-\d{2}-\d{2}$/` validates an attribute `value` of type date. It does not validate a directed item's validity start, and the file has no directed-ingestion code.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion metadata or raw-information handling.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chat-turn pointer or conversation/message identity handling.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sends no prompt to a model. It holds only validation helpers.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no validity-start basis handling.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date or validity-start handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event type "outro" handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no token ceiling or model call. A search for 8000 and for max-token terms found nothing.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction-prompt behavior for event_date or go-live dates.
+looked_past: >-
+  The comment and docstring prose that cites BR-30, BR-14 and TC-03, mentions `spec_divergences`, and describes sort order as locale-default is a code-review or comment-route matter. I did not report it as a finding, and it names no fact beyond those already filed.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses
+  - rules/knowledge-base/attribute-value-in-allowed-values
+  - scenarios/knowledge-base/impossible-calendar-date-refused
+  - contracts/knowledge-base/ingestion

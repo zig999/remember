@@ -1,0 +1,128 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the doc comment above IngestRawInformationRequestSchema, the `content` bullet (lines 16-18)
+    evidence: >-
+      - `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+         in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+         coarser pre-filter; this Zod check is the precise contract from A5.
+    cost: >-
+      The comment states the length bound a second time, and it counts in "code points" where the
+      rule counts UTF-16 code units. The code that enforces it, `.min(1, ...)` and
+      `.max(10 * 1024 * 1024, ...)` on `content` in this same file, is what holds it. A reader who
+      takes the comment as the contract learns a different unit from the one the node decided.
+    kind: restates
+    correction: >-
+      Remove the bullet. The code in this file holds the bound, and the node
+      rules/knowledge-base/content-length holds the fact.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the doc comment on the `original_input` field (lines 35-39)
+    evidence: >-
+      Capped at 10 MiB to match `content`.
+    cost: >-
+      The comment restates the original-input length ceiling as prose. The cap is enforced by
+      `.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")` in this same file, so the
+      comment is a second home for a fact the node and the code already hold.
+    kind: restates
+    correction: >-
+      Remove the sentence. The `.max(...)` on `original_input` in this file holds the bound.
+    node: rules/knowledge-base/original-input-length
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ChunkRefSchema (lines 56-61), which declares chunk_index, offset_start and offset_end in part
+    evidence: >-
+      chunk_index: z.number().int().nonnegative(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestRawInformationRequestSchema (lines 25-45), declaring source_type, content, storage_ref,
+      metadata and original_input, and IngestRawInformationResponseSchema (line 68), declaring
+      content_hash
+    evidence: >-
+      source_type: SourceTypeSchema,
+        content: z
+          .string()
+          .min(1, "content must not be empty")
+        storage_ref: z.string().nullable().optional(),
+        metadata: z.record(z.string(), z.unknown()).default({}),
+        original_input: z
+        content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only the ingestion request and response shapes. It has no link or attribute
+      proposal and no fragment citation.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file declares only the ingestion request and response shapes, with no proposal
+      consolidation.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file declares only the ingestion request and response shapes, with no proposal
+      consolidation.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no directed attribute or link and no validity-start pattern. The only regexes are
+      `/^[0-9a-f]{64}$/` on content_hash and idempotency_key.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      `metadata: z.record(z.string(), z.unknown()).default({})` is a free-form bag. It records
+      nothing about directed ingestion, a label or a chat turn.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      `metadata: z.record(z.string(), z.unknown()).default({})` is free-form. It has no
+      conversation or message identity fields, and no rule that the two come together.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt. It declares only the ingestion request and response
+      schemas.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no validity-start basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event type handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date resolution. `metadata` is a
+      free-form bag.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date resolution.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file holds no language-model call and no token ceiling. The only numeric bound is
+      `10 * 1024 * 1024` on content and original_input.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date proposal.
+looked_past: >-
+  Prose in the file states facts no running code holds: the header comment's "storage_ref ... must be null in v1.0.0" while the schema accepts any nullable string, the "Fastify bodyLimit of 11 MiB" claim, "Never factored into content_hash", and `document_date` "consumed by future temporal validation". These are comments, not code, so they are the comment route's.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/content-length
+  - rules/knowledge-base/original-input-length

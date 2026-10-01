@@ -1,0 +1,88 @@
+findings:
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the doc comment of IngestDirectedInvocationContext (lines 93-98) and the
+      comment above the metadataPointer spread in ingestDirectedHandler (lines 180-183)
+    evidence: >-
+      "Both ids are required when `pointer` is present — partial
+      pointers are dropped." and "Both ids are mandatory together — a partial pointer is
+      dropped (omitted) rather than persisted with a missing field."
+    cost: >-
+      Two comments state that a chat turn's conversation and message identities
+      travel together or not at all. A node already holds that rule, and the guard at
+      lines 184-186 enforces it. A reader who finds the comments may take them as the place
+      the rule lives, and if the rule changes the comments stay behind with the old wording.
+    kind: restates
+    correction: >-
+      Remove the two comments. The guard `typeof invocationContext.pointer.conversation_id === "string" && typeof invocationContext.pointer.message_id === "string"` already holds the
+      fact, and the node holds it in the specification.
+    node: rules/knowledge-base/directed-chat-pointer-whole
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The handler only parses with `IngestDirectedMcpInputSchema.safeParse(rawInput)` and delegates with
+      `await directed(parsed.data, serviceDeps)`. It states nothing about fragment citation.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The handler returns `envelope as McpEnvelopeJson` from the service and does no consolidation or recording.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The handler returns `envelope as McpEnvelopeJson` from the service and has no collision handling.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      Validity-start shape is not checked here. The handler only calls `IngestDirectedMcpInputSchema.safeParse(rawInput)`, and the schema is declared in mcp-schemas.ts.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The handler only forwards `metadataPointer: { conversation_id: ..., message_id: ... }` to the service in `serviceDeps`. It does not write the raw information's metadata, which holds the directed marker and the label.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      the conditional spread building `metadataPointer` in ingestDirectedHandler, lines 184-193
+    evidence: >-
+      ...(invocationContext?.pointer !== undefined &&
+      typeof invocationContext.pointer.conversation_id === "string" &&
+      typeof invocationContext.pointer.message_id === "string"
+        ? { metadataPointer: { conversation_id: invocationContext.pointer.conversation_id, message_id: invocationContext.pointer.message_id } }
+        : {})
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No prompt or extraction text in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      No language-model call or token limit in this file. The handler only calls `directed(parsed.data, serviceDeps)`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or event-date handling in this file. The handler is a deterministic wrapper around `directedIngestionService`.
+looked_past: >-
+  The emitted refusal texts ("ingest_directed arguments failed validation." and "Unexpected error during directed ingestion.") agree with nodes outside this pack's set, and the handler's other comments (DI seams, exactOptionalPropertyTypes, never re-throwing) restate no node of this pack, so I left them to the comment route.

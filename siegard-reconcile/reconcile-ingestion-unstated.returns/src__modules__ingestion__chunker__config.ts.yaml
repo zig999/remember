@@ -1,0 +1,108 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 19, the first element of the CHUNK_TARGET tuple
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+    cost: >-
+      The 1500 floor of the soft window is a size threshold the code declares and no node holds. The
+      nodes state only the 2000 ceiling ("each closing before the sentence that would take it past
+      2000 code points") and the 4000 cut-off. A reader who looks in the specification for how small
+      a chunk may be finds nothing, and the number lives only in this file.
+    kind: unstated
+    correction: >-
+      The analysis would need to give the 1500 lower bound of the target window a node, beside
+      rules/knowledge-base/long-block-sentence-chunks, or decide that it is not a domain fact.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 30, the READING_TAIL constant
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+    cost: >-
+      The file declares a 200-code-point reading-tail overlap, added to the end of a chunk. No node
+      holds a chunk overlap. The only 200-character tail in the specification is the one
+      rules/knowledge-base/extraction-reads-chunks-in-order shows the model from the previous chunk,
+      which is a different role. The value would become the business's decision by default, and the
+      next reader would not look for it in this file.
+    kind: unstated
+    correction: >-
+      The analysis would need to decide whether a reading-tail overlap is a domain fact and give it a
+      node, or whether the constant belongs to no behavior. If it is the same fact as the extraction
+      node's 200 characters, that node would have to say so.
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only the chunker constants CHUNKING_VERSION, CHUNK_TARGET, CHUNK_HARD_MAX and
+      READING_TAIL; it says nothing about proposals or fragments.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      export const CHUNKING_VERSION = "v1" as const; is the first of four chunker constants. None
+      concerns consolidation.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file holds only chunk size and version constants. It has no proposal decision and no refusal.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file holds no date or validity-start shape. Its constants are CHUNKING_VERSION, CHUNK_TARGET,
+      CHUNK_HARD_MAX and READING_TAIL.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file records no raw-information metadata. It declares `export const CHUNK_HARD_MAX = 4000 as
+      const;` and its three sibling constants.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no chat-turn identities. It holds only `export const READING_TAIL = 200 as const;`
+      and the other three chunker constants.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text, only chunker size constants.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt text and no validity-start basis, only chunker size
+      constants.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt version or event rule, only `export const CHUNKING_VERSION = "v1" as
+      const;` and the size constants.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt version or event_date rule, only chunker size constants.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no event type and no confidence cap, only chunker size constants.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no date resolution, only chunker size constants.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no date resolution, only chunker size constants.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file holds no output-token limit. Its only numbers are 1500, 2000, 4000 and 200, which are
+      chunk sizes.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no go-live or event date, only chunker constants.
+looked_past: >-
+  The header comments restate chunking facts that candidate nodes hold, such as the code-point unit and the sentence split of oversize blocks. They are prose, and whether code elsewhere holds them is outside this file set.
+candidates_opened:
+  - rules/knowledge-base/long-block-sentence-chunks
+  - rules/knowledge-base/chunking-version
+  - rules/knowledge-base/short-block-one-chunk
+  - rules/knowledge-base/extraction-reads-chunks-in-order

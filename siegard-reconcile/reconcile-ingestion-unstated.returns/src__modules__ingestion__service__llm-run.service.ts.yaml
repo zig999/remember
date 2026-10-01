@@ -1,0 +1,121 @@
+findings:
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the comment block above `let affectedNodes` in getLlmRunById, lines 97-102
+    evidence: >-
+      // BR-33 — attach `affected_nodes` ONLY when the run is `completed`. The
+      // field is the snapshot of the run at completion; a `running` or `failed`
+      // run does not surface a partial list.
+    cost: >-
+      The prose restates a rule the code already enforces here with `if (row.status === "completed")`. The rule exists in two places, and the prose names the retired id BR-33. A reader who follows that id will not find the rule, because it now lives in the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch on `row.status === "completed"` holds the fact, and the node holds it as the specification.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the `catch` around deriveAffectedNodes in getLlmRunById, lines 109-117
+    evidence: >-
+      } catch {
+        // Best-effort — omit the field on a transient read failure; the
+        // caller can re-derive on the next poll.
+        affectedNodes = undefined;
+      }
+    cost: >-
+      The code decides that a completed run read which fails to derive its affected nodes still answers successfully, with the field absent. The specification states only «with its affected nodes ... when it is completed». A caller cannot tell a completed run with no affected nodes from one whose derivation failed. This decision lives only in the code, where nobody looks for it in the specification.
+    kind: unstated
+    correction: >-
+      Give the behaviour a node, either a refusal or an explicit statement that the field is omitted when the derivation cannot be read, in the read-llm-run answer of the ingestion contract. Otherwise the code should not hold it.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the JSDoc of retryLlmRun, lines 187-193
+    evidence: >-
+      * UC-06: POST /llm-runs/{id}/retry. The order is critical:
+       *   1. Pre-read to distinguish "not found" (404) from "wrong status" (409).
+       *   2. Atomic `UPDATE ... WHERE status = 'failed'`; rowCount === 0 means the
+       *      pre-read showed `failed` but a concurrent transition raced us -> 409.
+    cost: >-
+      The prose restates the transition table of the run lifecycle, where retry is allowed only from failed. The code already holds that in `if (existing.status !== "failed") { throw new RunNotRetryableError(...) }`. A second statement of the rule in prose can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The status guard in this function holds the fact.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the race branch of retryLlmRun, lines 206-216
+    evidence: >-
+      const currentStatus = refreshed?.status ?? "running";
+          if (currentStatus === "failed") {
+            // Should not happen — log internally and surface as 409 conservatively.
+            throw new RunNotRetryableError(llmRunId, "running");
+          }
+    cost: >-
+      The contract answers a refused retry with «HTTP 409, error code BUSINESS_RUN_NOT_RETRYABLE naming the run's status». In this branch the re-read says the run is `failed`, yet the error names `running`. The message sent to the caller says the run is in status 'running' and cannot be retried. The `?? "running"` fallback also names a status when the row could not be re-read. Neither is the run's status as the node requires.
+    kind: contradicts
+    correction: >-
+      The refusal should name the status actually read. Where the status cannot be read, the specification would have to say what is named.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file holds LLM run reads, the tool-call listing, retry and close. No proposal or fragment citation appears. The only proposal reference is the `RunNotRunningError` message, "propose-* is only available while the run is 'running'."
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No consolidation or recording of links or attributes exists in the file. Its imports are `aggregateToolCallOutcomes, closeLlmRunRow, countToolCalls, findLlmRunById, findRecentIngestions, findToolCallsByRun, retryLlmRunRow`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation retry or dup-guard handling. The only race it handles is the retry race, `if (updated === null) {`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no directed ingestion payload and no validity start. `toLlmRunResponse` maps only `id, model, prompt_version, started_at, finished_at, status, attempts, input_raw_information_id, idempotency_key, summary`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file writes no raw information metadata. `RecentIngestionItem` carries `raw_information_id`, `source_type`, `raw_status`, `received_at` and `content_preview` as read fields only.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No chat conversation or message identities appear anywhere in the file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It is lifecycle orchestration over the repository, from `getLlmRunById` through `closeLlmRun`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no validity-start basis. A search for prompt, basis and valid_from finds nothing in it.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no event_date or end_date handling and no prompt-version-conditioned text. `prompt_version` is only copied through, in `prompt_version: row.prompt_version`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt content. `prompt_version: row.prompt_version,` is only a mapped field.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no event type or confidence instruction to the model.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file has no relative date resolution and no prompt.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file has no relative date resolution and no prompt.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no language model call and has no token limit. The only numeric parameters are `limit` and `offset` of the tool-call listing and the recent-ingestions limit, which are passed through.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt, so the scenario of a go-live date given as the event_date value does not touch it.
+looked_past: >-
+  The in-memory affected-nodes cache (`getCachedAffectedNodes`/`setCachedAffectedNodes`), the many UC-/TC-/BR- identifier comments, the file-header error notes and the cache-free layering are comment prose and implementation structure that name no new domain fact, so they belong to the comment route and to code review.

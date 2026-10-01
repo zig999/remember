@@ -1,0 +1,145 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      StartAsyncIngestionMcpInputSchema (lines 81-123), with its doc comment citing BR-32 and its content description
+    evidence: >-
+      * `start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for caller symmetry. The only difference is the new-run return semantics (immediate vs. awaited)
+      ... "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary."
+    cost: >-
+      The tool is advertised to MCP clients with a defined input shape and background-extraction behaviour. The specification's ingestion contract lists operations ingest-raw-information, ingest-document, ingest-directed and list-recent-ingestions, and no start-async operation. No node says that a document can be ingested with extraction running in the background, or that the call returns before extraction ends. The behaviour exists only in the code and in a back-spec identifier (BR-32). The next reader looks for it in the specification and finds nothing.
+    kind: unstated
+    correction: >-
+      Analysis would give the asynchronous-ingestion operation a node. The natural home is the operations and answers of contracts/knowledge-base/ingestion, plus the rule that extraction continues after the call returns.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      ListRecentIngestionsMcpInputSchema.limit, line 258 (`.default(10)`) and its description
+    evidence: >-
+      .min(1)
+      .max(50)
+      .default(10)
+      .describe("How many recent ingestions to return, newest first. 1..50, default 10.")
+    cost: >-
+      The page size used when the caller names no limit is a business-visible value, and it lives only here and in the text sent to MCP clients. The specification rule holds only the bounds, "A recent-ingestions listing's limit MUST be between 1 and 50". The next reader looks for the default in the specification and does not find it. A change to it would never reach any node.
+    kind: unstated
+    correction: >-
+      Analysis would give the default limit of the recent-ingestions listing a statement. The natural home is rules/knowledge-base/recent-ingestions-limit-bounds or a sibling rule.
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedNodeItemSchema.node_id description, line 348
+    evidence: >-
+      "... Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node."
+    cost: >-
+      This text is sent to MCP clients on tools/list. It says every pinned identity that is not an active node is refused with VALIDATION_INVALID_FORMAT. The contract separates two cases. An identity naming no knowledge node is reported rejected with RESOURCE_NOT_FOUND ("node_id pin does not resolve to an existing knowledge_node row."). Only an identity naming a node that is not active gets VALIDATION_INVALID_FORMAT. A client that follows the advertised text will mishandle the not-found case.
+    kind: contradicts
+    correction: >-
+      The description would have to say that an identity naming no node is refused with RESOURCE_NOT_FOUND and one naming a non-active node with VALIDATION_INVALID_FORMAT. Alternatively it would stop naming codes the contract already holds.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the BR-34 block comment, lines 275-277, restating the reference length
+    evidence: >-
+      //   - `ref` strings are local to the call (1..120 chars, must be non-empty).
+    cost: >-
+      The comment is a second home for the 1 to 120 character bound. The code holds the fact in this file (`z.string().min(1).max(120)`), so the pair conforms. The comment can drift from the schema and the node without anything failing.
+    kind: restates
+    correction: >-
+      Remove the comment line by the route that answers prose. The code in this file already holds the fact.
+    node: rules/knowledge-base/directed-reference-length
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only request shapes. `IngestDocumentMcpInputSchema` passes `content`, `source_type` and `metadata` along (`metadata: z.record(z.string(), z.unknown()).optional()`). It does not declare the RawInformation shape, so it holds no attribute of the aggregate.
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      IngestDirectedAttributeItemSchema.evidence_ref (line 377) and IngestDirectedLinkItemSchema.evidence_ref (line 401), both required
+    evidence: >-
+      evidence_ref: IngestDirectedRefSchema.describe(
+        "The `ref` of the fragment that evidences this attribute (must appear in `fragments[]`)."
+      ),
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares input and output schemas only. It contains no consolidation or recording logic.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares input and output schemas only. It contains no consolidation or recording logic.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IngestDirectedIsoDateSchema (lines 300-305), used by the attribute and link items' valid_from
+    evidence: >-
+      const IngestDirectedIsoDateSchema = z
+        .string()
+        .regex(
+          /^\d{4}-\d{2}-\d{2}$/,
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares the input schema, whose `source_label` is `z.string().min(1).max(200).optional()`. Recording it, with the directed flag and the chat identities, in the raw information's metadata is not done in this file.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      `IngestDirectedMcpInputSchema` declares `fragments`, `nodes`, `attributes`, `links` and `source_label`. It declares no conversation or message identity.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. The only prompt-version text is `prompt_version: z.string().min(1).optional()`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. The directed schemas only declare `IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"])`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no mention of event_date.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no mention of event_date.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event type.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt. The `metadata` description only mentions `document_date`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no model call parameters and no token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no extraction prompt and no event_date handling.
+looked_past: >-
+  Block-comment prose (for example the BR-34 header's claim that `confidence` is forced to 1.0 and that a bad pin is "rejected `STRUCTURAL_INVALID`") states facts only in comments, or facts whose code sits in other files outside this file set. That belongs to the comment route and to the passes over those files.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/recent-ingestions-limit-bounds
+  - rules/knowledge-base/directed-reference-length
+  - rules/knowledge-base/content-length
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/run-summary
+  - domain/knowledge-base/llm-run

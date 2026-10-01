@@ -1,0 +1,79 @@
+findings:
+  - file: src/modules/ingestion/validation/graph-rules.ts
+    where: >-
+      The file-header comment, lines 3-8 (the whole comment block above the import).
+    evidence: >-
+      // Look up an active `link_type_rule` matching the `(source_node_type,
+      // link_type, target_node_type)` triple. The 22 seed rules of §15.2 are the v1
+      // authoritative set. Any other triple yields `BUSINESS_LINK_RULE_VIOLATION`.
+    cost: >-
+      The comment restates the rule that a link proposal must be permitted by an in-effect link type rule for its link type and its source and target node types. validateGraphRule and isLinkRuleActive already hold that rule in code, so the comment is a second home outside behavior. The next reader may take the comment, with its "22 seed rules" count, as where the rule is decided, and it can drift from the node. This is the only place the "22" figure appears in this file, and the file's code never states it.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule stays in validateGraphRule, which calls isLinkRuleActive in ../catalog/catalog.js. That is the route for prose, followed by a reconcile over the file.
+    node: rules/knowledge-base/link-permitted-by-type-rule
+
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment-citation check. It only runs `isLinkRuleActive(snapshot, { source_node_type_id: input.source_node_type_id, link_type_id: input.link_type_id, target_node_type_id: input.target_node_type_id, today })`.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file has no concurrency or re-decision logic. It is a pure check that throws `new ValidationFailure("BUSINESS_LINK_RULE_VIOLATION", ...)`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no concurrency or re-decision logic. It is a pure check that throws `new ValidationFailure("BUSINESS_LINK_RULE_VIOLATION", ...)`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file handles no dates beyond passing `today` through to `isLinkRuleActive`. It has no validity-start format check.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file's `GraphRuleInput` holds only `source_node_type_id`, `link_type_id` and `target_node_type_id`. It has no raw-information metadata.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file's `GraphRuleInput` holds only `source_node_type_id`, `link_type_id` and `target_node_type_id`. It has no chat-turn pointer.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only exports `validateGraphRule`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model and sets no token limit. It only exports `validateGraphRule`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model and handles no event dates. It only exports `validateGraphRule`.
+
+looked_past: >-
+  The comment "The 22 seed rules of §15.2 are the v1 authoritative set" states a catalog count that CLAUDE.md gives as 28 rules, and it appears only in prose, so it is not a finding. The rule node link-permitted-by-type-rule, which the code does conform to, is outside this pack's set. So is link-type-rule-in-effect, which governs the in-effect test that isLinkRuleActive carries in ../catalog/catalog.js, a file outside this set.

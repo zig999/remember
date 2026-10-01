@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      runZodFailureAudit(), the ValidationFailure thrown inside the run closure (lines 465-474),
+      used by propose_fragment, propose_node, propose_link and propose_attribute when the
+      MCP-facing Zod parse fails
+    evidence: >-
+      throw new ValidationFailure(
+        "VALIDATION_INVALID_FORMAT",
+        "MCP tool args failed Zod parse.",
+    cost: >-
+      The contract says that over MCP a proposal refused for its shape answers the message
+      "Input failed Zod parse." (and the decision log says the four MCP proposal handlers answer
+      exactly that). This path, which runs before the proposal handlers are reached, builds a
+      different message for the same refusal. An LLM client that reads or matches the message sees
+      one wording or the other depending on which layer's parse failed, and the next reader who
+      checks the contract will not find the wording this file emits. Whether the
+      shell (handler-base.ts, outside the file set) rewrites the message before it is emitted is
+      not visible from this file.
+    kind: contradicts
+    correction: >-
+      The message this path emits for a proposal refused for its shape over MCP would have to be
+      the one the contract states, "Input failed Zod parse."
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the ingest_document handler's failed-parse branch (lines 254-268)
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "ingest_document arguments failed validation.",
+      details: {
+        issues: parsed.error.issues.map((i) => ({
+    cost: >-
+      The ingest-document operation of the ingestion contract refuses a malformed request with
+      VALIDATION_INVALID_FORMAT "listing each failing field with its path and message" and fixes
+      no message. The fixed wording "ingest_document arguments failed validation." and the
+      `details: { issues: [...] }` shape live only in this handler. The sibling ingest-directed
+      operation has its wording fixed in the contract, so a reader checking ingest-document
+      against the contract will not find the wording this file emits.
+    kind: unstated
+    correction: >-
+      The ingest-document operation's validation refusal would need its message and details
+      shape decided into the ingestion contract, as the ingest-directed one is.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      header comment, lines 18-23 (the Zod-failure audit path)
+    evidence: >-
+      A Zod failure (missing/invalid `llm_run_id` or malformed business DTO)
+      //     also goes through `runIngestHandler` so the rejected `tool_call` audit
+      //     row is written (BR-23 updated). When no `llm_run_id` is parseable from
+      //     the raw input, the audit-row insert cannot resolve its FK; the shell's
+      //     `safeWriteAuditOnRollback` logs and swallows that
+    cost: >-
+      The prose restates that every refused proposal is recorded as a tool call, with the
+      best-effort exception, which every-proposal-audited holds. The code that does it is the
+      runIngestHandler call in runZodFailureAudit (this file) and the shell it dispatches to
+      (handler-base.ts). A second statement of the fact in a comment is one more place that
+      drifts when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment; the fact stays in the node and in the code that records the tool call.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      this file only registers tool handlers and forwards `const { llm_run_id, ...input } =
+      parsed.data;` to proposeLinkHandler / proposeAttributeHandler; no fragment-citation check
+      appears in it
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      the file's link and attribute handlers are `return (await proposeLinkHandler(input, { pool,
+      logger, llm_run_id, catalog, now })) as McpEnvelopeJson;`; no consolidation retry appears here
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      no "dup-guard" refusal or `knowledge_link` / `node_attribute` scope appears in the file;
+      handlers are called and their envelope returned as is
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      ingest_directed is forwarded with `return await ingestDirectedHandler(rawInput, { pool,
+      logger, catalog, now }, ...)` and the comment "The handler owns its own Zod parse"; no
+      validity-start shape check is in this file
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      the file forwards `invocation_context` to ingestDirectedHandler and records no raw-information
+      metadata itself
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      `invocation_context as | import("./directed-ingest.handler.js").IngestDirectedInvocationContext
+      | undefined` is forwarded structurally; the comment says "the handler validates shape"
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt text is in this file; ingest_document only calls `ingestDocumentHandler(parsed.data, {...})`
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      no prompt or valid-from basis text appears; the file has none of the extraction prompt content
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      no prompt content and no event_date / end_date handling appears in the file
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      no prompt content and no event_date handling appears in the file
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      no prompt content, "outro" event type or 0.74 confidence appears in the file
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      no prompt content appears; the file passes `ingestModel: deps.env.INGEST_MODEL` and nothing more to extraction
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      no prompt content appears; the file only wires ingestDocumentHandler
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      no max_tokens or 8000 value appears in the file
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt or go-live / event_date content appears in the file
+looked_past: >-
+  The file's other comments (BR/TC citations, the "Pattern mirrors" note, the rollout-flag doc on CHAT_INGEST_ENABLED) are prose another judgment owns, and the CHAT_INGEST_ENABLED field in IngestToolsetDeps is a retired-tool leftover whose reading is not a domain fact.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/every-proposal-audited

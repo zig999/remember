@@ -1,0 +1,129 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, lines 80 and 81, steps 1 and 2 of the happy path
+    evidence: >-
+      " *   1. Compute `content_hash = sha256(content)`." and
+      " *   2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`."
+    cost: >-
+      The docstring states the digest of the content hash and the composition order of the idempotency
+      key. A node already holds both facts. If a node changes, this prose would still say the old
+      formula, and a reader would trust it as a second source. The code holds the same facts, so the
+      pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the two docstring lines. The code at `sha256Hex(input.content)` and
+      `composeIdempotencyKey({ content_hash, prompt_version, model, chunking_version })` holds the
+      facts. The first fact is rules/knowledge-base/content-hash-is-sha256 and the second is
+      rules/knowledge-base/idempotency-key.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, lines 87 to 93, "Idempotent no-op path (UC-01 alt 4a)",
+      and the comment on the insertRawInformation call, lines 111 to 114
+    evidence: >-
+      " * Idempotent no-op path (UC-01 alt 4a):" and
+      "// Attempt the INSERT; catch UNIQUE violation on content_hash and switch to
+      // the no-op path."
+    cost: >-
+      The prose restates that held content records nothing new and takes the no-op branch. A node holds
+      this fact, and the code holds it in the `catch` that returns `noopExisting(...)` before any chunk
+      or run insert. The prose is a second home outside behavior and would go stale when the node moves.
+    kind: restates
+    correction: >-
+      Remove the docstring paragraph and the comment. The `isUniqueViolation(err,
+      RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)` branch holds the fact.
+    node: rules/knowledge-base/held-content-records-nothing
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      This file declares no raw_chunk shape. It forwards rows with `chunkRows.map((c) => ({ id: c.id,
+      chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))` and
+      `rows.map(toRawChunkResponse)`. The shape is declared in the DTO and repository files.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file passes values along in `insertRawInformation(client, { source_type: input.source_type,
+      content: input.content, content_hash: contentHash, metadata: input.metadata, original_input:
+      input.original_input ?? null })`. It declares no shape for the element.
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file handles intake and reads only. Its imports and bodies contain no link, attribute or
+      fragment proposal.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No proposal recording or consolidation appears. The file has only `ingestRawInformation`,
+      `noopExisting`, `countChunks`, `getRawInformationById` and `listChunksByRawInformationId`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No proposal recording or consolidation appears. The file has only `ingestRawInformation`,
+      `noopExisting`, `countChunks`, `getRawInformationById` and `listChunksByRawInformationId`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no directed item and no validity start. The only metadata use is the pass-through
+      `metadata: input.metadata`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file records no directed flag, label or chat pointer. It forwards `metadata: input.metadata`
+      unchanged.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file composes no conversation or message identity. It forwards `metadata: input.metadata`
+      unchanged.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It only opens the run via `insertLlmRun(client, { model,
+      prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file sets no model-call parameter and no token limit. Its only model reference is
+      `model: input.model` in `insertLlmRun`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt or date handling, so it takes no part in this scenario. It
+      has no `event_date` or document-date logic.
+looked_past: >-
+  The remaining comments (the layering header, the BR and TC citations, the step narration) and the
+  500-path InvariantError messages are another judgment's, as are the conformance of
+  ingest-raw-information against contracts/knowledge-base/ingestion and the ResourceNotFoundError
+  message wording.

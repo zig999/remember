@@ -1,0 +1,116 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 57-62 (the system-prompt text sent to the model)
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`.",
+    cost: >-
+      The prompt the model receives tells it to state the basis received on a proposal.
+      The node caller-never-states-received says a proposal MUST NOT state it. Under v4
+      the model is asked for exactly what the specification forbids a proposal to carry.
+      Whoever reads the node expects no proposal to arrive with basis received. Whoever
+      reads the prompt finds the opposite instruction, and the specification does not say
+      which was decided. The log of extraction-relative-date-falls-back-to-reception says
+      the rule leaves the basis out because this conflict is unsettled and the owner has
+      not asked for it to be settled.
+    kind: contradicts
+    correction: >-
+      The conflict between the two nodes is for the owner to settle in the specification,
+      through the analysis route. Until then this prompt text and the node
+      caller-never-states-received cannot both hold.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      the header comment (lines 3-12) and the JSDoc above RECEIVED_AT_ANCHOR_DIRECTIVE (lines 43-48)
+    evidence: >-
+      "v4 teaches the model to use it as the FALLBACK anchor: resolve against `document_date` when present, against `received_at` otherwise."
+      and "Carries the `received_at` fallback rule: when `document_date` is absent, the relative-date anchor is `received_at`"
+    cost: >-
+      The same fallback rule is also stated in prose, so a reader can take the comment
+      for where the rule is decided. The code holds the rule in the directive text of
+      this file. The comment is a second home outside behavior and can drift from it.
+    kind: restates
+    correction: >-
+      Remove the prose; the directive text carries the fact.
+    node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file builds only a prompt delta about relative dates and states nothing about
+      a proposal citing a fragment: `export const RECEIVED_AT_ANCHOR_DIRECTIVE = [`
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No consolidation or recording logic in the file; it only composes
+      `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No consolidation or refusal logic in the file; only `export function system(catalog: CatalogSnapshot): string`
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The directive mentions the `YYYY-MM-DD` prefix of `received_at`, but it sets no
+      rule for a directed item's validity start: "(the `YYYY-MM-DD` prefix of the ISO-8601 string)"
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file records no raw-information metadata; it holds only the prompt version and the system prompt.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no conversation or message identities; it exports `PROMPT_VERSION`, `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      the last line of RECEIVED_AT_ANCHOR_DIRECTIVE (line 66), part of the system prompt the model receives
+    evidence: >-
+      "  text remain `\"stated\"`; never invent a date.",
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      Line 65-66 only say "Absolute dates stated in the chunk text remain `\"stated\"`".
+      The condition that the start be written in the chunk and supported by a cited
+      fragment is not in this file.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file says nothing about event_date or end_date. The v2 event directive is
+      reached only through the imported `systemV3`: `import { system as systemV3 } from "./extraction.v3.js";`
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      No event_date or validity-start instruction is in this file; the event directives come in through `systemV3(catalog)`.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no instruction about the event type outro or about lowering confidence.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      This node is bound to v3. In this file the v3 omit-the-date instruction is superseded:
+      "  This supersedes v3's rule of \"omit the date when `document_date` is unknown\":"
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 57-62, appended to the system prompt by `system()` at line 71
+    evidence: >-
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file only passes the value along and declares no value: `export { MAX_TOKENS, user };`
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no instruction about a go-live or an event's occurrence date; it holds only the relative-date fallback directive.
+looked_past: >-
+  The comments cite ingestion.back.md BR-26 and the idempotency_key/registry behavior of prompt_version (hash.ts, ./index.ts), which are judgments over other files and other nodes; the prompt's reference to the `## Document metadata` block and its `(unknown)` marker depends on the v1 user builder, which is outside this file set.
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis
+  - rules/knowledge-base/caller-never-states-received

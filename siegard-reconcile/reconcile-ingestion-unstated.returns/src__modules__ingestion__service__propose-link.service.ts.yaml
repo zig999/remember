@@ -1,0 +1,114 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      the header comment, lines 6-15 ("Layered validation (BR-13) in the documented order ...")
+    evidence: >-
+      // Layered validation (BR-13) in the documented order. Each layer is a
+      // sequential `await`, so layer N+1 only runs when layer N has not thrown:
+      //   1. Structural    — cross-table refs (nodes exist, fragments exist,
+      //   2. Graph rules   — active link_type_rule for the triple (BR-15).
+      //   3. Temporal      — semi-open invariant, change_hint signal, date basis.
+      //   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+      //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
+    cost: >-
+      The order of checks is held twice. The code holds it in the sequence of awaits under the "Layer 1" to "Layer 5" markers. The prose repeats it, in a different grouping from the node: the comment's layer 1 folds the known link type, the node checks, and the fragments-in-run check together. When the node's order moves, a reader finds a second description here that nothing keeps in step with it.
+    kind: restates
+    correction: >-
+      Remove the header block comment. The behavior is correct and the fact is held by the node, so this is the comment-only route (removal, never refresh). A /reconcile over this file follows.
+    node: rules/knowledge-base/link-proposal-check-order
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      the header comment, lines 13 and 17-19 (confidence below 0.40 returns a rejected outcome)
+    evidence: >-
+      // On confidence < 0.40 the service returns `{ ok: true, result: { outcome:
+      // 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`. The caller maps this to
+      // `validation_outcome = 'rejected'` on the `tool_call` row (BR-17).
+    cost: >-
+      The prose restates the 0.40 floor and the rule that nothing is recorded below it. The code in this file holds the no-record part: `if (route.kind === "below_floor") { ... return { ok: true, result }; }` returns before `consolidateLink`. The 0.40 value itself is decided behind `routeConfidence` in validation/confidence.js, which I did not read because it is outside the file set. The comment gives the threshold a third home, and it would go stale silently if the threshold moved.
+    kind: restates
+    correction: >-
+      Remove the comment lines that state the threshold and the mapping. The no-record branch is held by the code that follows the "Layer 4" marker.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only checks that every id supplied resolves, with `if (fragRes.rows.length !== args.fragment_ids.length) {` and the later anchored-count comparison. Both comparisons accept an empty `args.fragment_ids`. No minimum of one citation is stated in this file.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      The recording is delegated whole: `const consolidation = await consolidateLink(client, { ... }, resolvedLink, fragmentTexts, runCtx);`. Nothing in this file re-decides against a concurrently committed assertion.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      No retry or second-collision refusal appears in this file. It only awaits `consolidateLink(...)` and maps the returned outcome.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from: args.valid_from ?? null` is passed to `validateTemporal({...})`. This file declares no format for the date.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The only metadata read is `(metadata->>'document_date') AS document_date`. This file records no directed-ingestion metadata.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chat conversation or message identity is read or written in this file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only calls `validateTemporal({ valid_from: args.valid_from ?? null, ... })`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt. It passes `valid_from_basis: args.valid_from_basis ?? null` through to `validateTemporal`.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt and no event_date handling appear in this file.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt and no event_date handling appear in this file.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      No prompt text and no event type appear in this file.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `document_date` for the temporal layer, `const documentDate = sourceMetaRes.rows[0]?.document_date ?? null;`. It builds no prompt and resolves no relative date.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads `received_at` and passes it to `validateTemporal` as `received_at: receivedAt`. It builds no prompt, and the fallback decision lives in validateTemporal.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      No model call and no token limit appear in this file.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction, prompt or event_date appears in this file. It only validates and records a link proposal.
+looked_past: >-
+  The file sits clean against the proposal nodes outside the pack that govern it (cited-fragments-in-run, link-proposal-check-order, below-confidence-floor-records-nothing, new-assertion-status-from-confidence); the remaining header and inline comments (BR-n and v7 citations, the consolidator narrative) are prose of the same comment route and are not itemized.
+candidates_opened:
+  - rules/knowledge-base/link-proposal-check-order
+  - rules/knowledge-base/below-confidence-floor-records-nothing
+  - rules/knowledge-base/cited-fragments-in-run
+  - rules/knowledge-base/new-assertion-status-from-confidence

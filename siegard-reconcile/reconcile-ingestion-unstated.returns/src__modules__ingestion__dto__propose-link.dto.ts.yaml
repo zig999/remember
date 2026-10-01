@@ -1,0 +1,105 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      The doc comment above ValidFromBasisSchema, lines 5-15.
+    evidence: >-
+      "Only `stated` and `document` are accepted at the API boundary. The third
+      value, `received`, is a backend-only fallback that the temporal validator
+      applies internally when neither `stated` nor `document` can justify the
+      date — it is never sent by an LLM or any external caller, so it MUST NOT
+      appear in this input enum."
+    cost: >-
+      The comment states, a second time and in prose, that a proposal may not
+      state the basis `received`, and also the fallback to `received`. The
+      enum `z.enum(["stated", "document"])` right below it already holds the
+      first fact. If the rule changes, `--check` will not reach this comment,
+      and the next reader finds two statements of one rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the enum in this file, which
+      the node's bind covers. The prose is removed by the comment route, then
+      `/reconcile` over this file.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      The `fragment_ids` field of ProposeLinkInputSchema, lines 54-59.
+    evidence: >-
+      fragment_ids: z
+          .array(z.string().uuid())
+          .min(1)
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file only declares input and result shapes
+      (`ProposeLinkInputSchema`, `ProposeLinkResult`). It has no
+      consolidation or retry logic.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file declares no refusal and no decision flow. Its only result
+      shape is `readonly outcome: ProposeLinkOutcome;`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file's date check, `.regex(/^\d{4}-\d{2}-\d{2}$/, ...)`, is on the
+      propose_link input. It is not on a directed ingestion item, and the
+      node constrains `domain/knowledge-base/directed-item`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file declares no raw-information metadata and no directed
+      ingestion.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file declares no chat-turn conversation or message identities.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds only the tool description for `valid_from`, "Omit if the
+      text does not state it — never invent a date." It declares no
+      extraction prompt, and the node's statement is about what an extraction
+      asks the model.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file's `valid_from_basis` description, "'stated' (written in the
+      chunk) or 'document' (the document's date)", is an input-field
+      description. It does not include the node's requirement that a cited
+      fragment supports the start, and it is not an extraction prompt.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no event_date or end_date handling and no prompt-version
+      logic.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no event_date handling and no prompt-version logic.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no event type or `outro` handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file has no relative-date resolution or prompt text.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file has no relative-date resolution or prompt text.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file contains no token limit and no model call.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction of a go-live date. It declares only the
+      propose_link input and result shapes.
+looked_past: >-
+  Other facts in the file sit under candidate nodes outside this pack and agree with them. These are the confidence thresholds in the `confidence` description, the outcome list and BELOW_CONFIDENCE_FLOOR, `ChangeHintSchema` and the `stated`/`document` enum. The one thing I did not settle is the `YYYY-MM-DD` regex on propose_link dates, because I found no node that states that shape for a non-directed proposal, so it is not claimed as held. Brief JSDoc lines on `ChangeHintSchema` and `IsoDateSchema` are comments with no domain fact of their own, so I did not report them.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/required-start-available

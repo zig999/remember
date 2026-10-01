@@ -1,0 +1,116 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      isContributingOutcome(), lines 77-100, applied at line 131 to propose_link and propose_attribute results
+    evidence: >-
+      case "created_new":
+          case "matched_existing":
+          case "needs_review":
+          case "accepted":
+          case "consolidated":
+          case "superseded_previous":
+          case "disputed":
+            return true;
+      ... followed by `if (!isContributingOutcome(outcome)) return [];` before the propose_link and propose_attribute branches
+    cost: >-
+      The node limits link and attribute proposals to four outcomes: accepted, consolidated, superseded a previous assertion, or disputed. The code applies one seven-value list to all three tools. A link or attribute result carrying created_new, matched_existing or needs_review would add its nodes to the run's affected list, and the node says it must not. The code relies on another layer never emitting those outcomes, and the comment at lines 83-86 says so. So the contributing set lives here, wider than the node. A reader who checks the specification would not learn that.
+    kind: contradicts
+    correction: >-
+      Gate propose_link and propose_attribute on the four outcomes the node names. Node proposals would not need an outcome gate, since the node says they contribute whenever they resolve.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      resolveAffectedNodes(), step 3, lines 306-321 (`if (row === undefined) continue;` and `if (survivor === undefined) continue;`)
+    evidence: >-
+      let row = byId.get(id);
+          if (row === undefined) continue;
+          if (row.status === "merged_into" && row.merged_into_node_id !== null) {
+            const survivor = byId.get(row.merged_into_node_id);
+            if (survivor === undefined) continue;
+    cost: >-
+      When an affected node no longer exists, for example one removed by compliance deletion after the proposal, the code silently leaves it out of the run's affected list. No node states this. The omission changes what a completed run reports, and the only place it is recorded is this branch. The next reader looks in the specification, finds nothing, and cannot tell whether the omission was decided.
+    kind: unstated
+    correction: >-
+      Add a statement that an affected node that cannot be found is omitted from the list. It belongs with rules/knowledge-base/affected-nodes-follow-merges or rules/knowledge-base/affected-nodes-of-a-run.
+    node: rules/knowledge-base/affected-nodes-follow-merges
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the header comment, lines 1-30, and the CONTRACT block at lines 19-30
+    evidence: >-
+      `affected_nodes` is attached to a `LlmRunResponse` ONLY when the run's
+      // status === 'completed'.
+      ... De-dup is by `node_id`; first-write-wins on the entry.
+      // Iteration order on the final list is insertion order
+    cost: >-
+      This prose restates two facts: the nodes are listed once each in the order first reached, and they appear only when the run is completed. The collector's Map and the resolver's `emitted` set hold the first fact in this file. The completed-only gate is not in this file, and I did not read the file that holds it. If a node changes, the comment stays behind as a second home that no check reaches.
+    kind: restates
+    correction: >-
+      Remove the comment. The facts belong to rules/knowledge-base/affected-nodes-of-a-run and rules/knowledge-base/affected-nodes-only-when-completed.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file projects node ids from tool envelopes (`affectedIdsFromEnvelope`) and never handles fragment citations.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file only reads `result.outcome` (`const outcome = (result as { outcome?: unknown }).outcome;`). It does not decide or re-decide any proposal.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No refusal logic. The file only collects node ids from outcomes that have already been decided.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file never touches validity starts or any date shape.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file never touches raw information metadata. Its only queries are `FROM knowledge_node kn JOIN node_type nt` and `FROM tool_call`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No conversation or message identities appear anywhere in the file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no date handling.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no validity-start basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no event type handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no relative-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no model call and has no token limit. Its only numeric constant is `const CACHE_CAPACITY = 256 as const;`.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text and no event_date handling.
+looked_past: >-
+  The process-scoped LRU cache (`CACHE_CAPACITY = 256`), the in-memory-only persistence and the tool_call rebuild on a cache miss are operational mechanics rather than a domain fact, so I left them out. The only prose claiming that `affected_nodes` is absent when a lookup fails is the header comment, and I treated it as prose, not as a finding.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-of-a-run
+  - rules/knowledge-base/affected-nodes-follow-merges
+  - rules/knowledge-base/affected-nodes-only-when-completed

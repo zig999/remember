@@ -1,0 +1,130 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLinkOnce, the `reaffirmation` constant (lines 549-552) and the early return that follows it
+    evidence: >-
+      const reaffirmation =
+            sameTarget &&
+            args.change_hint === "none" &&
+            (!functional || sameValidFrom);
+    cost: >-
+      The node requires change hint "none" and the same validity start only for a type that does not allow multiple
+      current assertions. For a type that does, a same-target proposal with change hint succession is a
+      re-affirmation. The code requires "none" for every type. That proposal skips the re-affirmation branch.
+      It is not a correction, and succession needs `functional`. It reaches branch (e) and inserts a second current
+      row for the same (source, target, link_type). That violates `knowledge_link_current_dup_guard`, so after the
+      retry the caller gets SYSTEM_INTERNAL_ERROR instead of a consolidation. The comment at lines 628-627 presents
+      this outcome as intended ("the correct outcome for a malformed proposal on a multi-current type"). The node
+      does not treat that proposal as malformed.
+    kind: contradicts
+    correction: >-
+      For a multi-current type, the re-affirmation condition has to be `change_hint !== "correction"` with no
+      validity-start condition. For a functional type it stays `change_hint === "none"` and the same validity start.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateAttributeOnce, branch (a) re-affirmation (lines 776-784) and the closing comment at lines 852-854
+    evidence: >-
+      if (
+            sameValue &&
+            sameValidFrom &&
+            args.change_hint === "none"
+          ) {
+      ... "different valid_from on a multi-valued attribute is coexistence"
+    cost: >-
+      The node asks for the same validity start and change hint "none" only for a type that does not allow multiple
+      current assertions. For a multi-current attribute key, the same value is a re-affirmation whatever its validity
+      start, as long as the hint is not correction. The code applies the functional-type test to every key. A
+      multi-current attribute proposal with the same value and a different `valid_from` (for example the per-document
+      "received" fallback date) falls to (e) and inserts a second current row. That violates
+      `node_attribute_current_dup_guard` (node_id, attribute_key_id, value), and the caller gets
+      SYSTEM_INTERNAL_ERROR instead of a consolidation. The comment states "coexistence", which no node holds, and
+      the dup-guard makes it unreachable.
+    kind: contradicts
+    correction: >-
+      Branch (a) has to take the multi-current case with `sameValue` and `change_hint !== "correction"`, and keep
+      the same-validity-start and "none" tests for the functional case only.
+    node: rules/knowledge-base/reaffirmation-consolidates
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file takes `readonly fragment_ids: readonly string[]` and inserts one provenance row per entry with
+      `SELECT $1, f FROM unnest($2::uuid[]) AS f`. It has no check that the list is non-empty, and
+      `promoteFragmentsToAccepted` returns on `if (fragmentIds.length === 0) return;`. The citation requirement is
+      enforced upstream, not here.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      consolidateLink and consolidateAttribute, the `for (let attempt = 1; attempt <= 2; attempt += 1)` loops
+    evidence: >-
+      if (!isDupGuardViolation(err, "knowledge_link_current_dup_guard")) { ... throw err; }
+      await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      ... the loop then runs a second attempt that repeats the lookup-and-decide against the committed row
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      consolidateLink and consolidateAttribute, the `attempt === 2` branch that throws ValidationFailure
+    evidence: >-
+      if (attempt === 2) {
+              throw new ValidationFailure(
+                "SYSTEM_INTERNAL_ERROR",
+                "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
+                { scope: "knowledge_link" }
+              );
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file passes `valid_from` through to SQL as `$4::date` and compares it as a string. It declares no
+      four-digit, two-digit, two-digit shape.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      No raw information metadata is written. The file touches only knowledge_link, node_attribute, provenance and
+      information_fragment.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No chat conversation or message identities appear in the file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file sends no prompt to a model. It holds only consolidation SQL.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `valid_from_basis` as `$8::valid_from_source` and sends no prompt.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no event type handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no language-model call and sets no token ceiling.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction or event_date handling. This scenario concerns what the extraction prompt asks of
+      the model.
+looked_past: >-
+  The long spec-divergence header comments (status 'corrected' versus 'superseded', the valid_to fallback), the
+  per-branch comments restating consolidation-precedence, succession-signal, succession-closing-date and
+  correction-replaces, the SAVEPOINT mechanics and the table-name interpolation are prose or implementation
+  matters. Each fact is held by code that agrees with a node, so none is a finding for this pass.
+candidates_opened:
+  - rules/knowledge-base/reaffirmation-consolidates

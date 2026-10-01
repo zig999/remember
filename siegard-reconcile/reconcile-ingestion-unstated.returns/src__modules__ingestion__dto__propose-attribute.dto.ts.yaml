@@ -1,0 +1,155 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      IsoDateSchema, lines 7-9, used by valid_from and valid_to at lines 47-52
+    evidence: >-
+      const IsoDateSchema = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+    cost: >-
+      The written shape a plain (non-directed) attribute proposal must give its validity start,
+      and the same shape for its validity end, is stated only here. The only node that states a
+      written shape for a validity start is directed-validity-start-shape, and it covers directed
+      ingestion and the start only. A reader looking in the specification for what a
+      propose_attribute date must look like finds no node that says. A change to the format
+      would be made in this regex and reach no node.
+    kind: unstated
+    correction: >-
+      A node would have to state the written shape of a proposal's validity start and end. The
+      domain/knowledge-base/proposal node declares valid_from and valid_to only as type date.
+    node: domain/knowledge-base/proposal
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the JSDoc above the value field, lines 24-27
+    evidence: >-
+      Canonical-serialized value (string form). The structural layer parses
+      this against the `attribute_key.value_type` and rejects on mismatch.
+    cost: >-
+      This prose is a second home for the value-type parsing rule outside behavior. The rule is
+      held in code by parseAttributeValue in src/modules/ingestion/validation/structural.ts,
+      which this file does not hold. The pair conforms, and the comment owes only its removal.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays with the node and with parseAttributeValue in
+      validation/structural.ts.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the value field, lines 28-30
+    evidence: >-
+      value: z
+        .string()
+        .min(1)
+    cost: >-
+      The node says a text-typed attribute value may be "any text". Here an empty string is
+      refused at the shape layer before the value-type rule runs. Someone relying on the node
+      would expect an empty text value to reach the value-type check, and it never does.
+    kind: contradicts
+    correction: >-
+      Either the node states that a proposal's value must be non-empty, or this schema stops
+      refusing the empty string.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/dto/propose-attribute.dto.ts
+    where: >-
+      the change_hint field, lines 56-58
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none")
+    cost: >-
+      The rule that an omitted change hint is read as none is stated here and nowhere in the
+      specification for a plain proposal. The only node that states the default,
+      directed-defaults, covers directed ingestion alone. It decides whether an unlabelled
+      proposal can succeed or correct an assertion, and the next reader looks for it in the
+      specification and does not find it.
+    kind: unstated
+    correction: >-
+      A node would have to state what a proposal that names no change hint is taken as. The
+      domain/knowledge-base/change-hint enumeration declares the values and no default.
+    node: domain/knowledge-base/change-hint
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the fragment_ids field of ProposeAttributeInputSchema, lines 41-46
+    evidence: >-
+      fragment_ids: z
+        .array(z.string().uuid())
+        .min(1)
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file declares only the input schema and the outcome type; it has no reading of a
+      concurrently committed current assertion and no second decision. All it holds of the
+      outcome is `export type ProposeAttributeOutcome = | "accepted" | "consolidated" | "superseded_previous" | "disputed" | "rejected";`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No refusal or retry logic appears in the file. It holds only the ProposeAttributeInputSchema
+      shape and the ProposeAttributeResult interface.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has the regex `/^\d{4}-\d{2}-\d{2}$/` on IsoDateSchema, but it validates the
+      plain MCP and REST proposal and is not scoped to a directed ingestion. The directed path
+      declares its own IsoDateSchema in directed-ingestion.service.ts, line 100.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file declares no raw-information metadata and no directed or chat-turn identity; its
+      fields are node_id, key, value, confidence, fragment_ids, valid_from, valid_to,
+      valid_from_basis and change_hint.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No conversation or message identity field appears in ProposeAttributeInputSchema or
+      ProposeAttributeResult.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      the description text emitted with the valid_from field, lines 47-49; it is part of the tool schema shown to the model
+    evidence: >-
+      valid_from: IsoDateSchema.optional().describe(
+        "Date the value STARTS holding (YYYY-MM-DD). Omit if the text does not state it — never invent a date."
+      )
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The valid_from_basis description says "'stated' (written in the chunk) or 'document' (the
+      document's date)". It does not ask the model to cite a supporting fragment for a stated
+      start, which is half of what the node requires, and the extraction prompt itself is not in
+      this file.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      No event_date or end_date instruction and no prompt-version logic appears in the file.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      No instruction about event_date as the value, and no prompt-version logic, appears in the
+      file.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      No event-type or "outro" handling and no 0.74 ceiling appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      No relative-date resolution instruction appears in the file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No relative-date or reception-date instruction appears in the file.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      No token limit and no model call appears in the file.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file declares only the attribute proposal input and result shapes; the extraction
+      prompt that would ask for event_date 2026-08-01 with validity start 2026-06-20 is not
+      here.
+looked_past: >-
+  The descriptions on confidence and valid_to (the 0.75, 0.40 and 0.74 bands, "dropped", and "Intervals are half-open [from, to)") and the outcome and reason types state facts that nodes outside the set also hold (new-assertion-status-from-confidence, below-confidence-floor-records-nothing, effective-status and the ingestion contract); they agree, so they are no finding.
+candidates_opened:
+  - domain/knowledge-base/proposal
+  - domain/knowledge-base/change-hint
+  - rules/knowledge-base/attribute-value-parses
+  - contracts/knowledge-base/ingestion

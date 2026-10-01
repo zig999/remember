@@ -1,0 +1,214 @@
+findings:
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      header comment, lines 11-14 (algorithm step 2)
+    evidence: >-
+      "// 2. For each block, try to keep it as one chunk if its size is at most
+      //    `CHUNK_HARD_MAX` code points. If the block exceeds `CHUNK_HARD_MAX`, fall
+      //    back to sentence-level split via `Intl.Segmenter('pt', {granularity:
+      //    'sentence'})` (BR-07)."
+    cost: >-
+      The oversize-block rule is said a second time in prose. The code holds it in chunkV1
+      (`if (blockSize <= CHUNK_HARD_MAX)` and `splitBySentences(blockText, block.start)`).
+      A reader who finds the comment first takes it for the place the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by the branch in chunkV1.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the `SourceType` union, lines 33-40
+    evidence: >-
+      "export type SourceType =
+        | \"pdf\"
+        | \"email\"
+        | \"ata\"
+        | \"chat\"
+        | \"artigo\"
+        | \"transcricao\"
+        | \"outro\";"
+    cost: >-
+      The closed set of source types is declared a second time in a file the source-type node
+      may not be bound to. If the node's values change, `--check` does not reach this union.
+      The exhaustive `switch` in splitByHardBoundaries would then disagree with the
+      specification with nothing to say so.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/source-type to this file so a change to the enumeration
+      reaches it. Alternatively, take the type from the file the node is already bound to.
+      The code cannot read the specification, so the bind is what closes this.
+    node: domain/knowledge-base/source-type
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docblock of splitByHardBoundaries, line 146 (pdf policy)
+    evidence: >-
+      "- `pdf`:          form-feed (`\\f`, U+000C). PDF extractors typically insert
+         `\\f` between pages."
+    cost: >-
+      The pdf boundary is restated in prose. The code holds it in
+      `splitOnCharBoundary(codePoints, \"\\f\")`. The comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held in the pdf case of the switch.
+    node: rules/knowledge-base/pdf-blocks-at-form-feeds
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docblock of splitByHardBoundaries, lines 150-154 (chat and transcricao policy)
+    evidence: >-
+      "- `chat`,
+         `transcricao`:  speaker boundary. A line that starts with
+                          `[ \\t]*[A-Za-z0-9_]+[ \\t]*:[ \\t]` (e.g. `João:`,
+                          `[12:00] Maria:`) opens a new block."
+    cost: >-
+      The turn-block rule is restated in prose, together with a pattern that is not the one the
+      code runs. The code holds the rule in splitTurns and SPEAKER_LINE_REGEX. A reader of the
+      comment takes the comment's pattern for the decided one.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by splitTurns in this file.
+    node: rules/knowledge-base/turn-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docblock of splitEmail, lines 213-216 (header block)
+    evidence: >-
+      "Split an email: first blank line closes the headers, every transition into
+       or out of a quotation block (`^>+ `) closes a chunk."
+    cost: >-
+      The header-block rule is restated in prose. The code holds it in splitEmail
+      (`if (!headersClosed && isBlank)`).
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held in splitEmail.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docblock of splitEmail, lines 213-216 (quotation transitions)
+    evidence: >-
+      "every transition into
+       or out of a quotation block (`^>+ `) closes a chunk."
+    cost: >-
+      The quotation rule is restated in prose, and the pattern `^>+ ` differs from what
+      isQuotedLine does: it skips spaces and tabs, then looks for `>` with no required
+      trailing space. The code holds the real rule in splitEmail and isQuotedLine.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by splitEmail and isQuotedLine.
+    node: rules/knowledge-base/email-quote-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      docblocks of splitTurns (lines 261-266) and SPEAKER_LINE_REGEX (lines 341-350)
+    evidence: >-
+      "A speaker
+       line is one whose trimmed start matches `[A-Za-z0-9_]+:` followed by white
+       space (e.g. `João: Bom dia`). Bracketed timestamps like `[12:00] João:` are
+       also accepted."
+    cost: >-
+      The speaker-line definition is restated in prose, in three variants that disagree with
+      one another and with the regex. The code holds it in SPEAKER_LINE_REGEX and isSpeakerLine.
+      Three descriptions of one rule leave the reader unsure which one was decided.
+    kind: restates
+    correction: >-
+      Remove both comments. The rule is held by SPEAKER_LINE_REGEX and isSpeakerLine.
+    node: rules/knowledge-base/speaker-line
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      SPEAKER_LINE_REGEX, line 351
+    evidence: >-
+      "const SPEAKER_LINE_REGEX = /^\\s*(?:[[(]\\d{1,2}:\\d{2}(?::\\d{2})?[\\])][\\s\\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\\s[A-Za-zÀ-ÿ0-9_]+)?:\\s/;"
+    cost: >-
+      The node admits exactly four time-stamp forms: [h:mm], [hh:mm], (hh:mm) and (hh:mm:ss).
+      The pattern admits `[hh:mm:ss]` and `(h:mm)`, and any opening bracket with any closing
+      bracket, such as `(12:00]`. It reads word characters as ASCII letters plus U+00C0 to
+      U+00FF, which includes × and ÷ and leaves out every other letter, where the node says
+      "letters". A chat line the node does not call a speaker line therefore opens a new block,
+      and the cut positions, offsets and chunk count differ from the specification's.
+    kind: contradicts
+    correction: >-
+      Make the pattern accept exactly the four time-stamp forms the node lists, with matching
+      brackets. Make its word class agree with the node's "letters".
+    node: rules/knowledge-base/speaker-line
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the `RawChunkInput` interface (lines 47-53), whose shape declares part of the element
+      (chunk_index, text, offset_start, offset_end, chunking_version), and `buildChunk`
+      (lines 417-430), which produces it
+    evidence: >-
+      "export interface RawChunkInput {
+        readonly chunk_index: number;
+        readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly chunking_version: typeof CHUNKING_VERSION;
+      }"
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file concerns chunking only. It has no proposal, link, attribute or fragment
+      construct: `chunkV1(content: string, sourceType: SourceType): RawChunkInput[]`.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal recording or concurrency handling. It holds only
+      `chunkV1`, `splitByHardBoundaries` and `splitBySentences`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal decision or refusal. It holds only pure chunking functions.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start handling. Its only shapes are `SourceType`,
+      `RawChunkInput` and `CodePointRange`.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file has no metadata or directed-ingestion construct. `chunkV1` takes only
+      `content` and `sourceType`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file holds no conversation or message identity. Its chat handling is only
+      `splitTurns(codePoints)`.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its only emitted value is the
+      `RawChunkInput[]` returned by `chunkV1`.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no valid-from basis. It reads only content
+      and source type.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt or event-date text. No prompt version appears in it.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no event_date. No prompt version appears in it.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text, no event type and no confidence value.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no document date. It resolves no relative dates.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no reception date. It resolves no relative dates.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no model call and holds no token ceiling. Its only limits are
+      `CHUNK_HARD_MAX` and `CHUNK_TARGET`, imported from "./config.js".
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction scenario, no event date and no go-live. It is a
+      pure chunker.
+looked_past: >-
+  Comments at lines 359-363 (a code-block and table carve-out the code does not implement), at 121-126 (the all-separators fallback chunk) and at 372-376 (Node ICU availability) are prose with no running behavior or emitted text behind them. They belong to the comment route, and the code's fallback chunk is held by a node outside this pack.

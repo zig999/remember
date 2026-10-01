@@ -1,0 +1,109 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, lines 12-15 ("Migration 0003_event_type_taxonomy.sql widened that closed domain ...")
+    evidence: >-
+      // USE it — pick the best-fitting catalog value, fall back to `outro` only
+      // when none fits (and then lower confidence so curation sees the gap), and
+    cost: >-
+      The outro fallback is stated a second time in prose beside the code that emits it. The directive in EVENT_CLASSIFICATION_DIRECTIVE already holds it ("Use `outro` ONLY when NO domain value fits — and, in that case, LOWER the confidence (≤ 0.74)"). When the node moves, a reader can take this comment for the place the rule lives.
+    kind: restates
+    correction: >-
+      Remove the comment text. The code at lines 60-62 already holds the fact, and the node holds it as the spec fact.
+    node: rules/knowledge-base/extraction-event-type-fallback
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      header comment, line 15 ("... and resolve relative dates ...")
+    evidence: >-
+      // only when none fits (and then lower confidence so curation sees the gap), and
+      // resolve relative dates ("hoje"/"ontem"/…) against `document_date`.
+    cost: >-
+      The relative-date rule is restated in prose while the directive text at lines 63-66 emits it. Two statements of one rule, one of which no running system reads, drift apart when the node is revised, for example at v4, which changes this rule.
+    kind: restates
+    correction: >-
+      Remove the comment text. The directive lines 63-66 hold the fact.
+    node: rules/knowledge-base/extraction-relative-date-needs-document-date
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file enforces nothing about proposals. The worked example only demonstrates citing a fragment: `confidence:0.85, fragment_ids:[F1]}   // no valid_from — event_type is not temporal`
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a prompt directive and says nothing about concurrent consolidation; it exports only `PROMPT_VERSION`, `EVENT_CLASSIFICATION_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is a prompt directive and says nothing about concurrent consolidation; it exports only `PROMPT_VERSION`, `EVENT_CLASSIFICATION_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no directed-ingestion handling. The prompt example only shows dates of that shape: `valid_from:"2026-06-17", valid_from_basis:"document"}`
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no raw-information metadata; it only builds `${systemV2(catalog)}\n${EVENT_CLASSIFICATION_DIRECTIVE}`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records no raw-information metadata and refers to no conversation or message identity.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      EVENT_CLASSIFICATION_DIRECTIVE, line 66, emitted in system()
+    evidence: >-
+      "  the date (the backend records `received`). NEVER invent a date.",
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: >-
+      nowhere
+    evidence: >-
+      The directive never asks the model to give the basis stated; its only basis is `valid_from_basis`=\"document\" for computed relative dates.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: >-
+      system(), line 84, which composes v2's system prompt, plus the worked Event example at lines 75-76
+    evidence: >-
+      return `${systemV2(catalog)}\n${EVENT_CLASSIFICATION_DIRECTIVE}`;  and  'propose_attribute {node_id:E, key:"event_date", value:"2026-06-17",'
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: >-
+      the relative-date bullet (lines 63-65) and the worked Event example (lines 75-76) of EVENT_CLASSIFICATION_DIRECTIVE
+    evidence: >-
+      "  resolve against `document_date`: `event_date` (the VALUE) gets the computed",  and  'confidence:0.9, fragment_ids:[F1], valid_from:"2026-06-17", valid_from_basis:"document"}'
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: >-
+      the second bullet of EVENT_CLASSIFICATION_DIRECTIVE, lines 60-62
+    evidence: >-
+      "- Use `outro` ONLY when NO domain value fits — and, in that case, LOWER the",
+      "  confidence (≤ 0.74) to flag a possible catalog gap to curation. Do not force",
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: >-
+      the relative-date bullet of EVENT_CLASSIFICATION_DIRECTIVE, lines 63-66
+    evidence: >-
+      "  resolve against `document_date`: `event_date` (the VALUE) gets the computed",
+      "  date and `valid_from_basis`=\"document\". With no known `document_date`, omit",
+      "  the date (the backend records `received`). NEVER invent a date.",
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      nowhere
+    evidence: >-
+      The rule governs prompt version v4. This v3 file tells the model to omit the date when there is no document_date: "With no known `document_date`, omit".
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only re-exports the limit and declares no value: `export { MAX_TOKENS, user };`
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: >-
+      the worked Event example, lines 68-76, which shows the same behavior on a different event
+    evidence: >-
+      'propose_attribute {node_id:E, key:"event_date", value:"2026-06-17",' / 'confidence:0.9, fragment_ids:[F1], valid_from:"2026-06-17", valid_from_basis:"document"}'
+looked_past: >-
+  The header comment and docstring also name catalog values and migration contents (the event_type domain, migration 0003) that no code in this file carries, which is prose for the comment route and not a finding.
+candidates_opened:
+  - rules/knowledge-base/temporal-attribute-keys
+  - rules/knowledge-base/required-start-fallback

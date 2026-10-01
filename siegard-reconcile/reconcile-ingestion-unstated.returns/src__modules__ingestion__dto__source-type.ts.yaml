@@ -1,0 +1,112 @@
+findings:
+  - file: src/modules/ingestion/dto/source-type.ts
+    where: >-
+      SourceTypeSchema, lines 10-18, the z.enum declaration
+    evidence: >-
+      export const SourceTypeSchema = z.enum([
+        "pdf",
+        "email",
+        "ata",
+        "chat",
+        "artigo",
+        "transcricao",
+        "outro",
+      ]);
+    cost: >-
+      domain/knowledge-base/source-type holds this closed set of seven source types. The trace binds that node to
+      migrations/0001_init.sql and to the query-retrieval files response.dto.ts, accepted-fragments.repository.ts and
+      provenance.repository.ts. It does not bind it to this file. So this file is a second authority for the
+      vocabulary. If the node gains or drops a value, `--check` never reaches this file. The request validation that
+      reads this enum would then accept or refuse different source types from the ones the business decided, and
+      nobody could tell which list was decided.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/source-type to this file, because it declares the enumeration. Code cannot read the
+      specification, so the bind is the only thing that closes this. The values already match the node's
+      Description, which gives `ata`, `artigo`, `transcricao` and `outro` as the material's own words for
+      meeting-minutes, article, transcript and other.
+    node: domain/knowledge-base/source-type
+  - file: src/modules/ingestion/dto/source-type.ts
+    where: >-
+      header comment, lines 1-5, and the docstring on line 9
+    evidence: >-
+      // `source_type` enum — mirrors the PostgreSQL enum of the same name.
+      // Keep this in sync with `migrations/0001_init.sql` (CREATE TYPE source_type)
+      // and with `openapi.yaml#/components/schemas/SourceType`.
+      /** Closed list — matches `CREATE TYPE source_type` in 0001_init.sql. */
+    cost: >-
+      This prose restates the closed source-type set, and no running system emits it. The code that holds the
+      set is the z.enum in this file and the CREATE TYPE in migrations/0001_init.sql. The comment is a second home
+      outside behavior. A reader who trusts "keep in sync" would look here and in the migration instead of in
+      the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The set already lives in the node domain/knowledge-base/source-type and in the code that
+      implements it.
+    node: domain/knowledge-base/source-type
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no proposal and no fragment-citation logic.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no consolidation and no concurrency logic.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no consolidation and no refusal logic.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no date-shape validation.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It records no directed-ingestion metadata.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no chat-turn pointer handling.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction prompt.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It sets no token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file declares only `SourceTypeSchema = z.enum([...])`. It has no extraction behavior.
+looked_past: >-
+  The pack's 15 rules and its one scenario are none of them about source type. The only node that holds this file's
+  fact, domain/knowledge-base/source-type, is outside the pack, so it is attributed in the findings and not read.
+candidates_opened:
+  - domain/knowledge-base/source-type

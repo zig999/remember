@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docblock of RecentIngestionRow, lines 38-44, above the LATERAL join in findRecentIngestions, lines 81-87
+    evidence: >-
+      "its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears
+      with null run fields)"
+    cost: >-
+      The comment restates the rule that a recent ingestion shows the most recently started run, or none when it has none. The query (`ORDER BY started_at DESC LIMIT 1` inside a `LEFT JOIN LATERAL ... ON true`) already holds that rule. If the node moves, the prose stays behind and reads as a second decision.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the node and by the query in this file.
+    node: rules/knowledge-base/recent-ingestion-latest-run
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docblock of aggregateToolCallOutcomes, lines 111-118
+    evidence: >-
+      "Returns a fully-formed `LlmRunSummary` — every field
+      present, missing buckets default to 0 (BR-12)."
+    cost: >-
+      The comment restates the rule that a summary counts tool calls by validation outcome and counts zero for an outcome with no tool call. The initial object `{ accepted: 0, consolidated: 0, ... error: 0, ... }` holds the rule. A reader may take the comment, or its BR-12 citation, as the place the rule lives.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/summary-counts-tool-calls
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the comment at lines 148-149 above the orphan count in aggregateToolCallOutcomes, repeated in the docblock at lines 114-117
+    evidence: >-
+      "Orphaned-fragment count (recall-gap signal). Same definition as the
+      retry orphan-cleanup: `proposed` fragments of this run with no provenance."
+    cost: >-
+      The comment states the definition of an orphaned fragment, which a node holds. The SQL (`status = 'proposed' AND id NOT IN (SELECT fragment_id FROM provenance ...)`) holds it twice in this file, in the count and in the retry cleanup. The comment is a third copy outside behavior, and the "recall-gap signal" gloss is not in any node.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/orphaned-fragment
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docblock of retryLlmRunRow, lines 165-171, and the comment at lines 188-189
+    evidence: >-
+      "In the same transaction, orphan `proposed` fragments of this run are
+      flipped to `rejected`."
+    cost: >-
+      The comment restates the rule that retrying a run rejects its orphaned fragments. The second `UPDATE information_fragment SET status = 'rejected' ...` in the function holds that rule. The BR-10 citation sends the next reader to a back-spec rule instead of the node.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/retry-rejects-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docblock of findToolCallsByRun, line 237, above its ORDER BY
+    evidence: >-
+      "/** Page of `tool_call` rows ordered by `created_at` ascending. */"
+    cost: >-
+      The comment restates the listing order of a run's tool calls. `ORDER BY created_at ASC, id ASC` holds it, and the comment omits the identifier tiebreak the node states. The two can drift apart without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/tool-call-listing-order
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file only queries the table (`JOIN raw_chunk rc       ON rc.id = fs.raw_chunk_id`, `FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`). It declares no type, interface or schema with the element's attributes.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file reads columns in a join (`FROM raw_information ri`, `left(ri.content, 80) AS content_preview`) and declares a RecentIngestionRow projection. That projection is a read model with `raw_information_id`, `source_type` and `raw_status`; it does not declare the aggregate's shape (no content_hash, metadata or original_input).
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only checks existing fragments (`countFragmentsAnchoredToSource`). It has no branch that requires a proposal to cite at least one fragment.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No consolidation or re-decision logic exists here. The file's closest construct is `insertFragmentWithSources`, which ends with `ON CONFLICT DO NOTHING`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal decision or refusal of a collision. It holds only tool-call, run and fragment persistence helpers.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no date parsing or validity-start handling.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file never writes or reads raw_information metadata; its raw_information read selects only `ri.id`, `source_type`, `status`, `received_at` and `left(ri.content, 80)`.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file records no chat conversation or message identities.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no model prompt text. It contains only SQL helpers.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no valid-from-basis handling.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no event type handling.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no language-model call and sets no output-token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt, so the scenario's "the model is asked to propose event_date" is not exercised here.
+looked_past: >-
+  The comment "`limit` is validated (1..50) at the toolset boundary before it reaches here" states a bound that rules/knowledge-base/recent-ingestions-limit-bounds holds, but I did not confirm which file enforces it. I also saw comments that cite back-spec ids (BR-10, BR-12, BR-18, BR-19, BR-23, UC-07) without restating a node's fact.
+candidates_opened:
+  - rules/knowledge-base/recent-ingestion-latest-run
+  - rules/knowledge-base/summary-counts-tool-calls
+  - rules/knowledge-base/orphaned-fragment
+  - rules/knowledge-base/retry-rejects-orphaned-fragments
+  - rules/knowledge-base/tool-call-listing-order

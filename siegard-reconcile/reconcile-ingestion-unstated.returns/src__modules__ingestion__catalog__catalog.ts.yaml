@@ -1,0 +1,105 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      the doc comment above isLinkRuleActive(), lines 265-270, and the
+      comment above LinkTypeRuleRow, lines 47-51
+    evidence: >-
+      "validity window includes today (semi-open `[valid_from, valid_to)`; nulls
+      mean unbounded — §5.1)." and "the temporal
+      filter (`valid_to IS NULL OR valid_to > current_date`) is applied at
+      lookup time so a rule that expires between reloads is honoured."
+    cost: >-
+      The in-effect window of a link type rule is stated in prose a second
+      time. The comment above LinkTypeRuleRow describes only the valid_to half
+      of the window, so a reader who takes it as the rule gets a shorter rule
+      than the node's. The code that holds the rule is isLinkRuleActive in this
+      file, but the node does not name this file as its home, so the prose
+      reads as a second authority.
+    kind: restates
+    correction: >-
+      Remove both comments. The fact is already held by the node, and
+      isLinkRuleActive implements it with `from !== null && today.getTime() <
+      from.getTime()` and `to !== null && today.getTime() >= to.getTime()` on
+      UTC-stripped dates.
+    node: rules/knowledge-base/link-type-rule-in-effect
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file loads and indexes catalog rows (`SELECT id, name, description
+      FROM node_type`, `buildSnapshot`, `domainOf`, `isLinkRuleActive`). It
+      has no reference to fragments or citations.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The catalog snapshot is read-only and loaded once at boot. Nothing in
+      the file decides or re-decides a proposal.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No proposal decision or refusal appears in the file; its exports are
+      `attributeKeyCacheKey`, `loadCatalog`, `buildSnapshot`, `domainOf` and
+      `isLinkRuleActive`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      `AttributeKeyRow` and `LinkTypeRuleRow` are the only date-bearing shapes,
+      and `valid_from` there is a `Date | null` for a rule. The file has no
+      YYYY-MM-DD check.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file has no raw-information metadata and no directed-ingestion
+      construct.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no chat conversation or message identity.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. `description?: string` on `NodeTypeRow` is
+      only carried through for a prompt built elsewhere.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text and no valid-from basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. Event.event_type values appear only as
+      rows read from `attribute_valid_value`: `SELECT attribute_key_id, value
+      FROM attribute_valid_value`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text and no relative-date handling.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text and no relative-date handling.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file has no model call and no token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction, prompt or event construct.
+looked_past: >-
+  The comments above the file's constructs also restate catalog facts (the
+  BR-14 unknown-type codes, and the BR-30 closed-domain rule with its
+  VALIDATION_INVALID_FORMAT and allowed_values detail) that code in other
+  files holds, outside the file set and the pack's nodes, so I filed no finding
+  for them.
+candidates_opened:
+  - rules/knowledge-base/link-type-rule-in-effect
+  - rules/knowledge-base/attribute-value-in-allowed-values

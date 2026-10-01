@@ -1,0 +1,120 @@
+findings:
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.start_async_ingestion (lines 165-173), the string the model is given for the
+      start_async_ingestion tool
+    evidence: >-
+      "Ingest a whole document and IMMEDIATELY return the run id while extraction " + "continues in the
+      background. Use this instead of `ingest_document` when you " + "cannot afford to block (chat turn,
+      short client timeout): the server stores " + "the raw text + chunks synchronously (< 1 s) and runs
+      structured extraction " + ... + "asynchronously. Poll " + "`get_ingestion_status` with the returned
+      `llm_run_id` to learn the terminal " + "outcome. Re-sending the same content is a no-op (returns the
+      existing run, no " + "new extraction). Arguments and defaults match `ingest_document` exactly."
+    cost: >-
+      The ingestion contract lists ingest-document, ingest-directed and list-recent-ingestions and no
+      asynchronous start. The only place that says an ingestion can return its run identity at once and
+      extract afterwards, and that the caller then polls the run, is this tool-description string. A reader
+      looking in the contract will not find the operation. A reader changing the description will be
+      changing what the model is told about an operation the specification never decided.
+    kind: unstated
+    correction: >-
+      Analysis would give the asynchronous start (what it returns, that extraction continues after the
+      return, what a repeated content does) a place in contracts/knowledge-base/ingestion, or in a rule or
+      scenario constrained to it. The description would then restate a held fact.
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.ingest_document (lines 141-149), the sentences on a client timeout
+    evidence: >-
+      "If your client times out before this returns, the server keeps extracting — do NOT " + "re-send; use
+      `list_recent_ingestions` to find the run, then `get_ingestion_status`."
+    cost: >-
+      The contract for ingest-document answers the accepted and already_ingested outcomes. It says nothing
+      about extraction continuing after the caller's connection is lost, or about recovering the run
+      through the recent-ingestions listing. That behaviour is told to the model only here, so the
+      specification gives no basis for judging whether the server really behaves this way.
+    kind: unstated
+    correction: >-
+      Analysis would decide whether extraction survives a caller timeout, and record it against
+      contracts/knowledge-base/ingestion.
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the propose_link and propose_attribute strings in IngestToolDescriptions (lines 129-140). They are
+      emitted text and state the rule truly. The schemas that enforce it are declared in other files and
+      this barrel only re-exports them.
+    evidence: >-
+      "you must cite at least one fragment_id as evidence" (propose_link); "The node must exist; cite at
+      least one fragment_id." (propose_attribute)
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file only derives JSON Schemas (`z.toJSONSchema(ProposeLinkInputSchema)`) and holds tool
+      description strings. It carries no recording, no decision against a concurrently committed assertion
+      and no second decision.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No recording or refusal logic appears in this file; its exports are the schema re-exports,
+      `IngestToolInputJsonSchemas` and `IngestToolDescriptions`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The ingest_directed description names `ref`, `evidence_ref`, `node_ref`, `source_ref`, `target_ref`
+      and `node_id`. The directed payload's shape is not declared in this file and no validity-start
+      pattern appears in it.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The ingest_directed description speaks of a per-item report and `run.affected_nodes`. It says
+      nothing of raw-information metadata recording directed, a label or chat identities.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No conversation or message identity appears anywhere in the file. The ingest_directed text is "a
+      fully-structured payload of fragments + nodes (+ optional attributes / links)".
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt. Its strings are tool descriptions for the model, such as
+      "Record one atomic factual claim quoted verbatim from the current chunk".
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt and no valid-from basis wording in this file; the descriptions never mention a
+      validity start or its basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file contains no event_date, end_date or prompt-version text. The only event-like wording is
+      "(e.g. a Project's deadline)" in propose_attribute.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      No prompt text on event_date or a validity start appears in this file.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      No "outro" event type and no 0.74 confidence cap appear in this file.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      No relative-date resolution wording appears in this file.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      No relative-date or date-of-reception wording appears in this file.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      No max-tokens value appears in this file; the only numbers are "(max 1000 chars)", "`limit` 1..50
+      (default 10)" and "confidence = 1.0".
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt that would ask the model for event_date 2026-08-01 or a validity
+      start with the basis document.
+looked_past: >-
+  The header and block comments (the BR-24 single-source note, the Zod v4 divergence, the "Single source of
+  truth for the four propose_* tool DESCRIPTIONS" docstring) state back-spec and delivery-report rationale
+  rather than a fact of any node in the set, so they are prose for the comment route and not a finding here.
+candidates_opened: []

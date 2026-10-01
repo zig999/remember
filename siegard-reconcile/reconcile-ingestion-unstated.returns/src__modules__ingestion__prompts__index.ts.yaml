@@ -1,0 +1,101 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the header comment, lines 10-15 ("An unknown version is a configuration error, NOT a silent fallback ...")
+    evidence: >-
+      // An unknown version is a configuration error, NOT a silent fallback: BR-26
+      // step 2 mandates "load the extraction.${prompt_version} module; fail with 500
+      // SYSTEM_INTERNAL_ERROR if the module is missing". `selectPromptModule` throws
+      // `UnknownPromptVersionError`
+    cost: >-
+      The rule that a prompt version outside the held set is refused is written as prose in this file as
+      well as held by the throw in selectPromptModule. A reader who finds the comment first takes it for
+      the decision, and the node that holds the fact is not the place they look. When the node moves, the
+      comment keeps saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The throw at `throw new UnknownPromptVersionError(promptVersion)` stays. Under
+      the comment route, run /reconcile over this file afterwards.
+    node: rules/knowledge-base/prompt-version-known
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the doc comment on DEFAULT_PROMPT_VERSION, line 62
+    evidence: >-
+      /** Recommended version for NEW runs — callers SHOULD send this at intake. */
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+    cost: >-
+      The doc comment describes the default as a recommendation callers should send. The node says a
+      document ingestion that names no prompt version runs under v4. The code applies it as a
+      substitution at ingest-document.handler.ts line 120, `input.prompt_version ?? DEFAULT_PROMPT_VERSION`.
+      The comment is a second, differently worded statement of a fact the specification and the code
+      already hold. The next reader trusts the wording that says "recommended".
+    kind: restates
+    correction: >-
+      Remove the doc comment. The constant and its use in the handler stay.
+    node: rules/knowledge-base/default-prompt-version
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file only registers prompt modules ("export interface PromptModule { readonly version: string; readonly MAX_TOKENS: number; system(...); user(...) }"). It handles no proposal, link, attribute or fragment.
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      No consolidation, recording or concurrency logic appears. The file holds only the REGISTRY record and selectPromptModule.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No consolidation or collision handling appears. The only refusal is `throw new UnknownPromptVersionError(promptVersion)`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      The file has no date handling or validity-start format check. It imports only `Anthropic`, `CatalogSnapshot` and the four prompt modules.
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      The file records no raw-information metadata. The directed-ingestion `prompt_version` sentinel lives in directed-ingestion.service.ts, not here.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      The file has no chat conversation or message identity handling.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text. It forwards `system: v1.system` and `user: v1.user` (and the same for v2 to v4). The wording sent to the model lives in extraction.v*.ts.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file contains no prompt text, only `system: v4.system, user: v4.user` style forwarding.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file contains no event_date or end_date instruction. It registers modules by version: `[v2.PROMPT_VERSION]: V2`.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file contains no event_date instruction. Prompt wording is in the imported extraction.v2.js, extraction.v3.js and extraction.v4.js.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file contains no event-type or confidence wording. It only forwards the v3 and v4 modules' `system` and `user`.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file contains no relative-date wording, only `system: v3.system`.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file contains no relative-date wording, only `system: v4.system`.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file declares no 8000 value. It only passes each module's ceiling along: `MAX_TOKENS: v1.MAX_TOKENS`, `MAX_TOKENS: v2.MAX_TOKENS`, `MAX_TOKENS: v3.MAX_TOKENS`, `MAX_TOKENS: v4.MAX_TOKENS`. The number sits in the extraction.v*.ts modules.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no go-live example. It registers modules by version only.
+looked_past: >-
+  The remaining header and doc comments narrate history and cite the back-spec BR-26 rather than a node, and the UnknownPromptVersionError message is emitted text that agrees with prompt-version-known, so none of them is a finding against these nodes.
+candidates_opened:
+  - rules/knowledge-base/prompt-version-known
+  - rules/knowledge-base/default-prompt-version

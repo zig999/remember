@@ -1,0 +1,109 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the doc comment above deriveValidationOutcome (lines 55-65) and the comment inside its default branch (lines 85-86)
+    evidence: >-
+      "Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+       * branch returns this), the audit row is `'rejected'` per BR-17. Every other
+       * `ok:true` envelope is `'accepted'`." and "`accepted`, `matched_existing`, `created_new`, `proposed`, missing
+            // tag — all collapse to `accepted` per the current contract."
+    cost: >-
+      The mapping from a result's outcome to the tool call's validation outcome is written as prose here as well as held by the switch. A reader who finds the comment can take it for the decision and never open the node. When the node moves, this comment goes on stating the old rule and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the doc comment's rule paragraph and the default-branch comment. The switch in deriveValidationOutcome holds the fact, in this file.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the doc comment above assertRunIsRunning (lines 91-102)
+    evidence: >-
+      "- id does not match any LLMRun row -> `RESOURCE_NOT_FOUND`
+       *   - id matches a row whose `status !== 'running'` -> `BUSINESS_RUN_NOT_RUNNING`"
+    cost: >-
+      The order of the run checks and their codes are written as prose here and also held by the two ValidationFailure throws. The comment is a second home that the node cannot reach when it changes.
+    kind: restates
+    correction: >-
+      Remove the doc comment. The two `throw new ValidationFailure(...)` branches in assertRunIsRunning hold the fact.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the header comment (lines 1-14) and the doc comments of runIngestHandler (lines 125-131) and safeWriteAuditOnRollback (lines 207-211)
+    evidence: >-
+      "4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
+      //      short TX to write the audit `tool_call` row (BR-23)." and "if the audit write itself fails we log and swallow — the original envelope
+       * is what the caller sees."
+    cost: >-
+      That a refused or failed proposal keeps only its tool call, and that a failed audit write is swallowed, is written as prose here as well as held by the rollback and the standalone insert. The comments carry BR numbers from another document, so a reader is sent there rather than to the specification.
+    kind: restates
+    correction: >-
+      Remove the header comment and the doc comments. The catch branch, `insertToolCallStandalone` and the try/catch in safeWriteAuditOnRollback hold the fact.
+    node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+read:
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: nowhere
+    evidence: >-
+      The file holds the run wrapper and audit scaffolding only. It reads no fragment citation: `outcome = await args.run(client);`
+  - node: rules/knowledge-base/consolidation-race-decided-again
+    held_at: nowhere
+    evidence: >-
+      The file does no consolidation or retry. The only retry-like path is `catch (err)` followed by `ROLLBACK`.
+  - node: rules/knowledge-base/consolidation-race-refuses-second-collision
+    held_at: nowhere
+    evidence: >-
+      No second-decision or collision handling. Any non-validation error becomes `code: "SYSTEM_INTERNAL_ERROR"`.
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: nowhere
+    evidence: >-
+      No date-shape handling. The file only wraps the handler: `export async function runIngestHandler<I, R>(args: {`
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: nowhere
+    evidence: >-
+      No raw-information metadata is written. The file returns `input_raw_information_id: row.input_raw_information_id` only.
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: nowhere
+    evidence: >-
+      No chat-turn conversation or message identities appear in the file.
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt or extraction instruction.
+  - node: rules/knowledge-base/extraction-stated-basis-needs-written-start
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no valid-from basis.
+  - node: rules/knowledge-base/extraction-dates-events
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no event_date handling.
+  - node: rules/knowledge-base/extraction-event-type-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no event type vocabulary.
+  - node: rules/knowledge-base/extraction-relative-date-needs-document-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no date resolution.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no date resolution.
+  - node: rules/knowledge-base/extraction-turn-token-ceiling
+    held_at: nowhere
+    evidence: >-
+      The file makes no model call and sets no token limit.
+  - node: scenarios/knowledge-base/go-live-date-is-the-value
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no go-live date handling.
+looked_past: >-
+  The pack's nodes govern extraction prompts, directed ingestion and consolidation races, none of which this file touches. The facts the file does state (the run-must-be-running refusals, the tool-call validation outcome, the audit on rollback, the "Internal error in MCP handler." message) are held by nodes outside the pack, and the code agrees with them, so I reported only the prose restatements.
+candidates_opened:
+  - rules/knowledge-base/tool-call-validation-outcome
+  - rules/knowledge-base/every-proposal-audited
+  - rules/knowledge-base/proposal-requires-running-run
+  - rules/knowledge-base/refused-proposal-records-only-its-tool-call
+  - rules/knowledge-base/proposal-run-checks-first
