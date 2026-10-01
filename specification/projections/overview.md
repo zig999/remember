@@ -6,8 +6,8 @@ Derived by spec.py from the specification files; never edited.
 
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
-| chat | supporting | 17 | 117 | 1 | 0 |
-| knowledge-base | core | 75 | 383 | 5 | 10 |
+| chat | supporting | 17 | 131 | 1 | 0 |
+| knowledge-base | core | 75 | 394 | 5 | 10 |
 
 ## Aggregates
 
@@ -61,11 +61,13 @@ None.
 - logs-redact-text-fields (system)
 - mcp-endpoint-serves-only-its-toolset (system)
 - mcp-failure-is-tool-error (system)
+- mcp-transport-failure-answers-empty-500 (system)
 - owner-time-zone-must-be-known (system)
 - preflight-needs-no-authentication (system)
+- request-body-ceiling (system)
 - retrieval-is-lexical-only (knowledge-base)
 - retrieval-is-read-only (knowledge-base)
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-178 decision(s) disclosed, 2 location(s) retired in the decision logs.
+217 decision(s) disclosed, 2 location(s) retired in the decision logs.

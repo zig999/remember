@@ -148,13 +148,22 @@ entries:
 
 === constraints/expected-refusals-not-logged-as-errors
 ---
-statement: A refusal for a business or validation cause is never logged at error level.
+statement: A refusal for a business or validation cause is never logged at error level, except a failure to build the model provider at the start of a chat turn.
 scope: system
 ---
 
 ## Description
 
 None.
+
+=== constraints/expected-refusals-not-logged-as-errors.log
+---
+entries:
+- field: statement
+  unstated: The constraint said a business refusal is never logged at error and the code logs one.
+  decided: The provider-build failure at turn start is the exception.
+  why: The factory failure is logged at error and refused as provider unavailable, and the streaming case logs at warn.
+---
 
 === constraints/extraction-acts-only-through-proposals
 ---
@@ -306,23 +315,41 @@ None.
 
 === constraints/logs-redact-text-fields
 ---
-statement: Logs show the content, text and value fields of a logged object, nested ones included, as [REDACTED] and show every other field as it is.
+statement: Logs show the content, text and value fields of a logged object, of its direct members and of its request body as [REDACTED], show an authorization header as [REDACTED] and show every other field as it is.
 scope: system
 ---
 
 ## Description
 
 None.
+
+=== constraints/logs-redact-text-fields.log
+---
+entries:
+- field: statement
+  unstated: The constraint said nested fields are redacted at every depth and the paths go one level, and the code also redacts authorization.
+  decided: The statement names the covered levels and the authorization header.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
 
 === constraints/mcp-endpoint-serves-only-its-toolset
 ---
-statement: Over MCP a call naming a tool outside the endpoint's own toolset answers a tool error, with code NOT_FOUND on the curation endpoint.
+statement: Over MCP a call naming a tool outside the endpoint's own toolset answers a tool error, with code NOT_FOUND and the message "Tool '<name>' is not available on this endpoint." on the curation endpoint.
 scope: system
 ---
 
 ## Description
 
 None.
+
+=== constraints/mcp-endpoint-serves-only-its-toolset.log
+---
+entries:
+- field: statement
+  unstated: The node gave the code and no message for an unknown tool.
+  decided: The statement adds the message "Tool '<name>' is not available on this endpoint.".
+  why: The kernel emits it on every endpoint.
+---
 
 === constraints/mcp-failure-is-tool-error
 ---
@@ -333,6 +360,25 @@ scope: system
 ## Description
 
 None.
+
+=== constraints/mcp-transport-failure-answers-empty-500
+---
+statement: Over MCP a failure of the transport itself, before any response has begun, answers HTTP 500 with no body.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/mcp-transport-failure-answers-empty-500.log
+---
+entries:
+- field: statement
+  unstated: No node holds what the MCP endpoint answers when the transport itself fails.
+  decided: The endpoint answers HTTP 500 with no body where no response has begun.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
 
 === constraints/owner-time-zone-must-be-known
 ---
@@ -353,6 +399,25 @@ scope: system
 ## Description
 
 None.
+
+=== constraints/request-body-ceiling
+---
+statement: The system refuses a request body larger than 11 MiB before any operation answers it.
+scope: system
+---
+
+## Description
+
+None.
+
+=== constraints/request-body-ceiling.log
+---
+entries:
+- field: statement
+  unstated: No node holds the largest request body the system accepts.
+  decided: The system refuses a request body larger than 11 MiB before any operation answers it.
+  why: Two files set the same figure, and it exceeds the 10 MiB content limit on purpose.
+---
 
 === constraints/retrieval-is-lexical-only
 ---
@@ -627,9 +692,13 @@ answers:
     answer: HTTP 404, error code RESOURCE_NOT_FOUND with the framework's message
   - when: The request fails the validation of the operation it names.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`, each path joined by "."
+  - when: A route schema of the framework rejects the request.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with the framework's message and `details` the framework's own list of validation failures
+  - when: The framework refuses the request with status 422.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with the framework's message
   - when: The framework refuses the request with status 401, 403 or 409.
     answer: that status, with error code AUTH_UNAUTHORIZED, AUTH_FORBIDDEN or RESOURCE_CONFLICT respectively and the framework's message
-  - when: The framework refuses the request with another status below 500.
+  - when: The framework refuses the request with a status below 500 other than 401, 403, 409 and 422.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and the framework's message
   - when: The framework fails the request with status 503.
     answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "Internal server error."
@@ -640,7 +709,7 @@ answers:
   - when: The request fails for any other cause.
     answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause
 - operation: read-health
-  accepted: the health report `{ ok, service, database, checked_at }` with `service` "remember-bff", `database` "ok" or "unreachable", `ok` true exactly when the store answered, and `checked_at` an ISO-8601 UTC time; the same report over REST and as the `health` tool
+  accepted: the health report `{ ok, service, database, checked_at }` with `service` "remember-bff", `database` "ok" or "unreachable", `ok` true exactly when the store answered, and `checked_at` an ISO-8601 UTC time; the same report over REST, with HTTP 200 when `ok` is true and HTTP 503 when it is false, and as the `health` tool
 ---
 
 ## Description
@@ -675,6 +744,10 @@ entries:
   unstated: A judgment shows a key set that cannot be fetched answered as an invalid token, and a framework 503 carrying the message Internal server error.
   decided: A key set that cannot be fetched answers AUTH_TOKEN_INVALID, and a framework 503 answers that message.
   why: The owner decided the source's behavior is the truth, and it answers those two that way.
+- field: answers
+  unstated: The contract answered every validation failure with a bare list and gave no health status or framework 422.
+  decided: It adds the framework schema refusal, the framework 422 and the health 200 and 503.
+  why: The error handler forwards the framework's message and list, maps 422 to VALIDATION_INVALID_FORMAT and the route sends 503 when not ok.
 ---
 
 === contracts/knowledge-base/compliance-audit
@@ -689,14 +762,14 @@ operations:
 - read-curation-action
 answers:
 - operation: compliance-delete
-  accepted: 'HTTP 201 carrying outcome deleted and the compliance deletion just recorded, or HTTP 200 carrying outcome noop_already_deleted and the latest compliance deletion on record for the raw information, each deletion with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts, ignoring any field the request does not define; over MCP, `{ ok: true, result }` carrying the same outcome and deletion'
+  accepted: 'HTTP 201 carrying outcome deleted and the compliance deletion just recorded, or HTTP 200 carrying outcome noop_already_deleted and the latest compliance deletion on record for the raw information, each deletion with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts, ignoring any field the request does not define; over MCP, as the `compliance_delete` tool of the curation toolset, `{ ok: true, result }` carrying the same outcome and deletion'
   refusals:
   - when: The request omits the raw information or the reason.
-    answer: 'error code VALIDATION_REQUIRED_FIELD with message "Field ''<path>'' is required.", listing each failing field with its path and message, HTTP 422 over REST'
+    answer: 'error code VALIDATION_REQUIRED_FIELD with message "Field ''<path>'' is required.", carrying `details` `{ issues }` listing each failing field with its path and message, HTTP 422 over REST'
   - rule: rules/knowledge-base/compliance-deletion-reason-length
-    answer: 'error code VALIDATION_OUT_OF_RANGE with message "Field ''reason'' must be non-empty after trim and ≤ 1000 characters.", listing each failing field with its path and message, HTTP 422 over REST'
+    answer: 'error code VALIDATION_OUT_OF_RANGE with message "Field ''reason'' must be non-empty after trim and ≤ 1000 characters.", carrying `details` `{ issues }` listing each failing field with its path and message, HTTP 422 over REST'
   - when: The named raw information is not a well-formed identifier, or a field is null or of the wrong type.
-    answer: 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message, HTTP 422 over REST'
+    answer: 'error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message, HTTP 422 over REST'
   - when: No raw information is held at the requested identity.
     answer: 'error code RESOURCE_NOT_FOUND with message "RawInformation <id> not found.", naming the entity raw_information and the identity, HTTP 404 over REST'
   - when: The raw information is already deleted and no compliance deletion of it is on record.
@@ -710,21 +783,21 @@ answers:
   refusals:
   - &window
     rule: rules/knowledge-base/audit-window-ordered
-    answer: 'HTTP 422, error code VALIDATION_OUT_OF_RANGE with message "Time range bounds must satisfy `from < to`.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_OUT_OF_RANGE with message "Time range bounds must satisfy `from < to`.", carrying `details` `{ issues }` listing each failing field with its path and message'
   - &limit
     rule: rules/knowledge-base/page-limit-bounds
-    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message'
   - &offset
     rule: rules/knowledge-base/page-offset-non-negative
-    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message'
   - when: The named raw information is not a well-formed identifier, a window bound is not a date-time carrying a time zone, or the limit or offset is not an integer.
-    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message'
 - operation: read-compliance-deletion
   accepted: HTTP 200 carrying the compliance deletion with its identity, raw information, reason, execution time as an ISO-8601 timestamp and its chunk, fragment, link and attribute counts
   refusals:
   - &malformed-id
     when: The requested identity is not a well-formed identifier.
-    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message'
   - when: No compliance deletion is held at the requested identity.
     answer: 'HTTP 404, error code RESOURCE_NOT_FOUND with message "ComplianceDeletion <id> not found.", naming the entity compliance_deletion and the identity'
 - operation: list-curation-actions
@@ -734,7 +807,7 @@ answers:
   - *limit
   - *offset
   - when: The named target is not a well-formed identifier, a window bound is not a date-time carrying a time zone, the limit or offset is not an integer, or the action or target kind is outside its closed set.
-    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message'
+    answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", carrying `details` `{ issues }` listing each failing field with its path and message'
 - operation: read-curation-action
   accepted: HTTP 200 carrying the curation action with its identity, action, target kind, target identity or null, payload, an empty object where none is held, reason or null and creation time as an ISO-8601 timestamp
   refusals:
@@ -746,6 +819,15 @@ answers:
 ## Description
 
 The owner's surface for deleting a raw information for compliance and for reading the compliance deletions and curation actions on record.
+
+=== contracts/knowledge-base/compliance-audit.log
+---
+entries:
+- field: answers
+  unstated: The contract did not say how a validation failure lists its fields or the MCP tool name.
+  decided: Validation answers carry details { issues }, and the MCP operation is the compliance_delete tool of the curation toolset.
+  why: The REST handler and the MCP tool both wrap the list under issues, and the tool registers in the curation toolset.
+---
 
 === contracts/knowledge-base/curation
 ---
@@ -1008,7 +1090,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: read-llm-run
-  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
+  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
   refusals:
   - &id003
     when: The named LLM run is not a well-formed identifier.
@@ -1160,9 +1242,9 @@ answers:
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
   - rule: rules/knowledge-base/content-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: error code VALIDATION_INVALID_FORMAT with the message "ingest_document arguments failed validation." listing each failing field with its path and message
   - when: The request names no source type of the closed set.
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: error code VALIDATION_INVALID_FORMAT with the message "ingest_document arguments failed validation." listing each failing field with its path and message
   - rule: rules/knowledge-base/extraction-fails-on-repeated-system-errors
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - rule: rules/knowledge-base/prompt-version-known
@@ -1174,7 +1256,7 @@ answers:
   - when: The extraction fails for a cause no other refusal names.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run, reported completed even where closing it failed, with its affected nodes, an empty list where they cannot be read, one report entry per item with its reference, kind and status, a link''s reference being its source reference, its link type and its target reference joined by "->", and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
   refusals:
   - rule: rules/knowledge-base/directed-requires-fragment-and-node
     answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
@@ -1273,6 +1355,10 @@ entries:
   unstated: A judgment of the source shows a proposal refused for its shape over MCP with the message "MCP tool args failed Zod parse." and not the "Input failed Zod parse." the contract held.
   decided: Over MCP the message is "MCP tool args failed Zod parse." for the four proposals.
   why: The owner decided the source's behavior is the truth, and callers read the message the source sends.
+- field: answers
+  unstated: The contract gave no message for ingest-document validation, no fallback when affected nodes or the run close fail, and no link reference form.
+  decided: It adds the ingest-document message, the empty list, the completed report and the reference form.
+  why: The code returns the run completed and the list empty on those failures and builds the reference as stated.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -1304,6 +1390,8 @@ answers:
     when: The request carries no valid owner authentication.
     answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
   - rule: rules/knowledge-base/search-query-not-blank
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
+  - when: The request names a parameter the search does not define.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
@@ -1509,6 +1597,10 @@ entries:
   unstated: A judgment shows search and the accepted-fragment listing refusing a blank or long query, a depth or a page bound with VALIDATION_INVALID_FORMAT, and six reads accepting an undefined parameter over REST.
   decided: Those refusals answer VALIDATION_INVALID_FORMAT, and the six reads refuse an undefined parameter over MCP only.
   why: The owner decided the source's behavior is the truth, and the global handler maps every schema failure to that code.
+- field: answers
+  unstated: The search operation listed no refusal for an undefined parameter.
+  decided: It adds HTTP 422 with VALIDATION_INVALID_FORMAT for an undefined parameter.
+  why: The search schema is strict and serves both transports.
 ---
 
 === domain/chat/_context
@@ -4312,7 +4404,7 @@ None.
 === rules/chat/chat-prompt-affected-nodes-first
 ---
 type: invariant
-statement: The chat prompts from v3 on tell the assistant, once an ingestion run has completed, to read the run's affected nodes first and then to read each node and traverse from it directly.
+statement: The chat prompts from v3 on tell the assistant, once an ingestion run has completed, to read the run's affected nodes first, then each node and its traversal to depth 2, describing only what those calls returned.
 constrains:
 - domain/chat/chat-prompt-version
 ---
@@ -4320,11 +4412,41 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/chat-prompt-affected-nodes-first.log
+---
+entries:
+- field: statement
+  unstated: The node gave no traversal depth and no restriction on what the assistant describes.
+  decided: The statement adds depth 2 and describing only what the calls returned.
+  why: Prompts v3 and v4 carry both, and the rule covers v3 on.
+---
+
+=== rules/chat/chat-prompt-asks-for-concise-answers
+---
+type: invariant
+statement: Every chat prompt version tells the assistant to answer concisely, grouping several items in lists where that fits.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-asks-for-concise-answers.log
+---
+entries:
+- field: statement
+  unstated: No node holds the answer-style instruction.
+  decided: Every chat prompt version tells the assistant to answer concisely and to group several items in lists.
+  why: Each later version composes the v1 body, so the instruction reaches every version.
+---
 
 === rules/chat/chat-prompt-carries-marker
 ---
 type: invariant
-statement: Every chat prompt version begins with the one system-prompt marker.
+statement: Every chat prompt version begins with the one system-prompt marker, the text __REMEMBER_CHAT_SYS_MARKER_V1__.
 constrains:
 - domain/chat/chat-prompt-version
 ---
@@ -4332,6 +4454,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/chat-prompt-carries-marker.log
+---
+entries:
+- field: statement
+  unstated: The node does not state the marker's value.
+  decided: The statement now names the marker text.
+  why: The output guard scrubs that exact text, so the value is part of the rule.
+---
 
 === rules/chat/chat-prompt-discovery-listings
 ---
@@ -4372,7 +4503,7 @@ None.
 === rules/chat/chat-prompt-presents-catalog
 ---
 type: invariant
-statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows.
+statement: The chat prompts from v3 on present the assistant the catalog's node types, its link types with the node-type pairs each permits, and its attribute keys with the closed values each allows, in ascending order.
 constrains:
 - domain/chat/chat-prompt-version
 ---
@@ -4380,6 +4511,36 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/chat-prompt-presents-catalog.log
+---
+entries:
+- field: statement
+  unstated: The node did not say the closed values come in ascending order.
+  decided: The statement adds ascending order.
+  why: The ontology block sorts the values.
+---
+
+=== rules/chat/chat-prompt-respects-temporal-axes
+---
+type: invariant
+statement: Every chat prompt version tells the assistant to keep the validity axis apart from the transaction axis and to answer a question about a date through the histories.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-respects-temporal-axes.log
+---
+entries:
+- field: statement
+  unstated: No node holds the instruction on the two time axes and the history tools.
+  decided: Every chat prompt version tells the assistant to keep validity apart from transaction time and to answer dates through the histories.
+  why: Each later version composes the v1 body, so the instruction reaches every version.
+---
 
 === rules/chat/chat-prompt-search-is-lexical-and
 ---
@@ -4477,6 +4638,27 @@ constrains:
 
 None.
 
+=== rules/chat/chat-prompt-v4-cites-ingested-document
+---
+type: invariant
+statement: The v4 chat prompt tells the assistant to name the raw information identity of the ingested document to the owner after a directed ingestion.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-cites-ingested-document.log
+---
+entries:
+- field: statement
+  unstated: Only the v1 citation rule exists, and v4 requires naming the ingested document.
+  decided: The v4 prompt tells the assistant to name the raw information identity after a directed ingestion.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
+
 === rules/chat/chat-prompt-v4-closed-values
 ---
 type: invariant
@@ -4500,6 +4682,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/chat-prompt-v4-names-trigger-phrases
+---
+type: invariant
+statement: The v4 chat prompt names "crie", "registre", "linke" and "ingerir esta informacao" as typical phrases of an explicit request to record knowledge.
+constrains:
+- domain/chat/chat-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/chat-prompt-v4-names-trigger-phrases.log
+---
+entries:
+- field: statement
+  unstated: The gate for writing is held, the phrases the prompt gives as its typical signals are not.
+  decided: The v4 prompt names four phrases as typical signals of an explicit request to record.
+  why: The prompt calls them typical, so the rule states them as examples and adds no new gate.
+---
 
 === rules/chat/chat-prompt-v4-one-ingestion-per-command
 ---
@@ -4791,6 +4994,48 @@ constrains:
 
 None.
 
+=== rules/chat/distilled-title-shape
+---
+type: invariant
+statement: The title prompt asks for a single line with no quotation marks, no "Titulo:" prefix, no final full stop and no emoji.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/distilled-title-shape.log
+---
+entries:
+- field: statement
+  unstated: No node holds what a distilled title may contain beyond its length.
+  decided: The title prompt asks for a single line with no quotation marks, no prefix, no final full stop and no emoji.
+  why: The prompt is the only place the shape is told to the model, and the code does not enforce it.
+---
+
+=== rules/chat/distilled-title-token-ceiling
+---
+type: invariant
+statement: A title distillation asks the utility model for at most 64 tokens of output.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/distilled-title-token-ceiling.log
+---
+entries:
+- field: statement
+  unstated: No node holds an output ceiling for the title call.
+  decided: A title distillation asks the utility model for at most 64 tokens.
+  why: The specification already records the extraction call's output ceiling as a rule, so this call's is a fact of the same kind.
+---
+
 === rules/chat/graph-delta-absent-for-catalog-history-provenance
 ---
 type: invariant
@@ -4882,6 +5127,28 @@ constrains:
 
 None.
 
+=== rules/chat/graph-delta-failure-keeps-stream
+---
+type: invariant
+statement: A failure to build a graph delta leaves the tool result streamed without a delta and the turn going on.
+constrains:
+- domain/chat/turn
+- domain/chat/graph-delta
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-failure-keeps-stream.log
+---
+entries:
+- field: statement
+  unstated: No node holds what the owner sees when a graph delta cannot be built.
+  decided: A failure to build a graph delta leaves the tool result streamed without a delta and the turn going on.
+  why: The route logs the failure and returns no delta, as recording failures leave the stream unchanged.
+---
+
 === rules/chat/graph-delta-follows-tool-result
 ---
 type: invariant
@@ -4946,6 +5213,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/graph-delta-search-lists-node-once
+---
+type: invariant
+statement: A search's graph delta lists a node once, at its first position in search order.
+constrains:
+- domain/chat/graph-delta
+---
+
+## Description
+
+None.
+
+=== rules/chat/graph-delta-search-lists-node-once.log
+---
+entries:
+- field: statement
+  unstated: The content rule says only that a search delta lists the nodes search found in search order.
+  decided: A search delta lists a node once, at its first position in search order.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
 
 === rules/chat/graph-delta-unreadable-result
 ---
@@ -5128,7 +5416,7 @@ None.
 === rules/chat/model-context-owner-time
 ---
 type: invariant
-statement: The assistant is given the owner's current date and time in the owner's time zone, as an ISO-8601 time with its offset, with every turn.
+statement: The assistant is given the owner's current date and time in the owner's time zone, as an ISO-8601 time with its offset followed by the zone's identifier in parentheses, with every turn.
 constrains:
 - domain/chat/turn
 ---
@@ -5148,6 +5436,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/model-context-owner-time.log
+---
+entries:
+- field: statement
+  unstated: The node did not say the zone identifier follows the time.
+  decided: The statement adds the zone identifier in parentheses.
+  why: The statement sent to the model carries it.
+---
 
 === rules/chat/model-context-rolling-summary
 ---
@@ -5306,7 +5603,7 @@ None.
 === rules/chat/rolling-summary-overlap
 ---
 type: invariant
-statement: The older messages a refold reads are at most the configured overlap of messages just before the recent window, starting at an owner-written message.
+statement: The older messages a refold reads are at most the configured overlap of messages, 40 where none is configured, just before the recent window, starting at an owner-written message.
 constrains:
 - domain/chat/conversation
 - domain/chat/message
@@ -5315,6 +5612,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/rolling-summary-overlap.log
+---
+entries:
+- field: statement
+  unstated: The node gave no overlap where none is configured.
+  decided: The statement adds 40 where none is configured.
+  why: Sibling chat rules state their defaults, and the environment schema defaults it to 40.
+---
 
 === rules/chat/rolling-summary-refresh
 ---
@@ -5329,6 +5635,27 @@ consistency: eventual
 ## Description
 
 None.
+
+=== rules/chat/rolling-summary-token-ceiling
+---
+type: invariant
+statement: A rolling-summary refold asks the utility model for at most 600 tokens of output.
+constrains:
+- domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/chat/rolling-summary-token-ceiling.log
+---
+entries:
+- field: statement
+  unstated: No node holds an output ceiling for the rolling-summary call.
+  decided: A rolling-summary refold asks the utility model for at most 600 tokens.
+  why: The specification already records the extraction call's output ceiling as a rule, so this call's is a fact of the same kind.
+---
 
 === rules/chat/send-message-check-order
 ---
@@ -5368,6 +5695,48 @@ constrains:
 
 None.
 
+=== rules/chat/summary-prompt-v2-empty-slice
+---
+type: invariant
+statement: The v2 summary prompt shows an empty slice of newer messages as "(nenhuma)".
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/summary-prompt-v2-empty-slice.log
+---
+entries:
+- field: statement
+  unstated: No node holds the text the v2 summary prompt shows for an empty slice of newer messages.
+  decided: The v2 summary prompt shows an empty slice as "(nenhuma)".
+  why: The code emits it, as it emits "(vazio)" for a missing previous summary, which has a node.
+---
+
+=== rules/chat/summary-prompt-v2-marks-open-points
+---
+type: invariant
+statement: 'The v2 summary prompt has the synthesizer mark each open point as "pendente: ...".'
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/summary-prompt-v2-marks-open-points.log
+---
+entries:
+- field: statement
+  unstated: No node holds the convention that the summary marks open points.
+  decided: 'The v2 summary prompt has the synthesizer mark each open point as "pendente: ...".'
+  why: The stored summary the owner reads carries the marker, so it is behavior and not wording.
+---
+
 === rules/chat/summary-prompt-v2-persona
 ---
 type: invariant
@@ -5379,6 +5748,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/summary-prompt-v2-tool-arguments-bounded
+---
+type: invariant
+statement: The v2 summary prompt shows a tool call's arguments cut to 200 characters and followed by "...<truncated>" where they are longer.
+constrains:
+- domain/chat/summary-prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/chat/summary-prompt-v2-tool-arguments-bounded.log
+---
+entries:
+- field: statement
+  unstated: The material shows the code cutting a tool call's arguments for the summariser and no node holding the cut.
+  decided: The v2 summary prompt shows tool arguments cut to 200 characters with a "...<truncated>" marker.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
 
 === rules/chat/summary-prompt-version-known
 ---
@@ -5433,6 +5823,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/tool-failure-answers-assistant
+---
+type: invariant
+statement: A failed tool call hands the assistant VALIDATION_INVALID_FORMAT ("unknown tool name") for a tool outside its toolset, SYSTEM_SERVICE_UNAVAILABLE ("tool timeout") for a timeout and SYSTEM_INTERNAL_ERROR with the thrown message for a throw.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/tool-failure-answers-assistant.log
+---
+entries:
+- field: statement
+  unstated: The continuation rule says a failure is handed to the assistant and not which code and message.
+  decided: The assistant receives three fixed failure answers, one per cause.
+  why: The same text reaches the owner in the tool result event, so it is observable.
+---
 
 === rules/chat/tool-failure-continues-turn
 ---
@@ -5638,6 +6049,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/chat/turn-model-call-token-ceiling
+---
+type: invariant
+statement: Each model call of a turn asks the model for at most 4096 tokens of output.
+constrains:
+- domain/chat/turn
+---
+
+## Description
+
+None.
+
+=== rules/chat/turn-model-call-token-ceiling.log
+---
+entries:
+- field: statement
+  unstated: No node holds the output ceiling of a chat turn's model call.
+  decided: Each model call of a turn asks the model for at most 4096 tokens.
+  why: It decides when an answer is cut and the turn ends as max-tokens, so it is observable.
+---
 
 === rules/chat/turn-model-default
 ---
@@ -6616,6 +7048,28 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/chunker-lines-end-at-newline
+---
+type: invariant
+statement: A chunker line ends at a newline character, and a blank line is a line with no characters, so a line holding only spaces or a carriage return is not blank.
+constrains:
+- domain/knowledge-base/raw-information
+- domain/knowledge-base/source-type
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/chunker-lines-end-at-newline.log
+---
+entries:
+- field: statement
+  unstated: No node says what a line and a blank line are for the chunker.
+  decided: A line ends at a newline and a blank line has no characters.
+  why: It decides where an email header ends, and a CRLF email never closes its header block.
+---
 
 === rules/knowledge-base/chunking-deterministic
 ---
@@ -7681,6 +8135,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/directed-link-report-reference
+---
+type: invariant
+statement: A directed link item's report entry carries as its reference the link's source reference, its link type and its target reference, joined by "->".
+constrains:
+- domain/knowledge-base/directed-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/directed-link-report-reference.log
+---
+entries:
+- field: statement
+  unstated: The report entry's reference is held only as a string.
+  decided: A link entry's reference is source reference, link type and target reference joined by "->".
+  why: The chat graph delta parses this form, so a change to it would silently drop links.
+---
+
 === rules/knowledge-base/directed-pinned-node
 ---
 type: invariant
@@ -7950,6 +8425,27 @@ entries:
   unstated: The material does not say how this rule holds across the separate records it changes.
   decided: eventual
   why: The records it changes are separate aggregates, and no reader in the material depends on seeing them change together.
+---
+
+=== rules/knowledge-base/document-ingestion-records-no-storage-reference
+---
+type: invariant
+statement: A document ingestion records its raw information with no storage reference and with the caller's metadata, or empty metadata where the caller gives none.
+constrains:
+- domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/document-ingestion-records-no-storage-reference.log
+---
+entries:
+- field: statement
+  unstated: Neither the ingest-document answer nor a rule says what storage reference and metadata a document ingestion records.
+  decided: A document ingestion records no storage reference and the caller's metadata or none.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
 ---
 
 === rules/knowledge-base/effective-status
@@ -8313,6 +8809,27 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-chunk-turn-limit
+---
+type: invariant
+statement: An extraction counts a chunk as read, and goes on with the run, once the model has taken 64 turns on it.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-chunk-turn-limit.log
+---
+entries:
+- field: statement
+  unstated: No node holds the number of model turns after which a chunk counts as read.
+  decided: A chunk counts as read once the model has taken 64 turns on it.
+  why: The code closes it as completed and goes on, so the figure and the outcome are the business behavior.
+---
+
 === rules/knowledge-base/extraction-closes-its-run
 ---
 type: invariant
@@ -8403,6 +8920,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/extraction-malformed-arguments-refused
+---
+type: invariant
+statement: An extraction hands back to the model its proposal call whose arguments do not parse, refused with VALIDATION_INVALID_FORMAT and the message "Input failed Zod parse.".
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-malformed-arguments-refused.log
+---
+entries:
+- field: statement
+  unstated: The contract holds the MCP wording for malformed arguments, not the extraction loop's.
+  decided: The loop hands back VALIDATION_INVALID_FORMAT with "Input failed Zod parse.".
+  why: The loop is a different path from MCP, and the contract's log only retired the wording for MCP.
+---
 
 === rules/knowledge-base/extraction-never-invents-a-date
 ---
@@ -8524,6 +9062,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-reschedule-is-succession
+---
+type: invariant
+statement: Under prompt version v2 and later, an extraction tells the model that rescheduling an event is a succession of its event_date.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-reschedule-is-succession.log
+---
+entries:
+- field: statement
+  unstated: The extraction date rules do not say how a rescheduled event is hinted.
+  decided: From v2 on, an extraction tells the model a rescheduling is a succession of event_date.
+  why: Prompt versions v3 and v4 compose v2, so the instruction holds from v2 on.
+---
+
 === rules/knowledge-base/extraction-stated-basis-needs-written-start
 ---
 type: invariant
@@ -8556,6 +9116,48 @@ entries:
   unstated: The material does not say whether the output ceiling of an extraction turn is a fact of the business or a setting of the implementation.
   decided: It is recorded as a rule of extraction, like the default extraction model.
   why: The owner holds the code as the truth, and all four prompt versions pass the same ceiling to every model call.
+---
+
+=== rules/knowledge-base/extraction-turn-without-proposals-ends-chunk
+---
+type: invariant
+statement: An extraction counts a chunk as read once a model turn proposes nothing, and resumes the chunk after a paused turn.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-turn-without-proposals-ends-chunk.log
+---
+entries:
+- field: statement
+  unstated: No node says which model turns end the reading of a chunk.
+  decided: A turn that proposes nothing ends the chunk, and a paused turn resumes it.
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
+---
+
+=== rules/knowledge-base/extraction-unknown-tool-refused
+---
+type: invariant
+statement: An extraction hands back to the model its call to a tool outside the four proposals, refused with VALIDATION_INVALID_FORMAT and the message "Unknown tool '<name>'.".
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-unknown-tool-refused.log
+---
+entries:
+- field: statement
+  unstated: No node holds what the model is told for a tool outside the four proposals.
+  decided: The call is handed back refused, with VALIDATION_INVALID_FORMAT and "Unknown tool '<name>'.".
+  why: The owner decided the source's behavior is the truth, and the judge read it in the code.
 ---
 
 === rules/knowledge-base/fragment-chunks-exist
@@ -10077,6 +10679,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/omitted-change-hint-is-none
+---
+type: invariant
+statement: A link proposal that states no change hint carries the change hint none.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/change-hint
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/omitted-change-hint-is-none.log
+---
+entries:
+- field: statement
+  unstated: The re-affirmation rule speaks of hint none and no node says a missing hint is none.
+  decided: A link proposal stating no change hint carries none.
+  why: The judge read the default in the link proposal schema, and the attribute schema was not read.
+---
+
 === rules/knowledge-base/one-canonical-alias
 ---
 type: invariant
@@ -10829,6 +11453,28 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/search-excerpt-is-chunk-excerpt
+---
+type: invariant
+statement: A search item's chunk excerpt is the part of the cited raw chunk's text that starts at the chunk's start offset in its source and is as long as the chunk.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/raw-chunk
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/search-excerpt-is-chunk-excerpt.log
+---
+entries:
+- field: statement
+  unstated: The excerpt rule is scoped to graph reads and search is not a graph read.
+  decided: A search item's excerpt is cut from the chunk's own text at its start offset, as long as the chunk.
+  why: The search SQL applies the same cut in four queries.
+---
+
 === rules/knowledge-base/search-excludes-compliance-deleted-sources
 ---
 type: policy
@@ -10854,6 +11500,28 @@ entries:
   unstated: The first increment's material showed search surfacing an accepted fragment whose raw information has a compliance deletion, while the documentation says deleted content never recirculates and that compliance deletion marks the fragments deleted; the two decide differently for an accepted fragment of a compliance-deleted source.
   decided: Search shows no information fragment whose raw information was deleted for compliance, as an item or as support, replacing the node that said search keeps such fragments.
   why: The documentation states the business's intent for deleted sources, and the first material only described what the code does.
+---
+
+=== rules/knowledge-base/search-layer-candidate-cap
+---
+type: invariant
+statement: A search keeps at most 200 candidates from each layer before ranking, and its total counts the candidates kept.
+constrains:
+- domain/knowledge-base/search-item
+- domain/knowledge-base/page
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/search-layer-candidate-cap.log
+---
+entries:
+- field: statement
+  unstated: No node holds the number of candidates each search layer contributes.
+  decided: Each layer keeps at most 200 candidates before ranking, and the total counts those kept.
+  why: The code applies the cap before the count, so the total is bounded by it.
 ---
 
 === rules/knowledge-base/search-layer-outside-set-refused

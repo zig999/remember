@@ -16,4 +16,8 @@ entries:
   unstated: A judgment shows search and the accepted-fragment listing refusing a blank or long query, a depth or a page bound with VALIDATION_INVALID_FORMAT, and six reads accepting an undefined parameter over REST.
   decided: Those refusals answer VALIDATION_INVALID_FORMAT, and the six reads refuse an undefined parameter over MCP only.
   why: The owner decided the source's behavior is the truth, and the global handler maps every schema failure to that code.
+- field: answers
+  unstated: The search operation listed no refusal for an undefined parameter.
+  decided: It adds HTTP 422 with VALIDATION_INVALID_FORMAT for an undefined parameter.
+  why: The search schema is strict and serves both transports.
 ---

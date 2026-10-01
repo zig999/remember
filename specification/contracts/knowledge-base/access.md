@@ -24,9 +24,13 @@ answers:
     answer: HTTP 404, error code RESOURCE_NOT_FOUND with the framework's message
   - when: The request fails the validation of the operation it names.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`, each path joined by "."
+  - when: A route schema of the framework rejects the request.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with the framework's message and `details` the framework's own list of validation failures
+  - when: The framework refuses the request with status 422.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with the framework's message
   - when: The framework refuses the request with status 401, 403 or 409.
     answer: that status, with error code AUTH_UNAUTHORIZED, AUTH_FORBIDDEN or RESOURCE_CONFLICT respectively and the framework's message
-  - when: The framework refuses the request with another status below 500.
+  - when: The framework refuses the request with a status below 500 other than 401, 403, 409 and 422.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and the framework's message
   - when: The framework fails the request with status 503.
     answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "Internal server error."
@@ -37,7 +41,7 @@ answers:
   - when: The request fails for any other cause.
     answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause
 - operation: read-health
-  accepted: the health report `{ ok, service, database, checked_at }` with `service` "remember-bff", `database` "ok" or "unreachable", `ok` true exactly when the store answered, and `checked_at` an ISO-8601 UTC time; the same report over REST and as the `health` tool
+  accepted: the health report `{ ok, service, database, checked_at }` with `service` "remember-bff", `database` "ok" or "unreachable", `ok` true exactly when the store answered, and `checked_at` an ISO-8601 UTC time; the same report over REST, with HTTP 200 when `ok` is true and HTTP 503 when it is false, and as the `health` tool
 ---
 
 ## Description

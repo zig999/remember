@@ -43,7 +43,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: read-llm-run
-  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed'
+  accepted: '`{ ok: true, result }` carrying the run''s identity, model, prompt version, start and finish times, status, attempts, raw information, idempotency key and summary, with its affected nodes, each with its identity, canonical name and node type, when it is completed and they can be derived'
   refusals:
   - &id003
     when: The named LLM run is not a well-formed identifier.
@@ -195,9 +195,9 @@ answers:
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
   - rule: rules/knowledge-base/content-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: error code VALIDATION_INVALID_FORMAT with the message "ingest_document arguments failed validation." listing each failing field with its path and message
   - when: The request names no source type of the closed set.
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: error code VALIDATION_INVALID_FORMAT with the message "ingest_document arguments failed validation." listing each failing field with its path and message
   - rule: rules/knowledge-base/extraction-fails-on-repeated-system-errors
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - rule: rules/knowledge-base/prompt-version-known
@@ -209,7 +209,7 @@ answers:
   - when: The extraction fails for a cause no other refusal names.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run, reported completed even where closing it failed, with its affected nodes, an empty list where they cannot be read, one report entry per item with its reference, kind and status, a link''s reference being its source reference, its link type and its target reference joined by "->", and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
   refusals:
   - rule: rules/knowledge-base/directed-requires-fragment-and-node
     answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'

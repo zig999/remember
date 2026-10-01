@@ -24,4 +24,8 @@ entries:
   unstated: A judgment shows a key set that cannot be fetched answered as an invalid token, and a framework 503 carrying the message Internal server error.
   decided: A key set that cannot be fetched answers AUTH_TOKEN_INVALID, and a framework 503 answers that message.
   why: The owner decided the source's behavior is the truth, and it answers those two that way.
+- field: answers
+  unstated: The contract answered every validation failure with a bare list and gave no health status or framework 422.
+  decided: It adds the framework schema refusal, the framework 422 and the health 200 and 503.
+  why: The error handler forwards the framework's message and list, maps 422 to VALIDATION_INVALID_FORMAT and the route sends 503 when not ok.
 ---

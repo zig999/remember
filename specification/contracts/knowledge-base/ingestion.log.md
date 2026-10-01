@@ -60,4 +60,8 @@ entries:
   unstated: A judgment of the source shows a proposal refused for its shape over MCP with the message "MCP tool args failed Zod parse." and not the "Input failed Zod parse." the contract held.
   decided: Over MCP the message is "MCP tool args failed Zod parse." for the four proposals.
   why: The owner decided the source's behavior is the truth, and callers read the message the source sends.
+- field: answers
+  unstated: The contract gave no message for ingest-document validation, no fallback when affected nodes or the run close fail, and no link reference form.
+  decided: It adds the ingest-document message, the empty list, the completed report and the reference form.
+  why: The code returns the run completed and the list empty on those failures and builds the reference as stated.
 ---

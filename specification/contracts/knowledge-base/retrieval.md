@@ -27,6 +27,8 @@ answers:
     answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
   - rule: rules/knowledge-base/search-query-not-blank
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
+  - when: The request names a parameter the search does not define.
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-must-parse
