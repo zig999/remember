@@ -1,25 +1,22 @@
 ---
-title: Lint-green backend tree
-summary: The fixes to the six remaining error-severity findings in non-test source that let npm run lint exit 0 over the backend tree.
-rationale: The owner's lint-green decision states the fixes and the exit-0 outcome. I cut them apart from the configuration tasks because they change backend source files, not eslint.config.js, which is a different seam. The task depends on the tasks whose severities decide whether lint exits 0 over the tree.
+title: Remaining non-test lint findings fixed
+summary: The fixes to the six remaining error-severity findings in non-test source, stated as properties of the source rather than as rule output.
+rationale: The owner's lint-green decision states the fixes, and the owner's re-cut decision places them before the rule table. I cut them apart from the rule table because they change backend source files, not eslint.config.js, which is a different seam. The criteria describe the source itself, so they can be judged before any rule is configured.
 sources:
   - intake/lint-green.md
-objective: npm run lint exits 0 over the backend tree, with the remaining error-severity findings in non-test source fixed rather than suppressed.
+  - intake/replan-lint-order.md
+objective: Non-test source under backend/src carries none of the declarations that the proposal's error-severity rules would refuse.
 criteria:
-  - npm run lint inside backend/ exits 0 over the backend tree.
-  - explicit-module-boundary-types reports no finding in non-test source under backend/src.
-  - no-unused-vars reports no error-severity finding in non-test source under backend/src.
-  - prefer-const reports no finding in non-test source under backend/src.
-  - None of the fixed findings is cleared by an eslint-disable comment.
-  - None of the fixed findings is cleared by a change to eslint.config.js.
+  - Every function exported from a non-test module under backend/src declares its return type.
+  - Every parameter of a function exported from a non-test module under backend/src declares its type.
+  - No import, variable or parameter in non-test source under backend/src is declared and never used, apart from a parameter whose name begins with an underscore.
+  - No let declaration in non-test source under backend/src is left without a reassignment.
+  - None of the fixes adds an eslint-disable comment.
   - npm run typecheck inside backend/ exits 0 after the fixes.
-depends_on:
-  - task/backend-build-steps/lint-rule-table
-  - task/backend-build-steps/test-file-relaxation
-  - task/backend-build-steps/service-import-boundary
+  - npm run lint inside backend/ exits 0 over the backend tree after the fixes.
 ---
 ## What it is
-The four explicit-module-boundary-types findings, the one no-unused-vars finding and the one prefer-const finding in non-test source, each fixed in the file that carries it.
+The four exported declarations missing explicit types, the one unused binding and the one never-reassigned let in non-test source, each fixed in the file that carries it.
 
 ## Notes
 The counts are those of the probe shown to the owner; the configuration as delivered is what decides the findings.
