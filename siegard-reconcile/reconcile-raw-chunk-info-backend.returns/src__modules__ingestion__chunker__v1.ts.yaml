@@ -1,0 +1,108 @@
+findings:
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 11-18, the algorithm comment at the head of the file, and lines 353-363, the doc comment of splitBySentences
+    evidence: |-
+      //   2. For each block, try to keep it as one chunk if its size is at most
+      //      `CHUNK_HARD_MAX` code points. If the block exceeds `CHUNK_HARD_MAX`, fall
+      //      back to sentence-level split via `Intl.Segmenter('pt', {granularity:
+      //      'sentence'})` (BR-07).
+    cost: >-
+      The oversize-block rule is written in prose a second time, with its own wording and a BR-07 citation to a document that is not a node. If the rule changes, `--check` never reaches this comment, so a reader will see two statements of it. The behavior itself is already in the code (`blockSize <= CHUNK_HARD_MAX`, `splitBySentences`, `tentativeSize > CHUNK_TARGET[1]`).
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node and by the code in this file.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 20-24, the offset paragraph of the header comment
+    evidence: |-
+      // All offsets are 0-based, semi-open, counted in Unicode code points of the
+      // ORIGINAL content (BR-05). We use `[...content]` to iterate code points and a
+    cost: >-
+      The code-point counting rule for offsets is restated in prose with a BR-05 citation, so there are two statements of one fact. The code holds it (`Array.from(content)` and `buildChunk`'s `offset_start`/`offset_end`).
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/chunk-offsets-count-code-points
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 121-126, the comment inside the `chunks.length === 0 && totalCodePoints > 0` branch
+    evidence: |-
+      // Edge case: input was non-empty but consisted entirely of hard-boundary
+      // separators (e.g. a file made of nothing but form-feed characters). We
+      // still emit one chunk covering the raw content to preserve the audit
+    cost: >-
+      The single-chunk fallback for content whose blocks hold nothing is restated in prose. The branch `chunks.push(buildChunk(codePoints, 0, totalCodePoints, 0))` already holds it. The comment also adds a rationale ("the LLM will likely reject the document") that no node states.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/contentless-blocks-single-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 139-158, the doc comment of splitByHardBoundaries
+    evidence: |-
+      * apply to `sourceType` (BR-06). Hard boundaries are **mandatory closures**:
+       * the chunker never produces a chunk that crosses one.
+       * - `pdf`:          form-feed (`\f`, U+000C). PDF extractors typically insert
+    cost: >-
+      The per-source-type boundary policy (pdf form feed, email header and quotation, chat and transcript speaker turns, single block for the rest) is written in prose a second time. The prose cites BR-06 rather than the nodes that hold each boundary. If a boundary changes, this comment will still describe the old policy. The code holds the same policy in the `switch (sourceType)`, `splitOnCharBoundary`, `splitEmail` and `splitTurns`.
+    kind: restates
+    correction: >-
+      Remove the comment. The same applies to the prose at lines 213-216, which restates the email rules.
+    node: rules/knowledge-base/chunks-never-cross-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 229 and 294-306, `isBlank` in splitEmail and the line scan in scanLines
+    evidence: |-
+      const isBlank = line.endExclusive === line.start;
+      ...
+      if (codePoints[i] === "\n") {
+    cost: >-
+      The code decides that a line ends only at `\n` and that a "blank line" is one with no characters at all. A line holding only spaces, tabs or a `\r`, as in a CRLF email, is not blank. A CRLF email therefore never closes its header block and becomes one block. The email-header-block node says "first blank line" without defining either term, so this choice lives only in the code.
+    kind: unstated
+    correction: >-
+      Give the node a statement of what ends a line and what makes a line blank, or confirm the code's definition as the business's.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 261-266, the doc comment of splitTurns, and lines 341-350, the doc comment of SPEAKER_LINE_REGEX
+    evidence: |-
+      * Split chat / transcript: a new "speaker line" opens a new block. A speaker
+       * line is one whose trimmed start matches `[A-Za-z0-9_]+:` followed by white
+      ...
+       *   - `Name:` followed by white space (Name = ASCII identifier characters
+       *      plus single embedded spaces — we keep it strict to avoid false
+    cost: >-
+      The speaker-line definition is written in prose twice, and it disagrees with the regex it sits above. The prose says ASCII identifier characters, while the regex accepts `À-ÿ`. A reader who trusts the comment will get the wrong rule. The code holds the fact (`SPEAKER_LINE_REGEX`, `isSpeakerLine`, `splitTurns`).
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/speaker-line
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      line 351, the SPEAKER_LINE_REGEX constant
+    evidence: |-
+      const SPEAKER_LINE_REGEX = /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/;
+      The node states: "an optional time stamp written [h:mm], [hh:mm], (hh:mm) or (hh:mm:ss) followed by whitespace, starts with one or two words of letters, digits or underscores"
+    cost: >-
+      The regex and the node name different sets of lines as speaker lines, so chat and transcript content is cut into different blocks than the node dictates. The regex accepts time stamps the node does not list: `[hh:mm:ss]`, `(h:mm)` and mismatched brackets such as `[12:00)`. For "letters" it accepts only `A-Za-z` and `À-ÿ`. That range includes × and ÷ and leaves out letters beyond Latin-1. Whichever is right, nobody can tell which was decided.
+    kind: contradicts
+    correction: >-
+      Make the pattern accept exactly the forms and the letters the node names, or have the node restate the forms the code actually accepts. The choice belongs to the specification.
+    node: rules/knowledge-base/speaker-line
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkInput interface (lines 47-53), which declares chunk_index, text, offset_start, offset_end and chunking_version, and buildChunk (lines 417-430), which fills them from the code-point offsets, the 0-based index and the content slice
+    evidence: |-
+      export interface RawChunkInput {
+        readonly chunk_index: number;
+        readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly chunking_version: typeof CHUNKING_VERSION;
+      }
+candidates_opened: []
+looked_past: >-
+  The interface names `text`, `offset_start` and `offset_end` where the node names `excerpt`, `start_offset` and `end_offset`, and the values of CHUNK_HARD_MAX, CHUNK_TARGET and CHUNKING_VERSION sit in ./config.js, outside this file set. I read the naming as the chunker's own output shape, mapped to the entity elsewhere. I did not check the constants against the 4000, 2000 and v1 the nodes state.

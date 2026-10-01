@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, lines 79-82 (happy-path steps 1 and 2)
+    evidence: >-
+      * 2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+    cost: >-
+      The run-key formula is written a second time in prose that no running system emits. If the rule changes, this comment goes on stating the old formula, and a reader trusts it over the node. The code that holds the fact is composeIdempotencyKey in src/modules/ingestion/hash.ts, which feeds the four operands into one SHA-256 in that order and calls digest("hex"). This file only calls it.
+    kind: restates
+    correction: >-
+      Remove the formula from the docstring. The rule stays in the node, and the code stays in composeIdempotencyKey.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, line 80, and the comments at lines 102 and 122-124
+    evidence: >-
+      * 1. Compute `content_hash = sha256(content)`.
+      // BR-01 — content hash is the idempotency anchor.
+      // only — `original_input` never affects idempotency.
+    cost: >-
+      The way the content hash is derived, and the claim that only `content` feeds it, are stated again in prose. Code holds both: `const contentHash = sha256Hex(input.content);` here, and the `createHash("sha256").update(content, "utf8").digest("hex")` it calls in src/modules/ingestion/hash.ts. A change to the rule would leave these comments describing the old hash.
+    kind: restates
+    correction: >-
+      Remove the three comment lines. Code holds the digest, and the node holds what it is.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, lines 82 and 87-93, and the docstring above noopExisting, lines 196-200
+    evidence: >-
+      * 3. INSERT raw_information; on UNIQUE violation (content_hash), branch to the no-op path.
+      *   - Return 200 with `outcome = "noop_existing"` and empty `chunks` array.
+      * The no-op idempotent branch (BR-09). Returns the existing identifiers; the
+    cost: >-
+      That held content records nothing new is restated in prose beside the code that implements it. The code is the `isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)` branch, which returns before chunking and before insertLlmRun. A reader looking for where the rule lives finds a docstring in the service as well as the node.
+    kind: restates
+    correction: >-
+      Remove the narration of the no-op branch from both docstrings. The branch is held by the early return in the catch block and by noopExisting.
+    node: rules/knowledge-base/held-content-records-nothing
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the chunks mapping in the 201 body, lines 184-189
+    evidence: >-
+      chunks: chunkRows.map((c) => ({
+        id: c.id,
+        chunk_index: c.chunk_index,
+        offset_start: c.offset_start,
+        offset_end: c.offset_end,
+      })),
+    cost: >-
+      The node names the chunk's offset attribute `start_offset`. This file emits `offset_start` as the key of the response it builds. The src/modules/ingestion DTOs, the repository SQL and migrations/0001_init.sql spell it the same way, so every consumer of this answer sees a different name from the node. A change to the element, made by searching the node's name, does not reach these files.
+    kind: contradicts
+    correction: >-
+      Either the code takes the node's spelling (`start_offset`) in the response and wherever the column and DTO name it, or the specification gets an explicit decision recording `offset_start` as the name. This file alone cannot close it, because the shape is declared in the DTO and repository files.
+    node: domain/knowledge-base/raw-chunk
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere. This file does not declare the chunk's shape. It passes along chunk rows returned by the repository and builds a response literal from four of their fields.
+    evidence: >-
+      const chunkInputs = chunkV1(input.content, input.source_type);
+      const chunkRows = await insertRawChunks(client, rawInformationRow.id, chunkInputs);
+      chunks: chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere. This file does not declare the raw information's shape. It hands the request's fields to insertRawInformation, and the shape lives in the repository and DTO files.
+    evidence: >-
+      rawInformationRow = await insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null, });
+looked_past: >-
+  The file's other comments (the BR-nn references, the layering block, the notes on transaction ownership), the wording of the not-found message in ResourceNotFoundError, and whether a unique violation on the first INSERT leaves the transaction usable for the no-op path's reads are code-quality or prose-route judgments, not this one.
+candidates_opened:
+  - rules/knowledge-base/idempotency-key
+  - rules/knowledge-base/content-hash-is-sha256
+  - rules/knowledge-base/held-content-records-nothing

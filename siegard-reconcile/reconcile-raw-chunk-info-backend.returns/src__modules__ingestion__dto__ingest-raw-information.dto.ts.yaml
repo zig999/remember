@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      The JSDoc above IngestRawInformationRequestSchema, the `content` bullet (lines 16-18).
+    evidence: >-
+      " * - `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+       *    in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+       *    coarser pre-filter; this Zod check is the precise contract from A5."
+    cost: >-
+      The prose states the content length bound a second time, and it states the unit differently from the node. It says "code points". The node counts UTF-16 code units, and `.max(10 * 1024 * 1024, ...)` on a Zod string counts UTF-16 code units too. A reader who trusts the comment will take the bound as a code-point count. The comment also names "A5" as the contract's authority, not the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The code at lines 27-30 already holds the bound (`.min(1, "content must not be empty")` and `.max(10 * 1024 * 1024, "content must not exceed 10 MiB")`), and the node holds it in its own right.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      The JSDoc on the `original_input` field (lines 35-39).
+    evidence: >-
+      "Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
+       BR-34). Omitted (or explicit `null`) on every non-chat path. Never
+       factored into `content_hash`. Capped at 10 MiB to match `content`."
+    cost: >-
+      The prose repeats the original-input cap and the rule that it is not hashed, and cites TC-01 and BR-34 as authority. A later change to the node's limit would not reach this comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The cap is held in code at lines 40-44 (`.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")`). The comment's "never factored into content_hash" claim is a separate fact. Whether it is held is this file's neighbours' matter, since this file does not compute the hash.
+    node: rules/knowledge-base/original-input-length
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ChunkRefSchema (lines 56-61), which declares part of the chunk's shape: its identity, index and offsets. It does not declare excerpt, locator, chunking_version or status.
+    evidence: >-
+      "export const ChunkRefSchema = z.object({
+        id: z.string().uuid(),
+        chunk_index: z.number().int().nonnegative(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+      });"
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestRawInformationRequestSchema (lines 25-45), which declares source_type, content, storage_ref, metadata and original_input. IngestRawInformationResponseSchema (lines 65-73) carries the raw information's identity and content_hash. The `chunk_count` it carries is a count of the composed raw chunks, and the node holds that composition as 1..*.
+    evidence: >-
+      "source_type: SourceTypeSchema,
+        content: z.string().min(1, ...).max(10 * 1024 * 1024, ...),
+        storage_ref: z.string().nullable().optional(),
+        metadata: z.record(z.string(), z.unknown()).default({}),"
+looked_past: >-
+  Two prose items are another judgment's: the `storage_ref` JSDoc claim "must be `null` in v1.0.0", which no code in this file enforces (the schema accepts any string), and the wire names `offset_start` and `offset_end` against the node's `start_offset` and `end_offset`, which the contract does not fix and which the other DTOs share.
+candidates_opened:
+  - rules/knowledge-base/content-length
+  - rules/knowledge-base/original-input-length

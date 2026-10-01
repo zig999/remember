@@ -1,0 +1,63 @@
+findings:
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      RawChunkResponseSchema, lines 37-46 (fields `text`, `offset_start`, `offset_end`)
+    evidence: >-
+      text: z.string(),
+      offset_start: z.number().int().nonnegative(),
+      offset_end: z.number().int().positive(),
+    cost: >-
+      The raw-chunk node names these attributes `excerpt`, `start_offset` and `end_offset`. This DTO
+      names them `text`, `offset_start` and `offset_end`. A reader who looks up `start_offset` or
+      `excerpt` in the specification will not find the names that the API response and its consumers
+      actually use. Nothing records which spelling the business decided on.
+    kind: contradicts
+    correction: >-
+      Either the DTO fields take the node's names (`excerpt`, `start_offset`, `end_offset`), or the
+      node is amended through analysis if the response names are the decided ones.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      the doc comment above ChunkLocatorSchema, line 11
+    evidence: >-
+      /** Optional readable anchor (page/line/speaker/ts) — shape per A23. */
+    cost: >-
+      The comment restates the chunk-locator node's fact: a readable anchor made of page, line,
+      speaker and ts, each of which may be absent. The code holds the same fact in this file, in
+      `ChunkLocatorSchema` with `page`, `line`, `speaker` and `ts`, all `.nullable().optional()`. The
+      comment is a second home outside behavior, and the "A23" it cites is an ADR number the
+      specification does not carry.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the node and by the schema.
+    node: domain/knowledge-base/chunk-locator
+
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkResponseSchema, lines 37-46, whose chunk_index, locator and chunking_version match the
+      node. The excerpt and offset attributes are held under different names (see the finding). The
+      node's status and superseded_at are not declared.
+    evidence: >-
+      chunk_index: z.number().int().nonnegative(),
+      text: z.string(),
+      offset_start: z.number().int().nonnegative(),
+      offset_end: z.number().int().positive(),
+      locator: ChunkLocatorSchema,
+      chunking_version: z.string(),
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationResponseSchema, lines 23-31
+    evidence: >-
+      source_type: SourceTypeSchema,
+      content: z.string(),
+      storage_ref: z.string().nullable(),
+      content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+      received_at: z.string().datetime({ offset: true }),
+      metadata: z.record(z.string(), z.unknown()),
+
+looked_past: >-
+  The header comment claims the file "Mirrors `openapi.yaml#/components/schemas/RawInformation`", which names a second authority and is another judgment's. The content_hash regex and the offset bounds touch candidate rules (content-hash-is-sha256, chunk-offsets-ordered) outside this node set, and I did not review them.
+
+candidates_opened:
+  - domain/knowledge-base/chunk-locator

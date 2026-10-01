@@ -1,0 +1,68 @@
+findings:
+  - file: 0001_init.sql
+    where: >-
+      Header comment, lines 58-60 (INVARIANTES DE APLICAÇÃO), and the comment above CREATE TABLE raw_information, lines 226-228
+    evidence: >-
+      "reject_item / compliance_delete devem gravar superseded_at = now() ao
+      marcar status = 'deleted' — caso contrário a linha continuaria presa na
+      guarda de duplicata parcial e em is_current (§5.4, §6.4)."
+      and "grava status = 'deleted' + superseded_at = now() (BR-04/BR-05; decisão 8)."
+    cost: >-
+      The tombstone rule is stated in prose inside the migration as well as in the node. Running code holds it in backend/src/modules/compliance-audit/repository/compliance-audit.repository.ts (`superseded_at  = now()` on the raw_information update). The node can move, for example by changing which chunks are marked, and this comment will not follow. The next reader then finds two statements of the rule and cannot tell which one was decided.
+    kind: restates
+    correction: >-
+      Remove the two comment passages. The compliance-audit repository already holds the behavior, and the node holds the statement.
+    node: rules/knowledge-base/compliance-deletion-tombstones
+  - file: 0001_init.sql
+    where: >-
+      Comment above CREATE TABLE raw_information, lines 226-228
+    evidence: >-
+      "compliance_delete (§11), que redige `content` preservando `content_hash`"
+    cost: >-
+      The redaction of a deleted raw information's content is described in prose in the migration. Running code holds it in compliance-audit.repository.ts (`SET content        = '[REDACTED]'`). The migration is not where that rule lives, but a reader looking at the DDL will take it as the place.
+    kind: restates
+    correction: >-
+      Remove the comment passage. The node and the compliance-audit repository hold the rule.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: 0001_init.sql
+    where: >-
+      Comment above CREATE TABLE raw_chunk, line 242
+    evidence: >-
+      "-- Offsets: 0-based, semiaberto [start, end), em CODE POINTS Unicode (§9.2/A22)."
+    cost: >-
+      The unit and interval convention of chunk offsets is restated as prose in the DDL. The DDL itself checks only `CHECK (offset_start >= 0)` and `CHECK (offset_end > offset_start)`. The counting in code points is held by backend/src/modules/ingestion/chunker/v1.ts (`const codePoints = Array.from(content);`). Someone changing the rule may edit the comment, which constrains nothing, and believe the rule moved.
+    kind: restates
+    correction: >-
+      Remove the comment. The chunker holds the code-point counting, and the node holds the statement.
+    node: rules/knowledge-base/chunk-offsets-count-code-points
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      CREATE TABLE raw_chunk (lines 243-258) and its partial GIN index raw_chunk_fts_idx (lines 262-263)
+    evidence: >-
+      chunk_index        int  NOT NULL CHECK (chunk_index >= 0),
+      "text"             text NOT NULL,
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      offset_end         int  NOT NULL,
+      locator            jsonb,
+      chunking_version   text NOT NULL DEFAULT 'v1',
+      status             node_status NOT NULL DEFAULT 'active',
+      superseded_at      timestamptz,
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      CREATE TABLE raw_information (lines 229-240). The node's `title` and `document_date` have no column of their own; they sit inside the free-form `metadata` jsonb, and `original_input` is added by 0006_original_input.sql, outside this file set.
+    evidence: >-
+      source_type   source_type NOT NULL,
+      content       text NOT NULL,
+      storage_ref   text,
+      content_hash  text NOT NULL UNIQUE
+        CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+      received_at   timestamptz NOT NULL DEFAULT now(),
+      metadata      jsonb NOT NULL DEFAULT '{}'::jsonb,
+      status        node_status NOT NULL DEFAULT 'active',
+      superseded_at timestamptz
+looked_past: >-
+  The node's attribute names `excerpt`, `start_offset` and `end_offset` are the columns "text", offset_start and offset_end here, and the node's `source-type` values (meeting-minutes, article, transcript, other) are the enum labels 'ata', 'artigo', 'transcricao', 'outro'. I treated both as naming and mapping, not as a domain fact, because each is spelled out in the source-type and raw-chunk nodes or the file's own header. Other things I saw and left to other judgments: the enums, CHECKs and tables belonging to other nodes (llm_run, information_fragment, node_alias and so on), which a pass over this file's nodes does not judge, and the absence of a CHECK limiting raw_information.status and raw_chunk.status to active or deleted (rules/knowledge-base/source-status-active-or-deleted), which the header says the application enforces.
+candidates_opened:
+  - domain/knowledge-base/chunk-locator
+  - rules/knowledge-base/default-extraction-model

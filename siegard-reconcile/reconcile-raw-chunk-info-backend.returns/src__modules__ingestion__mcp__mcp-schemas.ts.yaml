@@ -1,0 +1,42 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedNodeItemSchema, the `node_id` field's describe(...) text (lines 343-349),
+      compared with the header comment's `node_id` bullet (lines 283-288)
+    evidence: >-
+      describe text: "Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node."
+      comment: "(rejected `STRUCTURAL_INVALID` if the id does not point to an `active`
+      node)"
+    cost: >-
+      The tool description is sent to the calling model, and it names a refusal code for a pinned
+      node that is not active. The specification holds the pin and its provisos (the node exists
+      and is active) but not the refusal code. The code is therefore decided only in this text,
+      and the next reader will not find it in the specification. The file's own comment names a
+      different code (STRUCTURAL_INVALID), so the file does not say which code the handler raises.
+    kind: unstated
+    correction: >-
+      The node that holds the pin (rules/knowledge-base/directed-pinned-node) would have to state
+      what a pin naming a missing or non-active node is refused with, or the refusal would have to
+      be left out of the description. Which code is right is not settled in this file.
+    node: rules/knowledge-base/directed-pinned-node
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      Partly. The `content`, `source_type` and `metadata` fields of IngestDocumentMcpInputSchema
+      (lines 125-157) and StartAsyncIngestionMcpInputSchema (lines 89-120) declare the
+      raw-information attributes the caller supplies. They do not declare the whole element:
+      `received_at`, `content_hash`, `status` and the other attributes are not declared in this
+      file.
+    evidence: >-
+      content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, ...);
+      source_type: SourceTypeSchema.describe(...);
+      metadata: z.record(z.string(), z.unknown()).optional() — the free-form set of named
+      values the node's description states. The limit on `content` is held by
+      rules/knowledge-base/content-length, which is outside this node set.
+looked_past: >-
+  The remaining limits and rules in the file (reference length, label length, attribute value
+  length, recent-ingestions limit, the directed confidence, the idempotency key format) are held
+  by other nodes outside my set, and the `default-extraction-model` candidate does not conflict
+  with the file's unvalued "Defaults server-side"; the header comments are prose.
+candidates_opened:
+  - rules/knowledge-base/default-extraction-model

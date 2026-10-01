@@ -1,0 +1,66 @@
+findings:
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      RawChunkRow interface, lines 54-63 (the same names are emitted by toRawChunkResponse, lines 263-274)
+    evidence: >-
+      readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+    cost: >-
+      The node names these attributes excerpt, start_offset and end_offset. The shape that declares the
+      chunk in code calls them text, offset_start and offset_end, and no node records that rename. A
+      reader who looks up "offset_start" or "text" in the specification finds nothing, and a change to
+      the node's attribute names does not reach the shape that carries them.
+    kind: contradicts
+    correction: >-
+      Either the specification records the stored names as the decided ones, or the shape is brought to
+      the node's names. This is a naming choice for a person to make.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      LlmRunRow interface, line 72 (the declaration spans lines 66-76), in a file whose bound nodes are raw-chunk and raw-information
+    evidence: >-
+      readonly status: "running" | "completed" | "failed";
+    cost: >-
+      The run-status vocabulary (running, completed, failed) is declared a second time here. The
+      candidate index does not bind run-status or llm-run to this file, so a change to the enumeration
+      node does not reach this declaration, and the next reader cannot tell which one was decided.
+      The same union is repeated in other files of the tree.
+    kind: contradicts
+    correction: >-
+      The values match the node today. What is missing is a bind that claims this declaration, or a
+      single declaration that the other files import. The code cannot read the specification, so the
+      fix is the bind.
+    node: domain/knowledge-base/run-status
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkRow interface, lines 54-63, which declares the shape in part. It carries chunk_index,
+      locator and chunking_version under the node's names, but the offsets and the excerpt under
+      different names (see the finding). status and superseded_at are not declared here.
+    evidence: >-
+      readonly chunk_index: number;
+        readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly locator: ChunkLocator;
+        readonly chunking_version: string;
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationRow interface, lines 36-51, with insertRawInformation (lines 83-117) writing it.
+      It declares the node's source_type, content, storage_ref, content_hash, received_at, metadata and
+      original_input. The other attributes (title, document_date, status, superseded_at) are not
+      declared in this file.
+    evidence: >-
+      readonly source_type: SourceType;
+        readonly content: string;
+        readonly storage_ref: string | null;
+        readonly content_hash: string;
+        readonly received_at: Date;
+        readonly metadata: Record<string, unknown>;
+        readonly original_input: string | null;
+looked_past: >-
+  Comments in the file restate or state facts that no node of this set judges: original_input never entering content_hash, the DB defaults status 'running' and attempts 1, and the BR-19 transaction ownership. None of them is a finding of code, and they belong to the comment route.
+candidates_opened:
+  - domain/knowledge-base/chunk-locator
+  - rules/knowledge-base/default-extraction-model
