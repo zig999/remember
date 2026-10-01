@@ -26,9 +26,9 @@ answers:
     when: The request carries no valid owner authentication.
     answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
   - rule: rules/knowledge-base/search-query-not-blank
-    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-length
-    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-must-parse
     answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
   - rule: rules/knowledge-base/search-layer-outside-set-refused
@@ -36,15 +36,15 @@ answers:
   - rule: rules/knowledge-base/unknown-link-type-refused
     answer: HTTP 422, error code BUSINESS_UNKNOWN_LINK_TYPE
   - rule: rules/knowledge-base/expansion-depth-bounds
-    answer: HTTP 422, error code BUSINESS_INVALID_TRAVERSE_DEPTH
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - when: The as-of date is not a calendar date written as year-month-day.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - &id005
     rule: rules/knowledge-base/page-limit-bounds
-    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - &id006
     rule: rules/knowledge-base/page-offset-non-negative
-    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
 - operation: read-link-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
@@ -151,21 +151,23 @@ answers:
   accepted: 'HTTP 200 carrying `{ ok: true, result }` with the link detail: its identity, source and target knowledge nodes, link-type name and inverse name, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the link it supersedes, and its provenance entries, each with the fragment''s identity, text and confidence, the raw information, its source type and reception time, and the chunk excerpt'
   refusals:
   - *id001
-  - *id007
+  - &id099
+    when: 'A parameter is malformed or unknown: an identity that is not a well-formed identifier, a switch other than true or false, a number that is not an integer, an as-of date not written as year-month-day, a name outside 1 to 200 characters, a value outside its closed set, or, over MCP only, a parameter the operation does not define.'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message
   - when: No knowledge link is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested link
 - operation: read-attribute
   accepted: 'HTTP 200 carrying `{ ok: true, result }` with the attribute detail: its identity, knowledge node, attribute-key name, value type and value, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the attribute it supersedes, and its provenance entries as a link detail carries them'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No node attribute is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested attribute
 - operation: read-link-history
   accepted: '`{ ok: true, result }` carrying `versions`, each a link detail as read-link answers it'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No knowledge link is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested link
   - *id008
@@ -174,7 +176,7 @@ answers:
   accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No node attribute is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested attribute
   - *id008
@@ -183,7 +185,7 @@ answers:
   accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it, an empty list when the knowledge node holds none for the key'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - *id011
   - *id012
   - rule: rules/knowledge-base/attribute-key-history-requires-registered-key

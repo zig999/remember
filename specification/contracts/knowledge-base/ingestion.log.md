@@ -56,4 +56,8 @@ entries:
   unstated: The unreachable store answers unavailable and never an internal failure, while the shared proposal handler answers an internal failure for any cause it does not recognise.
   decided: The proposal's internal failure answer is stated for a cause other than an unreachable store.
   why: Stating it for an unreachable store would contradict a constraint no finding asked to change.
+- field: answers
+  unstated: A judgment of the source shows a proposal refused for its shape over MCP with the message "MCP tool args failed Zod parse." and not the "Input failed Zod parse." the contract held.
+  decided: Over MCP the message is "MCP tool args failed Zod parse." for the four proposals.
+  why: The owner decided the source's behavior is the truth, and callers read the message the source sends.
 ---

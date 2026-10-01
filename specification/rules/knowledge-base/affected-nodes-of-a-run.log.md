@@ -8,4 +8,8 @@ entries:
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- field: statement
+  unstated: A judgment shows the outcomes that admit a link or attribute proposal's nodes including created, matched an existing node and needs review.
+  decided: The outcomes are accepted, consolidated, superseded a previous assertion, disputed, created, matched an existing node and needs review.
+  why: The owner decided the source's behavior is the truth, and its allow-list holds those seven.
 ---

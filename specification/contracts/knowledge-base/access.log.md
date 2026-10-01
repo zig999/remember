@@ -20,4 +20,8 @@ entries:
   unstated: The material answers a framework refusal with a status below 500 other than 401, 403, 404, 409 and 422 with that status and SYSTEM_INTERNAL_ERROR, which the code registry otherwise maps to 500.
   decided: Such a refusal keeps its status, with SYSTEM_INTERNAL_ERROR and the framework's message.
   why: The status tells the caller the request was theirs to fix, and no domain code names those framework refusals.
+- field: answers
+  unstated: A judgment shows a key set that cannot be fetched answered as an invalid token, and a framework 503 carrying the message Internal server error.
+  decided: A key set that cannot be fetched answers AUTH_TOKEN_INVALID, and a framework 503 answers that message.
+  why: The owner decided the source's behavior is the truth, and it answers those two that way.
 ---

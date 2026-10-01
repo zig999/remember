@@ -90,7 +90,7 @@ answers:
   - *id003
   - &id004
     when: The proposal is missing a required field or holds one of the wrong shape.
-    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "Input failed Zod parse."'
+    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "MCP tool args failed Zod parse."'
   - *id002
   - &id005
     rule: rules/knowledge-base/proposal-requires-running-run

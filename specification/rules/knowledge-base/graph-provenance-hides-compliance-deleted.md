@@ -1,6 +1,6 @@
 ---
 type: policy
-statement: A graph read shows no provenance entry whose raw information was deleted for compliance.
+statement: A graph read shows a provenance entry whatever the compliance status of its raw information.
 constrains:
 - domain/knowledge-base/graph-read
 - domain/knowledge-base/provenance

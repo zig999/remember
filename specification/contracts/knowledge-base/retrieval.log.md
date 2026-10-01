@@ -12,4 +12,8 @@ entries:
   unstated: The material says a listing of accepted fragments naming an unknown query parameter is refused by strict validation, and does not say what the surface answers.
   decided: 'The refusal answers as every other malformed parameter of the surface does: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message.'
   why: The surface answers a strict-validation refusal one way, and nothing in the material gives this one a different answer.
+- field: answers
+  unstated: A judgment shows search and the accepted-fragment listing refusing a blank or long query, a depth or a page bound with VALIDATION_INVALID_FORMAT, and six reads accepting an undefined parameter over REST.
+  decided: Those refusals answer VALIDATION_INVALID_FORMAT, and the six reads refuse an undefined parameter over MCP only.
+  why: The owner decided the source's behavior is the truth, and the global handler maps every schema failure to that code.
 ---

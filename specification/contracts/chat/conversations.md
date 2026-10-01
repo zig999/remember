@@ -38,7 +38,7 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - when: '`include_archived` is neither a boolean nor "true" or "false".'
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
-  - when: The cursor does not decode to a creation time and a well-formed conversation identity.
+  - when: The cursor does not decode to a creation time and an identity written as text.
     answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with a message naming why the cursor is invalid and `details: { param: "cursor" }`'
   - *id002
   - *id003
@@ -59,8 +59,10 @@ answers:
   refusals:
   - *id001
   - *id004
-  - rule: rules/chat/conversation-update-names-a-field
+  - when: The body is empty.
     answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present" and `details: { body: "PATCH /conversations/:id" }`'
+  - rule: rules/chat/conversation-update-names-a-field
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - rule: rules/chat/conversation-title-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - when: The archiving time is neither an ISO-8601 datetime nor null.
@@ -79,7 +81,8 @@ answers:
 - operation: send-message
   accepted: 'HTTP 200 as a server-sent event stream (`text/event-stream; charset=utf-8`), each frame `event: <name>` then `data: <json>`: `llm_start { iteration }`, `text_delta { delta }`, `tool_start { tool, args_summary }`, `tool_result { tool, ok }`, `graph_delta { source_tool, nodes, links }` with each node `{ id, node_type, canonical_name, status }` and each link `{ id, source_node_id, target_node_id, link_type, is_temporal }` plus `link_type_label`, `is_in_effect`, `status` and `flags` where known, and exactly one closing `done { stop_reason, model, tokens_in, tokens_out }` or `error { code, message }`, the stop reason as `end_turn`, `max_tokens`, `stop_sequence`, `max_iterations`, `turn_timeout` or `cancelled`, tool arguments, tool results and content blocks never sent; a replay streams `llm_start { iteration: 1 }`, the recorded text as one `text_delta` when it is not empty, and `done` with the recorded stop reason, model (`""` when none) and tokens (0 when none), or, for a turn recorded as provider-error or internal-error, the `error` frame that turn closed with'
   refusals:
-  - *id001
+  - when: The chat is disabled.
+    answer: HTTP 503, error code BUSINESS_CHAT_DISABLED with message "chat surface is disabled by CHAT_ENABLED=false" and no details
   - when: The Idempotency-Key header is missing or empty.
     answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "Idempotency-Key header is required" and `details: { header: "Idempotency-Key" }`'
   - when: The Idempotency-Key header is not a well-formed identifier.

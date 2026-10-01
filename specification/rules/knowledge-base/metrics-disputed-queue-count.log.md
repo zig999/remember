@@ -4,4 +4,8 @@ entries:
   unstated: The material counts the disputed queue for the metrics by source, target and link type whatever the link type, while its queue lists one entry per dispute scope; the two differ for a dispute between links to different targets.
   decided: The disputed queue count is the number of entries the disputed queue holds.
   why: The count is named after the queue, and the owner reads it as how many disputes await a decision.
+- field: statement
+  unstated: A judgment shows the metric counting distinct source, target and link type combinations of disputed links and distinct node and key combinations of disputed attributes.
+  decided: The count is those distinct combinations of disputed links plus those of disputed attributes.
+  why: The owner decided the source's behavior is the truth, and it groups that way.
 ---

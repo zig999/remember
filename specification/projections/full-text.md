@@ -377,7 +377,7 @@ None.
 
 === constraints/retrieval-transports-answer-alike
 ---
-statement: The REST and MCP transports answer every retrieval operation they both expose with the same result on success and the same error code on refusal.
+statement: The REST and MCP transports answer every retrieval operation they both expose with the same result on success and the same error code on refusal, an undefined parameter of the node-type listing, the link and attribute reads and the three history reads excepted, which only MCP refuses.
 scope: knowledge-base
 ---
 
@@ -392,6 +392,10 @@ entries:
   unstated: The standing node had MCP answer in the REST envelope, while the documentation has MCP answer in its own content and error framing with the same payload and the same error codes; the two decide differently for the shape of an MCP success.
   decided: The two transports carry the same result and the same error code, and the constraint no longer fixes the framing.
   why: The documentation states repeatedly that the envelope is REST-only and that only the payload and the codes must match.
+- field: statement
+  unstated: A judgment shows REST not refusing an undefined parameter on six retrieval reads that MCP refuses.
+  decided: The transports answer alike, the six reads' undefined parameter excepted, which only MCP refuses.
+  why: The owner decided the source's behavior is the truth, and REST does not parse a query for those six reads.
 ---
 
 === constraints/unreachable-store-answers-unavailable
@@ -445,7 +449,7 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - when: '`include_archived` is neither a boolean nor "true" or "false".'
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
-  - when: The cursor does not decode to a creation time and a well-formed conversation identity.
+  - when: The cursor does not decode to a creation time and an identity written as text.
     answer: 'HTTP 422, error code VALIDATION_INVALID_FORMAT with a message naming why the cursor is invalid and `details: { param: "cursor" }`'
   - *id002
   - *id003
@@ -466,8 +470,10 @@ answers:
   refusals:
   - *id001
   - *id004
-  - rule: rules/chat/conversation-update-names-a-field
+  - when: The body is empty.
     answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "at least one of title or archived_at must be present" and `details: { body: "PATCH /conversations/:id" }`'
+  - rule: rules/chat/conversation-update-names-a-field
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - rule: rules/chat/conversation-title-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation." and `details` a bare list of `{ path, message }`
   - when: The archiving time is neither an ISO-8601 datetime nor null.
@@ -486,7 +492,8 @@ answers:
 - operation: send-message
   accepted: 'HTTP 200 as a server-sent event stream (`text/event-stream; charset=utf-8`), each frame `event: <name>` then `data: <json>`: `llm_start { iteration }`, `text_delta { delta }`, `tool_start { tool, args_summary }`, `tool_result { tool, ok }`, `graph_delta { source_tool, nodes, links }` with each node `{ id, node_type, canonical_name, status }` and each link `{ id, source_node_id, target_node_id, link_type, is_temporal }` plus `link_type_label`, `is_in_effect`, `status` and `flags` where known, and exactly one closing `done { stop_reason, model, tokens_in, tokens_out }` or `error { code, message }`, the stop reason as `end_turn`, `max_tokens`, `stop_sequence`, `max_iterations`, `turn_timeout` or `cancelled`, tool arguments, tool results and content blocks never sent; a replay streams `llm_start { iteration: 1 }`, the recorded text as one `text_delta` when it is not empty, and `done` with the recorded stop reason, model (`""` when none) and tokens (0 when none), or, for a turn recorded as provider-error or internal-error, the `error` frame that turn closed with'
   refusals:
-  - *id001
+  - when: The chat is disabled.
+    answer: HTTP 503, error code BUSINESS_CHAT_DISABLED with message "chat surface is disabled by CHAT_ENABLED=false" and no details
   - when: The Idempotency-Key header is missing or empty.
     answer: 'HTTP 422, error code VALIDATION_REQUIRED_FIELD with message "Idempotency-Key header is required" and `details: { header: "Idempotency-Key" }`'
   - when: The Idempotency-Key header is not a well-formed identifier.
@@ -583,6 +590,10 @@ entries:
   unstated: The material answers a conversation cursor with the right shape but a creation time that is not a timestamp or an identity that is not an identifier with an internal error, and any other malformed cursor with VALIDATION_INVALID_FORMAT.
   decided: 'Every cursor that does not decode to a creation time and a well-formed identity answers HTTP 422 VALIDATION_INVALID_FORMAT with `details: { param: "cursor" }`.'
   why: A malformed cursor is the caller's error, never the system's.
+- field: answers
+  unstated: A judgment shows a cursor accepted when it decodes to two strings, an update body of other keys answered as invalid format, and the disabled chat checked after the key on a sent message.
+  decided: The cursor needs a creation time and an identity as text, a body of other keys answers VALIDATION_INVALID_FORMAT, and a sent message is not disabled-first.
+  why: The owner decided the source's behavior is the truth, and it answers those three that way.
 ---
 
 === contracts/knowledge-base/access
@@ -601,12 +612,10 @@ answers:
     answer: HTTP 401, error code AUTH_UNAUTHORIZED with message "Missing or malformed Authorization header (expected `Bearer <jwt>`)." and no details
   - when: The token has expired.
     answer: HTTP 401, error code AUTH_TOKEN_EXPIRED with message "Authentication token expired." and no details
-  - when: 'The token fails verification: a bad signature, a malformed token, a failed claim, a disallowed algorithm or no matching key.'
+  - when: 'The token fails verification: a bad signature, a malformed token, a failed claim, a disallowed algorithm, no matching key or a key set that cannot be fetched.'
     answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "Invalid authentication token." and no details
   - when: The verified token names no owner in its `sub` claim.
     answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "JWT missing required `sub` claim." and no details
-  - when: The auth provider's key set cannot be fetched.
-    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
 - operation: route-request
   accepted: the request reaches the operation it names, whose own contract answers it
   refusals:
@@ -619,7 +628,7 @@ answers:
   - when: The framework refuses the request with another status below 500.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and the framework's message
   - when: The framework fails the request with status 503.
-    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "Internal server error."
   - when: The framework fails the request with another status of 500 or above.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and message "Internal server error."
   - when: The store is unreachable or a statement times out.
@@ -658,6 +667,10 @@ entries:
   unstated: The material answers a framework refusal with a status below 500 other than 401, 403, 404, 409 and 422 with that status and SYSTEM_INTERNAL_ERROR, which the code registry otherwise maps to 500.
   decided: Such a refusal keeps its status, with SYSTEM_INTERNAL_ERROR and the framework's message.
   why: The status tells the caller the request was theirs to fix, and no domain code names those framework refusals.
+- field: answers
+  unstated: A judgment shows a key set that cannot be fetched answered as an invalid token, and a framework 503 carrying the message Internal server error.
+  decided: A key set that cannot be fetched answers AUTH_TOKEN_INVALID, and a framework 503 answers that message.
+  why: The owner decided the source's behavior is the truth, and it answers those two that way.
 ---
 
 === contracts/knowledge-base/compliance-audit
@@ -1038,7 +1051,7 @@ answers:
   - *id003
   - &id004
     when: The proposal is missing a required field or holds one of the wrong shape.
-    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "Input failed Zod parse."'
+    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "MCP tool args failed Zod parse."'
   - *id002
   - &id005
     rule: rules/knowledge-base/proposal-requires-running-run
@@ -1252,6 +1265,10 @@ entries:
   unstated: The unreachable store answers unavailable and never an internal failure, while the shared proposal handler answers an internal failure for any cause it does not recognise.
   decided: The proposal's internal failure answer is stated for a cause other than an unreachable store.
   why: Stating it for an unreachable store would contradict a constraint no finding asked to change.
+- field: answers
+  unstated: A judgment of the source shows a proposal refused for its shape over MCP with the message "MCP tool args failed Zod parse." and not the "Input failed Zod parse." the contract held.
+  decided: Over MCP the message is "MCP tool args failed Zod parse." for the four proposals.
+  why: The owner decided the source's behavior is the truth, and callers read the message the source sends.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -1283,9 +1300,9 @@ answers:
     when: The request carries no valid owner authentication.
     answer: HTTP 401, error code AUTH_UNAUTHORIZED, AUTH_TOKEN_INVALID or AUTH_TOKEN_EXPIRED
   - rule: rules/knowledge-base/search-query-not-blank
-    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-length
-    answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - rule: rules/knowledge-base/search-query-must-parse
     answer: HTTP 422, error code BUSINESS_INVALID_SEARCH_QUERY
   - rule: rules/knowledge-base/search-layer-outside-set-refused
@@ -1293,15 +1310,15 @@ answers:
   - rule: rules/knowledge-base/unknown-link-type-refused
     answer: HTTP 422, error code BUSINESS_UNKNOWN_LINK_TYPE
   - rule: rules/knowledge-base/expansion-depth-bounds
-    answer: HTTP 422, error code BUSINESS_INVALID_TRAVERSE_DEPTH
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - when: The as-of date is not a calendar date written as year-month-day.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - &id005
     rule: rules/knowledge-base/page-limit-bounds
-    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
   - &id006
     rule: rules/knowledge-base/page-offset-non-negative
-    answer: HTTP 422, error code VALIDATION_OUT_OF_RANGE
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT
 - operation: read-link-provenance
   accepted: '`{ ok: true, result }` listing the provenance fragments, each with its text, confidence and status and the raw chunks it came from, each chunk with its index, offsets, excerpt, locator and raw information (source type, reception time, metadata, original input)'
   refusals:
@@ -1408,21 +1425,23 @@ answers:
   accepted: 'HTTP 200 carrying `{ ok: true, result }` with the link detail: its identity, source and target knowledge nodes, link-type name and inverse name, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the link it supersedes, and its provenance entries, each with the fragment''s identity, text and confidence, the raw information, its source type and reception time, and the chunk excerpt'
   refusals:
   - *id001
-  - *id007
+  - &id099
+    when: 'A parameter is malformed or unknown: an identity that is not a well-formed identifier, a switch other than true or false, a number that is not an integer, an as-of date not written as year-month-day, a name outside 1 to 200 characters, a value outside its closed set, or, over MCP only, a parameter the operation does not define.'
+    answer: HTTP 422, error code VALIDATION_INVALID_FORMAT with message "Request payload failed validation.", listing each failing field with its path and message
   - when: No knowledge link is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested link
 - operation: read-attribute
   accepted: 'HTTP 200 carrying `{ ok: true, result }` with the attribute detail: its identity, knowledge node, attribute-key name, value type and value, validity start and end as year-month-day or null, recording and supersession times, status, effective status, whether it is current and in effect, confidence, validity-start basis, flags, the attribute it supersedes, and its provenance entries as a link detail carries them'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No node attribute is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity and the requested attribute
 - operation: read-link-history
   accepted: '`{ ok: true, result }` carrying `versions`, each a link detail as read-link answers it'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No knowledge link is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested link
   - *id008
@@ -1431,7 +1450,7 @@ answers:
   accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - when: No node attribute is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND naming the entity and identity, and over REST also the requested attribute
   - *id008
@@ -1440,7 +1459,7 @@ answers:
   accepted: '`{ ok: true, result }` carrying `versions`, each an attribute detail as read-attribute answers it, an empty list when the knowledge node holds none for the key'
   refusals:
   - *id001
-  - *id007
+  - *id099
   - *id011
   - *id012
   - rule: rules/knowledge-base/attribute-key-history-requires-registered-key
@@ -1482,6 +1501,10 @@ entries:
   unstated: The material says a listing of accepted fragments naming an unknown query parameter is refused by strict validation, and does not say what the surface answers.
   decided: 'The refusal answers as every other malformed parameter of the surface does: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message.'
   why: The surface answers a strict-validation refusal one way, and nothing in the material gives this one a different answer.
+- field: answers
+  unstated: A judgment shows search and the accepted-fragment listing refusing a blank or long query, a depth or a page bound with VALIDATION_INVALID_FORMAT, and six reads accepting an undefined parameter over REST.
+  decided: Those refusals answer VALIDATION_INVALID_FORMAT, and the six reads refuse an undefined parameter over MCP only.
+  why: The owner decided the source's behavior is the truth, and the global handler maps every schema failure to that code.
 ---
 
 === domain/chat/_context
@@ -2046,6 +2069,7 @@ attributes:
   required: true
 - name: valid_from
   type: date
+  required: true
 - name: valid_to
   type: date
 ---
@@ -2057,6 +2081,15 @@ The validity period the owner gives one disputed assertion when the dispute is r
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/adjusted-period.log
+---
+entries:
+- field: attributes
+  unstated: A judgment of the source shows an adjusted period refused when it omits its validity start key, while its validity end key may be omitted.
+  decided: The validity start is required and may be empty; the validity end stays optional.
+  why: The owner decided the source's behavior is the truth, and the source requires the start key and not the end key.
+---
 
 === domain/knowledge-base/affected-counts
 ---
@@ -5052,7 +5085,7 @@ None.
 === rules/chat/message-listing-pages-backwards
 ---
 type: invariant
-statement: A message listing's page is the most recent messages created before its given moment, and the next page ends before the oldest of them.
+statement: A message listing's page is the oldest messages created before its given moment, and the next page ends before the oldest of them.
 constrains:
 - domain/chat/message
 - domain/chat/message-listing
@@ -5069,6 +5102,10 @@ entries:
   unstated: The material answers a message page with the oldest messages and a next-page moment that selects messages older than that page, so following it from the first page finds nothing.
   decided: A page holds the most recent messages before its moment, answered oldest first, and the next page ends before the oldest of them.
   why: Paging backwards from the newest message is the only reading in which following the next-page moment reaches every message.
+- field: statement
+  unstated: A judgment shows a message page holding the oldest messages before the moment, with the next moment taken from the oldest of the page.
+  decided: A page is the oldest messages created before the moment, and the next page ends before the oldest of them.
+  why: The owner decided the source's behavior is the truth, and it selects the oldest rows.
 ---
 
 === rules/chat/message-listing-shows-exchanges
@@ -5214,7 +5251,7 @@ None.
 === rules/chat/replay-reports-failure
 ---
 type: invariant
-statement: A replay of a turn that ended as provider-error or internal-error ends in an error event as the live turn did, never in done.
+statement: A replay of a turn that ended as provider-error or internal-error ends in a done event with stop reason end-turn.
 constrains:
 - domain/chat/turn
 - domain/chat/assistant-stop-reason
@@ -5232,6 +5269,10 @@ entries:
   unstated: The material replays a turn recorded as provider-error or internal-error as a done event with stop reason end_turn, while the live turn ended in an error event.
   decided: A replay of a failed turn ends in the error event the live turn ended in, never in done.
   why: A failure answer is an answer, and a replay exists to say again what the turn said.
+- field: statement
+  unstated: A judgment shows the replay of a turn recorded as provider-error or internal-error ending in a done event with stop reason end-turn.
+  decided: A replay of such a turn ends in a done event with stop reason end-turn.
+  why: The owner decided the source's behavior is the truth, and the replay maps those two stop reasons to end-turn.
 ---
 
 === rules/chat/rolling-summary-folds
@@ -5288,7 +5329,7 @@ None.
 === rules/chat/send-message-check-order
 ---
 type: invariant
-statement: A sent message is checked for a disabled chat, then its idempotency key, conversation identity and content, then an absent conversation, an archived conversation, a turn in flight, a reused idempotency key and an unavailable toolset, and is refused at the first check it fails.
+statement: A sent message is checked for its idempotency key, conversation identity and content, then a disabled chat, then an absent conversation, an archived conversation, a turn in flight, a reused idempotency key and an unavailable toolset, and is refused at the first check it fails.
 constrains:
 - domain/chat/turn
 - domain/chat/conversation
@@ -5305,6 +5346,10 @@ entries:
   unstated: The material checks a disabled chat first on every conversation operation except sending a message, where the idempotency key, conversation identity and content are checked first; the two decide differently for a malformed message sent while the chat is disabled.
   decided: A sent message is checked for a disabled chat first, as every other conversation operation is.
   why: A disabled surface answers that it is disabled whatever the request holds.
+- field: statement
+  unstated: A judgment shows a sent message checked for its idempotency key, identity and content before the disabled chat.
+  decided: A sent message is checked for key, identity and content, then for a disabled chat, then the rest in the stated order.
+  why: The owner decided the source's behavior is the truth, and it checks the key and content before the kill switch.
 ---
 
 === rules/chat/summary-prompt-v2-empty-previous
@@ -5785,7 +5830,7 @@ entries:
 === rules/knowledge-base/affected-nodes-of-a-run
 ---
 type: policy
-statement: An LLM run's affected knowledge nodes are those its node proposals resolved to and those joined or described by its link and attribute proposals that were accepted, consolidated, superseded a previous assertion or were disputed, each listed once in the order first reached.
+statement: An LLM run's affected knowledge nodes are those its node proposals resolved to and those joined or described by its link and attribute proposals whose outcome was accepted, consolidated, superseded a previous assertion, disputed, created, matched an existing node or needs review, each listed once in the order first reached.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/knowledge-node
@@ -5808,12 +5853,16 @@ entries:
   unstated: The material does not say how this read holds across the separate records it combines.
   decided: eventual
   why: The records it combines are written independently and never change in one transaction, so a read reflects each as last committed.
+- field: statement
+  unstated: A judgment shows the outcomes that admit a link or attribute proposal's nodes including created, matched an existing node and needs review.
+  decided: The outcomes are accepted, consolidated, superseded a previous assertion, disputed, created, matched an existing node and needs review.
+  why: The owner decided the source's behavior is the truth, and its allow-list holds those seven.
 ---
 
 === rules/knowledge-base/affected-nodes-omit-absent
 ---
 type: policy
-statement: An affected knowledge node that is no longer held is left out of an LLM run's affected nodes.
+statement: An affected knowledge node that is no longer held when an LLM run's affected nodes are first listed is left out of them.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/knowledge-node
@@ -5823,6 +5872,15 @@ consistency: eventual
 ## Description
 
 None.
+
+=== rules/knowledge-base/affected-nodes-omit-absent.log
+---
+entries:
+- field: statement
+  unstated: A judgment of the source shows a run's affected nodes read back from a cache without being checked again, so a node deleted after the first listing still appears.
+  decided: A node no longer held when the run's affected nodes are first listed is left out of them.
+  why: The owner decided the source's behavior is the truth, and the omission is applied once, when the list is first made.
+---
 
 === rules/knowledge-base/affected-nodes-only-when-completed
 ---
@@ -8615,7 +8673,7 @@ None.
 === rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
 ---
 type: policy
-statement: A graph read's provenance entry shows the whole text of the raw chunk it cites.
+statement: A graph read's provenance entry shows the part of the cited raw chunk's text that starts at the chunk's start offset in its source and is as long as the chunk.
 constrains:
 - domain/knowledge-base/graph-read
 - domain/knowledge-base/provenance
@@ -8634,12 +8692,16 @@ entries:
   unstated: The material cuts a provenance entry's excerpt from the chunk's own text starting at the chunk's start offset, which gives a shifted or empty slice for any chunk that does not start at the beginning of its source.
   decided: A provenance entry shows the whole excerpt of the raw chunk it cites.
   why: A chunk's excerpt is already the content between its offsets, so offsetting it again cuts away the text the entry exists to show.
+- field: statement
+  unstated: A judgment shows the excerpt cut from the chunk's text starting at the chunk's start offset for the chunk's length.
+  decided: The entry shows the part of the chunk's text from the chunk's start offset, as long as the chunk.
+  why: The owner decided the source's behavior is the truth, and it cuts the excerpt by those offsets.
 ---
 
 === rules/knowledge-base/graph-provenance-hides-compliance-deleted
 ---
 type: policy
-statement: A graph read shows no provenance entry whose raw information was deleted for compliance.
+statement: A graph read shows a provenance entry whatever the compliance status of its raw information.
 constrains:
 - domain/knowledge-base/graph-read
 - domain/knowledge-base/provenance
@@ -8658,6 +8720,10 @@ entries:
   unstated: The material reads a graph read's provenance with no filter on whether the fragment's raw information was deleted for compliance, and says nothing about whether such entries may be shown.
   decided: A graph read shows no provenance entry whose raw information was deleted for compliance.
   why: A compliance deletion exists to keep a deleted source's knowledge from being presented as still traceable, and a provenance entry presents exactly that trace.
+- field: statement
+  unstated: A judgment shows a graph read listing the provenance of a fragment whose raw information was deleted for compliance, with no filter.
+  decided: A graph read shows a provenance entry whatever the compliance status of its raw information.
+  why: The owner decided the source's behavior is the truth, and the read applies no compliance filter.
 ---
 
 === rules/knowledge-base/graph-provenance-one-entry-per-chunk
@@ -9531,10 +9597,9 @@ None.
 === rules/knowledge-base/metrics-disputed-queue-count
 ---
 type: invariant
-statement: A curation metrics disputed queue count is the number of entries the disputed queue holds.
+statement: A curation metrics disputed queue count is the number of distinct source node, target node and link type combinations of disputed knowledge links plus the number of distinct node and attribute key combinations of disputed node attributes.
 constrains:
 - domain/knowledge-base/curation-metrics
-- domain/knowledge-base/dispute-scope
 ---
 
 ## Description
@@ -9548,6 +9613,10 @@ entries:
   unstated: The material counts the disputed queue for the metrics by source, target and link type whatever the link type, while its queue lists one entry per dispute scope; the two differ for a dispute between links to different targets.
   decided: The disputed queue count is the number of entries the disputed queue holds.
   why: The count is named after the queue, and the owner reads it as how many disputes await a decision.
+- field: statement
+  unstated: A judgment shows the metric counting distinct source, target and link type combinations of disputed links and distinct node and key combinations of disputed attributes.
+  decided: The count is those distinct combinations of disputed links plus those of disputed attributes.
+  why: The owner decided the source's behavior is the truth, and it groups that way.
 ---
 
 === rules/knowledge-base/metrics-review-counts
@@ -9741,7 +9810,7 @@ None.
 === rules/knowledge-base/node-listing-name-prefix
 ---
 type: invariant
-statement: A node listing that names a name prefix holds only knowledge nodes one of whose aliases, compared as a name, starts with the prefix compared as a name and read literally.
+statement: A node listing that names a name prefix holds only knowledge nodes one of whose aliases, compared as a name, matches the prefix compared as a name followed by any text, a percent sign in the prefix standing for any text and an underscore for any one character.
 constrains:
 - domain/knowledge-base/node-filter
 - domain/knowledge-base/knowledge-node
@@ -9759,6 +9828,10 @@ entries:
   unstated: The material shows a percent sign or an underscore in a node listing's name prefix acting as a wildcard, without saying whether a prefix is read literally.
   decided: A name prefix is read literally.
   why: A name prefix is the start of a name the owner types, and its characters mean themselves.
+- field: statement
+  unstated: A judgment shows a node listing's name prefix compared with a pattern match in which a percent sign and an underscore are wildcards.
+  decided: The prefix matches as a name followed by any text, a percent sign standing for any text and an underscore for any one character.
+  why: The owner decided the source's behavior is the truth, and it reads those two characters as wildcards.
 ---
 
 === rules/knowledge-base/node-listing-one-entry-per-node
@@ -10384,7 +10457,7 @@ None.
 === rules/knowledge-base/reaffirmation-consolidates
 ---
 type: policy
-statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, only when its change hint is none and, for a type that does not allow multiple current assertions, it states the same validity start.
+statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, only when its change hint is none and it states the same validity start, a link of a type that allows multiple current links excepted from the validity start.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-link
@@ -10412,6 +10485,10 @@ entries:
   unstated: The earlier decision let a proposal that is not a correction re-affirm in a multi-current type, but a test shows a succession proposal meeting a current assertion with the same target there is not consolidated.
   decided: A proposal re-affirms only when its change hint is none and, for a type that does not allow multiple current assertions, it states the same validity start.
   why: The tests pass and state that only a hint of none re-affirms, so the earlier reading let a succession claim be absorbed as a repeat.
+- field: statement
+  unstated: A judgment shows an attribute needing the same validity start to re-affirm even where it allows multiple current values, while a link of such a type does not.
+  decided: A proposal re-affirms only with change hint none and the same validity start, a link of a type allowing multiple current links excepted.
+  why: The owner decided the source's behavior is the truth, and the attribute branch requires the same start.
 ---
 
 === rules/knowledge-base/recent-ingestion-latest-run
@@ -10575,7 +10652,7 @@ None.
 === rules/knowledge-base/required-start-fallback
 ---
 type: invariant
-statement: A proposal for a link type or attribute key that requires a validity start and states none takes the document date of its source with basis document or, when the source has none, the date the source was received with basis received.
+statement: A proposal for a link type or attribute key that requires a validity start and states none keeps no start and no basis when its source has a document date, and takes the date the source was received with basis received when it has none.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/raw-information
@@ -10593,6 +10670,10 @@ entries:
   unstated: The material lets a proposal that needs a validity start pass with no start and no basis when its source has a document date, while one whose source has only a reception date takes that date with basis received; the two decide differently for whether a required start may stay empty.
   decided: It takes the document date with basis document or, failing that, the reception date with basis received.
   why: A type that requires a validity start is never left without one, and every start carries its justification.
+- field: statement
+  unstated: A judgment of the source shows a proposal that needs a validity start and states none leaving it empty, with no basis, when its source has a document date, and taking the reception date with basis received only when it has none.
+  decided: It keeps no start and no basis when its source has a document date, and takes the reception date with basis received when it has none.
+  why: The owner decided the source's behavior is the truth, and the earlier decision to fill the document date contradicted what the system does.
 ---
 
 === rules/knowledge-base/retry-counts-attempts
@@ -10659,7 +10740,7 @@ None.
 === rules/knowledge-base/review-queue-page-windows-entries
 ---
 type: invariant
-statement: A review queue listing's page skips and returns whole entries in listing order.
+statement: A review queue listing applies the page's limit and offset separately to its entity-match rows, one for each needs-review node and candidate, to its disputed knowledge links and to its disputed node attributes.
 constrains:
 - domain/knowledge-base/review-queue-filter
 - domain/knowledge-base/page
@@ -10676,12 +10757,16 @@ entries:
   unstated: The material applies the page's limit and offset separately to three listings and, for the entity-match queue, to node-candidate rows, so a page can hold more entries than its limit and split one node's candidates across pages.
   decided: The page skips and returns whole entries in listing order.
   why: The owner reads the queue as a list of entries, and a limit that does not bound the entries returned does not page it.
+- field: statement
+  unstated: A judgment shows the page's limit and offset applied to each of the three underlying listings separately, the entity-match one over candidate rows.
+  decided: The limit and offset apply separately to the entity-match rows, the disputed links and the disputed attributes.
+  why: The owner decided the source's behavior is the truth, and it pages those three listings separately.
 ---
 
 === rules/knowledge-base/review-queue-total-before-pagination
 ---
 type: invariant
-statement: A review queue listing's total counts every entry it holds before the page is cut.
+statement: A review queue listing's total counts, before the page is cut, the knowledge nodes in needs review and the disputed knowledge links and node attributes of the kinds it lists, each disputed item counted once.
 constrains:
 - domain/knowledge-base/review-queue-filter
 ---
@@ -10697,6 +10782,10 @@ entries:
   unstated: The material totals the queue as the count of needs-review nodes plus the count of disputed links and of disputed attributes, which is not the number of entries the queue lists when a dispute holds several items.
   decided: The total counts every entry the listing holds before the page is cut.
   why: A total over a paged list counts what the pages hold, as every other listing of this specification does.
+- field: statement
+  unstated: A judgment shows the queue total counting needs-review nodes plus disputed links plus disputed attributes, one for each item.
+  decided: The total counts the nodes in needs review and the disputed links and attributes of the kinds listed, each item once.
+  why: The owner decided the source's behavior is the truth, and it counts items.
 ---
 
 === rules/knowledge-base/run-finish-time-when-closed
@@ -10899,7 +10988,7 @@ entries:
 === rules/knowledge-base/speaker-line
 ---
 type: invariant
-statement: A speaker line is a line that, after optional leading whitespace and an optional time stamp written [h:mm], [hh:mm], (hh:mm) or (hh:mm:ss) followed by whitespace, starts with one or two words of letters, digits or underscores separated by one whitespace character and followed by a colon and a whitespace character.
+statement: A speaker line is a line that, after optional leading whitespace and an optional time stamp opened by [ or ( and closed by ] or ) holding h:mm, hh:mm, h:mm:ss or hh:mm:ss followed by whitespace, starts with one or two words of the letters A to Z, a to z and À to ÿ, digits or underscores separated by one whitespace character and followed by a colon and a whitespace character.
 constrains:
 - domain/knowledge-base/raw-information
 ---
@@ -10907,6 +10996,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/speaker-line.log
+---
+entries:
+- field: statement
+  unstated: A judgment of the source shows a speaker line accepting any opening bracket with any closing bracket around the time stamp, seconds on either form, and the letters A to Z, a to z and À to ÿ, which the node did not list.
+  decided: The time stamp is opened by [ or ( and closed by ] or ) holding h:mm, hh:mm, h:mm:ss or hh:mm:ss, and a word holds the letters A to Z, a to z and À to ÿ, digits or underscores.
+  why: The owner decided the source's behavior is the truth, and a chunker that splits on a line the node denies is a different chunker.
+---
 
 === rules/knowledge-base/start-requiring-attribute-keys
 ---
@@ -11228,7 +11326,7 @@ None.
 === rules/knowledge-base/traversal-expands-live-nodes
 ---
 type: invariant
-statement: A traversal expands no knowledge node that is deleted or merged.
+statement: A traversal expands no knowledge node it reached that is deleted or merged.
 constrains:
 - domain/knowledge-base/traversal-request
 - domain/knowledge-base/knowledge-node
@@ -11237,6 +11335,15 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/traversal-expands-live-nodes.log
+---
+entries:
+- field: statement
+  unstated: A judgment of the source shows a traversal expanding its starting node whatever the starting node's status, and refusing a deleted start earlier, while it filters only the nodes it reached.
+  decided: A traversal expands no knowledge node it reached that is deleted or merged.
+  why: The owner decided the source's behavior is the truth, and the filter the source applies is on reached nodes only.
+---
 
 === rules/knowledge-base/traversal-link-once
 ---
@@ -11267,7 +11374,7 @@ None.
 === rules/knowledge-base/traversal-lists-reached-nodes
 ---
 type: invariant
-statement: A traversal lists its starting knowledge node and every knowledge node it reached that is not merged, deleted ones included.
+statement: A traversal lists every knowledge node it starts from or reaches that is not merged, deleted ones included.
 constrains:
 - domain/knowledge-base/traversal-request
 - domain/knowledge-base/knowledge-node
@@ -11284,6 +11391,10 @@ entries:
   unstated: The material leaves a merged starting node whose survivor is missing or deleted out of a traversal's nodes while its starting node identity still names it.
   decided: A traversal always lists its starting knowledge node.
   why: The starting node identity a traversal answers must resolve within the nodes that same answer lists.
+- field: statement
+  unstated: A judgment of the source shows a traversal leaving out a merged starting node whose survivor is missing or deleted, which the earlier decision had it always list.
+  decided: A traversal lists every knowledge node it starts from or reaches that is not merged, deleted ones included.
+  why: The owner decided the source's behavior is the truth, and listing only nodes that are not merged applies one test to the start and to what it reaches.
 ---
 
 === rules/knowledge-base/traversal-merged-start

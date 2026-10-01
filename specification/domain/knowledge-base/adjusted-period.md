@@ -6,6 +6,7 @@ attributes:
   required: true
 - name: valid_from
   type: date
+  required: true
 - name: valid_to
   type: date
 ---

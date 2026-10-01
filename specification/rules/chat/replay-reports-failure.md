@@ -1,6 +1,6 @@
 ---
 type: invariant
-statement: A replay of a turn that ended as provider-error or internal-error ends in an error event as the live turn did, never in done.
+statement: A replay of a turn that ended as provider-error or internal-error ends in a done event with stop reason end-turn.
 constrains:
 - domain/chat/turn
 - domain/chat/assistant-stop-reason

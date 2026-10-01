@@ -13,12 +13,10 @@ answers:
     answer: HTTP 401, error code AUTH_UNAUTHORIZED with message "Missing or malformed Authorization header (expected `Bearer <jwt>`)." and no details
   - when: The token has expired.
     answer: HTTP 401, error code AUTH_TOKEN_EXPIRED with message "Authentication token expired." and no details
-  - when: 'The token fails verification: a bad signature, a malformed token, a failed claim, a disallowed algorithm or no matching key.'
+  - when: 'The token fails verification: a bad signature, a malformed token, a failed claim, a disallowed algorithm, no matching key or a key set that cannot be fetched.'
     answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "Invalid authentication token." and no details
   - when: The verified token names no owner in its `sub` claim.
     answer: HTTP 401, error code AUTH_TOKEN_INVALID with message "JWT missing required `sub` claim." and no details
-  - when: The auth provider's key set cannot be fetched.
-    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
 - operation: route-request
   accepted: the request reaches the operation it names, whose own contract answers it
   refusals:
@@ -31,7 +29,7 @@ answers:
   - when: The framework refuses the request with another status below 500.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and the framework's message
   - when: The framework fails the request with status 503.
-    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "A backing service is temporarily unavailable."
+    answer: HTTP 503, error code SYSTEM_SERVICE_UNAVAILABLE with message "Internal server error."
   - when: The framework fails the request with another status of 500 or above.
     answer: that status, with error code SYSTEM_INTERNAL_ERROR and message "Internal server error."
   - when: The store is unreachable or a statement times out.
