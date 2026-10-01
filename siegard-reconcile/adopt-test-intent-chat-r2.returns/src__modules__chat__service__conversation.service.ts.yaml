@@ -1,0 +1,267 @@
+findings:
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      the docblock of InvalidCursorError, lines 50-56
+    evidence: >-
+      * with the expected `{ created_at, id }` shape (BR-35). The route handler
+      * surfaces this as 422 `VALIDATION_INVALID_FORMAT` with
+      * `details.param = "cursor"`.
+    cost: >-
+      The comment says the cursor refusal is a 422 with that code and details.param. The class
+      fields statusCode, code and param carry the same values in this file, so the comment is a
+      second home for it. If the contract's cursor refusal changes, the comment is one more place
+      that goes stale.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the class fields `statusCode = 422`,
+      `code = "VALIDATION_INVALID_FORMAT"` and `param = "cursor"`.
+    node: contracts/chat/conversations
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      the comment on ListConversationsInput.limit, line 121
+    evidence: >-
+      /** Route layer enforces [1, 100], default 20 (BR-35). */
+    cost: >-
+      The comment states the listing bounds and default as a second home. Code holds them in
+      src/modules/chat/routes/chat.schemas.ts: `limit: z.coerce.number().int().min(1).max(100).default(20)`.
+      A reader of the service sees numbers that nothing in this file enforces. If the rule moves,
+      the comment goes stale without any check noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by the node, and by the schema in
+      src/modules/chat/routes/chat.schemas.ts.
+    node: rules/chat/conversation-listing-limit
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      the docblock of getConversation, lines 184-188
+    evidence: >-
+      * return to `ConversationNotFoundError`, which the route handler renders as
+      * 404 `RESOURCE_NOT_FOUND`.
+    cost: >-
+      The comment restates the 404 and RESOURCE_NOT_FOUND answer for a missing conversation. Code
+      holds that answer in src/modules/chat/service/errors.ts
+      (`public readonly code = "RESOURCE_NOT_FOUND" as const`) and in
+      src/modules/chat/routes/conversations.routes.ts (`message: "conversation not found"`). This
+      file only throws the error, so the comment is a second home for a fact held elsewhere.
+    kind: restates
+    correction: >-
+      Remove the prose. The throw of `ConversationNotFoundError` is the code here, and the answer
+      is held in errors.ts and the routes.
+    node: contracts/chat/conversations
+read:
+  - node: contracts/chat/conversations
+    held_at: >-
+      InvalidCursorError (lines 57-66), decodeCursor (84-109) and the nextCursor construction in
+      listConversations (176-181). The rest of the contract's answers sit in the route layer and
+      errors.ts, not in this file.
+    evidence: >-
+      public readonly statusCode = 422; public readonly code = "VALIDATION_INVALID_FORMAT" as const;
+      public readonly param = "cursor" as const; super(`invalid cursor: ${detail}`);
+      throw new InvalidCursorError("expected shape { created_at, id }");
+      page.hasMore && last !== undefined ? encodeCursor(last.created_at, last.id) : null
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no chat-enabled flag or default. It holds only conversation CRUD, e.g.
+      `repo.insertConversation(client, { title: input.title })`.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      No prompt text appears in the file; it is conversation CRUD and cursor encoding.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no directed-ingestion flag or turn logic. Its exports are createConversation,
+      listConversations, getConversation, updateConversation, deleteConversation and
+      getConversationUsage.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no distillation or rolling-summary configuration. It only returns the
+      repository's `ConversationRow`.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool-result handling.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file handles conversations only; it has no message content or length limit.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file paginates conversations, not messages. Its cursor is `(created_at, id)`, not a
+      `before` time.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file has no model context assembly.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file has no model context assembly or recent-window logic.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone handling.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file has no turn replay or stop reasons.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no send-message path. Its only checks are the existence checks
+      `if (row === null) throw new ConversationNotFoundError(id)`.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file contains no summary prompt text.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file contains no summary prompt text.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no tool execution.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file has no tool execution or truncation.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no model calls or iteration limit.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file has no model selection.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no turn timing.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file has no utility model configuration.
+looked_past: >-
+  The comments citing BR numbers and the DDL, the remark that "the BFF is single-owner" justifying the unshared transaction, and the `catch (_err) { void _err; ... }` idiom are prose or code style rather than a node's domain fact, so I did not judge them.
+candidates_opened:
+  - rules/chat/conversation-listing-limit

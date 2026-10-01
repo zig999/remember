@@ -1,0 +1,245 @@
+findings:
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the start_async_ingestion and get_ingestion_status cases of formatByTool, lines 142-156
+    evidence: >-
+      return `source_type=${sourceType} content_len=${contentLen}`;  and  return `llm_run_id=${llmRunId}`;
+    cost: >-
+      The string is emitted in the tool_start frame and rendered to the owner. What an ingestion's tool-start
+      summary shows (its source type and the code-point length of its content, or the run identity of a status
+      read) is stated only here. tool-start-summary-bounded holds only that the content is never carried. The
+      next reader who looks in the specification for what these two summaries show finds nothing.
+    kind: unstated
+    correction: >-
+      An analysis would give the fact a node. It would state what the tool-start summary of a directed ingestion
+      and of an ingestion status read shows. tool-start-summary-bounded is the neighbouring node.
+    node: rules/chat/tool-start-summary-bounded
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the header comment, lines 1-38, and the comment on ARGS_SUMMARY_MAX_CHARS, line 40
+    evidence: >-
+      //   - search:                        query="<first 60 chars of query>" (+ optional layers=... expand_depth=<n>)
+      // Fallback when the input shape is unexpected: `<n keys>`
+      /** Hard cap on the produced string, per openapi.yaml `ToolStartEvent.args_summary.maxLength`. */
+    cost: >-
+      The comment restates the per-tool formats, the 60-character search cut, the fallback and the 200-character
+      cap. Code in this same file holds each of them (formatByTool, fallbackSummary, clampToMax), so the pair
+      conforms. The restatement is a second home outside behavior that drifts when a node moves. It also cites
+      chat.back.md and openapi.yaml as the authority in place of the nodes.
+    kind: restates
+    correction: >-
+      Remove the comment prose. The facts are held by the six tool-start-* nodes and by
+      tool-start-summary-bounded, and the code holds them here.
+read:
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: >-
+      the get_history_attribute_key case of formatByTool, lines 112-117
+    evidence: >-
+      return `node_id=${nodeId} key=${key}`;
+  - node: rules/chat/tool-start-listing-summary
+    held_at: >-
+      the list_nodes case, lines 119-124, and the empty return for the three catalog listings, lines 126-129
+    evidence: >-
+      return `node_type=${nodeType} limit=${limit}`;  and  case "list_node_types": case "list_link_types": case "list_attribute_keys": return "";
+  - node: rules/chat/tool-start-read-summary
+    held_at: >-
+      the get_node case, line 89-93, the get_history_link/get_history_attribute case, lines 105-110, and the
+      get_provenance_* case, lines 131-137
+    evidence: >-
+      return `id=${id}`;
+  - node: rules/chat/tool-start-search-summary
+    held_at: >-
+      the search case of formatByTool, lines 74-87, with SEARCH_QUERY_MAX_CHARS = 60
+    evidence: >-
+      const parts: string[] = [`query="${truncateCodepoints(query, SEARCH_QUERY_MAX_CHARS)}"`];  with layers and expand_depth pushed only when given
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: >-
+      fallbackSummary, lines 165-170, reached from the default case and from every case whose required argument is absent
+    evidence: >-
+      return `${Object.keys(input as Record<string, unknown>).length} keys`;
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: >-
+      the traverse case of formatByTool, lines 95-103
+    evidence: >-
+      return `id=${id} depth=${depth}`;  and  return `id=${id}`;
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file only builds the args_summary string, export function buildArgsSummary(toolName: string, input: unknown): string. It declares no operation, frame or refusal of the conversation surface.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat enablement setting. It only builds summaries.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text. It only keeps the ingestion content out of its own summary, with const contentLen = [...content].length;
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no assistant prompt text.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no directed-ingestion setting.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no distillation or summary setting.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only builds args_summary strings.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file holds no message content limit.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file holds no message listing.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no model context statement.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no model context window.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time zone.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file holds no replay.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds no message sending checks.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt text.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt text.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file runs no tool and handles no tool failure.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file truncates only its own summary (clampToMax). It does not truncate tool results.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no model call limit.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no model name.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time limit.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no model name.
+looked_past: >-
+  The 200 code-point clamp (clampToMax) and the omission of ingestion content from the summary conform to
+  tool-start-summary-bounded, which is outside this pack, so they are not findings.
+candidates_opened:
+  - rules/chat/tool-start-summary-bounded

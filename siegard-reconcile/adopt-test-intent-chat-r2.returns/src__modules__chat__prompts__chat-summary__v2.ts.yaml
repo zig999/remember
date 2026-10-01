@@ -1,0 +1,285 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the JSDoc on `system` (lines 27-39), the persona and "Stay at most ~8 sentences" bullets
+    evidence: >-
+      * System prompt body for v2 (BR-46). Persona = "Sintetizador da conversa do
+      Remember". ... - Stay at most ~8 sentences (soft cap — BFF enforces 2000-char HARD cap);
+    cost: >-
+      The persona and the eight-sentence ceiling are stated a second time in prose that no running
+      system emits. The literal `system` below it holds the fact. When the node moves, the docstring
+      is not bound and keeps saying the old value, so a reader sees two answers and cannot tell
+      which was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact is already held by the `system` literal in this file and by the
+      node. Use the comment route, then run /reconcile over the file.
+    node: rules/chat/summary-prompt-v2-persona
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the comment block above `buildUserTurn` (lines 77-78), the template line for the previous summary
+    evidence: >-
+      //   <summary_prev OR "(vazio)" when null>
+    cost: >-
+      The "(vazio)" placeholder is stated a second time as a comment. The code holds it in
+      `renderPrev` (`if (summary_prev === null) return "(vazio)";`). If the node's value changes,
+      the comment keeps the old one and reads as authoritative.
+    kind: restates
+    correction: >-
+      Remove the comment. `renderPrev` in this file holds the fact. Use the comment route, then
+      run /reconcile over the file.
+    node: rules/chat/summary-prompt-v2-empty-previous
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      `buildUserTurn`, the `messagesBlock` constant (lines 198-201)
+    evidence: >-
+      new_messages.length === 0
+            ? "(nenhuma)"
+    cost: >-
+      The text shown to the model when the slice of new messages is empty is a value the code
+      applies and no node holds. The sibling placeholder "(vazio)" has a node and this one has
+      none. The next reader looks in the specification for what the model is shown for an empty
+      slice and finds only "(vazio)".
+    kind: unstated
+    correction: >-
+      The analysis should give the "(nenhuma)" placeholder for an empty slice of new messages a
+      node, next to rules/chat/summary-prompt-v2-empty-previous. It is not a candidate: no node I
+      found holds it.
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      `TOOL_ARGS_INLINE_MAX` and `summariseToolUseArgs` (lines 96-115)
+    evidence: >-
+      const TOOL_ARGS_INLINE_MAX = 200;
+      ...
+        return serialised.slice(0, TOOL_ARGS_INLINE_MAX) + "...<truncated>";
+    cost: >-
+      A 200-character cut on the tool arguments shown to the summariser, and the "...<truncated>"
+      marker, are thresholds the code applies and no node holds. The tool-result limit
+      (rules/chat/tool-result-truncated, 8000) governs a different subject, so a reader looking
+      for this limit in the specification finds nothing.
+    kind: unstated
+    correction: >-
+      The analysis should give the cap on tool arguments rendered into the summary slice a node
+      in the chat domain.
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      the `system` literal, the preserve/fold list (lines 49-53)
+    evidence: >-
+      "- pontos em aberto — marcar explicitamente como 'pendente: ...';",
+    cost: >-
+      The rule that unresolved questions are marked with the literal "pendente: ..." is emitted to
+      the model and shapes the stored summary the owner reads. No node holds it, since the persona
+      node covers only the persona, pt-BR and the eight-sentence ceiling. The convention lives
+      only in the prompt text.
+    kind: unstated
+    correction: >-
+      The analysis should decide whether the summary-prompt-v2 instructions (the "pendente:"
+      marker for open points, preserving entities and decisions, no headings or bullets) belong
+      in a node, next to rules/chat/summary-prompt-v2-persona.
+read:
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: >-
+      `renderPrev`, line 181
+    evidence: >-
+      if (summary_prev === null) return "(vazio)";
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: >-
+      the `system` literal, lines 41-67
+    evidence: >-
+      "Voce e o Sintetizador da conversa do Remember. ..." and "2. Maximo ~8 frases (soft cap; o BFF rejeita saidas > 2000 caracteres)." and "Prosa pt-BR concisa"
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file composes the summary prompt only. It declares no conversation operation, response or refusal.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default. It exports `PROMPT_VERSION`, `system`, `buildUserTurn` and `v2Module`.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      This file's `system` is the summary prompt, not the chat prompt. It has no text on affected nodes.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The summary `system` has no instruction on catalog listings.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The summary `system` has no instruction on looking nodes up.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The summary `system` has no instruction on listing nodes.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The summary `system` says nothing about search.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The summary `system` says nothing about search.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The summary `system` says nothing about node listings.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      This is the v2 summary prompt. The only rule near it is "1. Nao invente fatos.", which concerns the summary and not identifiers or source citation.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The summary `system` does not mention ingestion.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The summary `system` does not mention ingestion content.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The summary `system` does not mention ingestion status.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no v4 chat prompt.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no configuration default. It only composes the prompt for a refold.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta logic.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file bounds no message content. It only renders messages into the summary prompt.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file lists no messages.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The header comment says the distillation paths carry "no datetime hint", and no code here builds the owner-time statement.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file selects no window. `buildUserTurn` receives `new_messages` already chosen.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file has no replay logic.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no message-sending checks.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file runs no tools.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file applies no result truncation. A comment says "no extra truncation here", and the only cut is the 200-character tool-argument cut in `summariseToolUseArgs`.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. `summariseToolUseArgs` serialises arguments for the summariser and is not the event summary.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file calls no model. It builds `messages[]` only.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no timing.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model. The summariser's model is chosen elsewhere.
+looked_past: >-
+  The header comment says the BFF enforces a 2000-character hard cap and the prompt text says "o BFF rejeita saidas > 2000 caracteres", which agrees with the candidate rules/chat/rolling-summary-length. Where that cap is enforced is outside this file, so I did not judge it. The many other comments (BR-13, BR-33, BR-46, BR-47 citations and the byte-stability notes) restate no further node of this pack.
+candidates_opened:
+  - rules/chat/rolling-summary-length

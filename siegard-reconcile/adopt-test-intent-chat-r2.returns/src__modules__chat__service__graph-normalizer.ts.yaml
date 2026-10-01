@@ -1,0 +1,433 @@
+findings:
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      header comment, lines 13-17
+    evidence: >-
+      // `get_history_*`, `get_provenance_*`) returns `null` from the dispatcher — a
+      // quiet no-op, NOT an empty delta.
+    cost: >-
+      The prose restates a rule the code already holds, in `GRAPH_TOOL_NAMES` and in the
+      `if (!GRAPH_TOOL_NAMES.has(toolName)) { return Promise.resolve(null); }` branch. A
+      second statement of the rule in a comment is left to go stale. The next reader may take
+      it for the place the rule lives.
+    kind: restates
+    correction: >-
+      Remove the comment. The node and the code already hold the fact.
+    node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      header comment lines 25-32, and comments at lines 209-212 and 533-534
+    evidence: >-
+      // falls back to `is_temporal: false` rather than crashing — the front-end
+      // gracefully renders a dashed edge, which is the conservative default.
+    cost: >-
+      The prose restates the fallback that `linkTypeRow?.is_temporal ?? false` (in `pickLinkWire`
+      and in `normalizeIngestDirected`) already holds. It also adds a claim about how the
+      front-end renders the edge, which this file cannot vouch for.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/chat/graph-delta-link-temporal
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      header comment lines 40-42, and JSDoc step 5 at lines 444-448
+    evidence: >-
+      // every tool call. A guard miss returns an empty delta (`{nodes:[], links:[]}`)
+      // rather than throwing, so a broken tool result never crashes the SSE stream.
+    cost: >-
+      The prose restates the unreadable-result behavior. The code holds it in the
+      `if (!isRecord(result)) { return { source_tool: ..., nodes: [], links: [] }; }` branches,
+      and `normalizeIngestDirected` holds the directed exception with `if (!isRecord(result)) return null;`.
+      The prose can drift from those branches.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/chat/graph-delta-unreadable-result
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      JSDoc on `link_type_label` at lines 81-87, and comments at lines 215-218 and 533-534
+    evidence: >-
+      * the slug is not present in the catalog snapshot (open-ontology fallback);
+      * the SPA then humanizes the slug client-side.
+    cost: >-
+      The prose restates the label rule. The code holds it in
+      `...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {})`, in both
+      `pickLinkWire` and `normalizeIngestDirected`. It also describes the SPA's behavior, which
+      is outside this file.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/chat/graph-delta-link-label
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      `normalizeSearch`, the `seen` set and the `ids` loop at lines 346-358
+    evidence: >-
+      // principle surface the same node twice via different layers — we emit
+      // each node exactly once, in its FIRST appearance order).
+      ...
+      if (seen.has(item.id)) continue;
+    cost: >-
+      The code applies a rule of its own: a node that search surfaces more than once enters the
+      delta once, at its first position. `graph-delta-content` says only "the nodes search found in
+      search order". The next reader looks in the specification for what a repeated node does and
+      finds nothing, so the code is the only place the rule lives.
+    kind: unstated
+    correction: >-
+      `analyse` should state in `rules/chat/graph-delta-content`, or in a rule of its own, that
+      a node search found more than once enters the graph delta once, in the order it was first
+      found.
+    node: rules/chat/graph-delta-content
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      comment at lines 379-381 inside `normalizeSearch`
+    evidence: >-
+      // If `byId.get(id)` is undefined, the node was deleted between the
+      // search and the hydration (rare race) — we just drop it.
+    cost: >-
+      The prose restates the vanished-node rule. The code holds it in
+      `if (node !== undefined) nodes.push(node);`. The comment adds a claim about the front-end
+      ("never knew about it") that the file does not enforce.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/graph-delta-search-drops-vanished-node
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      JSDoc of `normalizeIngestDirected`, projection item 1, lines 410-412
+    evidence: >-
+      * frame still emits (an empty `{nodes:[], links:[]}` delta is
+      *      contractual — BR-41 v2.11).
+    cost: >-
+      The prose restates the empty directed delta. The code holds it: it builds `nodes` and `links`
+      as empty arrays and returns `{ source_tool: "ingest_directed", nodes, links }` when
+      nothing was affected or recorded.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/graph-delta-directed-empty
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      JSDoc item 4 at lines 437-442, and the comment inside `out` at lines 544-546
+    evidence: >-
+      // OMITTED on the directed path (BR-41 v2.11): is_in_effect, status,
+      // flags — view-derived and not yet materialised on the freshly
+      // persisted link.
+    cost: >-
+      The prose restates the bare-links rule. The code holds it in that the directed `out` object
+      sets only `id`, the endpoints, `link_type`, `link_type_label` and `is_temporal`. The comment
+      also gives a reason ("view-derived") that no node records.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/chat/graph-delta-directed-links-bare
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      comment at line 479 inside `normalizeIngestDirected`
+    evidence: >-
+      // Forced: directed items are stated-by-construction (BR-43 v2.8).
+      status: "active",
+    cost: >-
+      The comment restates a rule the code holds in `status: "active"`. It also gives a
+      justification, extending the rule to merged and deleted statuses, which no node records.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/graph-delta-directed-nodes-active
+  - file: src/modules/chat/service/graph-normalizer.ts
+    where: >-
+      link branch of `normalizeIngestDirected`, lines 507-517
+    evidence: >-
+      const first = entry.ref.indexOf("->");
+      const last = entry.ref.lastIndexOf("->");
+      ...
+      const link_type = entry.ref.slice(first + 2, last);
+    cost: >-
+      The code relies on a link item's `ref` being the text "<source_ref>-><link_type>-><target_ref>"
+      and takes the link type and both endpoints from it. No node states that format.
+      `domain/knowledge-base/directed-item` says only that `ref` is a string.
+      `directed-reference-length` says only that it holds 1 to 120 characters.
+      If the report's side changes the format, links are dropped here without any sign.
+    kind: unstated
+    correction: >-
+      `analyse` should state in `domain/knowledge-base/directed-item` the form of a link item's
+      reference, or the rule that fixes it, so the producer and this parser answer to one node.
+    node: domain/knowledge-base/directed-item
+read:
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: >-
+      `GRAPH_TOOL_NAMES` (lines 103-114) and the first branch of `normalizeToolResult` (lines 585-587)
+    evidence: >-
+      if (!GRAPH_TOOL_NAMES.has(toolName)) {
+        return Promise.resolve(null);
+      }
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: >-
+      `normalizeIngestDirected`, the final return (line 551)
+    evidence: >-
+      return { source_tool: "ingest_directed", nodes, links };
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: >-
+      the `out` object built in the link loop of `normalizeIngestDirected` (lines 537-547)
+    evidence: >-
+      const out: GraphLinkWire = {
+        id: entry.link_id,
+        source_node_id,
+        target_node_id,
+        link_type,
+        ...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {}),
+        is_temporal,
+  - node: rules/chat/graph-delta-link-label
+    held_at: >-
+      `pickLinkWire` (line 224) and `normalizeIngestDirected` (line 542)
+    evidence: >-
+      ...(linkTypeRow !== undefined ? { link_type_label: linkTypeRow.label } : {}),
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: >-
+      the final loop of `normalizeSearch` (lines 375-382)
+    evidence: >-
+      const node = byId.get(id);
+      if (node !== undefined) nodes.push(node);
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: >-
+      the `isRecord` guards of the per-tool normalizers (lines 251-253, 282-284, 304-306, 343), and `if (!isRecord(result)) return null;` in `normalizeIngestDirected` (line 460)
+    evidence: >-
+      if (!isRecord(result)) {
+        return { source_tool: "traverse", nodes: [], links: [] };
+      }
+      ...
+      if (!isRecord(result)) return null;
+  - node: contracts/chat/conversations
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares `export interface GraphDeltaWire` and builds the payload only. No HTTP status, error code or stream frame is written in it.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no chat configuration. Its only constants are `GRAPH_TOOL_NAMES`, `ACCEPTED_DIRECTED_STATUSES` and `ASSERTION_FLAGS`.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no prompt text. It holds `normalizeToolResult(toolName, result, catalog, client)` and the per-tool projections.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no configuration. It projects a result already produced: `normalizeIngestDirected(result: unknown, catalog: CatalogSnapshot)`.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no title or summary distillation. It holds only graph projection (`normalizeTraverse`, `normalizeGetNode`, `normalizeListNodes`, `normalizeSearch`, `normalizeIngestDirected`).
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file takes `catalog: CatalogSnapshot` as a parameter. The decision to stream the tool result alone when no snapshot is held is made by the caller, not in this file.
+  - node: rules/chat/message-content-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no message content. It holds the wire types `GraphNodeWire`, `GraphLinkWire` and `GraphDeltaWire`.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no message listing. It holds the wire types `GraphNodeWire`, `GraphLinkWire` and `GraphDeltaWire`.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no model context. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/model-context-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no model context. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/owner-time-zone-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no time zone or clock. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/replay-reports-failure
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no replay or stop-reason handling. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/send-message-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks no message and no conversation. Its only refusal is `new Error("normalizeToolResult: search requires a PoolClient to hydrate items")`.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no summary prompt. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no summary prompt. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs no tool and sets no timeout. It receives a result already captured: `normalizeToolResult(toolName, result, catalog, client)`.
+  - node: rules/chat/tool-result-truncated
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file truncates nothing. It receives a result already captured: `normalizeToolResult(toolName, result, catalog, client)`.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/tool-start-read-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/tool-start-search-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no tool-start summary. It projects only tool results into graph deltas.
+  - node: rules/chat/turn-model-call-limit
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no turn loop and no model call. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/turn-model-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no model. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/turn-time-limit
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no turn timer. It holds only graph projection and the `normalizeToolResult` dispatcher.
+  - node: rules/chat/utility-model-default
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file names no model. It holds only graph projection and the `normalizeToolResult` dispatcher.
+looked_past: >-
+  The file also redeclares the node-status vocabulary (`isNodeStatus`) and the assertion-flag vocabulary (`ASSERTION_FLAGS`) as wire literals, and carries comments that cite plan, back-spec and BR numbers and a module-boundary note; I treated the vocabulary as the graph-delta shape's own declaration and the citations as prose outside any domain fact, and filed neither.
+candidates_opened:
+  - rules/chat/graph-delta-content
+  - rules/chat/graph-delta-directed-links
+  - rules/chat/graph-delta-drops-incomplete
+  - rules/chat/graph-delta-link-temporal
+  - rules/chat/graph-delta-directed-nodes-active
+  - rules/chat/graph-delta-follows-tool-result
+  - domain/chat/graph-delta-node
+  - domain/chat/graph-delta-link
+  - domain/knowledge-base/directed-item
+  - domain/knowledge-base/directed-item-status
+  - domain/knowledge-base/node-status
+  - domain/knowledge-base/assertion-flag

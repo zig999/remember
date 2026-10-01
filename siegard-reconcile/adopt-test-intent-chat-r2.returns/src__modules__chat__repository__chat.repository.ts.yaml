@@ -1,0 +1,293 @@
+findings:
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment above listRecentRealTurns in the ChatRepository interface (lines 206-218) and the comment above the function itself (lines 656-673)
+    evidence: |-
+      // BR-31 v2.9: turn-based recent window. Returns every chat_message row that
+      // belongs to one of the last `turn_count` REAL turns (a real turn is anchored
+      // by a `role='user' AND idempotency_key IS NOT NULL` row), in chronological
+      // ASC order
+    cost: >-
+      The window rule is written twice in this file, once as SQL and once as prose citing the retired chat.back.md "BR-31". When the node moves, the prose keeps saying the old window and nothing reads it against the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in listRecentRealTurns holds the fact (the `boundary` CTE with `LIMIT 1 OFFSET $2` and `created_at >= COALESCE(...)`). The removal belongs to the comment route, followed by /reconcile over this file.
+    node: rules/chat/model-context-window
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment above listConversations (lines 353-357)
+    evidence: |-
+      // BR-35: cursor-paginated DESC list. `cursor` is the (created_at, id) pair of
+      // the previous page's last row. The composite key tuple comparison `(a, b) <
+      // (c, d)` lets the query plan walk `idx_chat_conversation_created_at_id_desc`
+    cost: >-
+      The ordering and cursor rule (newest first, ties by identity descending, strictly after the last row) is stated in prose beside the SQL that holds it (`ORDER BY created_at DESC, id DESC` and `(created_at, id) < (...)`). The prose cites a back-spec rule number, not a node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in listConversations holds the fact.
+    node: rules/chat/conversation-listing-order
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment above listMessagesPaginated (lines 761-763)
+    evidence: |-
+      // BR-39: ASC pagination with optional `before` cursor (walks backwards in
+      // time so the SPA can lazy-load older messages). Fetch `limit + 1` to detect
+      // next page.
+    cost: >-
+      The paging direction is the fact the decision log of this node records as having been decided from the source's behavior. The prose restates it under a retired BR number, so a reader may take the comment, not the node, as where it was decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in listMessagesPaginated holds the fact (`created_at < $n::timestamptz`, `ORDER BY created_at ASC, id ASC`, `LIMIT limit + 1`).
+    node: rules/chat/message-listing-pages-backwards
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment inside listMessagesPaginated above displayFilter (lines 779-786)
+    evidence: |-
+      // v2.2: this is the human-facing conversation view (SPA). It returns ONLY
+      // the DISPLAY rows — real user turns (`idempotency_key IS NOT NULL`) and
+      // TERMINAL assistant answers (`stop_reason IS NOT NULL`).
+    cost: >-
+      A listing rule held by a node outside this file's set is restated in prose next to the `displayFilter` string that implements it. If the node changes, this prose is not reached.
+    kind: restates
+    correction: >-
+      Remove the prose. The `displayFilter` constant holds the fact.
+    node: rules/chat/message-listing-shows-exchanges
+  - file: src/modules/chat/repository/chat.repository.ts
+    where: >-
+      the comment block above listOlderMessagesForSummaryBounded in the interface (lines 243-250) and above the function (lines 846-868)
+    evidence: |-
+      // BR-33 v2.9 step 2: bounded overlap slice. Returns the rows OLDER than the
+      // K-real-turn boundary (same pivot as `listRecentRealTurns` /
+      // `countRealTurnsOlderThanRecentWindow`), capped at the most recent
+      // `overlap_m` rows, with the START cut on a REAL-TURN ANCHOR so the slice is
+      // always Anthropic-valid (no leading orphan `tool_result`).
+    cost: >-
+      The overlap rule exists as the `older_tail` and `anchor_start` CTEs and again as a long algorithm description citing a retired back-spec step. Only the code is read against the node when it changes.
+    kind: restates
+    correction: >-
+      Remove the prose. The `boundary`, `older_tail` and `anchor_start` CTEs in listOlderMessagesForSummaryBounded hold the fact.
+    node: rules/chat/rolling-summary-overlap
+read:
+  - node: rules/chat/model-context-window
+    held_at: >-
+      listRecentRealTurns (lines 674-715). The window length is the `turn_count` argument, and no default is declared here.
+    evidence: |-
+      WHERE conversation_id = $1
+          AND role = 'user'
+          AND idempotency_key IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1 OFFSET $2
+      ...
+      AND created_at >= COALESCE(
+  - node: contracts/chat/conversations
+    held_at: >-
+      Only the persistence slice of the contract. The row shapes (ConversationRow, MessageRow, ConversationUsage), listConversations (page by (created_at, id), `limit + 1` to detect a next page, archived filter), updateConversation, deleteConversation, getConversationUsage, and getConversationGraphView and upsertConversationGraphView. The HTTP codes, error messages, SSE frames and refusals are not in this file.
+    evidence: |-
+      const CONVERSATION_COLS =
+        "id, title, summary_rolling, archived_at, created_at, updated_at";
+      ...
+      `SELECT ${GRAPH_VIEW_COLS}
+             FROM chat_graph_view
+            WHERE conversation_id = $1`
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no chat-enabled configuration. Its only parameters are `client`, ids and inputs.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It holds only SQL over chat_conversation, chat_message, chat_tool_call and chat_graph_view.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Every string is SQL or a column list.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no directed-ingestion configuration.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no distillation configuration. setTitleIfNull and updateSummaryRolling only write what they are given.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. It only persists and reads the graph view snapshot, as `$2::jsonb`.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      insertUserMessage and insertAssistantMessage store `JSON.stringify(input.content)` with no length check.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: >-
+      listMessagesPaginated (lines 764-804). The page is the first `limit` rows created before `before`, in ascending order.
+    evidence: |-
+      beforeClause = ` AND created_at < $${params.length}::timestamptz`;
+      ...
+      ORDER BY created_at ASC, id ASC
+            LIMIT ${limitParam}
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no owner date-and-time statement. The words "Data/hora atual do dono: " appear nowhere in it.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file mentions no time zone. "America/Sao_Paulo" appears nowhere in it.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      findAssistantSuccessor only selects the recorded terminal row (`stop_reason IS NOT NULL`). It builds no done or error frame.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file orders no checks. insertUserMessage states that it does not catch the unique conflict ("This function does NOT catch the conflict"), so the check order lives in callers.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt text. "(vazio)" appears nowhere in it.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt text. "Sintetizador" appears nowhere in it.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      insertToolCall only records `is_error` and `error_message`. It runs no tool and has no 15 000 ms timeout.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      insertToolCall stores `JSON.stringify(input.result)` with no cut to 8000 characters.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary. It has no args summary function.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file counts no model calls. insertIterationPair persists one iteration and has no limit of 8.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      insertUserMessage takes `model: string | null` and applies no default. "claude-opus-4-8" appears nowhere in the file.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no timer. "90000" appears nowhere in it. The `turn_timeout` string appears only as a member of the AssistantStopReason type.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no utility model. "claude-haiku-4-5" appears nowhere in it.
+looked_past: >-
+  The row-count window and slice functions listRecentMessages, listOlderMessagesForSummary and countUserTurns are kept beside the owner-message-anchored ones, and the header comment calls listRecentMessages "preserved for back-compat". Whether any caller still reads the context window through them is a question about callers outside this file set, so it is not judged here, and the many "BR-nn" and "v2.x" comments citing the retired chat.back.md are prose for the comment route.
+candidates_opened:
+  - rules/chat/message-listing-shows-exchanges
+  - rules/chat/rolling-summary-overlap
+  - rules/chat/conversation-listing-order

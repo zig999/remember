@@ -1,0 +1,259 @@
+findings:
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      the header comment, lines 9-14
+    evidence: >-
+      chat.spec.md §4 BR-18 (required content: entities, temporal axes,
+      confidence flag, resolve-before-call, never-invent-ids, citation,
+      pt-BR response, data-not-instruction, no-stack-trace).
+    cost: >-
+      The comment lists the facts the prompt must carry, among them never inventing identifiers and citing the source, as a second statement of them. The emitted prompt text in this file already holds those two. The next reader may take the comment, not the node, as the place that lists them.
+    kind: restates
+    correction: >-
+      Remove the comment. The prompt text at lines 64-70 holds the fact, and the node is bound to this file.
+    node: rules/chat/chat-prompt-v1-cites-sources
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      CHAT_PROMPT_MARKER_V1, line 35, planted at the head of the prompt at line 52
+    evidence: >-
+      export const CHAT_PROMPT_MARKER_V1 = "__REMEMBER_CHAT_SYS_MARKER_V1__" as const;
+    cost: >-
+      The literal token the output guard scrubs for exists only in this source. The node rules/chat/chat-prompt-carries-marker says every version begins with "the one system-prompt marker" and never states its value. A reader looking in the specification for what the guard detects will not find it.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the marker's value a node, or amend rules/chat/chat-prompt-carries-marker to state it.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      principle 5 of the emitted prompt, lines 71-74
+    evidence: >-
+      "5. RESPEITE OS EIXOS TEMPORAIS. O grafo distingue eixo de validade",
+      "   (`valid_from`/`valid_to`) do eixo de transacao (`recorded_at`/",
+      "   `superseded_at`). Quando o usuario perguntar sobre uma data, use",
+      "   `get_history_*` para responder com precisao.",
+    cost: >-
+      The prompt tells the assistant which tool answers a dated question and how the two time axes differ. No node in the specification holds this instruction. The tool the assistant uses for date questions is decided only in this prompt text.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the temporal-axes instruction a node under the chat prompt rules, or drop it from the prompt.
+  - file: src/modules/chat/prompts/v1.ts
+    where: >-
+      principle 8 of the emitted prompt, lines 81-82
+    evidence: >-
+      "8. Seja conciso. Prefira respostas curtas e diretas; agrupe varios",
+      "   itens em listas quando apropriado.",
+    cost: >-
+      The answer style the assistant is told to follow is held by no node. A change to it would happen only in this file, where the next reader will not look for it.
+    kind: unstated
+    correction: >-
+      Analysis would have to give the answer-style instruction a node, or drop it from the prompt.
+read:
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: >-
+      the string array returned by system(), principles 3 and 4, lines 64-70
+    evidence: >-
+      "3. NUNCA invente identificadores (uuids), nomes ou aliases. Se voce" ... "4. CITE A FONTE. Toda afirmacao factual deve apontar para o fragmento"
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file is a prompt builder. It declares no endpoint, status code or error message of the conversation surface.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no configuration. It exports PROMPT_VERSION, CHAT_PROMPT_MARKER_V1 and system().
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text says nothing about an ingestion run's affected nodes.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. system(_catalog?: unknown) ignores its argument and names no catalog listings.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text has no fallback for a run with no affected nodes.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text names `list_nodes` but says nothing about giving a node type.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text does not say that search is lexical.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text does not tell the assistant to search one name per call.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The rule applies from v3 on. The v1 text says nothing about unfiltered listings.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v2. The file states no ingestion behavior.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v2. The file states nothing about repeating ingested content.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v2. The file states nothing about polling an ingestion's status.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about asking for a start date.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about closed attribute values.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The v1 text names no write path.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about directed ingestion calls.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about pinning an entity by node identity.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about recording only what the owner declared.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The rule belongs to v4. The file states nothing about reporting item statuses.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no configuration and names no ingestion tool.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no configuration and states nothing about distillation.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta. system(_catalog?: unknown) ignores the catalog.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph delta.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file states no message-length limit.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file lists no messages.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The v1 prompt carries no statement of the owner's date and time and never mentions "Data/hora atual do dono".
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file builds no message history.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file states no time zone.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file states nothing about turn replay.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file checks no sent message.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      This is a chat prompt, not a summary prompt. It has no "(vazio)" placeholder.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      This is a chat prompt, not a summary prompt. It names no "Sintetizador".
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file only tells the assistant to put a tool error in a short sentence: "Em caso de erro de uma ferramenta, traduza para uma frase curta em pt-BR". It states no tool-failure handling and no tool time.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file states no tool-result limit.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file states no iteration limit. The only mention of iteration is a comment about calling system() "at iteration 1".
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file states no turn time limit. The prompt only says "tem orcamento de tempo".
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no model.
+looked_past: >-
+  The prompt's pt-BR answer, data-not-instruction, uncertainty and no-internals instructions are held by nodes outside the pack (rules/chat/assistant-answers-in-portuguese, constraints/chat-content-is-data, rules/chat/assistant-states-uncertainty, rules/chat/assistant-withholds-internals) and state them truly, so I did not report them.
+candidates_opened:
+  - rules/chat/chat-prompt-carries-marker
+  - rules/chat/assistant-answers-in-portuguese
+  - rules/chat/assistant-states-uncertainty
+  - rules/chat/assistant-withholds-internals
+  - constraints/chat-content-is-data

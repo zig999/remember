@@ -1,0 +1,256 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 5 of directedIngestionService, the catch around resolveAffectedNodes (about lines 767-787)
+    evidence: >-
+      let resolvedAffected: readonly AffectedNode[] = [];
+      ... catch (err) { deps.logger.warn({ ... event: "directed_ingestion_affected_nodes_resolution_failed" ... }); // resolvedAffected stays []; the run is still completed. }
+    cost: >-
+      When the affected-nodes read fails, the caller still receives outcome "ingested" with an empty
+      `affected_nodes` list, which looks the same as a run that touched no node. The ingestion contract
+      says the answer carries "the completed run with its affected nodes" and names no such fallback. The
+      rule is held only in this catch block, so a reader of the specification will not find it. The
+      chat's prompt rule for "a completed run lists no affected nodes" would then be triggered by a read
+      failure.
+    kind: unstated
+    correction: >-
+      Give the ingest-directed answer in contracts/knowledge-base/ingestion a node stating what it
+      reports when the affected nodes cannot be read, or state that the failure is surfaced.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      closeRunCompletedSafe (about lines 1006-1034), together with the hardcoded `status: "completed"` in the result (about line 817)
+    evidence: >-
+      catch (err) { try { await client.query("ROLLBACK"); } catch { /* swallow */ } logger.warn({ ... event: "directed_ingestion_close_failed" ... }) }
+      and, in the result, `status: "completed",`
+    cost: >-
+      If flipping the run row to completed fails, the code only logs a warning. The answer still reports
+      the run as `status: "completed"`, while the stored run may stay open. The node
+      rules/knowledge-base/directed-run-completes says the run completes whatever the items' statuses,
+      and says nothing about a failure to close it. The behaviour lives only in this helper.
+    kind: unstated
+    correction: >-
+      State in a node on the ingest-directed answer what is reported when closing the run fails.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe fallback and the null finished_at branch (about lines 1050-1075)
+    evidence: >-
+      const fallback = { started_at: new Date(0).toISOString(), finished_at: new Date(0).toISOString(), attempts: 1, };
+      and `row.finished_at === null ? new Date(0).toISOString() : row.finished_at.toISOString()`
+    cost: >-
+      The answer's completed run can carry the 1970 epoch as its start and finish times, and an `attempts`
+      of 1, when the run row is missing, unreadable or has no finish time. These are invented values that
+      read as real timestamps and attempt counts. The ingestion contract says the answer carries "the
+      completed run" and no node holds these placeholders, so the next reader will not find them in the
+      specification.
+    kind: unstated
+    correction: >-
+      Decide in the ingest-directed answer what the run block reports when the closed run cannot be read,
+      for example null values or a refusal. Do not use an epoch date as a stand-in for a real time.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file has no REST surface and no conversation operation. Its entry point is `export async function directedIngestionService(input: unknown, deps: DirectedIngestionDeps)`.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      No chat enablement setting is read. `DirectedIngestionDeps` has no flag, only pool, logger, catalog and test seams.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat prompt text. It only builds `affected_nodes: resolvedAffected` in the result.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It dispatches `proposeFragment`, `proposeNode`, `proposeAttribute` and `proposeLink`.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. `resolvedAffected` stays `[]` on failure, but no instruction to an assistant is emitted.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no node listing.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no search.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no search.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no node listing.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. Its only prompt reference is the sentinel `export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;`, which is not a chat prompt.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. The ingestion here is synchronous and returns `outcome: "ingested"`.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It defaults `valid_from_basis: item.valid_from_basis ?? "stated"`, which is code and not an instruction to the assistant.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It implements the directed write itself, `directedIngestionService`.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text and no limit on how often it is called.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It does implement the pin (`if (item.node_id !== undefined) { ... verifyPin(deps.pool, item.node_id)`), but the node constrains only the prompt that tells the assistant about it.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      The file holds no prompt text. It builds the per-item `report`, but the node constrains only the instruction in the prompt.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file reads no enablement setting. `directedIngestionService` runs whenever it is called.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no title distillation and no rolling summary.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file emits no graph delta and no stream. It returns `{ ok: true, result: { outcome: "ingested", ... } }`.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      No graph delta is built in this file. It returns `affected_nodes` and `report`, and the delta is built elsewhere.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      No graph delta or delta link is built in this file. Its link report entries are `{ ref, kind: "link", status, link_id }`.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      No graph delta link or link label is built in this file.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      `deps.catalog` is passed to the propose handlers, but no graph delta is conditioned on it.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file holds no search and no graph delta.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file reads no tool result for a graph delta. It consumes the propose handlers' envelopes with `if (envelope.ok)`.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file bounds fragment text with `text: z.string().min(1).max(1000)`. That is a fragment limit and not a chat message limit.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file holds no message listing.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file holds no statement of the owner's date and time to a model. It calls no model.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no conversation window. It calls no model.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no time zone. It stamps `at.toISOString()` in UTC.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn replay.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file holds no message sending. Its `deps.metadataPointer` only carries `conversation_id` and `message_id` into metadata.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file holds no summary prompt.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn and no tool-call timeout. A failed item becomes a report entry (`status: classifyEnvelopeFailureStatus(envelope)`), and the loop continues.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file truncates no result. It returns `report` whole.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file builds no tool-start summary.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file calls no model. Its comment reads "NEVER calls Anthropic", and the code dispatches only `proposeFragment`, `proposeNode`, `proposeAttribute` and `proposeLink`.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat model. The directed run uses the sentinel `export const DIRECTED_MODEL = "directed" as const;`.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file holds no turn time limit.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file holds no utility model. The directed run uses `DIRECTED_MODEL = "directed"`.
+looked_past: >-
+  The facts this file actually carries belong to knowledge-base nodes outside this pack: the directed-* rules and contracts/knowledge-base/ingestion. Its many comments restating those nodes, and the service's own "Input failed Zod parse." message beside the contract's "ingest_directed arguments failed validation.", are for the pass over those nodes.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

@@ -1,0 +1,254 @@
+findings:
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      file header comment, lines 5-7 ("They use the `env.CHAT_UTILITY_MODEL` Anthropic model (default `claude-haiku-4-5`)")
+    evidence: >-
+      // `env.CHAT_UTILITY_MODEL` Anthropic model (default `claude-haiku-4-5`) via
+    cost: >-
+      The default utility model is named a second time in prose. The running default is `CHAT_UTILITY_MODEL: z.string().min(1).default("claude-haiku-4-5")` in backend/src/config/env.ts. If the node or that default moves, this comment still names the old model, and a reader of this file takes it for the decision.
+    kind: restates
+    correction: >-
+      Remove the parenthetical default from the comment. The code that holds the default is backend/src/config/env.ts, and the node binds there.
+    node: rules/chat/utility-model-default
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      docstring on SUMMARY_MAX_CHARS (lines 49-56) and step 4 of the maybeRefreshSummary docstring ("Oversize refusal (HARD CAP 2000 chars)")
+    evidence: >-
+      * `chat_conversation.summary_rolling`. Output longer than this is REFUSED:
+    cost: >-
+      The 2000-character limit on a rolling summary is stated in prose beside the code that enforces it (`if (summary_new.length > SUMMARY_MAX_CHARS)`). The prose can drift from the constant and from the candidate node, and nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the docstring and the step-4 prose. The constant and the guard in this file already hold the fact.
+    node: rules/chat/rolling-summary-length
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      maybeDistillTitle docstring step 5 ("Trim; if empty OR length > 80: silently drop (BR-34 step 5)") and the comment above the guard ("The model is expected to obey the 80-char ceiling")
+    evidence: >-
+      *   5. Trim; if empty OR length > 80: silently drop (BR-34 step 5).
+    cost: >-
+      The 80-character title limit is repeated in prose beside `TITLE_MAX_LENGTH = 80` and the guard `candidate.length > TITLE_MAX_LENGTH`. The comment and the constant can disagree without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the docstring step and the comment. The constant and the guard hold the fact.
+    node: rules/chat/distilled-title-length
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      constants SUMMARY_MAX_TOKENS and TITLE_MAX_TOKENS, lines 146-147
+    evidence: >-
+      const SUMMARY_MAX_TOKENS = 600;
+      const TITLE_MAX_TOKENS = 64;
+    cost: >-
+      These are output ceilings the code applies to every summary refold and every title distillation. I found no node holding either value, so they sit only in this file. A reader looking in the specification for how much the utility model may emit will not find them. A summary that hits the ceiling is cut before the 2000-character check sees it.
+    kind: unstated
+    correction: >-
+      The analysis should decide whether these ceilings are domain facts. If they are, a node needs to hold them. Likely homes are the chat summary-prompt-version and title-prompt rules, or the rolling-summary and distilled-title rules.
+
+read:
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file is a background job with no HTTP surface. It has no status code, error code or request handling. It only exports `maybeRefreshSummary` and `maybeDistillTitle`, both returning `Promise<void>`.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file never reads a chat-enabled flag. It reads only `env.CHAT_SUMMARY_ENABLED` and `env.CHAT_TITLE_ENABLED`.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      The file holds no chat prompt text. It calls `selectTitlePromptModule()` and `selectChatSummaryPromptModule(...)`, and the prompts live in the prompts modules.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      No chat prompt text is present. The file only calls `selectTitlePromptModule()`.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file has no directed-ingestion flag or default.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      The file only consumes the flags with `if (!env.CHAT_SUMMARY_ENABLED) return;` and `if (!env.CHAT_TITLE_ENABLED) return;`. The enabled-by-default value is declared in backend/src/config/env.ts, not here.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no tool dispatch or graph delta.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or catalog snapshot.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or search.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file never checks the length of a message's content. Its only length checks are on the distilled output (`summary_new.length > SUMMARY_MAX_CHARS`, `candidate.length > TITLE_MAX_LENGTH`).
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file does no message listing or paging. It only calls `repo.listOlderMessagesForSummaryBounded(...)`, which lives in the repository.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file builds no owner-time statement.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the window value, as in `repo.countRealTurnsOlderThanRecentWindow(client, conversationId, env.CHAT_RECENT_WINDOW)`. It holds no window rule and no default of 6.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file has no time-zone handling.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file has no replay or stop reason.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file does no send-message checks.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file passes `summary_prev` (null or a string) to `mod.buildUserTurn(summary_prev, newMessages)`. The "(vazio)" rendering belongs to the prompt module in prompts/chat-summary, not to this file.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file uses `system: mod.system` from the prompt module. The persona text is not in this file.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no tool execution.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file has no tool results.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summaries.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file makes one `anthropic.messages.create` call per job, with no iteration limit.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file uses only the utility model, `model: env.CHAT_UTILITY_MODEL`. It has no turn model default.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no turn timer.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `model: env.CHAT_UTILITY_MODEL`. The default `claude-haiku-4-5` appears here only in a comment. The code that holds it is `.default("claude-haiku-4-5")` in backend/src/config/env.ts.
+
+looked_past: >-
+  The distillation facts this file does implement are held by nodes outside the pack (rolling-summary-refresh, rolling-summary-overlap, rolling-summary-length, title-distillation, distilled-title-length, distilled-title-never-overwrites, distillation-failure-changes-nothing). Its other docstrings restate them as prose, and I left those to a candidate-bound pass and to the comment route. I also did not judge the dead `CHAT_SUMMARY_AFTER_TURNS` field or the structured log event names, which are not domain facts.
+
+candidates_opened:
+  - rules/chat/rolling-summary-length
+  - rules/chat/distilled-title-length

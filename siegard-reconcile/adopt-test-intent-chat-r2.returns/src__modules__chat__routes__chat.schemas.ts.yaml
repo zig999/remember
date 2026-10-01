@@ -1,0 +1,222 @@
+findings:
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: >-
+      buildChatTurnRequestSchema and ChatMessageSchema, lines 5-37
+    evidence: >-
+      content: z.string().min(1, "content must be a non-empty string") ... .array(ChatMessageSchema).min(1, "messages must contain at least 1 entry").max(opts.maxHistoryMessages, `messages must contain at most ${opts.maxHistoryMessages} entries`) ... .refine((v) => v.messages[0]?.role === "user", { message: "first message must have role=user", path: ["messages", 0, "role"] })
+    cost: >-
+      The file declares a request shape in which the caller supplies its own message history. The history must hold at least one entry and a configured maximum, and it must start with a user message. No node in the specification states this. The send-message operation in contracts/chat/conversations takes a single `content` and an optional `model`, and the context window comes from rules/chat/model-context-window. The next reader will look in the specification for these limits and the first-role rule and find nothing, and the code becomes the only place they are decided. In the tree, the builder is declared in this file and is not called anywhere else.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the history-bearing turn request a node that states its minimum, maximum and first-role rule, or the declaration is removed if the specification does not intend it.
+read:
+  - node: rules/chat/message-content-length
+    held_at: >-
+      buildSendMessageRequestSchema, the `.max(opts.maxContentLength, ...)` on `content`, lines 66-82. The 32 768 default is not stated in this file; the limit arrives as the configured option.
+    evidence: >-
+      .min(1, "content must be a non-empty string").max(opts.maxContentLength, `content must be at most ${opts.maxContentLength} characters`)
+  - node: contracts/chat/conversations
+    held_at: >-
+      the request-shape declarations: CreateConversationRequest, UpdateConversationRequest, buildSendMessageRequestSchema, ListConversationsQuery, ListMessagesQuery, IdempotencyKeyHeader, ConversationIdParam and SaveGraphViewRequest with its V1 and V2 shapes (lines 43-139). The status codes and the envelope are not in this file.
+    evidence: >-
+      export const SaveGraphViewRequest = z.discriminatedUnion("version", [GraphViewSnapshotV1, GraphViewSnapshotV2]); layout_algorithm: z.enum(["force", "tree", "radial"]); export const IdempotencyKeyHeader = z.string().uuid(); include_archived: z.union([z.boolean(), z.enum(["true", "false"])])
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      the file declares only request schemas and holds no chat-enabled setting
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      the file holds no directed-ingestion setting
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      the file holds no distillation or summary setting
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta; its graph declarations are only the snapshot shapes GraphSnapshotNode and GraphSnapshotLink
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      the file builds no graph delta
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      the file only validates the `before` parameter and the limit, `before: z.string().datetime().optional()`. The paging behaviour is not here.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      the file holds no model-context text
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      the file holds no recent-window setting or selection. `maxHistoryMessages` in buildChatTurnRequestSchema is a caller-history cap and not the owner-message window.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      the file holds no time-zone value
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      the file holds no replay behaviour
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      the file declares each check's schema separately (IdempotencyKeyHeader, ConversationIdParam, buildSendMessageRequestSchema) and states no order between checks
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      the file holds no prompt text
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      the file holds no tool-call handling or tool-time value
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      the file holds no tool-result limit
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      the file builds no tool-start summary
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      the file holds no model-call limit
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      the file declares `model: z.string().min(1).optional()` but names no default model
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      the file holds no turn-time value
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      the file holds no utility-model value
+looked_past: >-
+  The update-conversation refine message begins "VALIDATION_REQUIRED_FIELD: at least one of title or archived_at must be present", while the contract's message omits that prefix. How the prefix is handled before it reaches the owner is the route's, which is outside this file set, so I did not judge it.
+candidates_opened:
+  - rules/chat/conversation-title-length
+  - rules/chat/conversation-listing-limit
+  - rules/chat/conversation-update-names-a-field
+  - rules/chat/message-listing-limit
+  - rules/chat/graph-view-snapshot-bounds

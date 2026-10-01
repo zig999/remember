@@ -1,0 +1,256 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/index.ts
+    where: >-
+      the header comment, lines 14-19 (item 2, "Boot-time fast failure"), above
+      selectChatSummaryPromptModule
+    evidence: >-
+      an unknown `CHAT_SUMMARY_PROMPT_VERSION` is a configuration error, NEVER a silent fallback.
+      `selectChatSummaryPromptModule` throws `UnknownChatSummaryPromptVersionError`
+    cost: >-
+      The comment restates the rule that the summary prompt version must be one the system holds.
+      That rule is already held by the node and by the code in this file, which throws when
+      `REGISTRY[promptVersion]` is undefined. The comment is a second home for the rule outside
+      behavior. When the node moves, nothing reaches the comment, and a reader may trust either
+      the comment or the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule stays held by the throw in selectChatSummaryPromptModule and by
+      the node. The prose route removes it; this is not an edit to behavior.
+    node: rules/chat/summary-prompt-version-known
+  - file: src/modules/chat/prompts/chat-summary/index.ts
+    where: >-
+      the header comment lines 21-23 ("`v2` is the incremental fold ... default") and the
+      docblock lines 56-61 ("Recommended default for NEW deployments — used when env is unset")
+    evidence: >-
+      `v2` is the incremental fold (BR-46, default — selected by BR-33 v2.9).
+      and
+      Recommended default for NEW deployments — used when env is unset. v2.9
+      makes `v2` the default (incremental fold).
+    cost: >-
+      The default summary prompt version is stated in prose beside the constant
+      `DEFAULT_CHAT_SUMMARY_PROMPT_VERSION = v2.PROMPT_VERSION`, which already holds it. If the
+      default changes in the node or in the constant, the comments keep saying v2.
+    kind: restates
+    correction: >-
+      Remove the prose. The default stays held by the constant and by the node.
+    node: rules/chat/default-summary-prompt-version
+read:
+  - node: contracts/chat/conversations
+    held_at: nowhere
+    evidence: >-
+      The file declares only the summary-prompt registry (`const REGISTRY`,
+      `selectChatSummaryPromptModule`). It has no route, status code or error body of the chat
+      surface.
+  - node: rules/chat/chat-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      No chat enablement is read in this file. It holds `const REGISTRY: Readonly<Record<string, ChatSummaryPromptModule>>` only.
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text, only the summary registry. It imports `./v1.js` and `./v2.js` and carries no `system` string.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text. The registry maps `[v1.PROMPT_VERSION]: v1.v1Module`
+      and `[v2.PROMPT_VERSION]: v2.v2Module` and carries no instruction about listings.
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text. `selectChatSummaryPromptModule` only looks up
+      `REGISTRY[promptVersion]`.
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text. The interface `ChatSummaryPromptModule` declares
+      `version`, `system` and `buildUserTurn`, and carries no prompt content.
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no search. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no search. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no listing. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v1-cites-sources
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text. `v1.v1Module` is only referenced in `[v1.PROMPT_VERSION]: v1.v1Module`,
+      and the summary v1 module is in another file.
+  - node: rules/chat/chat-prompt-v2-ingestion-returns-running
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no ingestion status. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v2-no-content-echo
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no ingestion content. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v2-no-status-polling
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no ingestion status. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-asks-start-date
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text. The registry has only the keys `v1` and `v2` (`[v1.PROMPT_VERSION]`, `[v2.PROMPT_VERSION]`).
+  - node: rules/chat/chat-prompt-v4-closed-values
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no attribute keys or values. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-directed-ingestion-writes
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no directed ingestion. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-one-ingestion-per-command
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no directed ingestion. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-pins-known-entity
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no entity resolution. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-records-only-declared
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no recording. It holds only the summary registry.
+  - node: rules/chat/chat-prompt-v4-reports-each-item
+    held_at: nowhere
+    evidence: >-
+      This file holds no chat prompt text and mentions no ingestion items. It holds only the summary registry.
+  - node: rules/chat/directed-ingestion-disabled-by-default
+    held_at: nowhere
+    evidence: >-
+      No directed-ingestion setting is read in this file. It holds the summary registry only.
+  - node: rules/chat/distillation-enabled-by-default
+    held_at: nowhere
+    evidence: >-
+      No enablement of distillation or rolling summaries is read in this file. It selects a prompt module by version and does not gate distillation.
+  - node: rules/chat/graph-delta-absent-for-catalog-history-provenance
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool result handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-directed-empty
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-directed-links-bare
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta link handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-link-label
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta link handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or catalog snapshot handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-search-drops-vanished-node
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or search handling. It holds the summary registry only.
+  - node: rules/chat/graph-delta-unreadable-result
+    held_at: nowhere
+    evidence: >-
+      The file has no graph delta or tool result handling. It holds the summary registry only.
+  - node: rules/chat/message-content-length
+    held_at: nowhere
+    evidence: >-
+      The file has no message content length check. It only types `new_messages: ReadonlyArray<Anthropic.Messages.MessageParam>`.
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: nowhere
+    evidence: >-
+      The file has no message listing. It holds the summary registry only.
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: nowhere
+    evidence: >-
+      The file has no owner date/time statement. It holds the summary registry only.
+  - node: rules/chat/model-context-window
+    held_at: nowhere
+    evidence: >-
+      The file has no recent-message window. `buildUserTurn` is declared as an interface member and receives its messages from the caller.
+  - node: rules/chat/owner-time-zone-default
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone. It holds the summary registry only.
+  - node: rules/chat/replay-reports-failure
+    held_at: nowhere
+    evidence: >-
+      The file has no replay or stop reason handling. It holds the summary registry only.
+  - node: rules/chat/send-message-check-order
+    held_at: nowhere
+    evidence: >-
+      The file has no send-message checks. It holds the summary registry only.
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: nowhere
+    evidence: >-
+      The file only declares the `summary_prev: string | null` parameter of `buildUserTurn` and
+      registers `[v2.PROMPT_VERSION]: v2.v2Module`. It does not render "(vazio)" for a missing
+      previous summary; that composition is in v2.ts.
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: nowhere
+    evidence: >-
+      The file only registers `[v2.PROMPT_VERSION]: v2.v2Module`. It carries no `system` text, no
+      "Sintetizador" persona and no sentence limit; those are in v2.ts.
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no tool call handling. It holds the summary registry only.
+  - node: rules/chat/tool-result-truncated
+    held_at: nowhere
+    evidence: >-
+      The file has no tool result handling. It holds the summary registry only.
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/tool-start-listing-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/tool-start-read-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/tool-start-search-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: nowhere
+    evidence: >-
+      The file has no tool-start summary. It holds the summary registry only.
+  - node: rules/chat/turn-model-call-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no model call counting. It holds the summary registry only.
+  - node: rules/chat/turn-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no chat model. It holds the summary registry only.
+  - node: rules/chat/turn-time-limit
+    held_at: nowhere
+    evidence: >-
+      The file has no turn time limit. It holds the summary registry only.
+  - node: rules/chat/utility-model-default
+    held_at: nowhere
+    evidence: >-
+      The file names no utility model. The registry selects a prompt module and does not choose a model.
+looked_past: >-
+  The pack's nodes do not hold what this file carries: the default summary prompt version
+  (`DEFAULT_CHAT_SUMMARY_PROMPT_VERSION: string = v2.PROMPT_VERSION`) and the known-version check
+  (the throw in `selectChatSummaryPromptModule`) are held by candidates, which conform, and the
+  comments' claims about caching and the route registrar are prose with no code behind them in this
+  file, so they are not findings.
+candidates_opened:
+  - rules/chat/default-summary-prompt-version
+  - rules/chat/summary-prompt-version-known
+  - domain/chat/summary-prompt-version
