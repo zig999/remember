@@ -2,8 +2,6 @@
 
 BEGIN;
 
-\ir ../0007_compliance_deletion_affected_shape.sql
-
 INSERT INTO raw_information (source_type, content, content_hash)
 VALUES ((enum_range(NULL::source_type))[1], 'fixture', repeat('a', 64));
 
