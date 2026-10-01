@@ -1,0 +1,213 @@
+findings:
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      line 53, the constant MAX_TOKENS_PER_ITERATION, passed as max_tokens at line 255
+    evidence: >-
+      const MAX_TOKENS_PER_ITERATION = 4096;
+      ...
+      max_tokens: MAX_TOKENS_PER_ITERATION,
+    cost: >-
+      This number caps how long every answer can be, and it decides when a turn ends as max-tokens. It is not configured and no node states it. Someone changing how long answers may be will look in the specification, find nothing, and not know this file decides it.
+    kind: unstated
+    correction: >-
+      An analysis would have to give the per-model-call output ceiling a node, or state that it is configured like the other limits. domain/chat/turn is the closest home, since it holds how a turn ends.
+    node: domain/chat/turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      lines 416-423, the branch for a tool name absent from the catalog
+    evidence: >-
+      toolEnvelope = {
+              ok: false,
+              error: {
+                code: "VALIDATION_INVALID_FORMAT",
+                message: "unknown tool name",
+              },
+            };
+    cost: >-
+      The code and message the assistant receives for a tool outside its toolset are stated only here. rules/chat/tool-failure-continues-turn holds that the failure is handed to the assistant and the turn continues, but not what the failure says. The text is what the assistant sees and reacts to, and no node can be checked against it.
+    kind: unstated
+    correction: >-
+      The failure handed to the assistant for a tool outside its toolset needs a node that states its code and message.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      lines 634-640, the timeout branch of raceToolHandler
+    evidence: >-
+      resolve({
+              ok: false,
+              error: {
+                code: "SYSTEM_SERVICE_UNAVAILABLE",
+                message: "tool timeout",
+              },
+            });
+    cost: >-
+      The code and message the assistant receives when a tool runs past the configured tool time are stated only here. The node holds that the turn continues, not what the assistant is told.
+    kind: unstated
+    correction: >-
+      The failure handed to the assistant when a tool runs past the tool time needs a node that states its code and message.
+    node: rules/chat/tool-failure-continues-turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      lines 672-679, synthesiseInternalErrorEnvelope
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+          message: errMessage(err) ?? "tool handler threw",
+    cost: >-
+      When a tool throws, its raw error message, or the fallback "tool handler threw", is what the assistant is told. No node says the cause is passed along or what the fallback reads. Another node says the owner-facing internal error withholds the cause, so the next reader cannot tell whether passing the cause here was decided.
+    kind: unstated
+    correction: >-
+      The failure handed to the assistant when a tool throws needs a node that states its code and whether the thrown message is carried.
+    node: rules/chat/tool-failure-continues-turn
+read:
+  - node: rules/chat/assistant-text-withholds-system-prompt
+    held_at: >-
+      the stream.on("text") handler, lines 276-281. Marker detection itself is inspectDelta in ./output-guard.js, another file.
+    evidence: >-
+      const decision = inspectDelta(delta, ctx.logger);
+              if (decision.drop) return;
+              enqueue({ kind: "delta", delta });
+      and iterationBlocks.push({ type: "text", text: item.delta }) runs only for enqueued deltas.
+  - node: rules/chat/iteration-recorded
+    held_at: >-
+      the iteration_end yield, lines 469-475. It hands the assistant's request and the tool results to the recorder as one event, request first. The persistence itself is not in this file.
+    evidence: >-
+      yield {
+                type: "iteration_end",
+                iteration,
+                assistant_content: iterationBlocks.slice(),
+                tool_results: toolResultBlocks.slice(),
+              } as const;
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      nowhere. This file persists nothing and names no assistant message. It only yields the tool_result event.
+    evidence: >-
+      yield {
+                type: "tool_result",
+                tool: toolName,
+                ok: toolEnvelope.ok,
+                arguments: block.input,
+                result: toolEnvelope.ok ? (toolEnvelope.result ?? null) : null,
+                ...
+              } as const;
+  - node: rules/chat/tool-failure-continues-turn
+    held_at: >-
+      the tool dispatch, lines 414-431, with raceToolHandler at lines 622-658. An unknown tool, a timeout and a throw each become a failed envelope, and the loop goes on to the next model call.
+    evidence: >-
+      toolEnvelope = await raceToolHandler(
+                tool.handler,
+                block.input,
+                ctx.env.TOOL_TIMEOUT_MS,
+                invocationContext
+              );
+      and, after the for loop, inLoopHistory.push({ role: "user", content: toolResultBlocks }); continue;
+  - node: rules/chat/tool-invocation-carries-turn
+    held_at: >-
+      invocationContext, lines 194-203, passed to every handler call at lines 425-430
+    evidence: >-
+      if (ctx.input.current_user_turn !== undefined) {
+            out.source_excerpt = ctx.input.current_user_turn;
+          }
+          if (ctx.input.invocation_pointer !== undefined) {
+            out.pointer = ctx.input.invocation_pointer;
+          }
+  - node: rules/chat/tool-result-truncated
+    held_at: >-
+      lines 451-462. The cut and the length marking are in ./truncate-tool-result.js, another file. This file applies the configured limit to the body the assistant receives.
+    evidence: >-
+      const truncated = truncateToolResult(
+                bodyJson,
+                ctx.env.TOOL_RESULT_MAX_CHARS
+              );
+      ...
+      content: truncated.value,
+  - node: rules/chat/turn-cancel
+    held_at: >-
+      externalAbortListener (lines 157-166), the aborted-signal check (lines 223-236) and the stream-error branch (lines 320-334)
+    evidence: >-
+      const stopReason: DoneStopReason =
+              reason === TURN_TIMEOUT_REASON ? "turn_timeout" : "cancelled";
+  - node: rules/chat/turn-ends-once
+    held_at: >-
+      terminate (lines 525-546) and terminateError (lines 548-576). Every path out of the loop, including the catch, goes through exactly one of them and then returns.
+    evidence: >-
+      yield* terminateError(
+            ctx,
+            "SYSTEM_INTERNAL_ERROR",
+            "chat encountered an internal error",
+            turnTimer,
+            externalAbortListener,
+            "internal_error",
+            iterationBlocks
+          );
+          return;
+  - node: rules/chat/turn-failure-stop-reason
+    held_at: >-
+      lines 343-351 for the provider error, and lines 356-365 and 499-507 for the other causes
+    evidence: >-
+      "BUSINESS_CHAT_PROVIDER_UNAVAILABLE",
+              "chat provider is temporarily unavailable",
+              turnTimer,
+              externalAbortListener,
+              "provider_error",
+              iterationBlocks
+      and the "internal_error" argument at the two SYSTEM_INTERNAL_ERROR sites
+  - node: rules/chat/turn-limit-before-cancel
+    held_at: >-
+      the order of the checks at the top of the loop, lines 211-236. The iteration limit is tested before the aborted signal.
+    evidence: >-
+      if (iteration > ctx.env.MAX_ITERATIONS) {
+            yield* terminate(
+              ctx,
+              "max_iterations",
+      ...
+            if (turnController.signal.aborted) {
+  - node: rules/chat/turn-model-call-limit
+    held_at: >-
+      the iteration counter and the check at lines 210-221
+    evidence: >-
+      iteration += 1;
+            if (iteration > ctx.env.MAX_ITERATIONS) {
+  - node: rules/chat/turn-model-stop-reason
+    held_at: >-
+      mapStopReason, lines 756-769
+    evidence: >-
+      case "end_turn":
+          return "end_turn";
+        case "max_tokens":
+          return "max_tokens";
+        case "stop_sequence":
+          return "stop_sequence";
+        default:
+          return "end_turn";
+  - node: rules/chat/turn-one-tool-at-a-time
+    held_at: >-
+      the stream request, line 257
+    evidence: >-
+      tool_choice: { type: "auto", disable_parallel_tool_use: true },
+  - node: rules/chat/turn-reports-last-model
+    held_at: >-
+      lastModel, initialised at line 206 and updated at line 368. It is passed to terminate for the done event.
+    evidence: >-
+      let lastModel = ctx.input.model;
+      ...
+      lastModel = finalMessage.model ?? lastModel;
+  - node: rules/chat/turn-time-limit
+    held_at: >-
+      the turn timer, lines 152-155, and its mapping to turn_timeout at lines 225-226 and 323-324
+    evidence: >-
+      const turnTimer = setTimeout(() => {
+          turnController.abort(TURN_TIMEOUT_REASON);
+        }, turnTimeoutMs);
+  - node: rules/chat/turn-tokens-summed
+    held_at: >-
+      the accumulator, lines 369-372 and 596-599, read by terminate for tokens_in and tokens_out
+    evidence: >-
+      ctx.accumulator.addTokens(
+              finalMessage.usage?.input_tokens ?? 0,
+              finalMessage.usage?.output_tokens ?? 0
+            );
+      and addTokens: (i, o) => { tokens_in += i; tokens_out += o; }
+looked_past: >-
+  I saw the ephemeral cache_control on the system block, the schema-conversion warnings, and the public export of raceToolHandler. These concern provider mechanics and code shape, not a domain fact, so I left them alone.
+candidates_opened:
+  - domain/chat/turn

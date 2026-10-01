@@ -1,0 +1,112 @@
+findings:
+  - file: src/modules/chat/routes/chat.schemas.ts
+    where: >-
+      buildChatTurnRequestSchema and ChatMessageSchema, lines 5-37 (the messages-history request with its minimum, its maximum and its first-role refinement)
+    evidence: |-
+      messages: z
+        .array(ChatMessageSchema)
+        .min(1, "messages must contain at least 1 entry")
+        .max(
+          opts.maxHistoryMessages,
+          `messages must contain at most ${opts.maxHistoryMessages} entries`
+        ),
+      ...
+      .refine((v) => v.messages[0]?.role === "user", {
+        message: "first message must have role=user",
+        path: ["messages", 0, "role"],
+      });
+    cost: >-
+      This file states a chat turn request that carries a whole history of role and content messages. It requires at least one entry, caps the count, and requires the first entry to be from the owner. No node holds any of this. The specification's turn is one owner message with its model and idempotency key, and its send-message refusals name only content and model. The next reader who looks in the specification for what a turn request accepts will not find the rule, and the schema becomes where it lives.
+    kind: unstated
+    correction: >-
+      Analysis would have to decide whether a history-carrying turn request is a fact of the business. If it is, a node must hold the history, its bounds and the owner-first rule. If it is not, the schema has no specification behind it.
+    node: domain/chat/turn
+read:
+  - node: domain/chat/conversation-listing
+    held_at: >-
+      ListConversationsQuery, lines 87-94
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      cursor: z.string().optional(),
+      include_archived: z
+        .union([z.boolean(), z.enum(["true", "false"])])
+        .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+        .default(false),
+  - node: domain/chat/graph-layout
+    held_at: >-
+      the layout_algorithm enumeration of GraphViewSnapshotV2, line 132
+    evidence: |-
+      layout_algorithm: z.enum(["force", "tree", "radial"]),
+  - node: domain/chat/graph-view
+    held_at: >-
+      SaveGraphViewRequest and its V1 and V2 snapshot schemas, lines 108-138. This is the snapshot's shape and its layout_algorithm only. The file declares no updated_at.
+    evidence: |-
+      export const SaveGraphViewRequest = z.discriminatedUnion("version", [
+        GraphViewSnapshotV1,
+        GraphViewSnapshotV2,
+      ]);
+  - node: domain/chat/message-listing
+    held_at: >-
+      ListMessagesQuery, lines 97-100
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+      before: z.string().datetime().optional(),
+  - node: domain/chat/message-role
+    held_at: >-
+      ChatRoleSchema, line 3
+    evidence: |-
+      export const ChatRoleSchema = z.enum(["user", "assistant"]);
+  - node: domain/chat/turn
+    held_at: >-
+      buildSendMessageRequestSchema, lines 66-82, for content and model. IdempotencyKeyHeader, line 103, for the idempotency key.
+    evidence: |-
+      content: z
+        .string()
+        .min(1, "content must be a non-empty string")
+        .max(
+          opts.maxContentLength,
+          `content must be at most ${opts.maxContentLength} characters`
+        ),
+      model: z.string().min(1).optional(),
+      ...
+      export const IdempotencyKeyHeader = z.string().uuid();
+  - node: rules/chat/conversation-listing-excludes-archived
+    held_at: >-
+      the include_archived field of ListConversationsQuery, lines 90-93. The default is false. The exclusion itself is applied wherever the query runs, outside this file.
+    evidence: |-
+      include_archived: z
+        .union([z.boolean(), z.enum(["true", "false"])])
+        .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+        .default(false),
+  - node: rules/chat/conversation-listing-limit
+    held_at: >-
+      the limit field of ListConversationsQuery, line 88
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+  - node: rules/chat/conversation-title-length
+    held_at: >-
+      CreateConversationRequest line 44 and UpdateConversationRequest line 50
+    evidence: |-
+      title: z.string().min(1).max(200).optional(),
+      title: z.union([z.string().min(1).max(200), z.null()]).optional(),
+  - node: rules/chat/conversation-update-names-a-field
+    held_at: >-
+      the refine on UpdateConversationRequest, lines 53-59
+    evidence: |-
+      (body) => body.title !== undefined || body.archived_at !== undefined,
+  - node: rules/chat/graph-view-snapshot-bounds
+    held_at: >-
+      GraphViewSnapshotBaseFields and the GraphSnapshotNode and GraphSnapshotLink schemas, lines 110-122
+    evidence: |-
+      const GraphSnapshotNode = z.object({ id: z.string() }).passthrough();
+      ...
+      .max(2000, "nodes must contain at most 2000 entries"),
+      ...
+      .max(2000, "links must contain at most 2000 entries"),
+  - node: rules/chat/message-listing-limit
+    held_at: >-
+      the limit field of ListMessagesQuery, line 98
+    evidence: |-
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+looked_past: >-
+  The update-names-a-field refusal message here reads "VALIDATION_REQUIRED_FIELD: at least one of title or archived_at must be present", while contracts/chat/conversations gives the message as "at least one of title or archived_at must be present". Whether a handler outside this file set strips the code prefix could not be settled from this file alone, so I report no finding on it.

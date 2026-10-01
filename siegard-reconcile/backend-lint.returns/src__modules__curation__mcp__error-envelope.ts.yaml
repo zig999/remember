@@ -1,0 +1,86 @@
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      mapErrorToEnvelope(err) and mapErrorToHttpResponse(err), the single mapping from a raised error to an error code and message (lines 87-145).
+    evidence: >-
+      export function mapErrorToEnvelope(err: unknown): ErrorEnvelope {
+        return mapErrorToHttpResponse(err).envelope;
+      }
+      The file has one mapping that yields code and message. It carries no transport branch, so a caller on either transport gets the same code.
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: >-
+      The BUSINESS_DISPUTE_PERIODS_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY (line 27) and its case in messageForZodCustomCode (lines 43-44). The file maps the refusal. The check that one period is given per item is not in this file.
+    evidence: >-
+      case "BUSINESS_DISPUTE_PERIODS_REQUIRED":
+        return "decision=adjust_periods requires periods[] (one entry per item_id)";
+  - node: rules/knowledge-base/corrected-stated-start-cites-fragment
+    held_at: >-
+      The BUSINESS_DATE_UNJUSTIFIED entry of ZOD_CUSTOM_CODE_PRIORITY (line 30) and its message case (lines 49-50). The file maps the refusal. The check that the correction cites a fragment is not in this file.
+    evidence: >-
+      case "BUSINESS_DATE_UNJUSTIFIED":
+        return "valid_from change requires a justification (stated|document|received)";
+  - node: rules/knowledge-base/correction-changes-something
+    held_at: >-
+      The BUSINESS_CORRECTION_NO_CHANGES entry of ZOD_CUSTOM_CODE_PRIORITY (line 29) and its message case (lines 47-48). The file maps the refusal. The check that the correction changes something is not in this file.
+    evidence: >-
+      case "BUSINESS_CORRECTION_NO_CHANGES":
+        return "corrected{} must change at least one of value, target_node_id, valid_from, valid_to";
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: nowhere
+    evidence: >-
+      The file has no check on the trimmed length of a reason. The only reason-related construct is the BUSINESS_REASON_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY and its message "reason is required for the requested operation". That entry is a code mapping, and the blank-reason check sits elsewhere.
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      The BUSINESS_REASON_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY (line 24) and its message case (lines 37-38). The file maps the refusal. The check that a reason is stated is not in this file.
+    evidence: >-
+      case "BUSINESS_REASON_REQUIRED":
+        return "reason is required for the requested operation";
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      ZOD_CUSTOM_CODE_PRIORITY (lines 22-31), walked in order by mapZodError (lines 70-79). VALIDATION_INVALID_FORMAT is returned only when none of the listed codes is present (lines 80-84).
+    evidence: >-
+      const ZOD_CUSTOM_CODE_PRIORITY: readonly string[] = [
+        "BUSINESS_TARGET_NODE_REQUIRED",
+        "BUSINESS_REASON_REQUIRED",
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+        "BUSINESS_TEMPORAL_INCOHERENT",
+        "BUSINESS_CORRECTION_NO_CHANGES",
+        "BUSINESS_DATE_UNJUSTIFIED",
+      ];
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: nowhere
+    evidence: >-
+      The file has no construct that checks or maps the rule that a dispute resolution names at least two items and none twice. Its dispute codes are BUSINESS_DISPUTE_WINNER_REQUIRED and BUSINESS_DISPUTE_PERIODS_REQUIRED, and neither concerns item count or duplicates.
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      The BUSINESS_TARGET_NODE_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY (line 23) and its message case (lines 35-36). The file maps the refusal. The check that a target node is named is not in this file.
+    evidence: >-
+      case "BUSINESS_TARGET_NODE_REQUIRED":
+        return "decision=merge_into requires target_node_id";
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      The BUSINESS_SELF_MERGE_FORBIDDEN entry of ZOD_CUSTOM_CODE_PRIORITY (line 25), its message case (lines 39-40) and the 409 status chosen in mapZodError (line 72). The file maps the refusal. The self-merge check is not in this file.
+    evidence: >-
+      const status = code === "BUSINESS_SELF_MERGE_FORBIDDEN" ? 409 : 422;
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      The BUSINESS_DISPUTE_WINNER_REQUIRED entry of ZOD_CUSTOM_CODE_PRIORITY (line 26) and its message case (lines 41-42). The file maps the refusal. The check that a winner is named is not in this file.
+    evidence: >-
+      case "BUSINESS_DISPUTE_WINNER_REQUIRED":
+        return "decision=prefer_one requires winner_id (member of item_ids)";
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      The BUSINESS_DATE_UNJUSTIFIED entry of ZOD_CUSTOM_CODE_PRIORITY (line 30) and its message case (lines 49-50). The file maps the refusal. The check that a stated start has a basis is not in this file.
+    evidence: >-
+      case "BUSINESS_DATE_UNJUSTIFIED":
+        return "valid_from change requires a justification (stated|document|received)";
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      The BUSINESS_TEMPORAL_INCOHERENT entry of ZOD_CUSTOM_CODE_PRIORITY (line 28) and its message case (lines 45-46), which names `valid_from < valid_to`. The file maps the refusal. The start-before-end check is not in this file.
+    evidence: >-
+      case "BUSINESS_TEMPORAL_INCOHERENT":
+        return "Adjusted periods violate `valid_from < valid_to` or overlap on a functional scope";
+looked_past: >-
+  Every code, message, HTTP status and the duplicate-guard mapping this file states matches contracts/knowledge-base/curation.md, a node outside the set that holds them, so I filed nothing against them. I did not judge whether the Zod schemas elsewhere emit these custom codes only where that contract expects them.

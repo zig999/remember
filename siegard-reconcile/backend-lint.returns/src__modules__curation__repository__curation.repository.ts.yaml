@@ -1,0 +1,300 @@
+findings:
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: |-
+      the `valid_from_source` field of ItemLockedRow (line 153), CorrectionMutationArgs.correctedValidFromSource (line 342), DisputedLinkRow (line 608) and DisputedAttributeRow (line 657)
+    evidence: |-
+      readonly valid_from_source: "stated" | "document" | "received" | null;
+      readonly correctedValidFromSource?: "stated" | "document" | "received" | null;
+    cost: |-
+      The three values of the validity-start basis are spelled out inline four times in this file. The same enumeration is already declared as `ValidFromSourceSchema` in `dto/enums.dto.ts`, and this file does not use it. Neither this file nor `enums.dto.ts` is bound to `domain/knowledge-base/valid-from-basis`. If the enumeration changes, `--check` will not reach these four copies, and nobody can tell which spelling was decided.
+    kind: contradicts
+    correction: |-
+      Take the type from the one declaration of the enumeration instead of restating the union here. This file already imports `AssertionStatus`, `ItemKind` and `NodeStatus` from `../dto/enums.dto.js`, so `ValidFromSource` can come from the same place.
+    node: domain/knowledge-base/valid-from-basis
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: |-
+      listEntityMatchQueue, lines 565-588 (LIMIT and OFFSET over the joined review rows)
+    evidence: |-
+      FROM knowledge_node kn
+             JOIN node_type nt ON nt.id = kn.node_type_id
+        LEFT JOIN entity_match_review em ON em.node_id = kn.id
+        LEFT JOIN knowledge_node cn ON cn.id = em.candidate_node_id
+            WHERE kn.status = 'needs_review'
+            ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST
+            LIMIT $1 OFFSET $2
+    cost: |-
+      The query returns one row per candidate review, and the page is cut over those rows, not over nodes. A node with several candidates can have its candidate list split across two pages. The offset also skips candidate rows instead of entries. The owner then sees a queue entry with only part of its candidates, and the next page starts in the middle of that entry.
+    kind: contradicts
+    correction: |-
+      Take the page over the knowledge nodes in `needs_review`, in the creation-time-then-identity order, and attach each page node's reviews after the cut.
+    node: rules/knowledge-base/review-queue-page-windows-entries
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: |-
+      listDisputedLinks (lines 614-640) and listDisputedAttributes (lines 663-688), LIMIT and OFFSET over individual disputed items
+    evidence: |-
+      WHERE kl.status = 'disputed'
+            ORDER BY kl.recorded_at ASC, kl.id ASC
+            LIMIT $1 OFFSET $2
+      WHERE na.status = 'disputed'
+            ORDER BY na.recorded_at ASC, na.id ASC
+            LIMIT $1 OFFSET $2
+    cost: |-
+      The disputed queue holds one entry per dispute scope, listing each disputed item as a side. These queries cut the page over single items. A scope's sides can fall on either side of the page boundary, and the offset skips items, not entries. The same item-level cut leaves an entry's creation time (the earliest recording time among its items) dependent on where the page falls.
+    kind: contradicts
+    correction: |-
+      Apply the offset and limit to dispute scopes, in the entry order, and return every disputed item of each scope on the page.
+    node: rules/knowledge-base/review-queue-page-windows-entries
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: |-
+      countDisputedLinks (lines 642-647) and countDisputedAttributes (lines 690-697)
+    evidence: |-
+      SELECT count(*)::text AS total FROM knowledge_link WHERE status = 'disputed'
+      SELECT count(*)::text AS total FROM node_attribute WHERE status = 'disputed'
+    cost: |-
+      The totals for the disputed queue count disputed items, but an entry of that queue is a dispute scope holding several items. Any scope with two or more items is counted once per item. The total a listing reports is then larger than the number of entries it holds.
+    kind: contradicts
+    correction: |-
+      Count dispute scopes holding disputed items, not the disputed rows themselves.
+    node: rules/knowledge-base/review-queue-total-before-pagination
+  - file: src/modules/curation/repository/curation.repository.ts
+    where: |-
+      aggregateCurationMetrics, the disputedQueueRes query, lines 776-788
+    evidence: |-
+      SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id
+                 FROM knowledge_link
+                WHERE status = 'disputed'
+               UNION ALL
+               SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid
+                 FROM node_attribute
+                WHERE status = 'disputed'
+    cost: |-
+      The count groups every disputed link by source, target and link type, whatever the link type. Under the dispute-scope rule, links of a link type that does not allow multiple current links share one scope by source node and link type, whatever their targets. Two disputed links from one node to different targets of such a type are one queue entry but count as two here. `disputed_queue_count` then reports more disputes than the disputed queue lists.
+    kind: contradicts
+    correction: |-
+      Group disputed links by source node and link type alone where the link type does not allow multiple current links, and by source node, link type and target node where it does. Keep the attribute grouping by node and attribute key. This makes the count the number of entries the disputed queue holds.
+    node: rules/knowledge-base/metrics-disputed-queue-count
+read:
+  - node: domain/knowledge-base/curation-action
+    held_at: |-
+      CurationActionInsertArgs, lines 524-530, and the INSERT INTO curation_action in insertCurationAction, lines 532-553
+    evidence: |-
+      export interface CurationActionInsertArgs {
+        readonly action: string;
+        readonly target_kind: "node" | "link" | "attribute";
+        readonly target_id: string;
+        readonly payload: Record<string, unknown>;
+        readonly reason: string | null;
+      }
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: |-
+      the `target_kind` union of CurationActionInsertArgs, line 526, which names three of the five values
+    evidence: |-
+      readonly target_kind: "node" | "link" | "attribute";
+  - node: domain/knowledge-base/knowledge-link
+    held_at: |-
+      the link branches of ItemLockedRow (lines 140-156) and the row shape DisputedLinkRow (lines 599-612); the INSERT INTO knowledge_link of insertCorrectedRow also names its columns
+    evidence: |-
+      `INSERT INTO knowledge_link (
+          source_node_id, target_node_id, link_type_id,
+          valid_from, valid_to, status, confidence,
+          valid_from_source, created_by_run_id,
+          supersedes_link_id, recorded_at
+       )`
+  - node: domain/knowledge-base/node-attribute
+    held_at: |-
+      the attribute branches of ItemLockedRow (lines 140-156) and the row shape DisputedAttributeRow (lines 649-661); the INSERT INTO node_attribute of insertCorrectedRow also names its columns
+    evidence: |-
+      `INSERT INTO node_attribute (
+          node_id, attribute_key_id, value_type, value,
+          valid_from, valid_to, status, confidence,
+          valid_from_source, created_by_run_id,
+          supersedes_attribute_id, recorded_at
+       )`
+  - node: domain/knowledge-base/value-type
+    held_at: |-
+      the `value_type` field of ItemLockedRow, line 147
+    evidence: |-
+      readonly value_type?: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/accept-rate
+    held_at: |-
+      the ACCEPT_ACTIONS constant (lines 699-705) and the acceptRate computation in aggregateCurationMetrics
+    evidence: |-
+      const ACCEPT_ACTIONS = [
+        "resolve_entity_match",
+        "merge_nodes",
+        "resolve_dispute",
+        "confirm_item",
+        "correct_item",
+      ] as const;
+      let acceptRate = 0;
+      if (totalActions > 0) { ... acceptRate = accepted / totalActions; }
+  - node: rules/knowledge-base/adjust-periods-outcome
+    held_at: |-
+      adjustItemPeriod, lines 305-334
+    evidence: |-
+      SET valid_from = $2::date,
+                valid_to = $3::date,
+                status = 'active'
+          WHERE id = $1 AND status = 'disputed'
+  - node: rules/knowledge-base/alias-unique-per-node
+    held_at: |-
+      the ON CONFLICT clause of copyAliases, line 90; the uniqueness constraint itself is declared outside this file
+    evidence: |-
+      ON CONFLICT (node_id, alias_norm) DO NOTHING
+  - node: rules/knowledge-base/attribute-provenance-once-per-fragment
+    held_at: |-
+      the ON CONFLICT clauses on node attributes in copyProvenance (line 475) and appendProvenanceFragment (line 502); the unique constraint is declared outside this file
+    evidence: |-
+      ON CONFLICT (attribute_id, fragment_id) DO NOTHING
+  - node: rules/knowledge-base/confirmation-activates
+    held_at: |-
+      confirmItem, lines 198-221
+    evidence: |-
+      SET status = 'active'
+        WHERE id = $1 AND status = 'uncertain'
+  - node: rules/knowledge-base/confirmation-requires-uncertain
+    held_at: |-
+      the `AND status = 'uncertain'` guard of both UPDATE statements in confirmItem
+    evidence: |-
+      WHERE id = $1 AND status = 'uncertain'
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: |-
+      copyProvenance (lines 452-480) and appendProvenanceFragment (lines 482-506)
+    evidence: |-
+      INSERT INTO provenance (link_id, fragment_id, created_at)
+         SELECT $2, fragment_id, now()
+           FROM provenance
+          WHERE link_id = $1
+  - node: rules/knowledge-base/corrected-item-values
+    held_at: |-
+      insertCorrectedRow, lines 374-450
+    evidence: |-
+      COALESCE($3::date, valid_from),
+                COALESCE($4::date, valid_to),
+                'active'::assertion_status,
+                confidence,
+                COALESCE($5::valid_from_source, valid_from_source),
+                NULL,
+  - node: rules/knowledge-base/correction-supersedes-item
+    held_at: |-
+      supersedePredecessor (lines 345-372) and the supersedes_*_id column set in insertCorrectedRow
+    evidence: |-
+      SET status = 'superseded',
+                superseded_at = now()
+          WHERE id = $1
+            AND status IN ('active', 'uncertain', 'disputed')
+  - node: rules/knowledge-base/entity-match-queue-entry
+    held_at: |-
+      listEntityMatchQueue, lines 565-588 (status filter and candidate ordering; the page cut is reported as a finding)
+    evidence: |-
+      WHERE kn.status = 'needs_review'
+        ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: |-
+      deleteEntityMatchReviewByNode, lines 129-138
+    evidence: |-
+      DELETE FROM entity_match_review WHERE node_id = $1 RETURNING id
+  - node: rules/knowledge-base/keep-separate-activates-node
+    held_at: |-
+      updateNodeStatusKeepSeparate, lines 33-46
+    evidence: |-
+      SET status = 'active'
+        WHERE id = $1
+          AND status = 'needs_review'
+  - node: rules/knowledge-base/link-provenance-once-per-fragment
+    held_at: |-
+      the ON CONFLICT clauses on links in copyProvenance (line 464) and appendProvenanceFragment (line 492); the unique constraint is declared outside this file
+    evidence: |-
+      ON CONFLICT (link_id, fragment_id) DO NOTHING
+  - node: rules/knowledge-base/merge-compresses-paths
+    held_at: |-
+      pathCompressMergedInto, lines 65-78
+    evidence: |-
+      SET merged_into_node_id = $2
+        WHERE merged_into_node_id = $1
+  - node: rules/knowledge-base/merge-copies-aliases
+    held_at: |-
+      copyAliases, lines 80-95
+    evidence: |-
+      INSERT INTO node_alias (node_id, alias, kind, created_by_run_id, created_at)
+       SELECT $2, alias, 'alias', created_by_run_id, created_at
+         FROM node_alias
+        WHERE node_id = $1
+       ON CONFLICT (node_id, alias_norm) DO NOTHING
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: |-
+      updateNodeMerged, lines 48-63
+    evidence: |-
+      SET status = 'merged',
+              merged_into_node_id = $2
+        WHERE id = $1
+          AND status IN ('active', 'needs_review')
+  - node: rules/knowledge-base/merge-repoints-assertions
+    held_at: |-
+      repointLinks (lines 97-112) and repointAttributes (lines 114-127), neither filtering on status
+    evidence: |-
+      WHERE source_node_id = $1
+           OR target_node_id = $1
+      UPDATE node_attribute
+          SET node_id = $2
+        WHERE node_id = $1
+  - node: rules/knowledge-base/metrics-assertion-counts
+    held_at: |-
+      the uncertainRes and disputedRes queries in aggregateCurationMetrics, lines 760-774
+    evidence: |-
+      (SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'disputed')
+       + (SELECT count(*) FROM node_attribute_resolved WHERE effective_status = 'disputed')
+  - node: rules/knowledge-base/metrics-review-counts
+    held_at: |-
+      the needsReviewRes query and `entityMatchQueueCount = needsReviewCount` in aggregateCurationMetrics, lines 752-758
+    evidence: |-
+      const needsReviewCount = Number(needsReviewRes.rows[0]?.total ?? 0);
+      const entityMatchQueueCount = needsReviewCount;
+  - node: rules/knowledge-base/prefer-one-outcome
+    held_at: |-
+      resolveDisputeWinner (lines 252-275) and resolveDisputeLosers (lines 277-303), neither touching valid_from or valid_to
+    evidence: |-
+      SET status = 'deleted',
+                superseded_at = now()
+          WHERE id = ANY($1::uuid[]) AND status = 'disputed'
+  - node: rules/knowledge-base/reject-rate-by-code
+    held_at: |-
+      the rejectsRes query and the loop over its rows in aggregateCurationMetrics, lines 736-750
+    evidence: |-
+      rejectRateByCode[row.code] = Number(row.total) / totalActions;
+  - node: rules/knowledge-base/rejection-and-correction-require-live-item
+    held_at: |-
+      the status guard of rejectItem (lines 223-250) and supersedePredecessor (lines 345-372)
+    evidence: |-
+      AND status IN ('active', 'uncertain', 'disputed')
+  - node: rules/knowledge-base/rejection-deletes
+    held_at: |-
+      rejectItem, lines 223-250
+    evidence: |-
+      SET status = 'deleted',
+                superseded_at = now()
+  - node: rules/knowledge-base/review-queue-order
+    held_at: |-
+      the ORDER BY clauses of listEntityMatchQueue (line 583), listDisputedLinks (line 635) and listDisputedAttributes (line 683); dispute ordering is by item, not by dispute scope, and the cross-kind order is not decided in this file
+    evidence: |-
+      ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST
+      ORDER BY kl.recorded_at ASC, kl.id ASC
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: |-
+      countEntityMatchQueue, lines 590-597, counts nodes in needs_review before any page is cut; the two disputed counts (lines 642-647 and 690-697) count items and are reported as a finding
+    evidence: |-
+      SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'
+looked_past: |-
+  The link and attribute branches repeated in nearly every function, and the choice of `error_code` as the payload key read by the reject-rate query, were left unreported: the first is code structure and the second is a payload shape no node in the set names.
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis
+  - domain/knowledge-base/curation-action-kind
+  - domain/knowledge-base/curation-metrics
+  - domain/knowledge-base/dispute-scope
+  - domain/knowledge-base/node-status
+  - rules/knowledge-base/metrics-disputed-queue-count
+  - rules/knowledge-base/dispute-scope
+  - rules/knowledge-base/dispute-queue-entry
+  - rules/knowledge-base/dispute-entry-time
+  - rules/knowledge-base/review-queue-page-windows-entries
+  - rules/knowledge-base/page-defaults
