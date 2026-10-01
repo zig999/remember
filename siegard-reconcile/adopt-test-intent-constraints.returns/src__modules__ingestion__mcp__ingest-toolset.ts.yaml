@@ -1,0 +1,103 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      the ingest_document handler's Zod-failure branch, lines 254-268
+    evidence: >-
+      message: "ingest_document arguments failed validation.",
+      details: {
+        issues: parsed.error.issues.map((i) => ({
+    cost: >-
+      The wording the tool sends back for a malformed ingest_document request lives only in this
+      file. The contract fixes the sibling message "ingest_directed arguments failed validation."
+      and its log records that decision. For ingest-document it says only "listing each failing
+      field with its path and message". A reader looking in the specification finds no wording,
+      and the next edit of the string changes what callers see without any node moving.
+    kind: unstated
+    correction: >-
+      The contract for the ingest-document operation would have to state the message and the
+      `details: { issues }` shape for its VALIDATION_INVALID_FORMAT refusals, as it already does
+      for ingest-directed.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file registers MCP tool handlers and returns `{ ok, result, error }` envelopes. It sets
+      no origin header: `return { ok: true, result: report };`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only types the key as a dependency, `readonly ANTHROPIC_API_KEY: string;`, and
+      forwards it with `anthropicApiKey: deps.env.ANTHROPIC_API_KEY`. It enforces no refusal to
+      start.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      This is the ingest toolset, not the curation one: `mcp.registerTool("ingest", {`. No
+      curation tool is registered here.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The only log call is `logger.info({ component: "mcp.ingest", ... }, "ingest_toolset_registered")`.
+      There is no curation write and no curation_request_failed.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      mapReadError and the Zod-failure branches return envelopes and write no log line at error
+      level. The file never logs a refusal, so it states nothing about how one is logged.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file passes `anthropicApiKey`, `ingestModel` and `anthropicFactory` to
+      `ingestDocumentHandler`. It sets no timeout and no retry count.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the set of registerTool("ingest", ...) calls in registerIngestToolset (lines 138-369)
+    evidence: >-
+      The tools registered are `name: "propose_fragment"`, `"propose_node"`, `"propose_link"`,
+      `"propose_attribute"`, `"ingest_document"`, `"ingest_directed"`, `"health"`,
+      `"get_ingestion_status"` and `"list_recent_ingestions"`. No registration of
+      start_async_ingestion remains, and every ingesting tool awaits its handler:
+      `return await ingestDocumentHandler(parsed.data, {`.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file refers to a local operator token. The only env fields are
+      ANTHROPIC_API_KEY, INGEST_MODEL and CHAT_INGEST_ENABLED.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file refers to a local operator token or to NODE_ENV.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file logs only `{ component: "mcp.ingest", tools_registered, tool_names }`, and the
+      redaction of content, text and value fields is not in it.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file only registers tools under the "ingest" key, `mcp.registerTool("ingest", {`.
+      The refusal of a tool outside the endpoint's toolset is not in this file, and neither is
+      NOT_FOUND.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file's only clock is `const now = deps.now ?? (() => new Date());`. It has no owner
+      time zone.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      There is no HTTP, CORS or authentication code in the file, only tool registration.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file registers MCP-only tools. The toolset's one tool with a REST twin, the run read
+      `getLlmRunById`, is reached here only through `withReadOnly(pool, (client) => getLlmRunById(client, llm_run_id))`.
+      The file does not state that REST and MCP answer alike.
+looked_past: >-
+  The doc comment on `CHAT_INGEST_ENABLED` claims that `start_async_ingestion` is registered when
+  the flag is true, and no code in the file registers it, so it is stale prose and not a domain
+  fact. The comments in the file head and in the ingest_directed handler also cite BR numbers and
+  restate run binding and audit behavior, and those are for the comment route to settle.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

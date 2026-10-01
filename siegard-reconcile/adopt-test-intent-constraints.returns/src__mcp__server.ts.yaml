@@ -1,0 +1,89 @@
+findings:
+  - file: src/mcp/server.ts
+    where: >-
+      the doc comment on McpServer.getTool, line 111
+    evidence: >-
+      Returns `undefined` for unknown
+         * keys; the transport layer turns that into a `NOT_FOUND` envelope.
+    cost: >-
+      The refusal code for a tool outside an endpoint's toolset is stated in prose here as well as in
+      the transport that emits it. A reader of getTool takes this comment as where NOT_FOUND is
+      decided, and it can drift from the transport without anything flagging it. This file's code
+      holds none of it, since getTool only returns undefined.
+    kind: restates
+    correction: >-
+      Remove the sentence from the getTool docstring. The code that holds the fact is in
+      src/mcp/sdk-http-transport.ts (`code: "NOT_FOUND"`, line 127), and the node binds that file.
+    node: constraints/mcp-endpoint-serves-only-its-toolset
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file is a tool registry (`private readonly tools = new Map<string, McpTool>()`). It has no
+      origin or response-header handling.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      `constructor(logger: Logger) { this.logger = logger.child({ component: "mcp" }); }` reads no
+      environment and no provider key.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      `handler: (input: I, invocation_context?: Record<string, unknown>) => Promise<O>` has no run
+      identity parameter. Nothing in the file serves a curation call or checks a run identity.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The only log call is `this.logger.info({ toolset, tool: tool.name }, "mcp_tool_registered")`.
+      Nothing here logs curation_request_failed.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The only log call is the info-level `"mcp_tool_registered"`. The file logs no refusals.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      `export function buildMcpServer(logger: Logger): McpServer { return new McpServer(logger); }`
+      has no model call, timeout or retry.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      `registerTool<I, O>(toolset: ToolsetName, tool: McpTool<I, O>)` registers whatever a toolset
+      module passes. Which ingest tools exist is decided in the modules that call it, not here.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file has no token or authentication handling. Its imports are only `Logger` and
+      `ZodTypeAny`.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file reads no environment and has no startup refusal. The only throw is the duplicate
+      registration, `throw new Error(`MCP tool already registered: ${key}`)`.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The only logged object is `{ toolset, tool: tool.name }`. The file configures no redaction.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      `getTool(toolset: ToolsetName, name: string): McpTool | undefined { return
+      this.tools.get(qualifiedKey(toolset, name)); }` only scopes the lookup by toolset and returns
+      undefined. It emits no tool error and no NOT_FOUND code. NOT_FOUND appears in this file only
+      in a comment, and the code that emits it is in sdk-http-transport.ts.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone or configuration handling.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file has no HTTP, CORS or authentication handling. It is an in-process registry.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      `listTools(): string[] { return Array.from(this.tools.keys()).sort(); }` and getTool only
+      look tools up. The file produces no retrieval results and no error codes.
+looked_past: >-
+  The header and docstring comments state tool counts, route paths and ticket references ("4 propose_* tools", "9 knowledge-graph + 4 query-retrieval tools", "BR-21 revised", "TC-02 / BR-34"), and no code in this file carries them, so they are prose for the comment route and not findings.
+candidates_opened: []

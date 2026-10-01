@@ -1,0 +1,101 @@
+findings:
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitChatBootLog(), the block at lines 1295-1304 that logs chat.deprecated_env
+    evidence: |-
+      if (process.env.CHAT_SUMMARY_AFTER_TURNS !== undefined) {
+        deps.logger.info(
+          {
+            event: "chat.deprecated_env",
+            name: "CHAT_SUMMARY_AFTER_TURNS",
+            reason: "retired_as_gate_v2_9",
+          },
+          "chat deprecated env var detected (BR-33 v2.9 — retired as gate)"
+        );
+      }
+    cost: >-
+      The log line tells the operator that the turn-count gate for the rolling summary is retired and that the setting is ignored. A search of the specification for CHAT_SUMMARY_AFTER_TURNS finds no node that holds this. The only record of that decision is a log message, so a reader checking the specification for the refresh trigger will not find that the setting was retired.
+    kind: unstated
+    correction: >-
+      The analysis would have to say, in the chat rolling-summary rules (rules/chat/rolling-summary-refresh), that a turn-count gate no longer decides the refresh and that a configured value for it is ignored and reported at start. Or it would have to decide the notice is operational and not a business fact.
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitTurnLog(), lines 1583-1611 (the aborted classification and the chat_turn_total counter)
+    evidence: |-
+      const aborted =
+        args.stopReason === "cancelled" || args.stopReason === "turn_timeout";
+      ...
+      aborted,
+      idempotent_replay: args.idempotentReplay,
+      counter: {
+        name: "chat_turn_total",
+        labels: { stop_reason: args.stopReason },
+        value: 1,
+      },
+    cost: >-
+      The classification of cancelled and turn_timeout as the stop reasons that count as aborted, and the metric chat_turn_total labelled by stop reason, are defined only in this logging helper. A search of the specification for aborted, chat_turn_total, idempotent_replay and chat.turn finds no node that holds them. Anyone calibrating or auditing chat turns will look in the specification for what counts as an aborted turn and will not find it.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the per-turn record (which turns are aborted, the turn counter and its label) a node, most naturally beside domain/chat/turn or rules/chat/turn-ending-message.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      writeSseHeaders(), lines 1318-1334. It copies the allowed-origin header onto the hijacked reply and sets none when the reply carries none.
+    evidence: |-
+      const acao = reply.getHeader("access-control-allow-origin");
+      ...
+      ...(acao !== undefined ? { "Access-Control-Allow-Origin": String(acao) } : {}),
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only passes the key to the factory: `anthropicFactory(deps.env.ANTHROPIC_API_KEY)`. A factory failure is absorbed with `chat.distillation_factory_failed` and distillation is skipped. No startup refusal is here.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file has no curation or run-identity handling. Its only MCP use is probing tools, as in `mcp.getTool("query", name)`.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file has no curation write. Its error-level logs are `chat.catalog_unresolved` and `chat.iterable_uncaught`, and neither is curation_request_failed.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file holds no logging branch for this fact and does not contradict it. Refusals leave through `reply.code(statusCode).send(envelope)` and are not logged. The only `logger.error` calls cover an unresolved tool catalog and an uncaught exception in the loop, neither of which is a business or validation refusal.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file sets no wait or retry limit on a model call. It only imports `defaultAnthropicFactory` from the extraction service and builds the client with `anthropicFactory(deps.env.ANTHROPIC_API_KEY)`.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file registers no ingest tool. The only mention is a comment, "The retired `start_async_ingestion` seam is gone". The code only counts `CHAT_INGEST_TOOL_NAMES` in the registry.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file never touches the local operator token. It reads only chat configuration from `deps.env`.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file never touches the local operator token or the environment mode. It reads only chat configuration from `deps.env`.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      No redaction is configured here. Log objects carry only identifiers and `cause_message`, as in `{ event: "chat.tool_call_persist_failure", conversation_id: id, tool_name: evt.tool, cause_message: ... }`.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file serves no MCP endpoint and answers no tool error. It only probes the registry: `if (mcp.getTool("query", name) === undefined) missing.push(name);`.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file does not validate the time zone. It only forwards it: `ownerTz: deps.env.OWNER_TZ`, and logs `chat.owner_tz_resolved`.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file registers no preflight handler and no authentication. The routes are plain `scoped.post`, `scoped.get` and similar, inside a scope that `app.ts` authenticates.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file exposes no retrieval operation over REST or MCP. It serves chat conversation endpoints only.
+looked_past: >-
+  The long comment and docstring headers citing BR numbers and chat.back.md versions, including the BR-29 sequencing list, restate facts that chat nodes hold (for example rules/chat/conversation-request-check-order, rules/chat/idempotent-replay, rules/chat/one-turn-in-flight) and that the code holds too, so the route that removes comments answers them. I did not file them because they are another judgment's.

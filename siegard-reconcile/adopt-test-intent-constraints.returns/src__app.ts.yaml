@@ -1,0 +1,186 @@
+findings:
+  - file: src/app.ts
+    where: >-
+      the BODY_LIMIT_BYTES constant and the bodyLimit option of Fastify(), lines 90-99
+    evidence: >-
+      const BODY_LIMIT_BYTES = 11 * 1024 * 1024;
+      ... bodyLimit: BODY_LIMIT_BYTES,
+    cost: >-
+      The largest request body the system accepts (11 MiB) lives only in this
+      file. The specification states a 10,485,760 UTF-16 code unit limit on a
+      raw information's content, and states nothing about the transport body
+      ceiling above it. A reader who looks in the specification for what size
+      of request is refused does not find it. A body above the ceiling is
+      refused by the framework before any operation's own contract answers it.
+    kind: unstated
+    correction: >-
+      Give the request-body ceiling a node. contracts/knowledge-base/access
+      (route-request) is the nearest holder, since it answers framework
+      refusals. rules/knowledge-base/content-length holds the content limit
+      the ceiling is sized against.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      the GET /health handler, lines 127-130
+    evidence: >-
+      return reply.status(health.ok ? 200 : 503).send(health);
+    cost: >-
+      The read-health operation's node states the report body and that `ok` is
+      true exactly when the store answered. It does not say that an unhealthy
+      report is answered with HTTP 503 and a healthy one with 200. That status
+      mapping, which probes and containers act on, is held only here.
+    kind: unstated
+    correction: >-
+      Add the HTTP status of a healthy and an unhealthy report to the
+      read-health answer in contracts/knowledge-base/access.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      the sentinel route registered in the /api/v1 scope, lines 140-143
+    evidence: >-
+      scoped.get("/_self", async (request) => ({
+            ok: true,
+            result: { user_id: request.user?.id ?? null },
+          }));
+    cost: >-
+      The system serves an authenticated operation, GET /api/v1/_self, that
+      returns the owner's identity or null. No node holds this operation or
+      its answer. The next reader looking in the specification for what the
+      system exposes will not find it.
+    kind: unstated
+    correction: >-
+      Either give the operation a place in contracts/knowledge-base/access, or
+      remove the route if it is only scaffolding.
+    node: contracts/knowledge-base/access
+  - file: src/app.ts
+    where: >-
+      the corsOrigins default and the fastifyCors registration, lines 113-120
+    evidence: >-
+      const corsOrigins = env.CORS_ORIGINS ?? [
+          "http://localhost:5173",
+          "http://127.0.0.1:5173",
+        ];
+      await app.register(fastifyCors, {
+          origin: corsOrigins,
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        });
+    cost: >-
+      Which origins count as allowed when none is configured, and which methods
+      a cross-origin caller may use, are decided here. The constraints say only
+      that an allowed origin is echoed and any other gets none, and neither
+      names the allowed set or the methods. The default origins name port
+      5173, which the project's CLAUDE.md says belongs to another application
+      (the frontend uses 5273). The code is therefore the only place the
+      allowed set exists, and it is not the set the project documents.
+    kind: unstated
+    correction: >-
+      Have constraints/answers-carry-allowed-origin (or a sibling node) hold
+      the default allowed origins and the allowed methods, so the choice is
+      decided in the specification.
+    node: constraints/answers-carry-allowed-origin
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      the fastifyCors registration, lines 117-120, which hands the allowed
+      origin list to the plugin that sets the header on answers, refusals
+      included
+    evidence: >-
+      await app.register(fastifyCors, {
+          origin: corsOrigins,
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        });
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the key: `env: { ANTHROPIC_API_KEY:
+      env.ANTHROPIC_API_KEY }`. It does not refuse to start without the key;
+      that sits in the env loader, which is another file.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      `await registerCurationMcpTransport(scoped, { logger, mcp, toolNames:
+      [...CURATION_TOOL_NAMES, "compliance_delete"] });` passes no run
+      identity option. Whether a call needs one is decided in the transport,
+      and the only statement of it in this file is a comment.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file mounts `registerCurationRoutes` and `registerCurationToolset`
+      and logs nothing about curation write failures. The only log-related
+      line is `app.setErrorHandler(buildErrorHandler(logger))`.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file only installs the handler: `app.setErrorHandler(buildErrorHandler(logger));`.
+      Which log level a refusal gets is decided inside buildErrorHandler, in
+      another file.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file passes only `INGEST_MODEL` and the key to the extraction
+      toolset. It sets no timeout and no retry count for the model call.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      the toolNames whitelist of the ingest transport, lines 194-201, which
+      lists no tool that starts an ingestion and returns before it completes
+    evidence: >-
+      toolNames: [
+            ...INGEST_TOOL_NAMES,
+            "ingest_document",
+            "ingest_directed",
+            "health",
+            "get_ingestion_status",
+            "list_recent_ingestions",
+          ],
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      No reference to LOCAL_OPERATOR_TOKEN or any token length appears in the
+      file.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file reads `env.NODE_ENV` once, in `trustProxy: env.NODE_ENV ===
+      "production"`. It refuses nothing about a local operator token.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file hands the logger to Fastify with `loggerInstance: logger as
+      unknown as FastifyBaseLogger`. No redaction rule is configured here.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      the toolNames arrays given to the query, curation and ingest MCP
+      transports, which fix the closed set each endpoint serves (lines
+      194-201, 228, 260). The refusal itself, a tool error with code
+      NOT_FOUND, is not in this file.
+    evidence: >-
+      toolNames: [...CURATION_TOOL_NAMES, "compliance_delete"],
+      toolNames: [...QUERY_TOOL_NAMES, ...QUERY_RETRIEVAL_TOOL_NAMES],
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      No time-zone value is read or validated anywhere in the file.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: >-
+      the CORS registration at the root app (line 117), before the
+      auth-protected /api/v1 scope whose preHandler is added at line 136
+    evidence: >-
+      await app.register(fastifyCors, { origin: corsOrigins, ... });
+      ...
+      scoped.addHook("preHandler", auth.preHandler);
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file mounts the REST routes and the MCP transport side by side
+      (`registerKnowledgeGraphRoutes`, `registerQueryMcpTransport`). Answering
+      alike is a property of the handlers in the modules, not of this file.
+looked_past: >-
+  The file's comments state facts the code or other files hold or that are
+  stale: "default Sonnet 4.6", "CHAT_INGEST_ENABLED (BR-32) gates
+  `start_async_ingestion` registration", and the same flag passed to
+  registerIngestToolset beside the ingest constraint. The trustProxy setting
+  and the route-prefix layout are infrastructure and structure, not domain
+  facts.
+candidates_opened:
+  - contracts/knowledge-base/access
+  - rules/knowledge-base/content-length

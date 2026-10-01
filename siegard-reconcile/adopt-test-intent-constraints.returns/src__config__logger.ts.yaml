@@ -1,0 +1,101 @@
+findings:
+  - file: src/config/logger.ts
+    where: >-
+      REDACT_PATHS, lines 21-39 (the "*.content", "*.text" and "*.value" entries), as passed to pino at lines 57-61
+    evidence: >-
+      "content", "text", "value", "*.content", "*.text", "*.value", "req.body.content", "req.body.text", "req.body.value", "*.req.body.content", "*.req.body.text", "*.req.body.value"
+    cost: >-
+      The node says nested fields are redacted. This list covers the top level, one wildcard level, and the fixed req.body paths. Under pino's path syntax a single "*" matches exactly one key. So a content, text or value field two or more levels down (for example { a: { b: { content } } }) is not covered and would be logged in clear. That is the raw document text and attribute values the node exists to keep out of logs. The next reader would trust the node and the comment, and would not look for the gap in this list.
+    kind: contradicts
+    correction: >-
+      The paths must cover the three fields at every nesting depth, which a fixed-depth wildcard list cannot do. Use a depth-independent mechanism, such as a serializer or a recursive censor.
+    node: constraints/logs-redact-text-fields
+  - file: src/config/logger.ts
+    where: >-
+      REDACT_PATHS, lines 34-38 (the authorization header entries)
+    evidence: >-
+      "req.headers.authorization",
+        "*.req.headers.authorization",
+        "headers.authorization",
+    cost: >-
+      The node says every field other than content, text and value is shown as it is. The code also redacts the authorization header. That is a redaction rule no node holds, and it contradicts the node's "every other field as it is". Anyone reading the node would expect an authorization field in a logged object to appear in clear. The only place the rule lives is this list.
+    kind: contradicts
+    correction: >-
+      Either the node gains the authorization-header redaction in an analysis, or the entries are removed. That choice belongs to the specification, not to this pass.
+    node: constraints/logs-redact-text-fields
+  - file: src/config/logger.ts
+    where: >-
+      header comment, lines 7-9, and the docstring above REDACT_PATHS, lines 15-20
+    evidence: >-
+      // PII rule (CLAUDE.md "Security"): the `content`, `text`, and `value` fields
+      // of any logged object are redacted at every nesting depth
+    cost: >-
+      The comment restates the node's rule as a second home, outside behavior, and claims full-depth coverage that the paths do not deliver. A reader who trusts the comment will not look for the one-level limit in the code.
+    kind: restates
+    correction: >-
+      Remove the comment and docstring prose. The rule is held by the node, and the redact configuration in this file is the code that holds it.
+    node: constraints/logs-redact-text-fields
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file only builds a logger: `return pino(options);`. It carries no CORS or origin handling.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      `buildLogger(env: Pick<Env, "LOG_LEVEL" | "NODE_ENV">)` reads only the log level and the environment name. It does not check any provider key.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file has no MCP or run-identity logic. Its only construct is the `buildLogger` factory.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file only configures pino. It emits no `curation_request_failed` log line and no error-level event.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      `level: env.LOG_LEVEL` only sets the threshold. The file decides nothing about which refusals are logged at which level.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file has no timeout or retry logic for model calls.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file has no toolset or tool definitions.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file has no token handling. Its only inputs are `LOG_LEVEL` and `NODE_ENV`.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      `base: { env: env.NODE_ENV, service: "remember-bff" }` only labels log lines with the environment. It enforces no startup refusal.
+  - node: constraints/logs-redact-text-fields
+    held_at: >-
+      the `redact` option, lines 57-61, fed by REDACT_PATHS, lines 21-39. It holds the fact only in part: top-level and one-wildcard-level paths, not every nesting depth.
+    evidence: >-
+      redact: {
+            paths: [...REDACT_PATHS],
+            censor: "[REDACTED]",
+            remove: false,
+          },
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file has no MCP endpoint or tool dispatch.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time-zone handling. `timestamp: pino.stdTimeFunctions.isoTime` only formats log timestamps.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file has no HTTP or preflight handling.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file has no retrieval operations or transports.
+looked_past: >-
+  The base fields (`service: "remember-bff"`), ISO timestamps, textual level labels and the choice of stdout JSON are logging-format configuration, not domain facts held by any node in the pack, so I left them to other judgments.

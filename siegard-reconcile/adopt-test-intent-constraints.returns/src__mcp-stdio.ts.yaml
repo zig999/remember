@@ -1,0 +1,121 @@
+findings:
+  - file: src/mcp-stdio.ts
+    where: >-
+      REDACT_PATHS, lines 78-94, handed to pino as redact.paths at lines 112-116
+    evidence: >-
+      "req.headers.authorization",
+        "*.req.headers.authorization",
+        "headers.authorization",
+      ... redact: { paths: [...REDACT_PATHS], censor: "[REDACTED]", remove: false }
+    cost: >-
+      The node says logs redact the content, text and value fields and show every other field as it is.
+      This logger also censors authorization header fields, so the code redacts a field the node says is shown as it is.
+      A reader who takes the node as the redaction rule will not expect these three paths, and nothing in the specification says why they are redacted.
+    kind: contradicts
+    correction: >-
+      Either the node gains the authorization-header redaction as a decided fact, or the three authorization paths leave the list.
+      Which one is a decision for the specification, not for this file.
+    node: constraints/logs-redact-text-fields
+  - file: src/mcp-stdio.ts
+    where: >-
+      Step 5 and Step 6, lines 194-233: the registry, the three toolset registrations and toolCoordinates.
+      Nothing in main() authenticates a caller.
+    evidence: >-
+      const registry = buildMcpServer(logger);
+        registerQueryToolset({ mcp: registry, pool, logger, catalog: kgCatalog });
+        ...
+        registerIngestToolset({
+      ...
+        { toolset: "ingest" as const, name: "ingest_document" },
+        { toolset: "ingest" as const, name: "ingest_directed" },
+    cost: >-
+      This process serves the query and ingest toolsets over a local stdio transport with no authentication at all.
+      It serves them as one combined endpoint and leaves the curation toolset out.
+      No node holds an unauthenticated stdio transport, a combined query and ingest endpoint, or the exclusion of curation.
+      The specification's only statement about access (an absent or malformed Authorization header answers 401) concerns HTTP.
+      The next reader looking for who may call these tools, or which toolsets stdio offers, will find nothing in the specification and will find the answer only in this file.
+    kind: unstated
+    correction: >-
+      A node should state that a local stdio MCP transport exists, that it needs no authentication, and which toolsets it exposes.
+      The scope of the query surface, the ingest surface and the exclusion of curation should be stated there as well.
+
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file has no HTTP surface. Its header says "NO Fastify, NO HTTP transport", and nothing in the code touches an origin or a response header.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only calls loadEnv() and forwards the value: "ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY".
+      It does not decide whether the key is required.
+      The only start-up check here is the exit(1) on an EnvValidationError.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      Only registerQueryToolset, registerQueryRetrievalToolset and registerIngestToolset are called.
+      No curation toolset is registered and no run identity is handled.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file has no curation write path.
+      The only error-level logs are "pg_pool_idle_error" and "shutdown_failed".
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The only logger.error calls are logger.error({ err_message: err.message }, "pg_pool_idle_error") and "shutdown_failed".
+      Neither is a refusal for a business or validation cause, and the file emits no such refusal.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file forwards "ANTHROPIC_API_KEY", "INGEST_MODEL" and "CHAT_INGEST_ENABLED" to registerIngestToolset.
+      It sets no five-minute wait and no retry count.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      toolCoordinates, lines 226-232, the list of ingest tools the process advertises
+    evidence: >-
+      ...INGEST_TOOL_NAMES.map((name) => ({ toolset: "ingest" as const, name })),
+        { toolset: "ingest" as const, name: "ingest_document" },
+        { toolset: "ingest" as const, name: "ingest_directed" },
+      The closed set names no start_async_ingestion or other tool that returns before the ingestion completes.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file does no token handling. Its header says "NO auth gate (no NeonAuth, no JWT)", so the stdio process never sees a local operator token.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file only calls loadEnv() and exits with 1 when it throws.
+      It holds no check relating a local operator token to NODE_ENV.
+  - node: constraints/logs-redact-text-fields
+    held_at: >-
+      REDACT_PATHS, lines 78-94, and the pino redact option at lines 112-116.
+      The three fields are covered, but the list also redacts authorization headers (see the finding).
+    evidence: >-
+      const REDACT_PATHS: readonly string[] = [
+        "content", "text", "value", "*.content", "*.text", "*.value", ...
+      redact: { paths: [...REDACT_PATHS], censor: "[REDACTED]", remove: false }
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file only builds the closed list: "const tools = resolveStdioTools(registry, toolCoordinates);" followed by buildConfiguredMcpServer({ ..., tools }).
+      The answer to a call naming a tool outside the set is produced inside the shared builder in ./mcp/sdk-http-transport.js, which is not in this file.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time-zone handling.
+      It only passes env through to buildPool(env) and loadEnv().
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file has no HTTP transport and no preflight handling. Its header says "NO Fastify, NO HTTP transport".
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file registers the retrieval tools with registerQueryToolset and registerQueryRetrievalToolset, and builds the server with buildConfiguredMcpServer.
+      The result and error answers of those operations, and any REST counterpart, live in other files.
+
+looked_past: >-
+  The header and step comments disagree about the tool count (18 versus 19, with start_async_ingestion mentioned as retired), and the REDACT_PATHS docstring says the list is kept in sync with config/logger.ts. That is comment drift and a duplicated list, which belong to the comment route and to a code review, not to this judgment.
+
+candidates_opened: []

@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment block above ANTHROPIC_REQUEST_TIMEOUT_MS and ANTHROPIC_MAX_RETRIES, lines 190-199
+    evidence: >-
+      "// A5 — bound the per-request wait on the Anthropic API so a stalled stream ... so a 5-minute ceiling is generous headroom ... `maxRetries` is pinned explicitly (matches the SDK default) so transient 429/529/network blips self-heal without inflating cost."
+    cost: >-
+      The comment states the five-minute wait and the retry bound a second time, in prose. The constants below it already hold both. If the node moves, a reader updating the code is also left with prose that still states the old figures, and the prose is not bound to the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The values stay in the two constants and in the options passed to the Anthropic client in defaultAnthropicFactory, and the node is the home of the fact.
+    node: constraints/extraction-model-call-bounded
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      MAX_TURNS_PER_CHUNK and the exit after the for loop in runChunkLoop, lines 625-627 and 749-755
+    evidence: >-
+      "const MAX_TURNS_PER_CHUNK = 64;" and "input.logger.warn({ llm_run_id: input.llmRunId, turns: MAX_TURNS_PER_CHUNK }, \"extraction_chunk_turn_cap_reached\"); return { kind: \"completed\" };"
+    cost: >-
+      A chunk that has not reached end_turn after 64 model turns is closed as completed and the run goes on. No node in the specification holds the figure or the rule. I searched the extraction rules (extraction-reads-chunks-in-order, extraction-turn-token-ceiling, extraction-fails-on-repeated-system-errors, extraction-closes-its-run) and the ingestion contract. The next reader will look for it in the specification and will not find it. The code then decides when an unfinished chunk counts as done.
+    kind: unstated
+    correction: >-
+      An analysis should give this turn ceiling, and what happens to a chunk that reaches it, a node under the knowledge-base rules for extraction. The node should sit next to rules/knowledge-base/extraction-turn-token-ceiling.
+
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file holds no cross-origin handling. It has the extraction orchestrator, with no "origin" or CORS construct anywhere.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only takes the key from its caller: "readonly env: { readonly ANTHROPIC_API_KEY: string };" and "anthropicFactory(deps.env.ANTHROPIC_API_KEY)". It refuses no startup.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file has no curation code. The only run identity it handles is the extraction's own "llm_run_id".
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file has no curation write and no "curation_request_failed" log line.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file logs at error level only for provider and uncaught failures ("extraction_anthropic_fatal", "extraction_uncaught_exception"). A model refusal is logged with logger.warn "extraction_chunk_refused". Refusals for a business or validation cause are returned in envelopes, not logged here.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      the constants ANTHROPIC_REQUEST_TIMEOUT_MS and ANTHROPIC_MAX_RETRIES (lines 200-201), passed to the client in defaultAnthropicFactory (lines 204-209)
+    evidence: >-
+      "const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; const ANTHROPIC_MAX_RETRIES = 2;" and "new AnthropicClient({ apiKey, timeout: ANTHROPIC_REQUEST_TIMEOUT_MS, maxRetries: ANTHROPIC_MAX_RETRIES })"
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      buildTools() returns only the four tools propose_fragment, propose_node, propose_link and propose_attribute. The ingest toolset itself is not declared in this file.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file has no operator token handling. It has no authentication code at all.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file has no environment check and no startup refusal. Its only env use is "env.ANTHROPIC_API_KEY".
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file configures no logger redaction. It only calls the injected pino logger, for example "logger.info({ llm_run_id: llmRunId, ... }, \"run_completed\")".
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file does not mount MCP endpoints. Its unknown-tool branch ("Unknown tool '${toolName}'.", VALIDATION_INVALID_FORMAT) is an in-process dispatch for the extraction loop, not an MCP endpoint's NOT_FOUND answer.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone handling. Its only clock is "const now = deps.now ?? (() => new Date());".
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file has no HTTP, CORS or preflight code.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file has no retrieval operation and no REST or MCP transport code. It holds only the extraction orchestrator.
+
+looked_past: >-
+  The file also holds facts that other nodes, outside my set, hold. They are the three-in-a-row failure burst (FATAL_ERROR_BURST, rules/knowledge-base/extraction-fails-on-repeated-system-errors), the 200-character previous-chunk tail (PREV_TAIL_CHARS, rules/knowledge-base/extraction-reads-chunks-in-order) and the 8000-token output ceiling (comment at lines 190-199, rules/knowledge-base/extraction-turn-token-ceiling). I did not review them. I also left aside the comment-heavy header and the prompt-caching, usage-logging and pause_turn handling, which are not domain facts of my nodes.
+
+candidates_opened: []

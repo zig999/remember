@@ -1,0 +1,141 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      the file header comment, lines 9-12 ("Error mapping (registered in docs/specs/_global/error-codes.md)")
+    evidence: >-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
+      //   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
+      //   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
+    cost: >-
+      The refusal mapping is written a second time in prose, with a registry path outside the
+      specification as its stated authority. The next reader trusts the comment or that registry
+      instead of the contract, and the comment already differs from it. It says "wrong issuer",
+      but the code sets no issuer check. It leaves out the missing-`sub` refusal.
+    kind: restates
+    correction: >-
+      Remove the comment. The mapping is held by AuthError, mapJoseError and the preHandler in
+      this same file, and by the contract node.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: >-
+      buildJwksUrl(), lines 85-88
+    evidence: >-
+      return new URL(`${base}/.well-known/jwks.json`);
+    cost: >-
+      The fixed location of the auth provider's key set, which every token verification depends on,
+      lives only in this function and in project instructions. A reader looking in the specification
+      for where the signing keys come from finds no node. The comment calls the path "part of the
+      spec's trust boundary", but no node says so.
+    kind: unstated
+    correction: >-
+      An analysis would give the key-set location a node, for example on the owner-authentication
+      constraint or the access contract.
+  - file: src/middleware/auth.ts
+    where: >-
+      buildNeonAuth(), createRemoteJWKSet options, lines 105-108
+    evidence: >-
+      createRemoteJWKSet(buildJwksUrl(env.NEON_AUTH_URL), {
+            cacheMaxAge: env.NEON_AUTH_JWKS_TTL_S * 1000,
+            cooldownDuration: 30_000,
+          });
+    cost: >-
+      The 30-second wait between key-set refetches is a value the code applies and no node states.
+      It decides how soon a rotated signing key is accepted, but a reader looks for it in the
+      specification and finds nothing. The comments name "10 min" and "30 s" as "the spec" and cite
+      knowledge-graph.back.md. No node in the specification root holds either figure.
+    kind: unstated
+    correction: >-
+      An analysis would give the key-set cache lifetime and refetch cooldown a node, or decide that
+      they are configuration and not business facts.
+  - file: src/middleware/auth.ts
+    where: >-
+      comments at lines 110-113 and 132-136 above and inside the local operator bypass
+    evidence: >-
+      // DEV-ONLY local operator bypass (see config/env.ts LOCAL_OPERATOR_TOKEN).
+      // Resolved once at build time: enabled only when running in development AND a
+      // token is configured. In any other mode this is `null` and the bypass branch
+      // below is dead — production never trusts a static bearer.
+    cost: >-
+      The development-only admission rule is stated again in prose. The code holds it in
+      `env.NODE_ENV === "development"` and `constantTimeEqual`. A second statement of the rule
+      could be changed or read without the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The rule is held by the `localOperatorToken` condition and
+      `constantTimeEqual` in this file, and by the node.
+    node: constraints/local-operator-token-development-only
+
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file sets no response header. `preHandler: async (request) => {` only verifies the bearer
+      token and sets `request.user`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file reads only `NEON_AUTH_URL`, `NEON_AUTH_JWKS_TTL_S`, `NODE_ENV` and
+      `LOCAL_OPERATOR_TOKEN`, and has no startup check on the language model key.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      No reference to a run identity or `llm_run_id` anywhere in the file.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file does no logging and has no curation code.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file throws `AuthError` and logs nothing. The comment "the global error handler logs it
+      server-side" is prose.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file has no call to the language model, no timeout and no retry.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file has no toolset or ingestion code.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file tests only `env.LOCAL_OPERATOR_TOKEN.length > 0` and has no 16-character check. A
+      shorter token is not refused here.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file only declines to enable the bypass outside development: `env.NODE_ENV ===
+      "development" && ...? env.LOCAL_OPERATOR_TOKEN : null`. It does not refuse to start. Refusing
+      to start is a startup behavior and is not in this file.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file has no logging or redaction code.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file has no tool routing and no NOT_FOUND code.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time zone or IANA zone handling.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The preHandler requires a bearer token for every request it is registered on and has no
+      branch for OPTIONS or preflight requests: `if (token === null) { throw new AuthError(
+      "AUTH_UNAUTHORIZED", ...`. Exempting preflight requests would be done by the code that
+      registers it, not here.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file has no retrieval operation and no REST or MCP transport code.
+
+looked_past: >-
+  The bearer-token gate, the 401 refusals, the `local-operator` identity and the constant-time comparison are held by nodes outside this pack (constraints/every-operation-requires-owner-authentication, constraints/local-operator-token-development-only, contracts/knowledge-base/access), and the file conforms to those nodes. Prose such as the provider note about EdDSA and the issuer/audience hardening is a belief and not a fact the code emits.
+
+candidates_opened:
+  - contracts/knowledge-base/access
+  - constraints/local-operator-token-development-only

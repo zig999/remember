@@ -1,0 +1,84 @@
+findings:
+  - file: src/modules/curation/mcp/curation-transport.ts
+    where: >-
+      the header comment, lines 8-11, above the imports
+    evidence: >-
+      // `curation` toolset key on the shared registry). NO X-LLM-Run-Id — both the
+      // owner (REST) and the LLM (MCP) drive the SAME service layer; the write-side
+    cost: >-
+      A comment restates that a curation call over MCP needs no run identity. The code already holds this, because the handler is mounted as `handler: t.handler as (input: unknown) => Promise<McpEnvelope>` and receives only the tool input. A second statement of the rule sits in prose, so the next reader may take the comment, rather than the node, as where the rule was decided.
+    kind: restates
+    correction: >-
+      Remove the sentence from the comment. The node constraints/curation-mcp-needs-no-run-identity already holds the fact, and this file's handler wiring carries it.
+    node: constraints/curation-mcp-needs-no-run-identity
+  - file: src/modules/curation/mcp/curation-transport.ts
+    where: >-
+      the `path` option of the mountMcpEndpoint call, line 41
+    evidence: >-
+      path: "/mcp/curation",
+    cost: >-
+      The address clients use to reach the curation toolset exists only here. No node in the specification states the endpoint's path. Searching the specification for `mcp/curation` found nothing, and the candidate index has no match. A reader who looks in the specification for where the curation endpoint is served will not find it, and the code becomes the place that decision lives.
+    kind: unstated
+    correction: >-
+      The analysis should give the curation endpoint's route a node. The correction is not in this file.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file mounts a route and builds tool descriptors. It has no origin or CORS handling: `mountMcpEndpoint(scope, { path: "/mcp/curation", serverName: "remember-bff-curation", ... })`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file reads no configuration or key. Its dependencies are only `logger`, `mcp` and `toolNames`.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: >-
+      the `getTools` mapping in the mountMcpEndpoint call, lines 45-56
+    evidence: >-
+      handler: t.handler as (input: unknown) => Promise<McpEnvelope>
+      The wrapper hands each curation tool a handler that takes only the tool input. It reads no run identity and asks for none.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file only passes `logger: deps.logger` to the kernel. It has no `curation_request_failed` log and no error handling of its own.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file has no refusal handling and no log call. It only forwards `logger: deps.logger`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file has no model call, timeout or retry. It only builds `McpHttpTool` descriptors.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file serves only the `curation` toolset: `deps.mcp.getTool("curation", name)`. It does not touch the ingest toolset.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file has no token or authentication handling.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file has no environment or startup logic.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file only passes `logger: deps.logger` along. It does no redaction.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file only fixes the endpoint's tool set: `deps.toolNames.map((name) => deps.mcp.getTool("curation", name)).filter((t): t is NonNullable<typeof t> => t !== undefined)`. It has no refusal of a call that names a tool outside that set, and no NOT_FOUND code. That behavior is not in this file.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time-zone logic or configuration read.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file has no preflight or authentication handling. It only calls `mountMcpEndpoint(scope, {...})`.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file wires write-side curation tools. It has no retrieval operation and no REST counterpart.
+looked_past: >-
+  Comment-only statements, the "8 tools" count, the "BR-30 BUSINESS_* ... byte-identically to REST" parity claim and the handler-validates rationale, are prose that no code in this file holds, and the hard-coded `serverName: "remember-bff-curation"` and `serverVersion: "0.1.0"` are technical identification of the server, so none of them was reported as a finding. The comments throughout the file also fall under the framework's no-comments rule, which the comment route answers.

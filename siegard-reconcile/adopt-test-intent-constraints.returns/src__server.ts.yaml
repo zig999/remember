@@ -1,0 +1,73 @@
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never touches CORS or response headers. It only hands config to the app builder: `const app = await buildApp({ env, logger, pool, auth, mcp, catalog, ingestionCatalog });`
+  - node: constraints/anthropic-key-required
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no key requirement. It only exits when env loading throws: `env = loadEnv(); } catch (err) { if (err instanceof EnvValidationError) { process.stderr.write(`${err.message}\n`); } ... process.exit(1);`. The condition that makes loading throw lives in config/env.js, which is not in the file set.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only builds the MCP skeleton: `const mcp = buildMcpServer(logger);`. It makes no run-identity decision.
+  - node: constraints/curation-write-failure-logged
+    held_at: >-
+      nowhere
+    evidence: >-
+      No curation write exists in this file, and the string curation_request_failed does not appear. The only log events are boot and shutdown events such as "boot_start", "db_ping_ok", "catalog_loaded" and "shutdown_failed".
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's only error-level logs are infrastructure failures, not business or validation refusals: `logger.error({ err_message: err.message }, "pg_pool_idle_error");` and `logger.error({ err_message: (err as Error).message }, "shutdown_failed");`.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no call to the language model. It has no timeout or retry value for extraction. It only loads the catalog snapshots: `ingestionCatalog = await loadIngestionCatalog(catalogClient);`.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no tools. It only calls `buildMcpServer(logger)` and passes the result on to `buildApp`.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no token handling and no length check. `buildNeonAuth(env)` and `loadEnv()` are called, and neither rule is stated here.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only logs `{ port: env.PORT, node_env: env.NODE_ENV }, "boot_start"`. It does not state the refuse-to-start condition for a configured token outside explicit development. That condition would be inside `loadEnv()`, outside this file.
+  - node: constraints/logs-redact-text-fields
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only calls `const logger = buildLogger(env);`. It declares no redaction paths or censor value. The logged objects carry port, node_env, err_message, signal and catalog counts, with no content, text or value fields.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only builds the MCP skeleton, `const mcp = buildMcpServer(logger);`. It has no tool dispatch and no NOT_FOUND code.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no time zone reference. The only startup refusal it states is the generic exit on a failed env load, `process.exit(1);`. Zone validation, if any, lives in config/env.js.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no routing, preflight or authentication-ordering logic. It builds `const auth = buildNeonAuth(env);` and passes it to `buildApp`.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file exposes no retrieval operation on either transport. It only boots the process and listens: `await app.listen({ port: env.PORT, host: "0.0.0.0" });`.
+looked_past: >-
+  The file carries block and inline comments (the header boot sequence, "Invalidation = restart (accompanying every catalog migration)", the idle-client note), which belong to the comment-rule judgment and restate no fact of the nodes in this pack.

@@ -1,0 +1,73 @@
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mounts `mountMcpEndpoint(scope, { path: "/mcp/ingest", serverName: "remember-bff-ingest", ... })` and has no origin or CORS header handling.
+  - node: constraints/anthropic-key-required
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file's dependencies are `logger`, `mcp` and `toolNames`. It reads no environment value and has no start-up refusal.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file mounts the ingest endpoint only: `deps.mcp.getTool("ingest", name)`. It serves no curation call.
+  - node: constraints/curation-write-failure-logged
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes `logger: deps.logger` to the kernel. It logs nothing itself and has no curation write.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      nowhere
+    evidence: >-
+      `logger: deps.logger` is forwarded to `mountMcpEndpoint`. The file has no refusal handling and no log-level decision.
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no model call, timeout or retry. It only builds `McpHttpTool` descriptors from `t.name`, `t.description`, `t.inputSchema` and `t.handler`.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      `deps.toolNames.map((name) => deps.mcp.getTool("ingest", name))`. The tool names come from the caller as `readonly toolNames: readonly string[]`, so the file does not decide which tools the ingest toolset offers.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no token or authentication code. Its only logic is `getTools` assembling descriptors.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no environment or token configuration. It has no start-up check.
+  - node: constraints/logs-redact-text-fields
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only forwards `logger: deps.logger`. It configures no redaction.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      nowhere
+    evidence: >-
+      `getTools: () => deps.toolNames.map(...).filter((t): t is NonNullable<typeof t> => t !== undefined)` only supplies the endpoint's tool list. The file has no code that answers a call naming a tool outside the list with a tool error or NOT_FOUND. That decision is not in this file.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no time-zone value or validation. Its only code is `registerIngestMcpTransport`.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no preflight, OPTIONS or authentication code. It mounts a single path with `mountMcpEndpoint`.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file serves the ingest toolset only and exposes no retrieval operation. It has no REST counterpart.
+looked_past: >-
+  The file's header comments restate rules (per-call `llm_run_id` argument, four `propose_*` tools, the per-session model retired, BR-21 and BR-23). They are prose, not emitted text, and the code carries none of those facts itself, so they are the comment route's to remove. The code values `path: "/mcp/ingest"`, `serverName: "remember-bff-ingest"` and `serverVersion: "0.1.0"` are transport wiring that no node in the specification names, and I did not report them as domain facts.

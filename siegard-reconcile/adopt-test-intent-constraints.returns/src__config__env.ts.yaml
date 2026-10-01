@@ -1,0 +1,192 @@
+findings:
+  - file: src/config/env.ts
+    where: >-
+      lines 29-43, the CORS_ORIGINS entry of envSchema
+    evidence: >-
+      CORS_ORIGINS: z.string().default("http://localhost:5173,http://127.0.0.1:5173").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean))
+    cost: >-
+      The origins the system allows when nothing is configured are decided only here. The two constraints on allowed origins (answers-carry-allowed-origin, preflight-needs-no-authentication) say what is done with an allowed origin, not which origins are allowed. A reader looking in the specification for who may call the system from a browser finds no answer.
+    kind: unstated
+    correction: >-
+      The analysis would have to give the default allowed origins, and the comma-separated, exact-match configuration, a node. The two origin constraints are the nearest homes.
+    node: constraints/answers-carry-allowed-origin
+  - file: src/config/env.ts
+    where: >-
+      line 25, the PORT entry of envSchema
+    evidence: >-
+      PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    cost: >-
+      The port the system listens on when none is configured lives only here. No node holds it, so the next reader has nowhere in the specification to find it.
+    kind: unstated
+    correction: >-
+      Give the default listening port a node, or record that it is operational configuration outside the specification.
+  - file: src/config/env.ts
+    where: >-
+      lines 53-55, PG_POOL_MIN, PG_POOL_MAX and PG_STATEMENT_TIMEOUT_MS of envSchema
+    evidence: >-
+      PG_POOL_MIN: z.coerce.number().int().min(0).default(2),
+        PG_POOL_MAX: z.coerce.number().int().min(1).default(10),
+        PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(10_000),
+    cost: >-
+      The point at which a statement counts as timed out is decided only in this file. constraints/unreachable-store-answers-unavailable says that "whose statement times out" answers that a backing service is unavailable, but no node says after how long. Whoever tunes the pool or the timeout changes observable refusals without touching any node.
+    kind: unstated
+    correction: >-
+      Give the statement timeout, and the pool bounds if they are meant as business decisions, a node. constraints/unreachable-store-answers-unavailable is the nearest home.
+  - file: src/config/env.ts
+    where: >-
+      line 65, NEON_AUTH_JWKS_TTL_S in envSchema
+    evidence: >-
+      NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
+    cost: >-
+      The lifetime of the cached signing keys (600 s by default, never below 60 s) is decided only here. It bounds how long a revoked key keeps being accepted. No node holds that, so the next reader looks for it in the specification and does not find it.
+    kind: unstated
+    correction: >-
+      Give the signing-key cache lifetime and its floor a node.
+  - file: src/config/env.ts
+    where: >-
+      line 143, MAX_HISTORY_MESSAGES in envSchema
+    evidence: >-
+      MAX_HISTORY_MESSAGES: z.coerce.number().int().min(1).default(40),
+    cost: >-
+      A configuration value with a default of 40 is declared and accepted, and no node holds it. The adjacent comment calls it legacy. A deployment can set a bound that the specification never mentions.
+    kind: unstated
+    correction: >-
+      Remove the variable if it is dead, or give it a node if it still decides something.
+  - file: src/config/env.ts
+    where: >-
+      lines 168-177, CHAT_SUMMARY_AFTER_TURNS in envSchema
+    evidence: >-
+      CHAT_SUMMARY_AFTER_TURNS: z.coerce.number().int().min(1).default(20),
+    cost: >-
+      A threshold of 20 turns for the rolling summary is declared and accepted, and no node holds it. rules/chat/rolling-summary-refresh states the refresh gate as owner-written messages older than the recent window, with no turn count. The variable is validated and defaulted but described as ignored at runtime, so it reads as a decided threshold that decides nothing.
+    kind: unstated
+    correction: >-
+      Remove the variable, or give the threshold a node if it is meant to decide.
+    node: rules/chat/rolling-summary-refresh
+  - file: src/config/env.ts
+    where: >-
+      line 185, CHAT_SUMMARY_OVERLAP_M in envSchema
+    evidence: >-
+      CHAT_SUMMARY_OVERLAP_M: z.coerce.number().int().min(1).default(40),
+    cost: >-
+      rules/chat/rolling-summary-overlap says "at most the configured overlap of messages" and gives no value for the unconfigured case. The 40 that applies when nothing is configured is decided only here. Sibling nodes (turn-model-call-limit, turn-time-limit) state their defaults.
+    kind: unstated
+    correction: >-
+      Add the unconfigured default (40) to rules/chat/rolling-summary-overlap, as the sibling chat rules do for theirs.
+    node: rules/chat/rolling-summary-overlap
+  - file: src/config/env.ts
+    where: >-
+      lines 67-73, the comment above LOCAL_OPERATOR_TOKEN
+    evidence: >-
+      Ignored entirely
+        // outside development, so it can never weaken a production deployment. Min
+        // length 16 so it is not trivially guessable.
+    cost: >-
+      The 16-character minimum is also written as prose beside the schema line that enforces it. Prose in a second place has to be kept in step with the node by hand.
+    kind: restates
+    correction: >-
+      Remove the comment. The .min(16, ...) on the schema line holds the fact.
+    node: constraints/local-operator-token-minimum-length
+  - file: src/config/env.ts
+    where: >-
+      lines 230-235, the comment above the NODE_ENV guard in loadEnv
+    evidence: >-
+      The static bearer must NEVER be honored outside
+        // development. ... an absent or non-development
+        // `NODE_ENV` with a token present refuses startup rather than fail open.
+    cost: >-
+      The refusal rule is also prose in a second place beside the branch that enforces it, so the two can drift unnoticed.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch `parsed.data.LOCAL_OPERATOR_TOKEN !== undefined && source.NODE_ENV !== "development"` holds the fact.
+    node: constraints/local-operator-token-needs-explicit-development
+  - file: src/config/env.ts
+    where: >-
+      lines 79-82, the comment above ANTHROPIC_API_KEY
+    evidence: >-
+      Missing key at boot is a fatal config error; absence
+        // here causes the process to refuse to start (acceptance criterion of
+        // TC-12).
+    cost: >-
+      The start-refusal rule is also prose beside the required schema line, so it has to be kept in step with the node by hand.
+    kind: restates
+    correction: >-
+      Remove the comment. The `ANTHROPIC_API_KEY: z.string().min(1, ...)` entry, which the parse turns into a thrown EnvValidationError, holds the fact.
+    node: constraints/anthropic-key-required
+  - file: src/config/env.ts
+    where: >-
+      lines 206-211 and 251-257, the comments above OWNER_TZ and above the Intl.DateTimeFormat check
+    evidence: >-
+      an invalid / unknown zone -> the BFF refuses to start
+        //   (`InvalidOwnerTimezoneError`, fail-closed).
+    cost: >-
+      The rule that an unknown zone stops startup is also prose in two places beside the try/catch that enforces it, so it has to be kept in step with the node by hand.
+    kind: restates
+    correction: >-
+      Remove both comments. The `new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ })` try/catch that throws InvalidOwnerTimezoneError holds the fact.
+    node: constraints/owner-time-zone-must-be-known
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file only parses the list of allowed origins: `CORS_ORIGINS: z.string().default("http://localhost:5173,http://127.0.0.1:5173").transform(...)`. Nothing here answers a request or sets an allowed-origin header.
+  - node: constraints/anthropic-key-required
+    held_at: >-
+      the ANTHROPIC_API_KEY entry of envSchema (lines 83-85), with loadEnv throwing EnvValidationError on a failed parse (lines 225-228)
+    evidence: >-
+      ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29)."),  and  if (!parsed.success) { throw new EnvValidationError(parsed.error); }
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file is environment parsing only. It has no MCP handler and no run identity (grep of the file shows no llm_run_id).
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The file logs nothing. Its only emission is the thrown EnvValidationError and InvalidOwnerTimezoneError at startup.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file has no logging call and no business or validation refusal path. Only startup configuration errors are thrown.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The schema carries INGEST_MODEL (`z.string().min(1).default("claude-sonnet-4-6")`) and no timeout or retry setting for the extraction call.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares no tool. CHAT_INGEST_ENABLED (`.default(false)`) is a chat flag, not the ingest toolset.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: >-
+      the LOCAL_OPERATOR_TOKEN entry of envSchema, lines 74-77
+    evidence: >-
+      LOCAL_OPERATOR_TOKEN: z.string().min(16, "LOCAL_OPERATOR_TOKEN must be at least 16 characters.").optional(),
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: >-
+      the guard in loadEnv, lines 236-249
+    evidence: >-
+      if (parsed.data.LOCAL_OPERATOR_TOKEN !== undefined && source.NODE_ENV !== "development") { throw new EnvValidationError([...
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file configures a log level only (`LOG_LEVEL: z.enum([...]).default("info")`). It sets no redaction of content, text or value fields.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file has no MCP endpoint or tool dispatch. It only parses environment variables.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: >-
+      the try/catch in loadEnv, lines 258-262
+    evidence: >-
+      try { new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ }); } catch (err) { throw new InvalidOwnerTimezoneError(parsed.data.OWNER_TZ, err); }
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file holds the origin list in CORS_ORIGINS and answers no preflight request and does no authentication.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file has no REST or MCP transport and no retrieval operation.
+looked_past: >-
+  The comments above CHAT_ENABLED, CHAT_MODEL, CHAT_PROMPT_VERSION, CHAT_RECENT_WINDOW and the other chat variables restate facts held by chat nodes outside this node set (for example the defaults of 6, 8, 90 000 ms and 15 000 ms) and are prose that a comment pass would remove, as are the delivery and task references (TC-xx, BR-xx) in the file.
+candidates_opened:
+  - rules/chat/rolling-summary-overlap

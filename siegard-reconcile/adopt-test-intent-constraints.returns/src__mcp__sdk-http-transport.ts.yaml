@@ -1,0 +1,105 @@
+findings:
+  - file: src/mcp/sdk-http-transport.ts
+    where: >-
+      buildConfiguredMcpServer, the CallToolRequestSchema handler, the branch for a name not in the closed
+      tool set (lines 123-130)
+    evidence: >-
+      message: `Tool '${req.params.name}' is not available on this endpoint.`,
+    cost: >-
+      The node fixes the answer as a tool error with code NOT_FOUND on the curation endpoint and says nothing of
+      its message. The wording a client reads is therefore decided only in this file, so a reader who looks for
+      it in the specification will not find it.
+    kind: unstated
+    correction: >-
+      Give the message of the unknown-tool tool error a node, or state in the node that the message is left
+      open.
+    node: constraints/mcp-endpoint-serves-only-its-toolset
+  - file: src/mcp/sdk-http-transport.ts
+    where: >-
+      mountMcpEndpoint, the catch block of the POST route (lines 174-187)
+    evidence: >-
+      opts.logger.error({ component: "mcp.transport", path: opts.path, cause_message: err instanceof Error ?
+      err.message : "unknown", }, "mcp_transport_internal_error"); if (!reply.raw.headersSent) {
+      reply.raw.statusCode = 500; reply.raw.end(); }
+    cost: >-
+      What the system does when an MCP transport fails is decided only here. The failure is logged at error
+      level as mcp_transport_internal_error with the cause message. When no headers have been sent, the answer
+      is an empty HTTP 500. No node held in the specification states either behavior. The node that does state
+      an internal-error message over MCP, "Internal error in MCP handler.", concerns handler failures and is not
+      this path.
+    kind: unstated
+    correction: >-
+      Give the transport-level failure (log event, level, and the 500 with no body) a node, or state that it is
+      left open.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file sets no origin header. It only calls `transport.handleRequest(request.raw, reply.raw,
+      request.body)` after `reply.hijack()`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file reads no key and no environment variable. Its options are `path`, `serverName`, `serverVersion`,
+      `logger` and `getTools`.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file carries no run-identity concept and calls the handler with the arguments only: `const env = await
+      handler(req.params.arguments ?? {});`. It is a generic kernel and does not decide this curation rule.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The only log in the file is `"mcp_transport_internal_error"`. There is no `curation_request_failed` and no
+      store-unreachable handling.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      A business or validation refusal is mapped through `toCallToolResult` / `toMcpToolResult` and is not
+      logged. The one `logger.error` call is for a thrown transport error, not a refusal.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file makes no language-model call and has no timeout or retry.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The tool set comes from the caller (`getTools`), and the file knows no tool by name.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file contains no token handling. A comment says authentication is the parent scope's job: `Auth is the
+      parent scope's responsibility (requireNeonAuth preHandler)`.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file reads no environment and has no start-up check.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The log object `{ component, path, cause_message }` has no redaction logic. Redaction is not in this file.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      the CallToolRequestSchema handler in buildConfiguredMcpServer (lines 121-134), via the handlers map built
+      from the closed tool set (line 114)
+    evidence: >-
+      const handler = handlers.get(req.params.name); if (handler === undefined) { return toCallToolResult({ ok:
+      false, error: { code: "NOT_FOUND", message: `Tool '${req.params.name}' is not available on this
+      endpoint.`, }, }); } — toCallToolResult then returns `isError: true`.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file has no time-zone handling.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file registers only `scope.post(opts.path, ...)`. It has no OPTIONS handling and no CORS.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file computes no retrieval result. It maps whatever envelope the handler returns, and the REST
+      counterpart is not here.
+looked_past: >-
+  The header and docstring comments (BR-25, BR-31, BR-30, "Stateless pattern", "Phase-0 spike") are prose with
+  no running behavior, and removing them is the comment route's judgment, not this one's. The stateless
+  per-request Server and transport design is an implementation choice and not a domain fact.

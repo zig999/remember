@@ -1,0 +1,138 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: >-
+      The header comment, lines 11-19 ("Error mapping" and the 500-path paragraph), and the comment inside the framework-HTTP-error branch of classify(), lines 140-142.
+    evidence: >-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - AuthError                    -> 401 (code from AuthError.code)
+      //   - ZodError                     -> 422 VALIDATION_INVALID_FORMAT
+      //   - pg error: ECONNREFUSED / ETIMEDOUT / 57P03 / 57014 -> 503 SYSTEM_SERVICE_UNAVAILABLE
+      //   - Any other unhandled error    -> 500 SYSTEM_INTERNAL_ERROR
+      // The handler MUST NOT leak internal messages on the 500 path
+      and "// Never leak an internal message on a 5xx path (the file contract):"
+    cost: >-
+      The status and error-code mapping and the withheld cause are written a second time as prose. Code holds them in classify() in this file and in internalError(), serviceUnavailableError() and isPgUnavailable() in src/shared/error-mapping.ts. When the access contract moves, nothing ties this prose to it, and a reader can take the comment for the decision. The comment also names docs/specs/_global/error-codes.md as the registry, which is not the specification.
+    kind: restates
+    correction: >-
+      Remove the comments. The mapping is held by contracts/knowledge-base/access and the code that implements it.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      The comment above the logger call in errorHandler, lines 52-53.
+    evidence: >-
+      // Log every failure with full context — but never the request body
+      // (PII rule: pino redaction handles `req.body.content/text/value`).
+    cost: >-
+      The comment states that content, text and value fields are redacted from logs. This file only logs request_id, route, method, error_code, cause_message and cause_name, and does nothing to redact. The redaction is held by REDACT_PATHS and `censor: "[REDACTED]"` in src/config/logger.ts. A reader of this file would look for the redaction here, not find it, and have no pointer to where it lives.
+    kind: restates
+    correction: >-
+      Remove the comment. The redaction is held in src/config/logger.ts, and the node constraints/logs-redact-text-fields is the place that states it.
+    node: constraints/logs-redact-text-fields
+  - file: src/middleware/error-handler.ts
+    where: >-
+      The logger call in errorHandler, lines 54-65, with the log levels assigned in classify() (warn for auth, validation and framework 4xx failures; error for framework 5xx failures).
+    evidence: >-
+      logger[logLevel](
+        {
+          request_id: request.id,
+          route: request.routeOptions?.url ?? request.url,
+          method: request.method,
+          error_code: envelope.error.code,
+          cause_message: err.message,
+          cause_name: err.name,
+        },
+        "request_failed"
+      );
+    cost: >-
+      The log event name request_failed, its fields, and the choice of level per cause (a 5xx framework failure at error, every 4xx at warn) are emitted behavior that no node holds. The only logging nodes are constraints/expected-refusals-not-logged-as-errors, which bounds business and validation refusals, and constraints/curation-write-failure-logged, which names a different event, curation_request_failed. The generic failure log lives only here, and an operator tuning alerts would find it in the code and not in the specification.
+    kind: unstated
+    correction: >-
+      Analysis would need to give the generic request-failure log (its event name, its fields, and the levels per cause) a node, for example a constraint beside constraints/expected-refusals-not-logged-as-errors.
+  - file: src/middleware/error-handler.ts
+    where: >-
+      Branch 3 of classify() (the isFastifyValidationError branch), lines 108-123.
+    evidence: >-
+      message: err.message ?? "Request payload failed validation.",
+      details: err.validation,
+    cost: >-
+      The access contract answers every validation failure with the message "Request payload failed validation." and `details` a bare list of `{ path, message }`. Its decision log records that a caller cannot tell which validator ran. This branch forwards the framework's own message and its raw validation array as `details`. A request rejected by Fastify's built-in schema validation therefore gets a different message and a different details shape from one rejected by Zod, and the caller can tell the two validators apart.
+    kind: contradicts
+    correction: >-
+      The branch would have to answer the fixed message "Request payload failed validation." and map err.validation to a list of `{ path, message }`, as the ZodError branch does.
+    node: contracts/knowledge-base/access
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file sets no CORS or origin header. It only builds `reply.status(statusCode).send(envelope)`.
+  - node: constraints/anthropic-key-required
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles thrown errors only and reads no configuration or key.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no MCP or run-identity handling. Its subject is the Fastify error handler.
+  - node: constraints/curation-write-failure-logged
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file logs only the generic event `"request_failed"`. It does not log `curation_request_failed` or treat curation writes specially.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      classify(), lines 75-152. The auth branch, the Zod branch, the Fastify-validation branch and the framework-4xx branch each return `logLevel: "warn"`. Only a framework status of 500 or above gets "error".
+    evidence: >-
+      logLevel: "warn", (on the AuthError, ZodError and fastify-validation returns) and logLevel: isServerError ? "error" : "warn",
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file makes no model call and has no timeout or retry logic.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds no toolset or ingestion code.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads no token. It only imports `AuthError` from "./auth.js" for classification.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no environment or startup check.
+  - node: constraints/logs-redact-text-fields
+    held_at: >-
+      nowhere
+    evidence: >-
+      Only the comment "(PII rule: pino redaction handles `req.body.content/text/value`)" mentions redaction. The file passes the injected `logger` and does no redaction itself (REDACT_PATHS is in src/config/logger.ts).
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no MCP tool dispatch or NOT_FOUND tool-error code.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no time-zone or configuration handling.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no preflight or CORS handling.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no retrieval operation. It maps thrown errors to one envelope.
+looked_past: >-
+  The pg-unavailable and internal-error envelopes are built by serviceUnavailableError() and internalError() in src/shared/error-mapping.ts, outside this file set, so their messages, statuses and levels were not judged here.
+candidates_opened:
+  - contracts/knowledge-base/access
+  - constraints/failures-answer-one-envelope

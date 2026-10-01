@@ -1,0 +1,166 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment above the `logLevel === "error"` branch in sendError, lines 87-93
+    evidence: >-
+      // Infra / unknown faults (logLevel "error": pg unavailable, unhandled
+      // exceptions) have their `err.message` masked in the envelope. Log the
+      // original server-side so the cause is not lost
+    cost: >-
+      The comment says again that an unreachable-store write failure is logged with its cause. The code
+      holds that fact at the `logger.error(... "curation_request_failed")` call just below it. A second
+      account of the fact sits beside the node's own, and if the node moves the comment goes on
+      claiming the old behaviour.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact, so nothing needs to be added anywhere.
+    node: constraints/curation-write-failure-logged
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the same comment in sendError, lines 90-93
+    evidence: >-
+      // Expected client-driven
+      // faults (logLevel "warn": business / validation / not-found) are NOT logged
+      // here, matching the pre-refactor behaviour and avoiding log noise.
+    cost: >-
+      The comment restates that business and validation refusals are not logged at error level. The
+      `if (logLevel === "error")` gate in this file holds that fact. The comment is a second home
+      outside behaviour, and its reference to "pre-refactor behaviour" points to a history the
+      specification does not carry.
+    kind: restates
+    correction: >-
+      Remove the comment. The gate in sendError already holds the fact.
+    node: constraints/expected-refusals-not-logged-as-errors
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment above the GET /metrics handler, lines 126-135
+    evidence: >-
+      // Wraps the shared mapper with a graceful-degradation override: ANY residual
+      // 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front
+      // spec MetricsStrip (R1) can fall back to per-kind totals from /queue. 401
+      // auth failures and 2xx responses are NEVER degraded.
+    cost: >-
+      The comment restates the metrics refusal that the node holds: when the metrics cannot be read, the
+      answer is HTTP 503 SYSTEM_SERVICE_UNAVAILABLE. The code holds the same thing in this file at
+      `const degradedStatus = statusCode === 500 ? 503 : statusCode`. The comment also adds a rationale
+      (a front-end MetricsStrip fallback) and a "401 ... NEVER degraded" claim. Neither of those
+      appears in any node I opened.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact. The rationale belongs in the decision
+      log of the node, not in source.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment inside the GET /metrics handler, lines 145-149
+    evidence: >-
+      // Bare success body — consistent with every other curation REST
+      // endpoint (queue/confirm/reject/...). The SPA's httpCuration returns
+      // the raw 2xx JSON, so an `{ ok, result }` wrapper here would surface
+    cost: >-
+      The comment restates that the metrics success is an HTTP 200 with no envelope, which the node
+      holds. The code holds it at `return reply.status(200).send(result);`. The comment is a second
+      account of a contract fact, and it names SPA internals.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file already holds the fact.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the warn log line in the GET /metrics catch block, lines 169-186
+    evidence: >-
+      deps.logger.warn(
+        { route: "GET /api/v1/curation/metrics", operation: "getCurationMetrics", transport: "rest", original_status: statusCode, outcome: degradedStatus, error_code: degradedEnvelope.error.code, error_class: ..., cause_message: ... },
+        "curation_metrics_degraded"
+      );
+    cost: >-
+      The system emits a log event, a level, a trigger (a 500, or an error-level mapping) and a set of
+      fields for a degraded metrics read. No node I read or searched for holds any of them. The
+      sibling constraint curation-write-failure-logged shows that this project specifies such log
+      events. A reader looking in the specification for what is logged when the metrics read degrades
+      finds nothing, and the file becomes the only place that behaviour lives.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a degraded metrics read is logged. If it is, the decision should
+      name the event, the level and the fields, in a node beside curation-write-failure-logged.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file sets no origin header. It only calls `reply.status(statusCode).send(envelope)` and
+      `reply.status(200).send(result)`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file reads no environment and no provider key. Its deps are `pool`, `logger`, `catalog` and
+      `ingestionCatalog`.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      This is the REST route file. Its routes (`app.get("/queue"`, `app.post("/items/confirm"` and so
+      on) carry no MCP transport and no run identity.
+  - node: constraints/curation-write-failure-logged
+    held_at: >-
+      sendError, lines 94-105, the `logLevel === "error"` branch. It is used by the write routes
+      (resolve, merge, dispute, confirm, reject, correct).
+    evidence: >-
+      if (logLevel === "error") { logger.error({ route: ..., method: reply.request.method, error_code: envelope.error.code, cause_message: err instanceof Error ? err.message : String(err), cause_name: ... }, "curation_request_failed"); }
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: >-
+      the `if (logLevel === "error")` gate in sendError, lines 94-105. Only causes the mapper
+      classifies as "error" are logged at error level. The classification itself comes from
+      `mapErrorToHttpResponse` in another file.
+    evidence: >-
+      const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err);
+      if (logLevel === "error") { logger.error({ ... }, "curation_request_failed"); }
+      return reply.status(statusCode).send(envelope);
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      The file has no model call, timeout or retry. Every handler calls a curation service.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file registers only curation routes (/queue, /metrics, /entity-matches/:node_id/resolve,
+      /nodes/merge, /disputes/resolve, /items/*). It registers no ingest tool.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file does no authentication and has no token. Its header comment says "handlers do NOT
+      re-check the token".
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file reads no configuration or environment. It registers routes only.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file configures no redaction. The objects it logs carry only `route`, `method`,
+      `error_code`, `cause_message`, `cause_name` and similar fields, and none of them is a content,
+      text or value field.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file is the REST surface only and has no MCP tool dispatch. Its header comment says only
+      "REST surface".
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file reads no time zone and does no startup validation.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file sets no CORS handling and does no preflight handling. It registers only get and post
+      routes.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file serves REST only. It holds no MCP counterpart and no comparison of the two
+      transports' answers.
+looked_past: >-
+  The file's remaining comments (the UC-xx and BR-xx citations, the header endpoint list, the history
+  of the BR-30 refactor, and the CLAUDE.md Rule 12 reference) and the code's references to routes
+  and mapper behaviour belong to the comment route and to other files' judgments, not to this
+  conformance pass.
+candidates_opened:
+  - contracts/knowledge-base/curation

@@ -1,0 +1,112 @@
+findings:
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      the createChatAgentService factory-failure branch of getClient(), lines 80-88
+    evidence: >-
+      deps.logger.error(
+        { event: "chat.provider_factory_failed", error: serializeError(err) },
+        "chat anthropic factory failed"
+      );
+      throw new ChatProviderUnavailableError();
+    cost: >-
+      The failure is logged at error level and then refused with the chat provider unavailable error. The contract answers that case with the business code BUSINESS_CHAT_PROVIDER_UNAVAILABLE ("The model provider cannot be reached when the turn starts"). The node says a refusal for a business cause is never logged at error level. The same refusal during streaming is logged at warn, in this file as "chat.provider_stream_error". The two paths therefore disagree on the level for one business refusal, and error-level alerts fire on a refusal the specification classes as expected.
+    kind: contradicts
+    correction: >-
+      Either the factory-failure log drops below error level, or the specification says that a provider that cannot be built at turn start is a failure to be logged at error level. The second would be a decision for an analysis, not for this file.
+    node: constraints/expected-refusals-not-logged-as-errors
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      the MAX_TOKENS_PER_ITERATION constant (line 53) and its use in the model request (line 255)
+    evidence: >-
+      const MAX_TOKENS_PER_ITERATION = 4096;
+      ...
+      max_tokens: MAX_TOKENS_PER_ITERATION,
+    cost: >-
+      A cap of 4096 output tokens on every model call of a turn decides when the model's answer is cut and the turn ends as max-tokens. No node holds the value (a search of the specification found no 4096 and no per-call output limit). The next reader looks for the limit in the specification and finds only the model-call count limit.
+    kind: unstated
+    correction: >-
+      Give the per-model-call output token limit a node. A rule constraining domain/chat/turn, next to rules/chat/turn-model-call-limit, would hold it.
+    node: domain/chat/turn
+  - file: src/modules/chat/service/chat-agent.service.ts
+    where: >-
+      the failure envelopes handed to the model: unknown tool (lines 416-423), tool timeout (lines 634-639), tool handler throw (lines 672-679)
+    evidence: >-
+      error: { code: "VALIDATION_INVALID_FORMAT", message: "unknown tool name" }
+      ...
+      code: "SYSTEM_SERVICE_UNAVAILABLE", message: "tool timeout"
+      ...
+      code: "SYSTEM_INTERNAL_ERROR", message: errMessage(err) ?? "tool handler threw"
+    cost: >-
+      rules/chat/tool-failure-continues-turn says only that a failed tool call "hands its failure to the assistant". The error codes and messages the assistant is told are decided here: VALIDATION_INVALID_FORMAT for an unknown tool, SYSTEM_SERVICE_UNAVAILABLE for a timeout, and the thrown error's own message for a handler that threw. No node holds them. This text is sent to the model and also surfaces in the tool_result error_message events. The next reader looks for it in the specification and finds only the continuation rule.
+    kind: unstated
+    correction: >-
+      Extend rules/chat/tool-failure-continues-turn, or add a sibling rule, with the code and message each tool failure hands the assistant.
+    node: rules/chat/tool-failure-continues-turn
+read:
+  - node: rules/chat/tool-call-recorded
+    held_at: nowhere
+    evidence: >-
+      The file only emits the data as events and persists nothing. `yield { type: "tool_result", tool: toolName, ok: toolEnvelope.ok, arguments: block.input, result: ..., is_error: isError, error_message: errMsg, duration_ms: durationMs }` and `yield { type: "iteration_end", iteration, assistant_content: iterationBlocks.slice(), tool_results: toolResultBlocks.slice() }`. No call records a tool call against a conversation or names an assistant message.
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      No origin or CORS header is handled in this file. It is the agent loop, `async function* runTurnGenerator(ctx)`.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The file only passes the key along. `factory(env.ANTHROPIC_API_KEY)`. It enforces no start refusal for a missing key.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      No curation or MCP handling in this file. The only tool context is `invocationContext` with `source_excerpt` and `pointer`.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      No curation_request_failed log line exists. The file's log events are `chat.provider_factory_failed`, `chat.provider_stream_error`, `chat.iteration_usage`, `chat.loop_internal_error` and the `chat.tool_schema_*` events.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file does not hold the constraint. Its refusal path at provider-stream failure is logged at warn (`ctx.logger.warn({ event: "chat.provider_stream_error", ... })`), but the factory-failure refusal is logged at error, as the finding quotes.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      This is the chat loop, not extraction. No five-minute wait or retry count appears. The only time bounds are `ctx.env.TURN_TIMEOUT_MS` and `ctx.env.TOOL_TIMEOUT_MS`.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      The file defines no toolset. It builds descriptors from a catalog it is given: `for (const name of Object.keys(catalog))`.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      No operator-token handling in this file.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      No operator-token or NODE_ENV handling in this file.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file performs no redaction. It logs plain objects, such as `{ event: "chat.provider_stream_error", error: serializeError(streamErrored), iteration }`.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      No MCP endpoint is handled in this file. Its own unknown-tool refusal is `const tool = ctx.catalog[toolName]; if (tool === undefined) { toolEnvelope = { ok: false, error: { code: "VALIDATION_INVALID_FORMAT", ...`, a chat-turn failure and not an MCP tool error.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      No time zone handling in this file.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      No HTTP or preflight handling in this file.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      No retrieval operation or transport parity in this file. It only calls tool handlers: `tool.handler`.
+looked_past: >-
+  The permissive-schema fallback for tools whose Zod schema does not convert, the ephemeral prompt-cache marker on the system block, and the stream and queue mechanics are provider and plumbing choices that state no domain fact. They are another judgment's.
+candidates_opened:
+  - rules/chat/tool-failure-continues-turn
+  - domain/chat/turn
+  - domain/chat/assistant-stop-reason
+  - contracts/chat/conversations

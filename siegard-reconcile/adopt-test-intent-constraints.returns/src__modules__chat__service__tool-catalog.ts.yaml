@@ -1,0 +1,87 @@
+findings:
+  - file: src/modules/chat/service/tool-catalog.ts
+    where: >-
+      buildChatToolCatalog, the missingIngest.length > 0 branch (lines 173-186)
+    evidence: >-
+      logger?.error({ event: "chat.tool_catalog_partial_resolution", requested, resolved: Object.keys(resolvedIngest), missing: missingIngest, }, "chat ingestion tool portion partially resolved — falling back to 13-tool catalog (BR-44 step 6)")
+    cost: >-
+      The code emits an error-level log named chat.tool_catalog_partial_resolution when directed
+      ingestion is enabled but not registered, and it then serves the catalog without that tool.
+      No node in the specification states that event or that error-level log. The nearest nodes,
+      constraints/chat-toolset and rules/chat/chat-toolset-requires-every-query-tool, cover the
+      toolset's content and the requirement that every query tool is available. They do not cover
+      this log or its event name. The specification already gives a comparable logged event its own
+      node (constraints/curation-write-failure-logged), so a reader looking there for this event
+      will not find it. Anyone who monitors or alerts on this event name depends on a name that
+      only the code holds.
+    kind: unstated
+    correction: >-
+      An analysis would need to give this fact a node: error-level logging of the event
+      chat.tool_catalog_partial_resolution, with the requested, resolved and missing tool names,
+      when chat ingestion is enabled and directed ingestion is not fully available. The fallback to
+      the catalog without directed ingestion is already covered by constraints/chat-toolset.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: nowhere
+    evidence: >-
+      The file only resolves tools from the McpServer registry (mcp.getTool(CHAT_QUERY_TOOLSET, name)). It handles no origin or CORS header.
+  - node: constraints/anthropic-key-required
+    held_at: nowhere
+    evidence: >-
+      The only env field read is `env.CHAT_INGEST_ENABLED === true`. The provider key is not read here.
+  - node: constraints/curation-mcp-needs-no-run-identity
+    held_at: nowhere
+    evidence: >-
+      The file resolves only query-toolset and ingest-toolset tools (`CHAT_QUERY_TOOLSET`, `CHAT_INGEST_TOOLSET`). It has no curation call and no run-identity handling.
+  - node: constraints/curation-write-failure-logged
+    held_at: nowhere
+    evidence: >-
+      The only log is `event: "chat.tool_catalog_partial_resolution"`. It is not a curation write failure and does not use `curation_request_failed`.
+  - node: constraints/expected-refusals-not-logged-as-errors
+    held_at: nowhere
+    evidence: >-
+      The file's one `logger?.error` call reports a deployment-time partial resolution of a tool, not a business or validation refusal. The node's fact is not carried here.
+  - node: constraints/extraction-model-call-bounded
+    held_at: nowhere
+    evidence: >-
+      No call to the language model is made. The file only builds a map of McpTool references.
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: nowhere
+    evidence: >-
+      `export const CHAT_INGEST_TOOL_NAMES = ["ingest_directed"] as const;` is the chat catalog's selection from the ingest toolset. The file does not declare the ingest toolset's own tools. The names of the retired async tools appear only in a comment.
+  - node: constraints/local-operator-token-minimum-length
+    held_at: nowhere
+    evidence: >-
+      The file reads no operator token. Only `CHAT_INGEST_ENABLED` is read from env.
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: nowhere
+    evidence: >-
+      The file reads no operator token and has no environment-mode check. Only `CHAT_INGEST_ENABLED` is read from env.
+  - node: constraints/logs-redact-text-fields
+    held_at: nowhere
+    evidence: >-
+      The file logs `{ event, requested, resolved, missing }`, which are tool names. No redaction of content, text or value fields is configured or performed here.
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: nowhere
+    evidence: >-
+      The file resolves a name within a toolset (`mcp.getTool(CHAT_QUERY_TOOLSET, name)`). The endpoint's refusal of a tool outside its toolset is not implemented here.
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: nowhere
+    evidence: >-
+      The file reads no time zone. Only `CHAT_INGEST_ENABLED` is read from env.
+  - node: constraints/preflight-needs-no-authentication
+    held_at: nowhere
+    evidence: >-
+      The file contains no HTTP, authentication or preflight handling.
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: nowhere
+    evidence: >-
+      The file serves neither REST nor MCP retrieval. It only looks up tool references in the in-process registry.
+
+looked_past: >-
+  The file's own toolset content (13 query tools plus ingest_directed only when enabled and available) is held by constraints/chat-toolset and rules/chat/chat-toolset-requires-every-query-tool, which are outside this pack; the long header comments restating BR-05 and BR-44, and the module-scope sticky-cache design, are prose or implementation detail and not domain-fact findings.
+
+candidates_opened:
+  - constraints/chat-toolset
+  - rules/chat/chat-toolset-requires-every-query-tool
+  - constraints/llm-toolset-omits-graph-point-reads
