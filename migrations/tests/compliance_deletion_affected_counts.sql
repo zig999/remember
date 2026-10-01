@@ -25,7 +25,7 @@ DECLARE
   v text;
 BEGIN
   IF pg_temp.is_refused(good) THEN
-    RAISE EXCEPTION 'criterion 7: an affected value with the four integer counts was refused';
+    RAISE EXCEPTION 'criterion 8: an affected value with the four counts as non-negative integers was refused';
   END IF;
 
   FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP

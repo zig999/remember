@@ -19,7 +19,7 @@ BEGIN
     refused := true;
   END;
   IF NOT refused THEN
-    RAISE EXCEPTION 'criterion 6: a compliance deletion with the affected column omitted was accepted';
+    RAISE EXCEPTION 'criterion 7: a compliance deletion with the affected column omitted was accepted';
   END IF;
 
   refused := false;
@@ -30,7 +30,7 @@ BEGIN
     refused := true;
   END;
   IF NOT refused THEN
-    RAISE EXCEPTION 'criterion 6: a compliance deletion with an explicit null affected was accepted';
+    RAISE EXCEPTION 'criterion 7: a compliance deletion with an explicit null affected was accepted';
   END IF;
 END
 $$;

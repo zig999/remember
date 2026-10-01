@@ -29,7 +29,7 @@ BEGIN
 
   FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP
     IF NOT pg_temp.is_refused(jsonb_set(zeros, ARRAY[k], '-1'::jsonb)) THEN
-      RAISE EXCEPTION 'rules/knowledge-base/compliance-deletion-counts-what-it-marked: a negative % count was accepted', k;
+      RAISE EXCEPTION 'criterion 6: an affected value with a negative % count was accepted', k;
     END IF;
   END LOOP;
 END
