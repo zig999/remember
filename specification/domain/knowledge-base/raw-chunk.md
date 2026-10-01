@@ -5,11 +5,11 @@ attributes:
 - name: chunk_index
   type: integer
   required: true
-- name: start_offset
+- name: offset_start
   type: integer
-- name: end_offset
+- name: offset_end
   type: integer
-- name: excerpt
+- name: text
   type: string
   required: true
 - name: locator

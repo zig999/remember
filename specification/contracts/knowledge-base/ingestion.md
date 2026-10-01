@@ -37,7 +37,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: list-raw-chunks
-  accepted: HTTP 200 carrying the total and every chunk of the raw information, each with its identity, raw information, index, excerpt, offsets, locator and chunking version
+  accepted: HTTP 200 carrying the total and every chunk of the raw information, each with its identity, raw information, index, text, offsets, locator and chunking version
   refusals:
   - *id001
   - when: No raw information is held at the requested identity.

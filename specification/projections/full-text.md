@@ -846,7 +846,7 @@ answers:
   - when: No raw information is held at the requested identity.
     answer: HTTP 404, error code RESOURCE_NOT_FOUND
 - operation: list-raw-chunks
-  accepted: HTTP 200 carrying the total and every chunk of the raw information, each with its identity, raw information, index, excerpt, offsets, locator and chunking version
+  accepted: HTTP 200 carrying the total and every chunk of the raw information, each with its identity, raw information, index, text, offsets, locator and chunking version
   refusals:
   - *id001
   - when: No raw information is held at the requested identity.
@@ -3472,11 +3472,11 @@ attributes:
 - name: chunk_index
   type: integer
   required: true
-- name: start_offset
+- name: offset_start
   type: integer
-- name: end_offset
+- name: offset_end
   type: integer
-- name: excerpt
+- name: text
   type: string
   required: true
 - name: locator
@@ -3510,6 +3510,10 @@ entries:
   unstated: The earlier decision read a chunk's locator as an opaque string the retrieval passes through, while the code declares it as an object of the optional keys page, line, speaker and ts, the whole nullable.
   decided: chunk-locator
   why: The owner holds the code as the truth, and a plain string fails the object the code declares.
+- field: attributes
+  unstated: The earlier decision named the chunk's text and offsets excerpt, start_offset and end_offset, while the code names them text, offset_start and offset_end in every shape that carries a chunk.
+  decided: The chunk's attributes are named text, offset_start and offset_end.
+  why: The owner holds the code as the truth, and no shape in the code uses the earlier names.
 ---
 
 === domain/knowledge-base/raw-information
@@ -5720,7 +5724,7 @@ None.
 === rules/knowledge-base/chunk-excerpt-is-verbatim
 ---
 type: invariant
-statement: A raw chunk's excerpt is exactly the content between its offsets.
+statement: A raw chunk's text is exactly the content between its offset_start and its offset_end.
 constrains:
 - domain/knowledge-base/raw-chunk
 ---
@@ -5793,7 +5797,7 @@ None.
 === rules/knowledge-base/chunk-offsets-count-code-points
 ---
 type: invariant
-statement: A raw chunk's start and end offsets count Unicode code points, the start inclusive and the end exclusive.
+statement: A raw chunk's offset_start and offset_end count Unicode code points, offset_start inclusive and offset_end exclusive.
 constrains:
 - domain/knowledge-base/raw-chunk
 ---
@@ -5805,7 +5809,7 @@ None.
 === rules/knowledge-base/chunk-offsets-ordered
 ---
 type: invariant
-statement: A raw chunk's start offset is at least 0 and its end offset is greater than its start offset.
+statement: A raw chunk's offset_start is at least 0 and its offset_end is greater than its offset_start.
 constrains:
 - domain/knowledge-base/raw-chunk
 ---
@@ -7547,7 +7551,7 @@ None.
 === rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
 ---
 type: policy
-statement: A graph read's provenance entry shows the whole excerpt of the raw chunk it cites.
+statement: A graph read's provenance entry shows the whole text of the raw chunk it cites.
 constrains:
 - domain/knowledge-base/graph-read
 - domain/knowledge-base/provenance
@@ -9217,7 +9221,7 @@ None.
 === rules/knowledge-base/prose-matching
 ---
 type: policy
-statement: Fragment text, chunk excerpts and the fragments that mention a node are matched with Portuguese stemming and without regard to accents.
+statement: Fragment text, chunk text and the fragments that mention a node are matched with Portuguese stemming and without regard to accents.
 constrains:
 - domain/knowledge-base/information-fragment
 - domain/knowledge-base/raw-information
