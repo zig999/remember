@@ -1,0 +1,57 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      The docstring of ingestRawInformation, step 2 of the happy path (line 81).
+    evidence: >-
+      " *   2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`."
+    cost: >-
+      The prose states the idempotency key's composition a second time, outside behavior. The code holds
+      the fact in composeIdempotencyKey (src/modules/ingestion/hash.ts), which hashes content_hash,
+      prompt_version, model and chunking_version in that order with no separator. If the rule moves, this
+      docstring keeps saying the old composition and no tool reaches it.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The fact is held by the node and by composeIdempotencyKey.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      The no-op branch: the catch at line 128-130 calls noopExisting(client, contentHash, idempotencyKey),
+      and noopExisting looks the run up by the request-derived key at lines 215-222.
+    evidence: >-
+      "const run = await findLlmRunByIdempotencyKey(client, idempotencyKey);
+        if (run === null) {
+          throw new InvariantError(
+            `noopExisting: raw_information ${existing.id} exists for content_hash ${contentHash} ` +
+              `but no llm_run row matches idempotency_key ${idempotencyKey}. ` +
+              `Database is inconsistent — BR-09 invariant violated.`"
+    cost: >-
+      The node answers a re-ingestion of held content with HTTP 200 noop_existing and the run the held raw
+      information already has, "whatever model or prompt version the request names". The key is composed
+      from the request's own model and prompt_version, so held content re-sent under a different model or
+      prompt version matches no run. The service throws InvariantError (a 500) instead of answering 200.
+      The decision log beside the node records this as the exact behavior to correct. The code still
+      treats it as a database inconsistency, so a client re-sending known content under a new model gets
+      an internal error where the business decided a no-op.
+    kind: contradicts
+    correction: >-
+      The no-op path would have to find the run by the held raw information (its input_raw_information_id)
+      and not by the request-derived idempotency key.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      Line 103, the call that derives the hash. This file declares no digest or encoding of its own and
+      delegates to sha256Hex in src/modules/ingestion/hash.ts.
+    evidence: >-
+      "const contentHash = sha256Hex(input.content);" in this file. In hash.ts, which I read only to
+      attribute the call: "return createHash("sha256").update(content, "utf8").digest("hex");". The hash is
+      computed over input.content alone, and original_input is passed separately and never hashed.
+looked_past: >-
+  The 404 message `${entity} ${entityId} not found.` (rendered as "raw_information <id> not found.") is text
+  the system emits. The ingestion contract's read-raw-information and list-raw-chunks answers name only the
+  code RESOURCE_NOT_FOUND and HTTP 404, and the compliance-audit contract words its own message differently
+  ("RawInformation <id> not found."). I judged that wording to be another judgment's. The BR-xx and TC-01
+  citations in comments are prose and I did not report them.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/idempotency-key

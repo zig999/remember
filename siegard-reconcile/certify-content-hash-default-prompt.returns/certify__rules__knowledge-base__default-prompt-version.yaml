@@ -1,0 +1,33 @@
+certified:
+  - node: rules/knowledge-base/default-prompt-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-document-handler.spec.ts
+        name: defaults model + prompt_version when the caller omits them
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: recommends v4 for new runs (DEFAULT_PROMPT_VERSION === 'v4')
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: dispatches 'v4' → v4 module with PROMPT_VERSION === 'v4'
+    why: >-
+      The two tests together prove only that the version is recorded. The handler test submits
+      a document with no prompt_version. It then checks that the body passed to the injected
+      ingestRaw collaborator carries prompt_version equal to the DEFAULT_PROMPT_VERSION constant.
+      The registry test checks that this constant is 'v4'. Together they would fail if an
+      ingestion naming no version recorded something other than v4. However, the handler test
+      checks this through the argument of an injected collaborator's call. That binds where the
+      default is applied, not what the ingestion ends up with: if the default were applied inside
+      ingestRaw, the behaviour would be correct and the test would fail. The fact is that the
+      ingestion "runs under v4", and that part goes unexercised. In the handler test,
+      runExtraction is a mock, so nothing in the offered proof runs an extraction for an
+      ingestion that named no version and observes which prompt the run used. The dispatch test
+      shows that selectPromptModule('v4') returns the v4 module. Nothing shows that the run
+      created for a version-less ingestion is dispatched through it. The only entry point the
+      proof exercises is the ingest_document MCP handler. If another ingestion path accepts a
+      document without a prompt version, nothing in the offered proof covers that path's default.
+    remainder: testable
+    remainder_why: >-
+      Input: one document ingestion that names no prompt version, driven through extraction
+      against a stub LLM provider. Expected result: the run records prompt_version 'v4', and the
+      system prompt sent to the provider equals the v4 module's system(snapshot). Only the
+      collaborator at the provider boundary should be stubbed, so the test does not pin the
+      argument of an internal ingestRaw call.

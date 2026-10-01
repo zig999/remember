@@ -1,0 +1,39 @@
+certified:
+  - node: rules/knowledge-base/content-hash-is-sha256
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: "returns 64 lowercase hex characters"
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: "matches the canonical sha256 of UTF-8 bytes"
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: "(c.regression) content_hash is sha256(content) — original_input does NOT participate"
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: "returns status 201 with outcome=created and a non-empty chunks array"
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: "returns status 200 with outcome=noop_existing and an empty chunks array when content_hash already exists"
+    why: >-
+      The hash function is proven on its own. In hash.spec.ts, sha256Hex is checked
+      for 64 lowercase hex characters, and on the non-ASCII input "Olá mundo" it is
+      compared against node:crypto SHA-256 over the UTF-8 bytes. One test ties that
+      function to a raw information on purpose: "(c.regression)" checks that the
+      content_hash written on insert equals sha256Hex(content). Its content is
+      "[f1] Rodrigo lidera o Projeto Apollo.\n-- nonce=abc", which is pure ASCII, and
+      ASCII has the same bytes in UTF-8, latin1 and similar encodings. So on the raw
+      information path, the UTF-8 half of the fact is asserted only incidentally. In
+      service.spec.ts, the two tests whose content carries a non-ASCII em dash
+      ("Ata Apollo de teste — go-live em 2026-07-15.") compare content_hash against
+      sha256Hex(content). The first does it as a self-described "sanity check" while
+      testing the created outcome. The second does it while testing the noop_existing
+      outcome. Nothing marks either assertion as load-bearing, and both will change the
+      day those outcome assertions change. A raw information whose content is hashed
+      under some encoding other than UTF-8 is therefore caught only by those incidental
+      assertions. "is deterministic" in hash.spec.ts was read and bears on no part of
+      the fact.
+    remainder: testable
+    remainder_why: >-
+      One input: a raw information ingested with non-ASCII content, for example
+      "Olá — mundo". One expected result: its persisted content_hash equals the SHA-256
+      digest of that content's UTF-8 bytes, computed independently (node:crypto with
+      "utf8"), as 64 lowercase hexadecimal characters. The test should be dedicated to
+      that assertion and not ride on an outcome check.

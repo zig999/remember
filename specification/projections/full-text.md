@@ -827,7 +827,7 @@ operations:
 - list-recent-ingestions
 answers:
 - operation: ingest-raw-information
-  accepted: HTTP 201 with outcome created, the raw information's identity and content hash, its chunk count and each chunk's identity, index and offsets, and the opened run's identity and idempotency key; HTTP 200 with outcome noop_existing, the held raw information's identity, content hash and chunk count, no chunks, and the run that raw information already has, whatever model or prompt version the request names
+  accepted: HTTP 201 with outcome created, the raw information's identity and content hash, its chunk count and each chunk's identity, index and offsets, and the opened run's identity and idempotency key; HTTP 200 with outcome noop_existing, the held raw information's identity, content hash and chunk count, no chunks, and the run opened for that content under the model and prompt version the request names
   refusals:
   - rule: rules/knowledge-base/content-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
@@ -835,6 +835,8 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - when: The request names no source type of the closed set, or no model or prompt version.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
+  - when: Held content is sent under a model or prompt version for which no LLM run was opened.
+    answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR
 - operation: read-raw-information
   accepted: HTTP 200 carrying the raw information's identity, source type, content, storage reference, content hash, reception time and metadata
   refusals:
@@ -985,7 +987,7 @@ answers:
   - *id013
   - *id014
 - operation: ingest-document
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, the held raw information''s and run''s identities, its chunk count and its run''s status, when the content is already held'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
   - rule: rules/knowledge-base/content-length
     answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
@@ -997,6 +999,10 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - when: The language model provider fails.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run
+  - when: Persisting the document before extraction fails for a cause other than an unreachable store.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the document before extraction.", carrying no run
+  - when: The extraction fails for a cause no other refusal names.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status'
   refusals:
@@ -1037,6 +1043,18 @@ entries:
   unstated: The material has the MCP proposals accept any non-empty text as the LLM run's identity while REST and the MCP run read demand a UUID; the two decide differently for a malformed run identity over MCP.
   decided: A malformed LLM run identity is refused with VALIDATION_INVALID_FORMAT on both transports.
   why: An LLM run's identity is a UUID everywhere else the material names one.
+- field: answers
+  unstated: The earlier decision had held content sent under another model or prompt version answer HTTP 200 noop_existing with the run it already has, while the code looks the run up by the request's own key and fails with an internal error when none exists.
+  decided: Held content sent under a model or prompt version for which no run was opened answers HTTP 500 with SYSTEM_INTERNAL_ERROR, and records nothing.
+  why: The owner holds the code as the truth over the earlier decision, which had named this behavior as the one to correct.
+- field: answers
+  unstated: The material does not say what ingest-document answers when persisting the document fails for a cause other than an unreachable store, or when the extraction fails for a cause no other refusal names.
+  decided: Persisting failure answers SYSTEM_INTERNAL_ERROR with the message "Failed to persist the document before extraction." and no run; any other extraction failure answers SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion." and the run's and the raw information's identities.
+  why: The owner holds the code as the truth, and the code answers exactly these two on those conditions.
+- field: answers
+  unstated: The material does not say what ingest-document tells a caller whose content is already held beyond the identities, the chunk count and the run's status.
+  decided: The already_ingested answer also carries a message, one wording for a completed run and one naming the status for any other, and a status of null where the run's status cannot be read.
+  why: The owner holds the code as the truth, and callers act on that message to recover a run that did not finish.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -2065,6 +2083,28 @@ What a proposal claims about the current assertion it meets: nothing, that it su
 ## Responsibility
 
 None.
+
+=== domain/knowledge-base/chunk-locator
+---
+type: value-object
+attributes:
+- name: page
+  type: integer
+- name: line
+  type: integer
+- name: speaker
+  type: string
+- name: ts
+  type: string
+---
+
+## Description
+
+A readable anchor to a place in a source, made of a page, a line, a speaker and a ts, each of which may be absent.
+
+## Responsibility
+
+It names where a chunk sits in its source in the terms the source itself uses.
 
 === domain/knowledge-base/compliance-deletion
 ---
@@ -3440,7 +3480,7 @@ attributes:
   type: string
   required: true
 - name: locator
-  type: string
+  type: chunk-locator
 - name: superseded_at
   type: datetime
 - name: chunking_version
@@ -3466,6 +3506,10 @@ entries:
   unstated: The material names a chunk's locator without giving its shape.
   decided: string
   why: The retrieval only passes the locator through to the owner.
+- field: attributes.locator.type
+  unstated: The earlier decision read a chunk's locator as an opaque string the retrieval passes through, while the code declares it as an object of the optional keys page, line, speaker and ts, the whole nullable.
+  decided: chunk-locator
+  why: The owner holds the code as the truth, and a plain string fails the object the code declares.
 ---
 
 === domain/knowledge-base/raw-information
@@ -3508,6 +3552,7 @@ relationships:
 ## Description
 
 A piece of unstructured information the owner supplied, preserved as it was received.
+Its metadata is a free-form set of named values.
 
 ## Responsibility
 
@@ -3528,6 +3573,10 @@ entries:
   unstated: The material reads a document date from a raw information's metadata without naming its type.
   decided: date
   why: It is used as a validity start, which is a calendar date.
+- field: attributes.metadata.type
+  unstated: The earlier decision read metadata as an opaque string, while the code carries it as an object of named values of any kind.
+  decided: string
+  why: The type vocabulary has no free-form set of named values, so the type stays string as it does for a tool call's arguments, and the node's description states the shape.
 ---
 
 === domain/knowledge-base/reject-rate
@@ -6518,6 +6567,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/default-extraction-model
+---
+type: invariant
+statement: A document ingestion that names no model runs under the configured ingestion model, or under claude-sonnet-4-6 where none is configured.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/default-extraction-model.log
+---
+entries:
+- field: statement
+  unstated: The material does not say which model a document ingestion that names none runs under.
+  decided: The configured ingestion model, and claude-sonnet-4-6 where none is configured.
+  why: The owner holds the code as the truth, and the code applies that order when a document ingestion names no model.
+---
 
 === rules/knowledge-base/default-prompt-version
 ---
@@ -10324,7 +10394,7 @@ when:
 - the same content is ingested naming another model
 then:
 - no raw information, raw chunk or LLM run is recorded
-- the answer names the held raw information and the LLM run it already has
+- the answer is an internal failure
 involves:
 - contracts/knowledge-base/ingestion
 ---

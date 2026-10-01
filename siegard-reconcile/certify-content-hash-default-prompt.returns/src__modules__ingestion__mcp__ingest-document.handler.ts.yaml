@@ -1,0 +1,60 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      DEFAULT_INGEST_MODEL (line 49) and its use in the body of ingestDocumentHandler (line 119)
+    evidence: >-
+      export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";
+      ... model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL,
+    cost: >-
+      When an ingest_document call names no model, the code decides that the run is recorded and extracted under claude-sonnet-4-6. The specification does not hold that choice. The default-prompt-version rule covers only the prompt version. The ingestion contract refuses a missing model for ingest-raw-information, and its ingest-document operation lists no such refusal and no default. The next reader will look in the specification for which model an unnamed call uses and will not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the default extraction model a node, as a sibling of rules/knowledge-base/default-prompt-version. That node would say what an ingest-document call with no model runs under, and whether the configured INGEST_MODEL takes precedence over it. Until a node exists, the choice lives only in this constant.
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      The catch around the intake transaction, lines 130-154, in its non-pg-unavailable branch
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: "Failed to persist the document before extraction.",
+    cost: >-
+      The code makes an intake failure a refusal of ingest-document. It answers SYSTEM_INTERNAL_ERROR with a message and no failed run. The specification's refusals for ingest-document (content length, source type, repeated system errors, unknown prompt version, provider failure) list no intake failure. A person reading the contract cannot learn what the tool says when persistence fails.
+    kind: unstated
+    correction: >-
+      Analysis should add the intake-failure refusal to the ingest-document operation of contracts/knowledge-base/ingestion, with its error code and message.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      The final catch of the extraction try block, lines 246-263
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: "Unexpected error during document ingestion.",
+      details: { llm_run_id, raw_information_id },
+    cost: >-
+      For any extraction error that is not a provider or extraction fatal, the code answers a refusal with a message and details carrying two identities. The specification's SYSTEM_INTERNAL_ERROR answers for this operation cover only repeated system errors and an unknown prompt version, both "carrying the failed run". This catch-all answer and its message are held only here.
+    kind: unstated
+    correction: >-
+      Analysis should state in contracts/knowledge-base/ingestion what ingest-document answers for an unclassified failure after the run is opened. Alternatively it should record that no such answer is intended.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      The already_ingested result, lines 177-189, the `message` field and the `run_status: runStatus ?? null` field
+    evidence: >-
+      message: completed
+        ? "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered."
+        : `This exact content was already ingested, but its run is '${runStatus ?? "unknown"}' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.`,
+    cost: >-
+      This text is emitted to the caller and tells it that a non-completed run needs recovery by re-running the LLMRun. The accepted answer in the specification lists only the identities, the chunk count and the run's status. It holds neither the message nor the guidance, nor the null status when the read fails. Callers act on this guidance and the specification does not hold it.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether the already_ingested answer carries a message, and what it says when the existing run is not completed. It should also decide what run_status is when the run cannot be read. The decision belongs in the ingest-document accepted answer of contracts/knowledge-base/ingestion.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      The `prompt_version` field of the body in ingestDocumentHandler, line 120. The default is DEFAULT_PROMPT_VERSION, imported from ../prompts/index.js. That constant is declared in prompts/index.ts as v4.PROMPT_VERSION, whose value is "v4".
+    evidence: >-
+      prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+looked_past: >-
+  The header comment and the inline comments narrate the ingestion flow, the idempotency rule and the BR-08, BR-09, BR-19 and BR-30 citations. This is prose for another judgment, and the comment route would remove it.

@@ -6,7 +6,7 @@ when:
 - the same content is ingested naming another model
 then:
 - no raw information, raw chunk or LLM run is recorded
-- the answer names the held raw information and the LLM run it already has
+- the answer is an internal failure
 involves:
 - contracts/knowledge-base/ingestion
 ---

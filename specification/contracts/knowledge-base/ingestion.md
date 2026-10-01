@@ -18,7 +18,7 @@ operations:
 - list-recent-ingestions
 answers:
 - operation: ingest-raw-information
-  accepted: HTTP 201 with outcome created, the raw information's identity and content hash, its chunk count and each chunk's identity, index and offsets, and the opened run's identity and idempotency key; HTTP 200 with outcome noop_existing, the held raw information's identity, content hash and chunk count, no chunks, and the run that raw information already has, whatever model or prompt version the request names
+  accepted: HTTP 201 with outcome created, the raw information's identity and content hash, its chunk count and each chunk's identity, index and offsets, and the opened run's identity and idempotency key; HTTP 200 with outcome noop_existing, the held raw information's identity, content hash and chunk count, no chunks, and the run opened for that content under the model and prompt version the request names
   refusals:
   - rule: rules/knowledge-base/content-length
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
@@ -26,6 +26,8 @@ answers:
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
   - when: The request names no source type of the closed set, or no model or prompt version.
     answer: HTTP 422, error code VALIDATION_INVALID_FORMAT, listing each failing field with its path and message
+  - when: Held content is sent under a model or prompt version for which no LLM run was opened.
+    answer: HTTP 500, error code SYSTEM_INTERNAL_ERROR
 - operation: read-raw-information
   accepted: HTTP 200 carrying the raw information's identity, source type, content, storage reference, content hash, reception time and metadata
   refusals:
@@ -176,7 +178,7 @@ answers:
   - *id013
   - *id014
 - operation: ingest-document
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, the held raw information''s and run''s identities, its chunk count and its run''s status, when the content is already held'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
   - rule: rules/knowledge-base/content-length
     answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
@@ -188,6 +190,10 @@ answers:
     answer: error code SYSTEM_INTERNAL_ERROR carrying the failed run
   - when: The language model provider fails.
     answer: error code SYSTEM_LLM_PROVIDER_UNAVAILABLE carrying the failed run
+  - when: Persisting the document before extraction fails for a cause other than an unreachable store.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the document before extraction.", carrying no run
+  - when: The extraction fails for a cause no other refusal names.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status'
   refusals:

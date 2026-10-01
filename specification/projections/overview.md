@@ -7,7 +7,7 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 17 | 78 | 1 | 0 |
-| knowledge-base | core | 74 | 358 | 5 | 9 |
+| knowledge-base | core | 75 | 359 | 5 | 9 |
 
 ## Aggregates
 
@@ -55,4 +55,4 @@ None.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-125 decision(s) disclosed, 2 location(s) retired in the decision logs.
+131 decision(s) disclosed, 2 location(s) retired in the decision logs.

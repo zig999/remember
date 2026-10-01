@@ -13,7 +13,7 @@ attributes:
   type: string
   required: true
 - name: locator
-  type: string
+  type: chunk-locator
 - name: superseded_at
   type: datetime
 - name: chunking_version

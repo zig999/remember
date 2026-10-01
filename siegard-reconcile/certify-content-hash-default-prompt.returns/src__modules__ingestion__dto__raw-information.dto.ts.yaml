@@ -1,0 +1,43 @@
+findings:
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      ChunkLocatorSchema (lines 11-19), used as the `locator` field of RawChunkResponseSchema (line 44)
+    evidence: >-
+      export const ChunkLocatorSchema = z
+        .object({
+          page: z.number().int().nullable().optional(),
+          line: z.number().int().nullable().optional(),
+          speaker: z.string().nullable().optional(),
+          ts: z.string().nullable().optional(),
+        })
+        .nullable();
+      The node declares: "- name: locator\n  type: string". Its decision log gives the reason: "The retrieval only passes the locator through to the owner."
+    cost: >-
+      A chunk's locator is declared here as an object with four named keys (page, line, speaker, ts). The node holds it as an opaque string that is only passed through. The keys, their types and their nullability now live only in this file. A reader who goes to the specification for the locator's shape finds a string. A locator that is a plain string, as the node states, would fail this schema on read.
+    kind: contradicts
+    correction: >-
+      Either the code takes the locator as the node's string, or the analysis gives the locator's keys a node by changing raw-chunk.
+    node: domain/knowledge-base/raw-chunk
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      the `metadata` field of RawInformationResponseSchema, line 30
+    evidence: >-
+      metadata: z.record(z.string(), z.unknown()),
+      The node declares: "- name: metadata\n  type: string". Its decision log gives the reason: "The retrieval only passes the metadata through to the owner and reads nothing inside it."
+    cost: >-
+      The response shape treats metadata as a key-value object. The node holds it as an opaque string. A reader of the specification would not expect the object shape, and a change to either side would not reach the other.
+    kind: contradicts
+    correction: >-
+      Either the code takes metadata as the node's string, or the node is changed through analysis so that its type matches the object the retrieval returns.
+    node: domain/knowledge-base/raw-information
+read:
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      the `content_hash` field of RawInformationResponseSchema, line 28. Only the format half of the rule is held there: 64 lowercase hexadecimal characters. This file declares the response shape and does not compute the digest.
+    evidence: >-
+      content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+looked_past: >-
+  Wire field names that differ from the nodes' attribute names (text for excerpt, offset_start and offset_end for start_offset and end_offset) and the bounds on offset_end and chunk_index (positive, nonnegative) are not stated by any node I read. I did not report them: they belong to the response contract's mapping, not to the node set of this pass. The header comments citing `openapi.yaml` and "shape per A23" are prose.
+candidates_opened:
+  - domain/knowledge-base/raw-chunk
+  - domain/knowledge-base/raw-information

@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      The file header comment (lines 1-6) and the docstring above sha256Hex (lines 10-15).
+    evidence: >-
+      "Both produce a 64-char lowercase hex string. UTF-8
+      encoding is explicit on every `.update()` so the result is portable across
+      platforms with different default encodings." and "`sha256(content)` -- 64 char lowercase hex string."
+    cost: >-
+      The SHA-256 / UTF-8 / 64-lowercase-hex rule is written a second time as prose that no running system
+      emits. If the node changes, this text stays behind and says something the node no longer says.
+      The code (`createHash("sha256").update(content, "utf8").digest("hex")`) already holds the fact.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The fact is already held in the node and in the code, so
+      no node change is needed.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      The docstring above composeIdempotencyKey (lines 20-27). The node is outside the file's set. I
+      found it by searching the specification root, and the candidate index does not list it.
+    evidence: >-
+      "`idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`,
+      concatenated WITHOUT a separator. The order is exactly as defined in §8 of
+      v7 and as documented in `ingestion.back.md` BR-08."
+    cost: >-
+      The key's composition and operand order is stated again in prose. The code holds it too, as the
+      four `h.update(...)` calls in that order. The prose cites v7 §8 and a back-spec as authorities
+      instead of the node, so a reader is sent to documents that are not the specification.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The fact is already held in the node and in the code.
+    node: rules/knowledge-base/idempotency-key
+
+read:
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      sha256Hex, line 17.
+    evidence: >-
+      return createHash("sha256").update(content, "utf8").digest("hex");
+
+looked_past: >-
+  composeIdempotencyKey implements rules/knowledge-base/idempotency-key correctly, but that node is outside this file's set and is not listed as bound to this file, so a change to that node would not reach it. Whether to bind it is for the caller to decide.
+
+candidates_opened:
+  - rules/knowledge-base/idempotency-key

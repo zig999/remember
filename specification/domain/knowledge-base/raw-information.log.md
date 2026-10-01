@@ -12,4 +12,8 @@ entries:
   unstated: The material reads a document date from a raw information's metadata without naming its type.
   decided: date
   why: It is used as a validity start, which is a calendar date.
+- field: attributes.metadata.type
+  unstated: The earlier decision read metadata as an opaque string, while the code carries it as an object of named values of any kind.
+  decided: string
+  why: The type vocabulary has no free-form set of named values, so the type stays string as it does for a tool call's arguments, and the node's description states the shape.
 ---

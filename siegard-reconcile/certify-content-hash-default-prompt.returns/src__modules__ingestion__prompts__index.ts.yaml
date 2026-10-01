@@ -1,0 +1,40 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the opening comment block, lines 1-15, and the docstring above selectPromptModule, lines 83-87
+    evidence: >-
+      "An unknown version is a configuration error, NOT a silent fallback: BR-26
+      step 2 mandates "load the extraction.${prompt_version} module; fail with 500
+      SYSTEM_INTERNAL_ERROR if the module is missing"."
+    cost: >-
+      The rule that an extraction's prompt version must be one the system holds is stated a second time in prose. The prose also quotes a BR-26 status code, so a reader can take the comment for where the rule is decided and not look at the node. The code (`if (module === undefined) { throw new UnknownPromptVersionError(promptVersion); }`) already enforces the rule, so the comment adds nothing and can only drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment block and the docstring text that restates the unknown-version refusal. The throw in selectPromptModule stays. The refusal belongs to rules/knowledge-base/prompt-version-known, a node outside this file's set.
+    node: rules/knowledge-base/prompt-version-known
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the docstring above DEFAULT_PROMPT_VERSION, line 62
+    evidence: >-
+      "/** Recommended version for NEW runs — callers SHOULD send this at intake. */"
+    cost: >-
+      The node says an ingestion that names no prompt version runs under v4. The prose says the default is only a recommendation that callers should send. A reader who trusts it would look for the default at each caller. The default is in fact applied in src/modules/ingestion/mcp/ingest-document.handler.ts line 120: `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION`. The prose is a weaker second statement of the node, and no running system emits it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The constant and its use in the handler already hold the fact.
+    node: rules/knowledge-base/default-prompt-version
+
+read:
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the exported constant DEFAULT_PROMPT_VERSION, line 63. It is applied to a request that names no version in src/modules/ingestion/mcp/ingest-document.handler.ts, line 120, outside this file.
+    evidence: >-
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+      (extraction.v4.ts declares `export const PROMPT_VERSION = "v4" as const;`)
+
+looked_past: >-
+  The comment claiming that before the registry every run used v1 and that prompt_version was only recorded is historical prose with no running behavior. It is for the comment route and is not a finding here.
+
+candidates_opened:
+  - rules/knowledge-base/prompt-version-known
+  - domain/knowledge-base/prompt-version

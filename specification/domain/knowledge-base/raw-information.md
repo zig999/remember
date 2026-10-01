@@ -37,6 +37,7 @@ relationships:
 ## Description
 
 A piece of unstructured information the owner supplied, preserved as it was received.
+Its metadata is a free-form set of named values.
 
 ## Responsibility
 
