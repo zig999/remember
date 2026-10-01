@@ -5164,6 +5164,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/affected-counts-non-negative
+---
+type: invariant
+statement: Each of a compliance deletion's affected counts is zero or more.
+constrains:
+- domain/knowledge-base/compliance-deletion
+- domain/knowledge-base/affected-counts
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/affected-nodes-follow-merges
 ---
 type: policy

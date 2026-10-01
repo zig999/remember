@@ -7,7 +7,7 @@ Derived by spec.py from the specification files; never edited.
 | context | strategic | elements | rules | contracts | scenarios |
 |---|---|---|---|---|---|
 | chat | supporting | 17 | 78 | 1 | 0 |
-| knowledge-base | core | 74 | 357 | 5 | 9 |
+| knowledge-base | core | 74 | 358 | 5 | 9 |
 
 ## Aggregates
 
