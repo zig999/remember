@@ -12,4 +12,8 @@ entries:
   unstated: A judgment shows a cursor accepted when it decodes to two strings, an update body of other keys answered as invalid format, and the disabled chat checked after the key on a sent message.
   decided: The cursor needs a creation time and an identity as text, a body of other keys answers VALIDATION_INVALID_FORMAT, and a sent message is not disabled-first.
   why: The owner decided the source's behavior is the truth, and it answers those three that way.
+- field: answers
+  unstated: The material's replay sentence says a turn recorded as provider-error or internal-error replays as the error frame that turn closed with, while the source replays it as done with stop reason end_turn.
+  decided: A replay of a turn recorded as provider-error or internal-error closes with done carrying stop reason end_turn, never an error frame.
+  why: The owner decided the source's behavior is the truth, and rules/chat/replay-reports-failure already states the same end.
 ---
