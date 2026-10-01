@@ -1,0 +1,120 @@
+# The database standard of Remember (eternal): how the migrations target is tested and how what
+# reaches production is tracked. Transcribed from the owner's own words (session of 2026-10-01);
+# no tool configuration existed under migrations/ when it was written.
+
+contract_version: siegard-standard/1
+standard: database-migrations
+summary: >-
+  How a migration under migrations/ is proven before it reaches production — its test script, the
+  ephemeral Neon branch the suite runs on, and the marker of what production already holds.
+
+rules:
+
+  - id: MIG-01
+    statement: >-
+      Every new migration comes with a test script in tests/ that runs inside BEGIN … ROLLBACK.
+    because: >-
+      A migration with no script of its own reaches production unproven, and a script that does not
+      roll back leaves its fixtures and the migration itself behind on whatever branch ran it.
+    decided_by: reading
+    applies_to:
+      - under: .
+        suffix: .sql
+    seen_at: tests/compliance_deletion_affected_counts.sql
+
+  - id: MIG-02
+    statement: No command of this standard touches the Neon branch production.
+    because: >-
+      A suite that can write to production turns every test run into an unapproved database change,
+      which the owner's rule that every database change is approved first forbids.
+    decided_by: reading
+    applies_to:
+      - under: tests
+        suffix: .mjs
+
+  - id: MIG-03
+    statement: >-
+      tests/applied.txt is updated whenever a migration is applied in production.
+    because: >-
+      The database keeps no record of which migrations it holds, so a marker left behind makes the
+      suite apply a migration production already has, or skip one it does not.
+    decided_by: reading
+    applies_to:
+      - under: tests
+        suffix: applied.txt
+
+  - id: MIG-04
+    statement: >-
+      The suite runs on an ephemeral Neon branch created from production through neonctl, and
+      deletes that branch at the end, even when a test fails.
+    because: >-
+      A branch left behind after a failure accumulates cost and stale copies of production data, and a
+      suite run anywhere but a fresh copy of production proves the migration against a database that
+      is not the one it will meet.
+    decided_by: reading
+    applies_to:
+      - under: tests
+        suffix: .mjs
+
+  - id: MIG-05
+    statement: >-
+      The suite applies only the migrations whose number is greater than the marker in
+      tests/applied.txt before it runs the test scripts.
+    because: >-
+      Re-applying a migration production already holds fails on objects that already exist, and
+      skipping one it does not hold proves the scripts against a schema production will never have.
+    decided_by: reading
+    applies_to:
+      - under: tests
+        suffix: .mjs
+
+  - id: MIG-06
+    statement: >-
+      The suite runs each tests/*.sql script with pg, honouring \set ON_ERROR_STOP and \ir, and exits
+      with a non-zero code when any script fails.
+    because: >-
+      A runner that ignores a script's meta-commands runs a different script than the one written, and
+      one that exits 0 over a failure reports a green suite nobody earned.
+    decided_by: reading
+    applies_to:
+      - under: tests
+        suffix: .mjs
+
+presupposes:
+  - path: package.json
+    provides: >-
+      The manifest the install step's `npm ci` reads, declaring pg and neonctl, which the suite of
+      MIG-04, MIG-05 and MIG-06 runs on.
+    rules: [MIG-04, MIG-05, MIG-06]
+  - path: tests/run.mjs
+    provides: The suite runner MIG-02, MIG-04, MIG-05 and MIG-06 describe, which the suite step runs.
+    rules: [MIG-02, MIG-04, MIG-05, MIG-06]
+  - path: tests/applied.txt
+    provides: The marker of the last migration production holds, which MIG-03 keeps current and MIG-05 reads.
+    rules: [MIG-03, MIG-05]
+
+dependencies:
+  - package: pg
+    why: MIG-06 runs each test script with pg; the owner named it.
+    rules: [MIG-06]
+  - package: neonctl
+    why: MIG-04 creates and deletes the ephemeral branch through neonctl; the owner named it.
+    rules: [MIG-04]
+
+commands:
+  - step: install
+    command: npm ci
+    timeout_seconds: 300
+    role: install
+  - step: suite
+    command: node tests/run.mjs
+    timeout_seconds: 900
+    role: suite
+
+elsewhere:
+  - what: What the store accepts or refuses — the shape a CHECK, a NOT NULL or a unique guard enforces.
+    lives_in: The specification, as domain and rule nodes the migrations are bound to in the trace.
+    why: It is what the business decided; a rule here stating it would make the standard pass and the conformance pass disagree over one line.
+  - what: Approval of a database change before it runs against production.
+    lives_in: The project's CLAUDE.md safety rule, held by the owner.
+    why: It is a decision a person makes per change, not a condition a reading can hold a file to.
