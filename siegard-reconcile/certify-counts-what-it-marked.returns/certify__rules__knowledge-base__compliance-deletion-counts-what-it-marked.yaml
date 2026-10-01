@@ -1,0 +1,40 @@
+certified:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    state: partial
+    tests:
+      - file: src/__tests__/integration/compliance-audit/routes.spec.ts
+        name: returns 201 outcome=deleted on an active raw with full cascade
+      - file: src/__tests__/integration/compliance-audit/routes.spec.ts
+        name: survives cross-source fragments (BR-06)
+      - file: src/__tests__/integration/compliance-audit/routes.spec.ts
+        name: survives cross-source links (BR-07)
+    why: >-
+      The full-cascade test pairs the reported counts with the rows marked
+      deleted. It marks 3 chunks, 1 fragment, 1 link and 1 attribute, and
+      expects affected {chunks 3, fragments 1, links 1, attributes 1}. The
+      BR-06 test checks that a fragment left unmarked is not counted
+      (fragments 0). The BR-07 test checks that a link left unmarked is not
+      counted (links 0) while a fragment is marked. Three parts of the fact
+      go unexercised. First, the attribute count is never told apart from
+      the other counts. In every scenario it equals the link count (1/1,
+      0/0, 0/0) and the fragment count. BR-07 never checks fragments or
+      attributes, so a deletion that reported its marked links, or its
+      marked fragments, as its attribute count passes every test. Second,
+      nothing in the set has an attribute that hangs off the deleted raw
+      but survives, so "attributes it marked" is never separated from
+      "attributes it touched". Third, every chunk of the raw is still
+      unmarked when the deletion starts. So "chunks it marked" is never
+      separated from "chunks the raw owns": no test has a chunk that is
+      already superseded and must not be counted. Note also that every
+      marking these tests see is done by an in-memory fake that copies the
+      repository's SQL. The tests check that the counts match what that
+      fake marked, not what the real statements mark against Postgres.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result: a compliance deletion of a raw
+      whose rows that depend only on it are 1 chunk, 1 fragment, 2 links
+      and 3 attributes, plus one attribute with provenance in a second
+      active raw and one chunk of the target raw that is already
+      superseded. It should answer affected {chunks 1, fragments 1, links
+      2, attributes 3}, and those numbers should match the rows whose
+      status the deletion turned to deleted.

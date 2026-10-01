@@ -1,0 +1,44 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      line 57, the exported constant REDACTED_LITERAL, with its docstring on lines 51-56
+    evidence: >-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;
+    cost: >-
+      The node rules/knowledge-base/compliance-deletion-redacts-content holds the redaction literal. The
+      literal is also declared here as a value of its own, and re-exported from
+      modules/compliance-audit/index.ts. Nothing in this file uses it. The repository that does the
+      redaction writes its own copy in SQL (`SET content = '[REDACTED]'`). The service constant is read
+      only by a unit test that pins its bytes. If the node's literal changes, the repository and the
+      test pin move independently of this constant, and this constant stays as a second place that
+      looks like where the decision lives. The node's `--check` does not reach this file, because this
+      file is bound to the counts node and not to the redaction node.
+    kind: contradicts
+    correction: >-
+      Bind this file to rules/knowledge-base/compliance-deletion-redacts-content, or remove the
+      unused constant. The redaction itself is behavior of the repository.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+
+read:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      complianceDelete(), lines 152-171. The four counts returned by the cascade tombstone calls are
+      gathered into `affected`, and that object is what insertComplianceDeletion persists as the
+      deletion's counts.
+    evidence: >-
+      const chunks = await tombstoneRawChunksOfRaw(client, body.raw_information_id);
+      const fragments = await tombstoneCascadedFragments(client, body.raw_information_id);
+      const links = await tombstoneCascadedLinks(client, body.raw_information_id);
+      const attributes = await tombstoneCascadedAttributes(client, body.raw_information_id);
+      const affected = { chunks, fragments, links, attributes };
+      const deletion = await insertComplianceDeletion(client, { raw_information_id: body.raw_information_id, reason: body.reason, affected });
+
+looked_past: >-
+  The comment "RETURNING counts feed `affected.*` (BR-16)", the narrative file and function header comments,
+  and the defensive coerceNonNegativeInt in rowToDto (which turns a malformed stored count into 0 on the
+  read path) all fall to the comment rule or to a code review. None states a domain fact the node does not
+  hold. The repository's tombstone* functions are outside the file set, so I did not verify that they
+  return the number of rows they marked.
+
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-redacts-content

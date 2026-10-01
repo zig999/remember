@@ -1,0 +1,42 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      The doc comments above tombstoneRawChunksOfRaw (lines 84-88), tombstoneCascadedFragments
+      (lines 105-111), tombstoneCascadedLinks (lines 139-144) and tombstoneCascadedAttributes
+      (lines 174-179).
+    evidence: >-
+      "RETURNING.id count feeds `affected.chunks` (BR-16)." /
+      "RETURNING.id count feeds `affected.fragments` (BR-16)." /
+      "RETURNING.id count feeds `affected.links` (BR-16)." /
+      "RETURNING.id count feeds `affected.attributes` (BR-16)."
+    cost: >-
+      Four comments say what the node holds, that each affected count is the number of rows the
+      cascade marked deleted, and the code already does it with `return res.rowCount ?? 0;`
+      and the `jsonb_build_object('chunks', $3::int, ...)` insert. A reader sees a second
+      statement of the counting rule beside the code. When the node moves, nothing reaches these
+      comments, and they go on describing the old rule.
+    kind: restates
+    correction: >-
+      Remove the "RETURNING.id count feeds `affected.*`" sentences from the four doc comments, by
+      the comment route followed by /reconcile over the file. Do not touch the code. The rule is
+      already held by the `rowCount` returns and by insertComplianceDeletion.
+    node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+read:
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      The four count-returning UPDATE ... RETURNING functions (tombstoneRawChunksOfRaw,
+      tombstoneCascadedFragments, tombstoneCascadedLinks, tombstoneCascadedAttributes). Each
+      returns `res.rowCount ?? 0`, the number of rows that statement marked. The counts are
+      persisted under the keys chunks, fragments, links and attributes by
+      insertComplianceDeletion.
+    evidence: >-
+      "UPDATE raw_chunk SET status = 'deleted', superseded_at = now() WHERE raw_information_id = $1
+      AND superseded_at IS NULL RETURNING id" ... "return res.rowCount ?? 0;" (and the same shape for
+      information_fragment, knowledge_link and node_attribute); "jsonb_build_object('chunks',
+      $3::int, 'fragments', $4::int, 'links', $5::int, 'attributes', $6::int)" fed by
+      args.affected.chunks, .fragments, .links, .attributes.
+looked_past: >-
+  The file also states the [REDACTED] literal, the compliance_deleted metadata flag, the unchanged
+  content_hash, the exclusive-anchoring cascade, the semi-open time windows and the newest-first
+  ordering, but other nodes outside this set hold each of them (full-text lines 5997, 6011, 6025,
+  6082, 5617 and others), so they are neither findings nor this node's to judge.
