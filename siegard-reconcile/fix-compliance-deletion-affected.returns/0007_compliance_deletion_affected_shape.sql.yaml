@@ -1,0 +1,54 @@
+findings:
+  - file: 0007_compliance_deletion_affected_shape.sql
+    where: >-
+      lines 11-12, the COMMENT ON COLUMN statement on compliance_deletion.affected
+    evidence: >-
+      COMMENT ON COLUMN compliance_deletion.affected IS
+        'Contagens do alcance do apagamento: objeto com chunks, fragments, links e attributes, cada um inteiro nao negativo. Sem default.';
+    cost: >-
+      The column's shape (the four counts, each a non-negative integer, no default) is written a second time
+      as catalog prose, beside the CHECK in this file that enforces it and beside
+      domain/knowledge-base/affected-counts, which holds it. If the node gains or renames a count, the
+      CHECK and the comment can disagree, and nothing reads the comment to notice. The next reader of the
+      table description would take it for the shape's home.
+    kind: restates
+    correction: >-
+      Remove the COMMENT ON COLUMN statement. The CHECK constraint in this file already holds the shape and
+      the node holds the fact. This is a finding against prose, not behavior. No running system emits the
+      catalog comment as a tool description, error message or log line.
+    node: domain/knowledge-base/affected-counts
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      the compliance_deletion_affected_ck CHECK constraint (lines 3-9), together with the DROP DEFAULT on
+      line 1
+    evidence: >-
+      ALTER TABLE compliance_deletion ALTER COLUMN affected DROP DEFAULT;
+      ... CHECK (
+        COALESCE((affected -> 'chunks')::text     ~ '^[0-9]+$', false)
+        AND COALESCE((affected -> 'fragments')::text  ~ '^[0-9]+$', false)
+        AND COALESCE((affected -> 'links')::text      ~ '^[0-9]+$', false)
+        AND COALESCE((affected -> 'attributes')::text ~ '^[0-9]+$', false)
+      ) NOT VALID;
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the DROP DEFAULT on line 1 and the CHECK on lines 3-9. Together they make the `affected` attribute
+      required, with the four-count shape. The table, its other attributes and the reference to
+      raw_information are declared in an earlier migration, not in this file.
+    evidence: >-
+      ALTER TABLE compliance_deletion ALTER COLUMN affected DROP DEFAULT;
+      ALTER TABLE compliance_deletion
+        ADD CONSTRAINT compliance_deletion_affected_ck CHECK (
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: nowhere
+    evidence: >-
+      The file constrains only the shape of the stored JSON: four keys, each matching '^[0-9]+$'. Nothing
+      in a DDL migration can tie the stored numbers to how many rows the deletion actually marked deleted.
+      That invariant belongs to the code that performs the deletion, which is outside this file set. The
+      file also states no value that contradicts it.
+looked_past: >-
+  The NOT VALID clause (existing rows are not validated) and the choice of a regex over the text form of
+  each JSON value are implementation choices for another judgment. I found no node-held domain fact they
+  contradict.
+candidates_opened:
+  - domain/knowledge-base/affected-counts

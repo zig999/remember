@@ -1,0 +1,25 @@
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file never declares the record's shape. It only inserts through the existing columns:
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+      SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);
+      The shape is declared by the migration it includes with \ir ../0007_compliance_deletion_affected_shape.sql.
+  - node: domain/knowledge-base/affected-counts
+    held_at: nowhere
+    evidence: >-
+      The file uses the four key names only as test input, in
+      zeros constant jsonb := '{"chunks":0,"fragments":0,"links":0,"attributes":0}'
+      and FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'].
+      The names match the node's four attributes. The value shape is declared in the included
+      migration, not in this file.
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: nowhere
+    evidence: >-
+      The file never computes or records what a deletion marked. It only checks that the schema
+      refuses a negative count and accepts four zeros: IF NOT pg_temp.is_refused(jsonb_set(zeros, ARRAY[k], '-1'::jsonb)) THEN
+      RAISE EXCEPTION 'criterion 6: an affected value with a negative % count was accepted', k.
+      The invariant (counts equal the rows marked deleted) is held by whatever writes the counts.
+looked_past: >-
+  No node states in words that a count cannot be negative, but the invariant (the counts are the numbers of rows marked deleted) rules it out by meaning, so I did not file the test's negative-count refusal as unstated; whether to name that bound in a node is the analysis's call.

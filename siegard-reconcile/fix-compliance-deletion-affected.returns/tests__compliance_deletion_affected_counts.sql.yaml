@@ -1,0 +1,27 @@
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts into the table, `INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+      SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);`. It declares no shape for
+      the aggregate. The shape is declared in the migration it includes, `\ir ../0007_compliance_deletion_affected_shape.sql`.
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not declare the value object's shape. It probes the shape the migration declares:
+      `good constant jsonb := '{"chunks":3,"fragments":2,"links":1,"attributes":0}'`, and refusals of a missing key
+      (`pg_temp.is_refused(good - k)`) and of non-integer values (`ARRAY['"5"', '1.5', 'null', 'true', '{}', '[]']`).
+      The four names and the integer type agree with the node.
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file checks only the shape of the stored `affected` value. It never relates a count to the rows a deletion
+      marked, and it contains no deletion path: `IF pg_temp.is_refused(good) THEN RAISE EXCEPTION 'criterion 8: ...'`.
+looked_past: >-
+  The failure message `an affected value with the four counts as non-negative integers was refused` says
+  "non-negative" and no node states it. I did not report it because it is a test-failure message and no check
+  asserts the claim, since no negative value is probed. I read non-negativity as implied by a node whose counts
+  answer "how many".
