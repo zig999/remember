@@ -15,8 +15,6 @@ criteria:
 implements:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/affected-counts
-depends_on:
-- task/migration-test-harness/suite-substrate
 ---
 
 ## What it is
@@ -28,4 +26,4 @@ On a branch copied from production, where 0007 already stands, the \ir line re-a
 Migration 0007 adds its CHECK as NOT VALID, so these scripts prove only that new writes are refused, not that existing rows conform.
 ADVISORY, from the specification — Every script inserts a fixture raw_information with content_hash repeat('a', 64), so on a database already holding a raw_information with that hash the fixture hits the uniqueness guard and the script fails; criterion 2 keeps every statement, so no criterion can change the fixture, and no candidate node states the uniqueness of content_hash.
 ADVISORY, from the specification — compliance_deletion_affected_non_negative.sql keeps its refusal of -1, which domain/knowledge-base/affected-counts implies through the meaning of how many rather than declaring in a field.
-The dependency on task/migration-test-harness/suite-substrate is the planning's: implement-task refuses to write source in the database target while the standard's presupposed artifacts are absent, and that task produces them.
+The planning's dependency on task/migration-test-harness/suite-substrate was removed after that task delivered the presupposed artifacts: a substrate task writes no proof, and --outstanding holds a dependent until a proof holds its dependency up.
