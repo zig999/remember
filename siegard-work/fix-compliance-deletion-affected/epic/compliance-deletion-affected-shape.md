@@ -5,8 +5,10 @@ covers:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/affected-counts
 - rules/knowledge-base/compliance-deletion-counts-what-it-marked
+- rules/knowledge-base/affected-counts-non-negative
 sources:
 - intake/scope.md
+- intake/non-negative-rule.md
 ---
 
 ## What it is

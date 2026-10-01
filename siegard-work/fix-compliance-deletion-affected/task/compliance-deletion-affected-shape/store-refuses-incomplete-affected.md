@@ -4,6 +4,7 @@ summary: A new migration makes compliance_deletion.affected hold the four counts
 sources:
 - intake/scope.md
 - intake/negative-count.md
+- intake/non-negative-rule.md
 objective: A compliance deletion is recorded only when its affected value carries the four counts it marked deleted.
 criteria:
 - Recording a compliance deletion whose affected value lacks the chunks count is refused by the store.
@@ -17,6 +18,7 @@ criteria:
 implements:
 - domain/knowledge-base/compliance-deletion
 - domain/knowledge-base/affected-counts
+- rules/knowledge-base/affected-counts-non-negative
 - rules/knowledge-base/compliance-deletion-counts-what-it-marked
 ---
 
@@ -27,5 +29,7 @@ The refusal of a negative count was added by the owner on 2026-09-30.
 
 ## Notes
 
-UNDERDETERMINED, from the specification — rules/knowledge-base/compliance-deletion-counts-what-it-marked makes each count the number of raw chunks, information fragments, knowledge links and node attributes the deletion marked deleted, while the criteria test only the shape of the value, so the rule's equality clause belongs to the operation that computes the counts. Passes: a store constraint that accepts any four non-negative integers, such as a deletion recorded with chunks 0, fragments 0, links 0, attributes 0 when it marked 3 raw chunks and 5 fragments deleted.
-ADVISORY, from the specification — domain/knowledge-base/affected-counts declares exactly four attributes and no criterion covers an affected value carrying a fifth, undeclared key, so whether the store refuses extra keys is left open for a reviewer to decide.
+REMAINDER, from the specification — The part of rules/knowledge-base/compliance-deletion-counts-what-it-marked that each count equals what the deletion actually marked deleted reaches no criterion here; it belongs to the backend's compliance deletion, where task/compliance-deletion-counts-proof/counts-match-marked of initiative proof-compliance-counts owes its proof.
+ADVISORY, from the specification — domain/knowledge-base/affected-counts declares exactly four attributes and no criterion says what happens to an affected value carrying an extra member.
+ADVISORY, from the specification — The candidates say nothing about rows already stored that do not meet the four-count shape; the migration settles it (NOT VALID), and production held no compliance_deletion row when 0007 was applied and validated.
+The task gained rules/knowledge-base/affected-counts-non-negative after its delivery, on the owner's ask in intake/non-negative-rule.md, so that the rule binds to migration 0007, which already enforces it.
