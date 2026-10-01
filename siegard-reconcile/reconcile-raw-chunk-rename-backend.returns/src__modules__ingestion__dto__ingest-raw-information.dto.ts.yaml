@@ -1,0 +1,56 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      The docstring on IngestRawInformationRequestSchema, lines 16-18 (the `content` bullet), above `.max(10 * 1024 * 1024, "content must not exceed 10 MiB")` on line 30
+    evidence: >-
+      "- `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+      in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+      coarser pre-filter; this Zod check is the precise contract from A5."
+    cost: >-
+      The prose says the 10 MiB cap counts code points. The node counts UTF-16 code units, and the `.max(10 * 1024 * 1024)` call is what actually enforces it. A reader who trusts the comment will believe astral-plane characters count once when they count twice. The prose also names "A5" as the authority in place of the node.
+    kind: restates
+    correction: >-
+      Remove the `content` bullet from the docstring. The code on lines 27-30 already holds the bound, and the node `rules/knowledge-base/content-length` states it.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      The doc comment on `original_input`, lines 35-39 ("Capped at 10 MiB to match `content`."), above `.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")` on lines 40-44
+    evidence: >-
+      "Verbatim user turn that triggered a chat-directed ingestion (TC-01 /
+      BR-34). Omitted (or explicit `null`) on every non-chat path. Never
+      factored into `content_hash`. Capped at 10 MiB to match `content`."
+    cost: >-
+      The cap is stated a second time in prose beside the code that enforces it. If the node's bound moves, the comment keeps the old figure and nobody is told.
+    kind: restates
+    correction: >-
+      Remove the cap sentence from the comment. The `.max(...)` call on line 42 holds the bound, and the node `rules/knowledge-base/original-input-length` states it.
+    node: rules/knowledge-base/original-input-length
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      `ChunkRefSchema` (lines 56-61). It declares `chunk_index`, `offset_start` and `offset_end` as the chunk descriptor returned on the create path. It is a partial shape: `text`, `locator`, `status`, `superseded_at` and `chunking_version` are not declared here.
+    evidence: |-
+      export const ChunkRefSchema = z.object({
+        id: z.string().uuid(),
+        chunk_index: z.number().int().nonnegative(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+      });
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      `IngestRawInformationRequestSchema` (lines 25-45). It declares `source_type`, `content`, `storage_ref`, `metadata` and `original_input`. `IngestRawInformationResponseSchema` (lines 65-73) declares `content_hash`. It is a partial shape: `received_at`, `title`, `document_date`, `status` and `superseded_at` are not declared in this file.
+    evidence: |-
+      export const IngestRawInformationRequestSchema = z.object({
+        source_type: SourceTypeSchema,
+        content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, "content must not exceed 10 MiB"),
+        storage_ref: z.string().nullable().optional(),
+        metadata: z.record(z.string(), z.unknown()).default({}),
+        ...
+        original_input: z.string().max(10 * 1024 * 1024, "original_input must not exceed 10 MiB").nullable().optional(),
+      });
+looked_past: >-
+  Prose-only claims (the header's "storage_ref ... must be null in v1.0.0" and "Never factored into `content_hash`") and the response schema's own checks (the `created`/`noop_existing` enum, the 64-hex patterns for `content_hash` and `idempotency_key`, and the positive and non-negative bounds on chunk fields) belong to other judgments: the first two are comments with no code in this file holding them, and the rest are shape checks whose rules sit in nodes outside this set (`contracts/knowledge-base/ingestion`, `rules/knowledge-base/content-hash-is-sha256`, `rules/knowledge-base/idempotency-key`, `rules/knowledge-base/chunk-offsets-ordered`).
+candidates_opened:
+  - rules/knowledge-base/content-length
+  - rules/knowledge-base/original-input-length
+  - contracts/knowledge-base/ingestion

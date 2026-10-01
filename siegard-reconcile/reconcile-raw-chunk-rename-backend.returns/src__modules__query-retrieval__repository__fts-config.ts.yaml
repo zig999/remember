@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/query-retrieval/repository/fts-config.ts
+    where: >-
+      the header comment, lines 6-8, and the docstring on FTS_PROSE_CONFIG, line 17
+    evidence: >-
+      "//   - `pt_unaccent_v1`     — prose: stemming pt + unaccent." and
+      "/** FTS config for prose: stemming pt + unaccent (`pt_unaccent_v1`). */"
+    cost: >-
+      The fact that prose is matched with Portuguese stemming and without regard to accents
+      is stated a second time in prose. The constant `FTS_PROSE_CONFIG = "pt_unaccent_v1"` already
+      holds it in code, and the configuration itself is defined in migrations/0001_init.sql
+      (`CREATE TEXT SEARCH CONFIGURATION pt_unaccent_v1 (COPY = portuguese)`). If the node
+      changes, these comments keep saying the old rule and nothing reads them.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring. The fact stays in the constant and in the
+      node.
+    node: rules/knowledge-base/prose-matching
+  - file: src/modules/query-retrieval/repository/fts-config.ts
+    where: >-
+      the header comment line 9 and the docstring on FTS_NAME_CONFIG, line 20
+    evidence: >-
+      "//   - `simple_unaccent_v1` — names: unaccent without stemming." and
+      "/** FTS config for entity names: unaccent without stemming (`simple_unaccent_v1`). */"
+    cost: >-
+      The alias rule (no language stemming, accents disregarded) is restated in prose. The
+      constant `FTS_NAME_CONFIG` and the `simple_unaccent_v1` configuration in the migration
+      already hold it in code, so the comment is a second home that nothing keeps in step with
+      the node.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring.
+    node: rules/knowledge-base/alias-matching
+  - file: src/modules/query-retrieval/repository/fts-config.ts
+    where: >-
+      the declaration of FTS_NAME_CONFIG, line 21
+    evidence: >-
+      export const FTS_NAME_CONFIG = "simple_unaccent_v1" as const;
+    cost: >-
+      This constant declares which configuration matches aliases. That is the rule held by
+      rules/knowledge-base/alias-matching, a node outside this file's node set and not
+      bound to this file. When the alias rule changes, `--check` does not reach this file. The
+      next reader looks in the specification for the configuration name and does not find
+      it.
+    kind: contradicts
+    correction: >-
+      The value agrees with the node. What is missing is the binding: bind
+      rules/knowledge-base/alias-matching to this file, so that a change to that node reaches the
+      declaration. Code cannot read the specification, so the bind is what closes this.
+    node: rules/knowledge-base/alias-matching
+read:
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      the declaration of FTS_PROSE_CONFIG, line 18. It names the `pt_unaccent_v1` configuration,
+      which migrations/0001_init.sql defines as a copy of `portuguese` with unaccent.
+    evidence: >-
+      export const FTS_PROSE_CONFIG = "pt_unaccent_v1" as const;
+candidates_opened:
+  - rules/knowledge-base/alias-matching
+looked_past: >-
+  The comment about a future `pt_unaccent_v2` synonym dictionary (ADR A4) and the "zero runtime branching on config name" remark are prose only. No node or code in this file states them, so they belong to the comment route and not to this judgment.

@@ -1,0 +1,40 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      lines 89-120, StartAsyncIngestionMcpInputSchema, and the `content` description at line 95
+    evidence: |-
+      export const StartAsyncIngestionMcpInputSchema = z.object({
+        content: z
+          .string()
+          ...
+          .describe(
+            "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary."
+    cost: >-
+      The file declares a tool, `start_async_ingestion`, that ingests a document and runs extraction in the background. The tool's name and its input contract are the only places this behavior appears. I searched `projections/full-text.md` for "start_async_ingestion", "async", "background" and "immediately" and found no match. The operation contract lists `ingest-document` and `ingest-directed` but no asynchronous ingestion. A reader looking in the specification for how a client starts an ingestion without waiting for extraction will not find it.
+    kind: unstated
+    correction: >-
+      An analysis has to give the asynchronous document ingestion a node. That node would cover its existence, its return semantics (the caller gets control back before extraction finishes) and its request shape. The `ingest-document` operation lists its refusals (content length, source type, extraction failures). The new node would say which of those apply to this tool, and the file could then be bound to it.
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      lines 343-349, the `node_id` field of IngestDirectedNodeItemSchema, in the description the `tools/list` advertisement sends to clients
+    evidence: |-
+      "Optional UUID PIN: when supplied, the server SKIPS entity resolution and binds this ref to the supplied id directly. ... Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node."
+    cost: >-
+      This text, which clients receive, promises that a pin to a non-active node is refused with `VALIDATION_INVALID_FORMAT`. `rules/knowledge-base/directed-pinned-node` only says a node that names an existing identity resolves to it "provided the node exists and is active". It does not say what happens otherwise. The `ingest-directed` refusals in the `knowledge-base-ingestion` contract (an operation contract in the same specification) are the four format rules plus `caller-never-states-received`, and none of them is this case. The refusal and its error code therefore have no home in the specification. The header comment of the same file names a different code for the same case ("rejected `STRUCTURAL_INVALID`"), so the two statements in the file already disagree.
+    kind: unstated
+    correction: >-
+      The analysis has to decide what a pin to a missing or non-active node produces. It could be a refusal with a specific code, a `dependency-failed`-style item status, or a fallback to entity resolution. That decision has to be written into `directed-pinned-node` or into the `ingest-directed` refusals. The description would then state it, and the header comment, which names a different code, would be removed.
+    node: rules/knowledge-base/directed-pinned-node
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestDocumentMcpInputSchema, lines 125-157. It declares `content`, `source_type` and `metadata` in part, which are the attributes that become the raw information's. The `metadata` field is at lines 136-141.
+    evidence: |-
+      content: z.string().min(1, "content must not be empty").max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+      source_type: SourceTypeSchema.describe(...)
+      metadata: z.record(z.string(), z.unknown()).optional()
+candidates_opened:
+  - domain/knowledge-base/source-type
+  - rules/knowledge-base/directed-pinned-node
+looked_past: >-
+  The header comments restate facts that other nodes hold (the forced confidence 1.0, the `directed` / `directed-v1` sentinels, reference lengths, the `received` basis exclusion). The comment citing `STRUCTURAL_INVALID` for the pin appears only in prose, and nothing in this file carries that code. These are prose-removal matters on nodes outside this set, so I did not list them as findings.

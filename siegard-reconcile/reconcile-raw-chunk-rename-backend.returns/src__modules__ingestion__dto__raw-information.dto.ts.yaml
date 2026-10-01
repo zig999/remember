@@ -1,0 +1,27 @@
+findings:
+  - file: src/modules/ingestion/dto/raw-information.dto.ts
+    where: >-
+      line 11, the doc comment above ChunkLocatorSchema
+    evidence: >-
+      /** Optional readable anchor (page/line/speaker/ts) — shape per A23. */
+    cost: >-
+      The comment lists the locator's keys and cites "A23", a reference into the old v6/v7 document, as the authority for the shape. A reader who follows it lands in a document the specification has superseded, not in the node. The keys are already declared by the schema below it, so the comment is a second home for a fact that the code and the node both hold.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by ChunkLocatorSchema in this file, and the node domain/knowledge-base/chunk-locator holds the same shape.
+    node: domain/knowledge-base/chunk-locator
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      RawChunkResponseSchema, lines 37-46, and ChunkLocatorSchema, lines 12-19.
+    evidence: >-
+      chunk_index: z.number().int().nonnegative(), text: z.string(), offset_start: z.number().int().nonnegative(), offset_end: z.number().int().positive(), locator: ChunkLocatorSchema, chunking_version: z.string()
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RawInformationResponseSchema, lines 23-31.
+    evidence: >-
+      source_type: SourceTypeSchema, content: z.string(), storage_ref: z.string().nullable(), content_hash: z.string().regex(/^[0-9a-f]{64}$/), received_at: z.string().datetime({ offset: true }), metadata: z.record(z.string(), z.unknown())
+looked_past: >-
+  The content_hash regex /^[0-9a-f]{64}$/ and the nonnegative and positive bounds on chunk_index and the offsets apply rules held by nodes outside this set (rules/knowledge-base/content-hash-is-sha256, chunk-index-follows-content and chunk-offsets-ordered), and they agree with those nodes, so I filed nothing for them; the other comments only describe routes and the repository layer.
+candidates_opened:
+  - domain/knowledge-base/chunk-locator

@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      The docblock above listProvenanceForNodes (lines 318-341) and the strategy comment inside it
+      (lines 349-351).
+    evidence: >-
+      "joining to ANY accepted fragment whose `text_search` matches the canonical name" and
+      "surface the provenance of every fragment whose text contains the node's canonical_name
+      token (subset of accepted fragments that mention the node)". The code beside them matches
+      on the alias instead: "AND f.text_search @@ plainto_tsquery($1::regconfig, na.alias_norm)".
+    cost: >-
+      The prose says which fragments "mention" a node, and the code decides this differently:
+      through every alias's normalized form, not the canonical name. The code also holds the fact
+      in this file, with the FTS_PROSE_CONFIG binding. A reader who trusts the comment will look
+      for the canonical-name match, which does not exist, and will misjudge which fragments
+      support a node hit.
+    kind: restates
+    correction: >-
+      Remove the prose. The fragments that mention a node are held by the plainto_tsquery join in
+      listProvenanceForNodes and by the node rules/knowledge-base/prose-matching.
+    node: rules/knowledge-base/prose-matching
+read:
+  - node: rules/knowledge-base/chunk-offsets-count-code-points
+    held_at: >-
+      The substring expressions that slice a chunk by its offsets, in searchChunkLayer (lines
+      177-178), listProvenanceForFragments (lines 264-265), listProvenanceForLinks (lines 301-302)
+      and listProvenanceForNodes (lines 360-361).
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                FOR rc.offset_end - rc.offset_start) AS excerpt
+      This reads offset_start as inclusive and offset_end as exclusive. Postgres substring counts
+      characters, not bytes. That is the code-point reading the node requires, assuming a UTF-8
+      database.
+  - node: rules/knowledge-base/prose-matching
+    held_at: >-
+      The fragment and chunk queries (searchFragmentLayer, searchChunkLayer) and the
+      node-mention join in listProvenanceForNodes. Each matches text_search against a tsquery
+      built with FTS_PROSE_CONFIG. The config's value is declared in fts-config.ts, which is
+      outside this file set and which I did not read.
+    evidence: >-
+      "f.text_search @@ websearch_to_tsquery($1::regconfig, $2)" with "FTS_PROSE_CONFIG" bound as
+      $1 in searchFragmentLayer; "rc.text_search @@ websearch_to_tsquery($1::regconfig, $2)" in
+      searchChunkLayer; "f.text_search @@ plainto_tsquery($1::regconfig, na.alias_norm)" with
+      FTS_PROSE_CONFIG bound as $1 in listProvenanceForNodes.
+looked_past: >-
+  Facts held by nodes outside this set, which I only grepped in the projection and did not open
+  (fragment accepted-only, node layer skips merged and deleted, chunk layer skips superseded,
+  alias matching without stemming via FTS_NAME_CONFIG, the per-layer tie-breaks including
+  canonical_name, and the omission of a compliance-deleted-source filter in the provenance
+  queries against search-excludes-compliance-deleted-sources), plus the prose at lines 325-340
+  that states a node-hit-dropped-when-no-fragment policy which no code in this file carries.

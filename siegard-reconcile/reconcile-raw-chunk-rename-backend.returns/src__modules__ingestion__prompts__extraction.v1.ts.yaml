@@ -1,0 +1,42 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      line 42, the exported constant MAX_TOKENS
+    evidence: >-
+      /** Per-turn Anthropic `max_tokens` (TC-12 known_context — 8000). */
+      export const MAX_TOKENS = 8000 as const;
+    cost: >-
+      The ceiling on how much the model may output in one extraction turn is a value the code
+      applies and no node holds. I searched the specification root for "8000", "max_tokens",
+      "per-turn" and "ceiling". The only hits were the chat contract's own MAX_TOKENS and the
+      `max-tokens` stop reason, and neither concerns extraction. The next reader will look for
+      this limit in the specification and will not find it. A change to it would then be a code
+      edit that no node and no decision log records.
+    kind: unstated
+    correction: >-
+      Give the extraction's per-turn output ceiling a node, through the analysis. The likely home
+      is beside `rules/knowledge-base/extraction-reads-chunks-in-order`, or in the llm-run
+      extraction rules. The constant then stays as the place that node is bound.
+
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      The `DocumentMetadata` interface (lines 52-61). It declares, in part, the raw-information
+      attributes the extraction shows the model.
+    evidence: >-
+      export interface DocumentMetadata {
+        readonly source_type: string;
+        readonly received_at: string;
+        readonly document_date: string | null;
+        readonly title: string | null;
+      }
+      The `user()` function renders the same four attributes into the metadata block:
+      `- source_type: ${meta.source_type}`, `- received_at: ${meta.received_at}`, and the
+      `document_date` and `title` lines. The optionality of `document_date` and `title` matches
+      the node, where both are non-required.
+
+looked_past: >-
+  The comments at lines 53-60 say `document_date` and `title` come "from `raw_information.metadata.document_date`" and "metadata.title", while the node declares both as top-level attributes of raw-information. That is prose only, and no code in this file reads `metadata`. Likewise the comment's list of source_type values is prose. The prompt text this file emits restates facts held by nodes outside the set, and each of those statements is true or consistent with its node: the 200-character previous-chunk tail, the 1000-character fragment limit, the 0.75 and 0.40 confidence thresholds, the rule that the caller never states the basis `received`, the data-never-instruction framing, and the catalog link types and attribute keys used in the worked example.
+
+candidates_opened:
+  - domain/knowledge-base/raw-information

@@ -1,0 +1,55 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, happy path steps 1 and 2 (lines 80-81)
+    evidence: >-
+      * 1. Compute `content_hash = sha256(content)`.
+      *   2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+    cost: >-
+      The two digest definitions are written a second time as prose in the service. Code holds them in
+      `sha256Hex` and `composeIdempotencyKey` in `../hash.js` (`createHash("sha256").update(content, "utf8").digest("hex")`).
+      The service also calls both, at lines 103-109. If a node moves, the docstring keeps saying the old
+      definition and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the two steps from the docstring. The code that holds the digests stays where it is.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring of ingestRawInformation, "Idempotent no-op path" (lines 87-93), and the comment at lines 122-124
+    evidence: >-
+      * Idempotent no-op path (UC-01 alt 4a):
+      *   - Re-read the existing raw_information by content_hash.
+      // chat-directed path. `content_hash` is computed above over `content`
+      // only — `original_input` never affects idempotency.
+    cost: >-
+      The rule that held content records nothing new is stated in prose, and the code behind it is also in
+      this file: the `isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)` branch into
+      `noopExisting`. The prose can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the prose. The branch and `noopExisting` already hold the behavior.
+    node: rules/knowledge-base/held-content-records-nothing
+
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      This file declares no shape for the element. It forwards chunk values from the repository rows:
+      `chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))`.
+      It reads `chunkInputs = chunkV1(input.content, input.source_type)` and calls
+      `insertRawChunks(client, rawInformationRow.id, chunkInputs)`. The declaration is in the repository and DTO files.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      This file declares no shape for the element. It passes values along:
+      `insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null })`.
+      It also reads fields of the returned row (`rawInformationRow.id`, `rawInformationRow.content_hash`).
+      The declaration is in the repository and DTO files.
+
+looked_past: >-
+  The emitted not-found message `${entity} ${entityId} not found.` (for example "raw_information X not found.") is worded differently from the "RawInformation <id> not found." that a compliance node states. I did not check whether the route layer replaces it, because that file is outside the set. The comment citing `BR-02` ("enforced by the absence of code") and the case where Postgres aborts the transaction after the caught unique violation are not conformance matters for these nodes.
+
+candidates_opened:
+  - domain/knowledge-base/raw-chunk
+  - domain/knowledge-base/raw-information
