@@ -1,0 +1,183 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      LayersArray, lines 26-28 (the `layers` field of SearchQuerySchema)
+    evidence: >-
+      const LayersArray = z
+        .union([z.string().min(1), z.array(z.string().min(1))])
+        .transform((v) => (Array.isArray(v) ? v : [v]));
+    cost: >-
+      An empty layer name (`?layers=`) is not a search layer, and the node says such a query is refused
+      with BUSINESS_INVALID_SEARCH_LAYER, naming the allowed layers. Here `.min(1)` stops it at the schema
+      first, so it is refused as VALIDATION_INVALID_FORMAT. The code answers one input differently from
+      the contract, and the comment above the schema says the opposite ("non-enum elements raise a
+      ZodError that the service translates to BUSINESS_INVALID_SEARCH_LAYER").
+    kind: contradicts
+    correction: >-
+      An empty layer name would have to reach the layer-set check and be refused as
+      BUSINESS_INVALID_SEARCH_LAYER. Alternatively, the specification would have to say that an empty
+      layer name is a malformed value.
+    node: rules/knowledge-base/search-layer-outside-set-refused
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the docstring above QueryString, lines 37-47
+    evidence: >-
+      * `query` validation per BR-04 of the back spec:
+       *   - min 1 char (raw)
+       *   - max 1000 chars (raw)
+       *   - btrim non-empty after transform (rejects whitespace-only input)
+    cost: >-
+      The docstring is a second home outside behavior for the 1000-character cap and the non-blank rule.
+      Both are already held by the code below it, `.max(1000, ...)` and `.refine((s) => s.length > 0, ...)`.
+      A reader can take the prose for the place the limit is decided.
+    kind: restates
+    correction: >-
+      Remove the docstring. The rule is held by the nodes and by the schema beneath it.
+    node: rules/knowledge-base/search-query-length
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      `.strict()` closing SearchQuerySchema, line 74
+    evidence: >-
+      export const SearchQuerySchema = z
+        .object({
+          query: QueryString,
+          ...
+        })
+        .strict();
+    cost: >-
+      The code refuses a search that names any parameter the search does not define. The `search`
+      operation in the retrieval contract lists no such refusal. Only the accepted-fragment listing
+      (a rule), the catalog listings and the graph reads state one. The refusal therefore lives only in
+      this schema, and the next reader looks for it in the specification and does not find it. The same
+      schema is reused by the MCP query toolset, so it applies on both transports.
+    kind: unstated
+    correction: >-
+      The `search` operation's refusals would need to say whether an undefined parameter is refused, or
+      the strictness would have to go.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file only declares request-parameter schemas, for example `query: QueryString,`. It holds no
+      authentication, routing or health behavior.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file has no ingestion operation. It declares only `SearchQuerySchema` and the provenance
+      path-parameter schemas.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      SearchQuerySchema (lines 57-74) with the closed set ALLOWED_LAYERS (line 101), and the path-parameter
+      schemas LinkIdParamSchema, AttributeIdParamSchema and FragmentIdParamSchema (lines 82-95). They
+      hold the search request's shape and its query, depth, offset and limit refusals, and the
+      identifier-shape refusals of the provenance reads.
+    evidence: >-
+      query: QueryString (min 1, max 1000, non-empty after trim); expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3)).optional().default(1);
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20);
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0);
+      as_of: IsoDateOnly (regex /^\d{4}-\d{2}-\d{2}$/); link_id: z.string().uuid()
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing schema. `.strict()` appears only on SearchQuerySchema.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLM-run or proposal element, only search and provenance request schemas.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file declares no LLM-run affected-nodes behavior.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. `chunk` appears only as a search layer name in ALLOWED_LAYERS.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or node-resolution behavior.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no assertion-review behavior.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file only declares the id params, for example `fragment_id: z.string().uuid()`. It builds no
+      provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file only declares the id params, for example `link_id: z.string().uuid()`. It makes no
+      compliance-status decision.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file holds no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file holds no node-listing filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file declares only the `expand` flag (`BooleanQuery.optional().default(true)`). The search
+      behavior is not in it.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal validity-start handling. `as_of` is only a search date filter.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file holds no review-queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file holds no review-queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file holds no speaker-line detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal request. `expand_depth` belongs to search.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal request.
+looked_past: >-
+  The remaining comments (the Booleans-on-the-wire note, the `layers` and `expand_link_types` normalization notes, the section banners) state no node fact. The module-header comment names the 422 codes, and I read it as prose with no stated fact of its own.
+candidates_opened:
+  - rules/knowledge-base/search-option-defaults
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-query-not-blank
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-offset-non-negative
+  - domain/knowledge-base/search-query
+  - domain/knowledge-base/page
+  - domain/knowledge-base/search-layer

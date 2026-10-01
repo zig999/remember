@@ -1,0 +1,191 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: >-
+      Header comment, lines 11-19 (the "Error mapping" list and the "MUST NOT leak internal messages" paragraph).
+      The "BR-18 of knowledge-graph" comment at line 125 restates the same pg 503 mapping.
+    evidence: |-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - AuthError                    -> 401 (code from AuthError.code)
+      //   - ZodError                     -> 422 VALIDATION_INVALID_FORMAT
+      //   - pg error: ECONNREFUSED / ETIMEDOUT / 57P03 / 57014 -> 503 SYSTEM_SERVICE_UNAVAILABLE
+      //   - Any other unhandled error    -> 500 SYSTEM_INTERNAL_ERROR
+    cost: >-
+      The status and code table is stated a second time in prose. It already lives in the branches of classify()
+      and in the node. It cites docs/specs/_global/error-codes.md as its home, so a reader is sent to a document
+      that is not the specification. When the node moves, this table still reads as current and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in classify() holds the mapping, in this file and in shared/error-mapping.ts
+      (internalError, serviceUnavailableError, isPgUnavailable). The node holds the fact.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      classify(), branch 3 "Fastify validation", lines 108-123
+    evidence: |-
+      message: err.message ?? "Request payload failed validation.",
+      details: err.validation,
+    cost: >-
+      The node says a request that fails the validation of its operation is answered with the fixed message
+      "Request payload failed validation." and `details` a bare list of `{ path, message }`. This branch
+      forwards Fastify's own message and the raw validation array. When a request is refused by a route
+      schema, the client gets a different message and a different details shape from the one the specification
+      decided. The ZodError branch of the same file does return the specified shape, so the same refusal has two
+      shapes depending on which validator caught it.
+    kind: contradicts
+    correction: >-
+      The branch would have to answer with the fixed message and map each validation entry to `{ path, message }`
+      with the path joined by ".", as the ZodError branch does.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      classify(), branch 5 comment, lines 140-142
+    evidence: |-
+      // Never leak an internal message on a 5xx path (the file contract):
+      // 4xx messages are client-actionable and framework-generated, but a
+      // 5xx message may carry internal detail — use a generic string.
+    cost: >-
+      The 4xx/5xx message rule is stated in prose. The code on the next line holds it
+      (`message: isServerError ? "Internal server error." : err.message`) and so does the node. A third
+      statement, citing "the file contract", gives a reader a second place to look when the rule changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The ternary in classify() holds the rule and the node holds the fact.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/error-handler.ts
+    where: >-
+      codeFromHttpStatus(), `case 422`, lines 183-184
+    evidence: |-
+      case 422:
+        return "VALIDATION_INVALID_FORMAT";
+    cost: >-
+      The node says a framework refusal with a status below 500 other than 401, 403 and 409 is answered with
+      that status and error code SYSTEM_INTERNAL_ERROR. A 422 that reaches this branch is not a Zod or Fastify
+      validation failure, because those are caught by branches 2 and 3. Here it is given
+      VALIDATION_INVALID_FORMAT, where the specification gives SYSTEM_INTERNAL_ERROR. The client therefore sees
+      a validation code for a refusal the specification does not call a validation failure.
+    kind: contradicts
+    correction: >-
+      The 422 case would have to be removed so it falls to the default SYSTEM_INTERNAL_ERROR, or the node would
+      have to name 422 as a status with its own code. That second choice belongs to the specification, not to
+      the code.
+    node: contracts/knowledge-base/access
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      classify() in this file: branch 1 (AuthError, 401 with err.code and err.message, no details), branch 2
+      (ZodError, 422 with path/message details), branch 4 (store unavailable, delegated to
+      serviceUnavailableError()), branch 5 (framework statuses, via codeFromHttpStatus) and the final
+      internalError(). The values of the delegated 503 and 500 answers sit in shared/error-mapping.ts, which
+      was outside the file set and was not read. The health report is not carried by this file.
+    evidence: |-
+      if (err instanceof AuthError) {
+        return {
+          statusCode: 401,
+          envelope: { ok: false, error: { code: err.code, message: err.message } },
+      ...
+      details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      ...
+      message: isServerError ? "Internal server error." : err.message
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: |-
+      The file names no ingestion operation, rule or run. It carries the generic mapping in
+      `export function classify(err: unknown)`, which is the access node's fact. Ingestion's own refusals
+      (BUSINESS_RUN_NOT_RUNNING, "Failed to persist the document before extraction.", and so on) do not appear.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: |-
+      The file names no retrieval operation or rule. It carries only the generic mapping in
+      `export function classify(err: unknown)`. Retrieval's own refusals (BUSINESS_INVALID_SEARCH_QUERY,
+      BUSINESS_NODE_DELETED, and so on) do not appear.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: |-
+      The file has no accepted-fragment listing or query parameter handling: `export function buildErrorHandler(logger: Logger)`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: |-
+      The file has no run or affected-node logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: |-
+      The file has no run or affected-node logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: |-
+      The file has no compliance-deletion listing or window handling: `function codeFromHttpStatus(status: number): string`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: |-
+      The file has no chunking: `import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: |-
+      The file has no proposal or node resolution logic: `export function buildErrorHandler(logger: Logger)`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: |-
+      The file has no assertion review logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: |-
+      The file builds no prompt: `export function buildErrorHandler(logger: Logger)`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: |-
+      The file builds no prompt: `export function buildErrorHandler(logger: Logger)`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: |-
+      The file builds no prompt: `export function buildErrorHandler(logger: Logger)`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: |-
+      The file has no graph read or provenance logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: |-
+      The file has no graph read or provenance logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: |-
+      The file has no curation metrics: `function isFastifyHttpError(err: unknown)`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: |-
+      The file has no node listing or name matching: `function isFastifyValidationError(err: unknown)`.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: |-
+      The file has no search logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: |-
+      The file has no proposal consolidation: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: |-
+      The file has no validity-start logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: |-
+      The file has no review queue listing: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: |-
+      The file has no review queue listing: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: |-
+      The file has no content parsing: `import { ZodError } from "zod";`.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: |-
+      The file has no traversal logic: `export function classify(err: unknown)`.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: |-
+      The file has no traversal logic: `export function classify(err: unknown)`.
+looked_past: >-
+  The unit-test re-export of isPgUnavailable and ErrorEnvelope, the comments about pino redaction, and the
+  "request_failed" log line with its log levels are not domain facts, so they are other judgments' to make.

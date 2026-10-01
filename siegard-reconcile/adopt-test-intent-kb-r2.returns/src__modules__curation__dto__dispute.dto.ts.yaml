@@ -1,0 +1,161 @@
+findings:
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the docstring above ResolveDisputeBodySchema, lines 20-30 (the prefer_one winner line)
+    evidence: >-
+      " *   - `decision = prefer_one`  -> winner_id required, member of item_ids, reason required"
+    cost: >-
+      The docstring states a second copy of the winner rule. The superRefine below it already holds the rule as code, so the next reader has two places to check against the specification. When the node moves, this prose is not reached.
+    kind: restates
+    correction: >-
+      Remove the docstring line. The code in this file (the `BUSINESS_DISPUTE_WINNER_REQUIRED` branch of the superRefine) holds the fact, and the node is the home for the prose.
+    node: rules/knowledge-base/prefer-one-requires-winner
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the same docstring, lines 20-30 (the prefer_one reason clause)
+    evidence: >-
+      " *   - `decision = prefer_one`  -> winner_id required, member of item_ids, reason required"
+    cost: >-
+      The docstring restates the reason requirement for prefer_one, which the superRefine already enforces with `BUSINESS_REASON_REQUIRED`. The prose is a second, unread copy of the rule.
+    kind: restates
+    correction: >-
+      Remove the clause with the docstring. The `BUSINESS_REASON_REQUIRED` branch in this file holds the fact.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the same docstring, lines 20-30 (the adjust_periods line)
+    evidence: >-
+      " *   - `decision = adjust_periods` -> periods[] required with one entry per item_id;"
+    cost: >-
+      The docstring restates the one-period-per-item rule that the `periods.length !== value.item_ids.length` branch already enforces. It is prose that no one will update when the node moves.
+    kind: restates
+    correction: >-
+      Remove the docstring line. The `BUSINESS_DISPUTE_PERIODS_REQUIRED` branches in this file hold the fact.
+    node: rules/knowledge-base/adjust-periods-one-per-item
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the comment before the uniqueness check in the superRefine, line 41
+    evidence: >-
+      "// Item_ids unique"
+    cost: >-
+      The comment restates the distinct-items rule next to the code that enforces it with `uniqueIds.size !== value.item_ids.length`. It is a second home for the rule outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The `Set` size check in this file holds the fact.
+    node: rules/knowledge-base/dispute-resolution-distinct-items
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the comment before the period-ordering check, line 113
+    evidence: >-
+      "// Semi-open invariant: valid_from < valid_to when both supplied."
+    cost: >-
+      The comment restates the start-before-end rule beside the `p.valid_from >= p.valid_to` check that enforces it. Prose and code can drift apart, and only the code is bound.
+    kind: restates
+    correction: >-
+      Remove the comment. The `BUSINESS_TEMPORAL_INCOHERENT` branch in this file holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only the dispute-resolution body (`export const ResolveDisputeBodySchema = z.object({ item_kind: ItemKindSchema, ...`). It carries no authentication, routing or health fact.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file carries no intake, proposal or extraction shape. Only `AdjustedPeriodSchema` and `ResolveDisputeBodySchema` are declared.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file carries no search, provenance or graph-read shape.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing appears. The only schema is `ResolveDisputeBodySchema`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node logic appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node logic appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No node proposal or resolution appears in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file holds the dispute body only. No confirm-item shape appears.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No provenance or chunk excerpt appears in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No provenance read appears in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file shapes a dispute resolution request. It counts no queue.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file carries no proposal start fallback. `valid_from: IsoDateSchema.nullable()` only shapes an adjusted period.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing appears in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+looked_past: >-
+  The file's dispute facts are held by nodes outside the delegated set, among them contracts/knowledge-base/curation and the rules prefer-one-requires-winner, adjust-periods-one-per-item, dispute-resolution-distinct-items, curation-reason-required and validity-start-before-end. The code matches them where read, so I report only the prose restatements. Whether those nodes are bound to this file, and how a blank `reason` or a missing reason-length cap maps onto `curation-reason-not-blank` and `curation-action-reason-length`, belongs to a pass over them.
+candidates_opened:
+  - rules/knowledge-base/dispute-resolution-distinct-items

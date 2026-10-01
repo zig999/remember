@@ -1,0 +1,159 @@
+findings:
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 21, the comment above RejectItemBodySchema
+    evidence: >-
+      /** reject_item — reason mandatory (destructive, BR-11). */
+    cost: >-
+      The comment states, as prose, the fact that a rejection must state a reason. A reader can take the comment for the place the rule lives, when it lives in rules/knowledge-base/curation-reason-required and in the code line `reason: ReasonRequiredSchema`. The "BR-11" citation points to a back-spec numbering, not to a node, so it can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is `reason: ReasonRequiredSchema` in RejectItemBodySchema and in CorrectItemBodySchema.
+    node: rules/knowledge-base/curation-reason-required
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 53, the comment above the someProvided check in CorrectItemBodySchema.superRefine
+    evidence: >-
+      // BR-18: at least one of value/target_node_id/valid_from/valid_to.
+    cost: >-
+      The comment states in prose the rule that a correction must change at least one field, while the `someProvided` branch holds it too. The node rules/knowledge-base/correction-changes-something is where the business decided it, and the BR-18 label is a second, unbound naming of the same rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The `someProvided` branch with the issue `BUSINESS_CORRECTION_NO_CHANGES` holds the fact.
+    node: rules/knowledge-base/correction-changes-something
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 67, the comment above the two item_kind cross-field checks
+    evidence: >-
+      // Cross-field: value only on attribute, target_node_id only on link.
+    cost: >-
+      The comment restates the rule that a correction must not change a link's value or an attribute's target node. The two `ctx.addIssue` branches that follow already enforce it. The node rules/knowledge-base/correction-fits-assertion-kind is the home of the rule, so the comment is a second copy that can be read as authority.
+    kind: restates
+    correction: >-
+      Remove the comment. The branches `body.item_kind === "link" && c.value !== undefined ...` and `body.item_kind === "attribute" && c.target_node_id !== undefined ...` hold the fact.
+    node: rules/knowledge-base/correction-fits-assertion-kind
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 87, the comment above the valid_from / valid_from_source checks
+    evidence: >-
+      // valid_from change requires valid_from_source.
+    cost: >-
+      The comment restates the rule that a correction stating a validity start must state its basis. The `c.valid_from_source === undefined || ... === null` branch holds the same rule in code. A reader who trusts the comment may look here, not in rules/knowledge-base/stated-start-requires-basis, when the rule changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch that adds `BUSINESS_DATE_UNJUSTIFIED` at path `corrected.valid_from_source` holds the fact.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 112, the comment above the valid_from >= valid_to check
+    evidence: >-
+      // Semi-open invariant on the new pair when both supplied.
+    cost: >-
+      The comment names, in prose, the rule that a correction giving both dates must put the start strictly before the end. The `c.valid_from >= c.valid_to` branch holds it too. The node rules/knowledge-base/validity-start-before-end is where it was decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch `c.valid_from >= c.valid_to` that adds `BUSINESS_TEMPORAL_INCOHERENT` holds the fact.
+    node: rules/knowledge-base/validity-start-before-end
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only the confirm, reject and correct request bodies (`ConfirmItemBodySchema`, `RejectItemBodySchema`, `CorrectItemBodySchema`). It holds no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation or proposal shape appears. The file declares `CorrectedValuesSchema` and the three curation bodies only.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance, listing or graph-read shape appears in the file.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments and no query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-node computation.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-node computation.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node proposal and no resolution of node names.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      `ConfirmItemBodySchema` declares only the request body (`item_kind`, `item_id`, `reason`). The effect of a confirmation on the item's status, confidence and dates is not in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no provenance entry.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name prefix.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no consolidation. Corrections go through `CorrectItemBodySchema`, which only validates a request.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file applies no fallback validity start. The `valid_from` checks only validate what the caller sent.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue and no paging.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue and no total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The facts this file's code implements belong to nodes outside the pack, mainly contracts/knowledge-base/curation and the rules curation-reason-required, curation-reason-not-blank, correction-changes-something, correction-fits-assertion-kind, stated-start-requires-basis, corrected-stated-start-cites-fragment and validity-start-before-end, and no conformance finding was made against them. Two points were left to another judgment. The issue messages are bare error-code tokens such as "BUSINESS_CORRECTION_NO_CHANGES", while the curation contract states full wording for them. Whether the 1000-character cap of curation-action-reason-length is enforced is not visible here, because `ConfirmItemBodySchema` declares `reason` with no maximum and `ReasonRequiredSchema` is declared in enums.dto.js.

@@ -1,0 +1,141 @@
+findings:
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      the doc comments above ResolveEntityMatchBodySchema (lines 17-19) and above MergeNodesBodySchema (line 62)
+    evidence: >-
+      " * ResolveEntityMatchRequest — BR-11 (reason mandatory on merge_into),
+      * BR-23 (self-merge forbidden at request shape)." and
+      "/** MergeNodesRequest — BR-11 (reason required), BR-23 (self-merge forbidden). */"
+    cost: >-
+      The self-merge rule is stated in prose here and in code in two places. MergeNodesBodySchema.superRefine in this file
+      raises "BUSINESS_SELF_MERGE_FORBIDDEN" when survivor_id equals absorbed_id. src/modules/curation/service/entity-match.service.ts
+      also raises BUSINESS_SELF_MERGE_FORBIDDEN, and that is the only place the resolve path can check it, because its node_id travels
+      in the path and not in the body. The resolve comment says "at request shape", which this file does not do for the resolve body.
+      A reader trusting the comment would look for the check in the wrong place.
+    kind: restates
+    correction: >-
+      Remove the self-merge clause from both comments. The pair conforms, since the code holds the rule. This is the comment
+      route, followed by /reconcile over the file.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      the same doc comments (lines 17-18 and line 62), the BR-11 clauses
+    evidence: >-
+      "BR-11 (reason mandatory on merge_into)" and "BR-11 (reason required)"
+    cost: >-
+      The reason requirement is restated in prose beside the code that holds it. In this file, the superRefine branch for
+      merge_into adds the issue "BUSINESS_REASON_REQUIRED", and MergeNodesBodySchema uses `reason: ReasonRequiredSchema`.
+      The comment cites the project's internal BR-11 label, not the node, so the next reader is pointed away from the specification.
+    kind: restates
+    correction: >-
+      Remove the BR-11 clauses from the comments. The code already holds the rule.
+    node: rules/knowledge-base/curation-reason-required
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only NodeIdPathSchema, ResolveEntityMatchBodySchema and MergeNodesBodySchema. It holds nothing about authentication, routing or health.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation or answer appears. The file holds only curation request-body schemas.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance or graph-read shape appears. The file holds only curation request-body schemas.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing filter is declared. Only `node_id`, `decision`, `target_node_id`, `reason`, `survivor_id` and `absorbed_id` are declared.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node computation appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node listing appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing filter appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking appears in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution serialization appears in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No confirm-item shape or behavior appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt appears in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance entry appears in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics computation appears in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing filter appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No validity-start handling appears in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review-queue page parameters are declared. The file declares only the resolve and merge request bodies and the node_id path parameter.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review-queue total appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection appears in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+looked_past: >-
+  The file's request-shape facts (merge_into requiring target_node_id and a reason, a non-blank trimmed reason, survivor_id equal to absorbed_id refused) belong to curation nodes outside this pack, namely contracts/knowledge-base/curation, merge-into-requires-target and curation-reason-not-blank. The code agrees with them as far as this file shows, so I raised no unstated or contradicts finding; the comment explaining why a single object with superRefine was chosen over a discriminated union is a code-review matter and was not reported.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-not-blank
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/node-never-merged-into-itself
+  - rules/knowledge-base/curation-reason-required
+  - rules/knowledge-base/merge-into-requires-target

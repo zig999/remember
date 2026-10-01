@@ -1,0 +1,160 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the header comment, lines 7-8 (Type-catalog membership), and the docstring of assertKnownType, lines 146-149
+    evidence: >-
+      "//   - Type-catalog membership (BUSINESS_UNKNOWN_{NODE_TYPE|LINK_TYPE|ATTRIBUTE_KEY}):
+      //       node_type, link_type, attribute_key all live in the seeded catalog."
+    cost: >-
+      Prose says a node's fact (a node proposal names a node type the catalog holds) while assertKnownType
+      throws BUSINESS_UNKNOWN_NODE_TYPE for it. A reader may take the comment as the home of the rule and
+      look no further, and the comment will not follow the node if the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment text. The rule stays held by assertKnownType in this file (the code mapping) and
+      by the caller that supplies `found`.
+    node: rules/knowledge-base/node-type-in-catalog
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of parseAttributeValue, lines 22-26, and the inline comments "// Strict ISO YYYY-MM-DD; not free-form." and "// Strict: must be a finite numeric literal (no NaN, no Infinity)."
+    evidence: >-
+      "Parse a `value` string against its declared `value_type`. ... Rejects \"tomorrow\" for `date`, \"abc\" for `number`, etc."
+    cost: >-
+      The per-type value formats are stated in prose and again in the regexes below it
+      (/^\d{4}-\d{2}-\d{2}$/, /^-?\d+(?:\.\d+)?$/, v !== "true" && v !== "false"). The comment will not
+      follow the node.
+    kind: restates
+    correction: >-
+      Remove the docstring and the inline comments. The rule stays held by the branches of
+      parseAttributeValue.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring of assertValueInDomain, lines 88-108, and the comment at lines 116-118
+    evidence: >-
+      "exact-match string equality, no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30)."
+    cost: >-
+      The "exactly as written" semantics and the sorted listing of allowed values are described in prose
+      beside the code that applies them (`domain.has(value)` and `[...domain].sort()`). The docstring also
+      points to a delivery record ("spec_divergences") and a prompt builder outside the node's reach.
+    kind: restates
+    correction: >-
+      Remove the docstring and the comment. The rule stays held by `domain.has(value)` and
+      `[...domain].sort()` in assertValueInDomain.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file only exports parseAttributeValue, assertValueInDomain, assertFound and assertKnownType. None
+      of them authenticates, routes or reports health.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      parseAttributeValue, assertValueInDomain, assertFound and assertKnownType. These throw the refusal codes and details the proposal operations name, and the transport maps them to HTTP elsewhere.
+    evidence: >-
+      "throw new ValidationFailure(\"VALIDATION_INVALID_FORMAT\", \"attribute value not in closed domain\", { value, allowed_values })" with `allowed_values = [...domain].sort()`;
+      "\"RESOURCE_NOT_FOUND\", `${args.entity} ${args.id} not found.`";
+      "BUSINESS_UNKNOWN_NODE_TYPE" / "BUSINESS_UNKNOWN_LINK_TYPE" / "BUSINESS_UNKNOWN_ATTRIBUTE_KEY".
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file has no search, provenance, catalog-listing or graph-read code. It holds only the four validation helpers.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment-listing or query-parameter code.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run summary or affected-node code.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run summary or affected-node code.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing code.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node-resolution or locking code.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review code.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It only mentions the prompt builder in a comment.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. `[...domain].sort()` orders the diagnostic's allowed_values only, and the comment about the prompt builder is prose.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph-read or provenance code.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph-read or provenance code.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no metrics code.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node-listing code.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search code.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation code.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start code.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue code.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue code.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line parsing code.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal code.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal code.
+looked_past: >-
+  The same header block also restates, in prose, the attribute-key-for-node-type, fragment-chunks-exist and fragment-chunks-in-run-source rules. Their checks are made by this file's callers, not by this file, so those comments are another judgment's to attribute.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses
+  - rules/knowledge-base/attribute-value-in-allowed-values
+  - rules/knowledge-base/node-type-in-catalog
+  - rules/knowledge-base/link-type-in-catalog
+  - rules/knowledge-base/attribute-key-for-node-type
+  - rules/knowledge-base/fragment-chunks-exist
+  - rules/knowledge-base/fragment-chunks-in-run-source
+  - rules/knowledge-base/cited-fragments-exist

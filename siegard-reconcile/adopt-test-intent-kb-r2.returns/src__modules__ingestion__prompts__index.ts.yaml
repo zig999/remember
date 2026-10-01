@@ -1,0 +1,152 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      header comment, lines 10-15, and the doc comment above UnknownPromptVersionError, line 72
+    evidence: >-
+      // An unknown version is a configuration error, NOT a silent fallback: BR-26
+      // step 2 mandates "load the extraction.${prompt_version} module; fail with 500
+      // SYSTEM_INTERNAL_ERROR if the module is missing". `selectPromptModule` throws
+      // `UnknownPromptVersionError`
+    cost: >-
+      The refusal of an unknown prompt version is stated twice here, in prose and in the throw at
+      selectPromptModule. The prose also states the HTTP status and error code. A reader who
+      changes the node will not know that these comments say it again, and they will keep saying
+      the old rule.
+    kind: restates
+    correction: >-
+      Remove the comment prose. The throw in selectPromptModule (this file) holds the fact. The
+      node is rules/knowledge-base/prompt-version-known. The contract operations run-extraction
+      and ingest-document hold the SYSTEM_INTERNAL_ERROR answer.
+    node: rules/knowledge-base/prompt-version-known
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      doc comment above DEFAULT_PROMPT_VERSION, line 62
+    evidence: >-
+      /** Recommended version for NEW runs — callers SHOULD send this at intake. */
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+    cost: >-
+      The comment states in prose which version new runs take. The constant holds that version,
+      and the comment describes a "SHOULD send" practice that no node holds. If the default moves,
+      the comment is one more place that says the old value.
+    kind: restates
+    correction: >-
+      Remove the comment. The constant DEFAULT_PROMPT_VERSION holds the fact. The node is
+      rules/knowledge-base/default-prompt-version.
+    node: rules/knowledge-base/default-prompt-version
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file is a prompt-module registry (`const REGISTRY: Readonly<Record<string, PromptModule>>`)
+      and states no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      selectPromptModule, lines 88-94. Only the trigger of the prompt-version-known refusal sits
+      here. The error code, the failed run and the HTTP status are not in this file.
+    evidence: >-
+      if (module === undefined) {
+          throw new UnknownPromptVersionError(promptVersion);
+        }
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing or query-parameter handling in the file. It only has `export function selectPromptModule(promptVersion: string): PromptModule`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance, catalog or graph read in the file. It only has
+      `const REGISTRY: Readonly<Record<string, PromptModule>>`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file lists no affected nodes of a run. It only maps versions to modules, for example
+      `[v4.PROMPT_VERSION]: V4,`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No affected-node listing in the file. See `export interface PromptModule { readonly version: string; ... }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or window in the file. It has `selectPromptModule` and the registry only.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It builds no chunks and only dispatches
+      `system: v1.system, user: v1.user`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No node resolution or proposal handling in the file. It has only the `PromptModule` type and the registry.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review in the file. It has `UnknownPromptVersionError` and `selectPromptModule` only.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file never builds prompt text. It delegates it to the version modules with
+      `system: v1.system,` and `system(catalog: CatalogSnapshot): string;`. Listing allowed values
+      would happen in extraction.v*.ts, which are not part of this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No allowed-value ordering in the file. Prompt construction is delegated: `system: v4.system,`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No allowed values are spelled out in the file. Prompt construction is delegated: `user: v4.user,`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt in the file. It has `const REGISTRY` and `selectPromptModule` only.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No provenance or compliance-status handling in the file. It has `PromptModule` and `REGISTRY` only.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics in the file. It has `export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;` only.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or alias matching in the file. It has `selectPromptModule` and the registry only.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search in the file. Its only logic is `const module = REGISTRY[promptVersion];`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation in the file. Its only logic is the registry lookup in `selectPromptModule`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No validity-start handling in the file. It has the `UnknownPromptVersionError` class and the registry only.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue or pagination in the file. It has `PromptModule` and `REGISTRY` only.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue totals in the file. It has `selectPromptModule` and `DEFAULT_PROMPT_VERSION` only.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing in the file. It has the prompt-module imports and the registry only.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No graph traversal in the file. It has the registry and `selectPromptModule` only.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No graph traversal in the file. It has `UnknownPromptVersionError` and `REGISTRY` only.
+looked_past: >-
+  The comment about the earlier gap ("Until this registry existed, the extraction orchestrator imported v1 statically ...") is history prose that no node and no code carries, and the registered versions v1 to v4 and the default v4 match the candidate nodes domain/knowledge-base/prompt-version and rules/knowledge-base/default-prompt-version.
+candidates_opened:
+  - rules/knowledge-base/prompt-version-known
+  - rules/knowledge-base/default-prompt-version
+  - domain/knowledge-base/prompt-version

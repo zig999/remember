@@ -1,0 +1,124 @@
+read:
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      countEntityMatchQueue, countDisputedLinks and countDisputedAttributes. Each runs without LIMIT or OFFSET and counts each row once. The total is the sum of these three, and that sum is not in this file.
+    evidence: |-
+      `SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'`
+      `SELECT count(*)::text AS total FROM knowledge_link WHERE status = 'disputed'`
+      `SELECT count(*)::text AS total FROM node_attribute WHERE status = 'disputed'`
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds data-access functions only. It has no authentication, routing or health-report code, and no refusal code or message of this contract appears in it.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds curation persistence only, for example `export async function loadNodesForUpdate(`. It has no ingestion operation, proposal handling or ingestion refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file serves the review queues and curation writes, for example `export async function listEntityMatchQueue(`. It has no search, provenance read, catalog listing or graph-read operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file contains no accepted-fragment listing. `findInformationFragmentById` is a single lookup by id.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file never computes an LLM run's affected nodes, and `LLMRun` is not referenced.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never lists a run's affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of compliance deletions and no time-window filter. `insertCurationAction` only inserts.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking and never references `raw_chunk`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node proposals. Its only locking is `FOR UPDATE` on curation targets, in `loadNodesForUpdate` and `loadItemsForUpdate`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      confirmItem, both branches (knowledge_link and node_attribute). Each sets only status and leaves confidence, valid_from, valid_to and superseded_at untouched.
+    evidence: |-
+      `UPDATE knowledge_link
+          SET status = 'active'
+        WHERE id = $1 AND status = 'uncertain'
+        RETURNING id`
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and has no allowed-values handling.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no excerpt computation. `copyProvenance` and `appendProvenanceFragment` only insert provenance rows.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read. Its provenance code only inserts, for example `INSERT INTO provenance (link_id, fragment_id, created_at)`.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      The disputedQueueRes query in aggregateCurationMetrics, which becomes disputed_queue_count.
+    evidence: |-
+      `SELECT count(*)::text AS total
+             FROM (
+               SELECT DISTINCT 'link' AS k, source_node_id, target_node_id, link_type_id
+                 FROM knowledge_link
+                WHERE status = 'disputed'
+               UNION ALL
+               SELECT DISTINCT 'attribute', node_id, attribute_key_id, NULL::uuid
+                 FROM node_attribute
+                WHERE status = 'disputed'
+             ) g`
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix matching. Its `alias_norm` use is limited to `ON CONFLICT (node_id, alias_norm)` in copyAliases.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals and has no re-affirmation or change-hint logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file does no proposal handling. The only `valid_from_source` use is the correction copy `COALESCE($5::valid_from_source, valid_from_source)`, which is not a required-start fallback.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      listEntityMatchQueue, listDisputedLinks and listDisputedAttributes. Each applies the page's limit and offset on its own to its own rows. The entity-match list is one row per needs-review node and candidate, because of the LEFT JOIN on entity_match_review.
+    evidence: |-
+      `LEFT JOIN entity_match_review em ON em.node_id = kn.id
+            WHERE kn.status = 'needs_review'
+            ORDER BY kn.created_at ASC, kn.id ASC, em.similarity DESC NULLS LAST
+            LIMIT $1 OFFSET $2`
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no text parsing and no speaker-line pattern.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal.
+looked_past: >-
+  The curation write statements, the queue ordering and the other metrics (accept_rate with its ACCEPT_ACTIONS set, reject_rate_by_code, the uncertain, disputed, needs_review and entity_match_queue counts) all agree on a first reading with nodes outside this pack. I made no finding on them, because those nodes are the candidates' and the merge, rejection, correction and dispute-resolution rules belong to another file's judgment.

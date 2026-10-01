@@ -1,0 +1,126 @@
+findings:
+  - file: src/modules/curation/dto/enums.dto.ts
+    where: >-
+      the comment above ReasonRequiredSchema, line 49
+    evidence: >-
+      /** Reason — trim + min(1) ensures whitespace-only strings are rejected. */
+    cost: >-
+      The comment states the rule that a curation reason holds at least one character after trimming. The same file holds that rule in code, `z.string().trim().min(1)`. A reader sees the rule twice, and the comment will not follow the node if the node changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The code on line 50 keeps the rule, and the node curation-reason-not-blank holds it.
+    node: rules/knowledge-base/curation-reason-not-blank
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only enumerations (`z.enum(["link", "attribute"])` and others) and the `UuidSchema`, `IsoDateSchema` and reason primitives. It has no authentication, routing or health logic.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares only curation enumerations (`ItemKindSchema`, `ReviewQueueKindSchema` and others) and shared primitives. It has no intake, proposal or ingestion operation.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file has no search, provenance, catalog or graph-read operation. It declares `ItemKindSchema = z.enum(["link", "attribute"])`, which belongs to the curation kinds, not to the retrieval surface.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing filter is declared. The file holds only enums and primitives, such as `export const UuidSchema = z.string().uuid();`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No run or affected-node logic. The file's content is `export const NodeStatusSchema = z.enum(["active","needs_review","merged","deleted"])` and similar declarations.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No run or affected-node logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion filter or execution window. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking logic in the file. The only date primitive is `IsoDateSchema`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file only declares the status values, `AssertionStatusSchema = z.enum(["active","uncertain","disputed","superseded","deleted"])`. It holds no confirmation behavior that keeps or changes a value.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt or attribute-key logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction and no ordering of values. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No provenance or chunk-excerpt logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No metrics computation. `ReviewQueueKindSchema = z.enum(["entity_match", "disputed"])` only names the two queue kinds and counts nothing.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or name-prefix matching. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search or graph-walk logic. The file holds only enumerations and primitive schemas.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal or re-affirmation logic. `ValidFromSourceSchema = z.enum(["stated", "document", "received"])` only declares the justification values.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only declares `ValidFromSourceSchema`. It has no logic that chooses a fallback start or basis.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review-queue paging in the file. It declares only the kind enumeration `ReviewQueueKindSchema`.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No queue total or pagination logic. The file declares only the kind enumeration `ReviewQueueKindSchema`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing in the file. `IsoDateSchema` is its only regex, `/^\d{4}-\d{2}-\d{2}$/`.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal logic. `NodeStatusSchema` only enumerates the node states.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal logic. The file holds only enumerations and primitive schemas.
+looked_past: >-
+  The enum value spellings in code (`needs_review`, `merge_into`, `entity_match`) differ from the hyphenated spellings in the domain enumeration nodes (`needs-review`, `merge-into`, `entity-match`), but they match the wire spellings of contracts/knowledge-base/curation, so I took this as a naming convention and not a conflict. The header comment ("Mirrors the openapi.yaml component schemas") only points to another document and states no node fact.
+candidates_opened:
+  - rules/knowledge-base/curation-reason-not-blank
+  - contracts/knowledge-base/curation
+  - domain/knowledge-base/item-kind
+  - domain/knowledge-base/assertion-kind
+  - domain/knowledge-base/review-queue-kind
+  - domain/knowledge-base/entity-match-decision
+  - domain/knowledge-base/dispute-decision
+  - domain/knowledge-base/node-status
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/valid-from-basis

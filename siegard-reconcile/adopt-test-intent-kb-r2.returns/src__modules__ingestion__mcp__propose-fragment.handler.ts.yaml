@@ -1,0 +1,123 @@
+findings:
+  - file: src/modules/ingestion/mcp/propose-fragment.handler.ts
+    where: >-
+      buildProposeFragmentHandler, the Zod-failure branch (lines 36-48), the ValidationFailure thrown at lines 42-46
+    evidence: |-
+      throw new ValidationFailure(
+        "VALIDATION_INVALID_FORMAT",
+        "Input failed Zod parse.",
+        { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }
+      );
+    cost: >-
+      The contract says a malformed propose-fragment proposal over MCP is refused with the message "MCP tool args failed Zod parse." This branch tells the caller "Input failed Zod parse." instead. Any reader or client matching on the contract's message would not find it from this entry point. A grep outside the file set, used only to attribute the fact, shows the factory is called only from tests. The production MCP path is in ingest-toolset.ts, which uses the contract's wording. So the divergence sits in a path the running system does not currently use, but it is still code that states the refusal differently from the node.
+    kind: contradicts
+    correction: >-
+      The refusal message in this branch would have to read "MCP tool args failed Zod parse.", as the node states it. Alternatively the branch would have to go, if nothing is meant to reach it.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing, validation-of-request or health behavior. It only Zod-parses a tool argument and calls runIngestHandler: `const parsed = ProposeFragmentInputSchema.safeParse(raw);`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      proposeFragmentHandler (lines 62-96), the MCP adapter of the propose-fragment operation, and the Zod-failure branch of buildProposeFragmentHandler (lines 36-48). Only the operation's success envelope is delivered here; the refusals are declared elsewhere. The Zod-failure message is a finding.
+    evidence: |-
+      const run = await assertRunIsRunning(client, deps.llm_run_id);
+      const envelope = await proposeFragmentService(client, input, {
+      ...
+      return { result: envelope.result, validation_outcome: deriveValidationOutcome(envelope), ...
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only proposes a fragment (write side) and contains no search, provenance read, catalog listing, node read or traverse.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing of accepted fragments is present; the file only handles `propose_fragment`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file computes no affected nodes of a run; it returns `envelope.result` of the fragment service.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No affected-node listing in the file; only `tool_name: "propose_fragment"` is dispatched through runIngestHandler.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window exists in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking; it receives `rawInformationId: run.input_raw_information_id` and delegates to the service.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file proposes fragments, not node names, and takes no lock or ordering of its own; the transaction is opened inside runIngestHandler.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation or review is present in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and refers to no attribute keys.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance entry is produced in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or compliance-status handling in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics are computed in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or name-prefix matching is present.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search is performed in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles fragment proposals only and implements no link or attribute re-affirmation; consolidation is not in it.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file handles no validity start and no `valid_from` basis; it concerns fragments only.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing or pagination in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue total is computed in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line recognition or content parsing in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in the file.
+looked_past: >-
+  The file's header and inline comments ("BR-19", "BR-21 (defence in depth at the service-call boundary)", "Service only returns success envelopes") cite old business-rule numbers and describe behavior the code already performs, so they are prose for the comment route; the run-is-running refusal itself lives in handler-base.ts, which is outside the file set.

@@ -1,0 +1,161 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment, lines 13-15 ("Modes" item 1, the current view)
+    evidence: >-
+      //   1. asOf undefined            -> "current view" (query (a), BR-07):
+      //        AND <alias>.valid_to IS NULL
+      //        AND <alias>.superseded_at IS NULL
+    cost: >-
+      The comment states a second time the rule that a read with no as-of date shows only current items. The code
+      in this file already holds it (`AND ${alias}.valid_to IS NULL`, `AND ${alias}.superseded_at IS NULL`), and
+      the node holds it too. If the rule changes, this prose keeps saying the old one and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact stays held by the code of the "Query (a) — current view" branch and by the node.
+    node: rules/knowledge-base/graph-read-current-view
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment lines 16-17 and 24-25, and the docstring of `inEffectOnly` at line 33 (the in-effect clause)
+    evidence: >-
+      //        [AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= current_date)]
+      //          (the bracketed clause is added when `inEffectOnly = true`)
+      /** When true (and `asOf` undefined), restrict to rows in effect today. */
+    cost: >-
+      The prose restates when an item is in effect (current, and a validity start that is absent or not after
+      today). The code holds it in the `opts.inEffectOnly` branch (`valid_from <= current_date`), so the
+      definition appears in two places and only the code is run.
+    kind: restates
+    correction: >-
+      Remove the comment lines and the docstring sentence. The code branch holds the fact.
+    node: rules/knowledge-base/in-effect-assertion
+  - file: src/modules/knowledge-graph/repository/temporal-filter.ts
+    where: >-
+      header comment, lines 19-22 ("Modes" item 2, valid-time travel)
+    evidence: >-
+      //   2. asOf provided             -> "valid-time travel" (query (b), BR-08):
+      //        AND <alias>.superseded_at IS NULL
+      //        AND (<alias>.valid_from IS NULL OR <alias>.valid_from <= $asOf)
+      //        AND (<alias>.valid_to   IS NULL OR <alias>.valid_to   >  $asOf)
+    cost: >-
+      The comment states a second time the as-of view: no supersession time, a validity start that is absent or on
+      or before the date, and a validity end that is absent or after it. The code holds the same fact in the
+      "Query (b) — valid-time travel" branch, and the node holds it too. The comment can drift from both.
+    kind: restates
+    correction: >-
+      Remove the prose. The code of the `opts.asOf !== undefined` branch holds the fact.
+    node: rules/knowledge-base/graph-read-as-of-view
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file builds only a SQL temporal fragment (`applyTemporalFilter`). It carries no authentication, routing
+      or health fact.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No intake, proposal or ingestion operation appears in the file. It holds only `applyTemporalFilter` and
+      `isValidIdentifier`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file takes `asOf` as an already-given string (`readonly asOf?: string`). It does not refuse a malformed
+      as-of date or hold any read operation's answer. The temporal semantics it applies belong to the candidates
+      rules/knowledge-base/graph-read-current-view, graph-read-as-of-view, graph-read-in-effect-only and
+      in-effect-assertion.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No fragment listing or query-parameter handling in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No run or affected-nodes logic in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No run or affected-nodes logic in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution logic in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file only reads and filters. It confirms no assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No provenance or chunk excerpt in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No provenance or compliance status in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or name-prefix matching in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search or expansion decision in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal handling in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No validity-start defaulting in the file. It only filters on `valid_from`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue or pagination in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue or total in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file filters link and attribute rows by time. It does not decide which reached nodes are expanded.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file filters link and attribute rows by time. It does not list reached nodes.
+looked_past: >-
+  The wording of rules/knowledge-base/expansion-current-view (expansion reaches links with "no validity end") differs from the helper's current branch (`valid_to IS NULL` and `superseded_at IS NULL`); whether a caller of this helper applies it to expansion lies outside the file set, so I judged nothing there, and the alias check's InvariantError message is code hygiene rather than a domain fact.
+candidates_opened:
+  - rules/knowledge-base/graph-read-current-view
+  - rules/knowledge-base/graph-read-as-of-view
+  - rules/knowledge-base/graph-read-in-effect-only
+  - rules/knowledge-base/in-effect-assertion
+  - rules/knowledge-base/current-assertion

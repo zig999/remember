@@ -1,0 +1,154 @@
+findings:
+  - file: src/modules/curation/mcp/error-envelope.ts
+    where: >-
+      ZOD_CUSTOM_CODE_PRIORITY (lines 22-31) and the loop in mapZodError that
+      returns the first listed code found among the issues (lines 70-79)
+    evidence: |-
+      const ZOD_CUSTOM_CODE_PRIORITY: readonly string[] = [
+        "BUSINESS_TARGET_NODE_REQUIRED",
+        "BUSINESS_REASON_REQUIRED",
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+        "BUSINESS_TEMPORAL_INCOHERENT",
+        "BUSINESS_CORRECTION_NO_CHANGES",
+        "BUSINESS_DATE_UNJUSTIFIED",
+      ];
+      for (const code of ZOD_CUSTOM_CODE_PRIORITY) {
+        if (seen.has(code)) {
+    cost: >-
+      When one curation request breaks several validation rules at once, this
+      list alone decides which refusal code and message the caller receives.
+      contracts/knowledge-base/curation names each refusal and its code but
+      never says which one wins when more than one applies. The next reader
+      will look for the order in the specification, will not find it, and will
+      take this array as the business decision.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether the order in which
+      simultaneous curation validation refusals are answered is a business
+      fact. If it is, it needs a node, in contracts/knowledge-base/curation or
+      a rule beside it. If it is not, it is a code choice and no node needs to
+      hold it.
+    node: contracts/knowledge-base/curation
+read:
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: nowhere
+    evidence: >-
+      The file only maps an already-raised issue to a code. It holds no
+      trimming or length check on a reason: `case "BUSINESS_REASON_REQUIRED":
+      return "reason is required for the requested operation";`.
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: nowhere
+    evidence: >-
+      No check on the number or uniqueness of item_ids. The only dispute
+      branches are `case "BUSINESS_DISPUTE_WINNER_REQUIRED"` and
+      `case "BUSINESS_DISPUTE_PERIODS_REQUIRED"`, which map messages for other
+      rules.
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file maps curation errors and does not authenticate or route. Its
+      422 fallback, `code: "VALIDATION_INVALID_FORMAT", message: "Request
+      payload failed validation.", details: { issues: ... }`, carries the
+      curation contract's details shape, not the bare list access names. The
+      503 and 500 answers are delegated to
+      `serviceUnavailableError()`/`internalError()` in shared/error-mapping.ts.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation or answer appears in the file. It imports only
+      the curation `service/errors.js` classes.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No retrieval operation or answer appears in the file. It maps curation
+      errors only.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter logic. Its only Zod handling
+      is `export function mapZodError(err: ZodError): MappedError`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic. It only declares
+      `mapErrorToHttpResponse` and `mapErrorToEnvelope`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic. It maps errors only.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window handling. It maps
+      errors only.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: The file has no chunking logic. It maps errors only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic. Its only concurrency
+      construct is `isPgUniqueViolation(err)` mapped to
+      BUSINESS_TEMPORAL_INCOHERENT.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation logic. It maps errors only, and contains no
+      BUSINESS_ITEM_NOT_UNCERTAIN branch.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: The file has no prompt construction. It maps errors only.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: The file has no prompt construction. It maps errors only.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: The file has no prompt construction. It maps errors only.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: The file has no graph read or provenance logic. It maps errors only.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: The file has no graph read or provenance logic. It maps errors only.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: The file has no metrics computation. It maps errors only.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: The file has no node listing or name-prefix logic. It maps errors only.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: The file has no search logic. It maps errors only.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: The file has no proposal or consolidation logic. It maps errors only.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal logic. It maps the message for
+      BUSINESS_DATE_UNJUSTIFIED and does not derive any validity start.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: The file has no review-queue paging. It maps errors only.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: The file has no review-queue counting. It maps errors only.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: The file has no speaker-line detection. It maps errors only.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: The file has no traversal logic. It maps errors only.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: The file has no traversal logic. It maps errors only.
+looked_past: >-
+  The curation error codes, statuses and messages the file emits agree with
+  contracts/knowledge-base/curation (for example "decision=merge_into requires
+  target_node_id" at 422, BUSINESS_SELF_MERGE_FORBIDDEN at 409, and the
+  duplicate-guard message), so they are behavior agreeing with the node and
+  no finding.
+candidates_opened:
+  - contracts/knowledge-base/curation

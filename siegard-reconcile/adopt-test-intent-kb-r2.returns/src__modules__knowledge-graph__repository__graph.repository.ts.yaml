@@ -1,0 +1,169 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment of listNodes, lines 71-75 ("Prefix lookup mechanics")
+    evidence: >-
+      We pass the already-normalized prefix as `$X` and compare with
+      `alias_norm LIKE $X || '%'`. The btree index on `alias_norm` supports
+      left-anchored LIKE under the default collation.
+    cost: >-
+      The prefix-match rule is described a second time in prose beside the
+      query that holds it. If the node moves, this comment keeps stating the
+      old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the prose. The `JOIN node_alias na ... LIKE $n || '%'` in
+      listNodes already holds the fact.
+    node: rules/knowledge-base/node-listing-name-prefix
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment of listProvenanceByTargets, lines 297-299 ("BR-16 excerpt computation")
+    evidence: >-
+      BR-16 excerpt computation: `substring(raw_chunk.text from offset_start + 1
+      for offset_end - offset_start)` — 1-based `substring`, 0-based
+      `[offset_start, offset_end)` offsets
+    cost: >-
+      The excerpt rule is stated a second time in prose. The `substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start)` expression in the same function holds it, so the comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The SQL in the same function holds the fact.
+    node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the comment inside fetchTraversalHop above the SQL, lines 411-413
+    evidence: >-
+      Excluded the `status = 'deleted'` rows explicitly here — a tombstoned link is never part of
+      the traversal envelope (UC-06 alt 3a).
+    cost: >-
+      The deleted-link exclusion is restated in prose beside the `AND kl.status <> 'deleted'` predicate that holds it. If the rule changes, the comment keeps asserting the old one.
+    kind: restates
+    correction: >-
+      Remove the prose. The `kl.status <> 'deleted'` predicate holds the fact.
+    node: rules/knowledge-base/traversal-skips-deleted-links
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment of walkLinkHistory, lines 431-446
+    evidence: >-
+      Walk the complete lineage chain anchored at `anchorId`. Issues one
+      recursive CTE that follows BOTH directions (up via `supersedes_*_id`,
+      down via reverse pointer). Returns each row at most once, ordered ASC
+      by `recorded_at` then `id` for deterministic output.
+    cost: >-
+      The history's membership and ordering are restated in prose beside the recursive CTE that holds them. A change to the node would leave this comment asserting the old shape.
+    kind: restates
+    correction: >-
+      Remove the prose. The `up` and `down` CTEs and the `ORDER BY recorded_at ASC, id ASC` hold the fact.
+    node: rules/knowledge-base/lineage-history
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds read queries only. It carries no authentication, routing or health answer, for example `findNodeById(client: PoolClient, nodeId: string)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file reads graph rows only. It carries no intake, proposal or extraction answer; the nearest construct is `listProvenanceByTargets`, a read.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file returns raw rows such as `Promise<ListNodesResult>`. It carries none of the contract's HTTP statuses, error codes or response envelopes, which belong to the service and route layers.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      There is no accepted-fragment listing in the file. The only listing is `listNodes`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no llm_run query. It reads `knowledge_node`, `node_alias`, `node_attribute_resolved`, `knowledge_link_resolved` and `provenance` only.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no llm_run affected-nodes listing. `findNodesByIds` is a plain batch read for traversal.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only reads `raw_chunk.text` and its offsets in the provenance query.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file is read-only. It takes no advisory lock and does no node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no write, confirmation or update statement. Every statement is a SELECT.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and reads no attribute-key valid values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      listProvenanceByTargets, the SQL projection of `excerpt`
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                                FOR rc.offset_end - rc.offset_start) AS excerpt
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      listProvenanceByTargets, the joins and WHERE clause, which apply no status predicate on raw_information
+    evidence: >-
+      JOIN raw_information ri    ON ri.id = rc.raw_information_id
+                WHERE ${targetCol} = ANY($1::uuid[])
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics or disputed-queue count.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      listNodes, the optional alias join on name_prefix_norm
+    evidence: >-
+      aliasJoin = `JOIN node_alias na ON na.node_id = kn.id
+                   AND na.alias_norm LIKE $${params.length} || '%'`;
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query. The nearest construct, `fetchTraversalHop`, is a traversal hop and not a search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file is read-only and has no consolidation or re-affirmation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file is read-only. It carries `valid_from_source` only as a column type in `LinkResolvedRow` and `AttributeResolvedRow`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. That belongs to the curation repository.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. Its only total is `count(DISTINCT kn.id)::int AS total` in `listNodes`, for the node listing and not the review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no speaker-line parsing or chunking.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      fetchTraversalHop takes `currentIds` from its caller and applies no node-status predicate. The only predicate it adds is `kl.status <> 'deleted'`, which is on links. Which reached nodes are expanded is decided in the service layer.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      findNodesByIds is a plain batch read that sets no node-status predicate, `WHERE kn.id = ANY($1::uuid[])`. Deciding which nodes the traversal lists, and excluding merged ones, is not done in this file.
+looked_past: >-
+  The comments citing BR numbers and use-case numbers, and the comment on BR-09 derived fields, were not filed. The ordering, uncertain-exclusion and deleted-link facts the code holds are governed by nodes outside the pack (node-listing order, node-read-excludes-uncertain-on-request, traversal-skips-deleted-links) and the code agrees with them.
+candidates_opened:
+  - rules/knowledge-base/lineage-history
+  - rules/knowledge-base/traversal-skips-deleted-links
+  - rules/knowledge-base/node-read-excludes-uncertain-on-request

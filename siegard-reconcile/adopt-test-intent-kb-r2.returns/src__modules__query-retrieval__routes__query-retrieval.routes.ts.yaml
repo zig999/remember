@@ -1,0 +1,183 @@
+findings:
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the comment block above the error mappers, lines 186-198
+    evidence: >-
+      BR-24 (knowledge-graph.back.md / query-retrieval.back.md): both REST and MCP
+      transports surface IDENTICAL error codes / messages for any thrown service
+      error. The classification core lives in
+      `backend/src/modules/knowledge-graph/mcp/error-envelope.ts`
+    cost: >-
+      The fact that the two transports answer alike is stated in prose here as well as in the node,
+      and the comment cites a back-spec rule number (BR-24) rather than the node. A reader who trusts
+      the comment has a second place that claims to say what the transports owe each other.
+      The comment goes stale silently if the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is the shared mapper
+      `mapErrorToHttpResponse` in src/modules/knowledge-graph/mcp/error-envelope.ts, which this file
+      calls from handleSearchError and handleProvenanceError. Removing the prose goes through the
+      comment route, followed by /reconcile over this file.
+    node: constraints/retrieval-transports-answer-alike
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the comment above the GET /fragments/accepted route, lines 157-163
+    evidence: >-
+      Lists `information_fragment` rows with `status = 'accepted'`
+      filtered by `llm_run_id` and/or `raw_information_id` (at least
+      one required).
+    cost: >-
+      The rule that an accepted-fragment listing must name a run, a raw information or both is
+      written a second time in prose in the route file. The enforcing code is elsewhere
+      (ListAcceptedFragmentsQuerySchema refine in dto/fragment.dto.ts), so a reader of this route
+      sees a claim and no enforcement.
+    kind: restates
+    correction: >-
+      Remove the sentence. The code holds the fact in src/modules/query-retrieval/dto/fragment.dto.ts:
+      `(v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined`.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/routes/query-retrieval.routes.ts
+    where: >-
+      the file header comment, lines 3-5
+    evidence: >-
+      The parent scope
+      // already enforces Neon Auth JWT (BR-01); individual handlers do NOT
+      // re-check the token.
+    cost: >-
+      The owner-authentication behavior is described in prose in a file that does not hold it. The
+      description cites BR-01 and not a node. It says the same thing as the access contract's
+      authenticate-owner operation.
+    kind: restates
+    correction: >-
+      Remove the sentence. The code that enforces it is the requireNeonAuth preHandler on the scope
+      into which src/app.ts mounts registerQueryRetrievalRoutes (app.ts line 266).
+    node: contracts/knowledge-base/access
+read:
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      handleSearchError and handleProvenanceError (lines 217-236), which delegate to the shared mapper
+      instead of building the envelope themselves
+    evidence: >-
+      const { statusCode, envelope } = mapErrorToHttpResponse(err);
+      return reply.status(statusCode).send(envelope);
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      No authentication, routing-error or health code appears in this file. The only mention of the
+      owner's authentication is the header comment "The parent scope already enforces Neon Auth JWT
+      (BR-01)". Failures such as a malformed request are left to the global handler ("ZodError ->
+      422 VALIDATION_INVALID_FORMAT via the global handler").
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file registers only the routes app.get("/search"), "/provenance/links/:link_id",
+      "/provenance/attributes/:attribute_id", "/provenance/fragments/:fragment_id" and
+      "/fragments/accepted". It has no ingestion, run or proposal route.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the five GET handlers, lines 59-183, whose success answer is
+      `reply.status(200).send({ ok: true, result: body })` for search, the three provenance reads and
+      the accepted-fragment listing. Error mapping goes through handleSearchError and
+      handleProvenanceError.
+    evidence: >-
+      app.get("/search", ...) / app.get("/provenance/links/:link_id", ...) /
+      app.get("/provenance/attributes/:attribute_id", ...) /
+      app.get("/provenance/fragments/:fragment_id", ...) / app.get("/fragments/accepted", ...)
+      each returning `reply.status(200).send({ ok: true, result: body })`. The file holds nothing for
+      the catalog listings, the node listing, or the graph reads.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The route only calls `ListAcceptedFragmentsQuerySchema.parse(request.query ?? {})`. The
+      refusal of an undefined parameter is not declared in this file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node logic appears in this file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node logic appears in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution code appears in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or excerpt computation appears in this file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read appears in this file. The provenance routes only call
+      getProvenanceByLinkService, getProvenanceByAttributeService and getProvenanceByFragmentService.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The route forwards `expand: query.expand` to searchKnowledgeService. Whether the graph is
+      walked is decided in the service.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation appears in this file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal or validity-start code appears in this file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in this file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No raw-information parsing appears in this file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal route appears in this file. Only the search `expand` options are forwarded.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal route appears in this file. Only the search `expand` options are forwarded.
+looked_past: >-
+  The comment "Tombstoned sources are silently omitted" above GET /fragments/accepted states a behavior of the accepted-fragments service, not of this file, so it was left to the judgment of that file.
+candidates_opened:
+  - rules/knowledge-base/listing-requires-a-filter
+  - rules/knowledge-base/compliance-deletion-tombstones

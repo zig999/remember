@@ -1,0 +1,142 @@
+findings:
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the doc comment above ReasonSchema, lines 12-19
+    evidence: >-
+      /** `reason` — non-empty after trim, ≤ 1000 chars (BR-01). ... `z.string().trim().min(1).max(1000)` runs `trim()` then checks the length AFTER the trim.
+    cost: >-
+      The reason's bounds are written a second time in prose, citing a back-spec rule (BR-01) rather than the node. The next reader can take the comment for where the bounds are decided. The code on line 20 carries them, so the comment can only drift from the node. It cannot be checked against it.
+    kind: restates
+    correction: >-
+      Remove the comment. `ReasonSchema = z.string().trim().min(1).max(1000)` already holds the bounds, and the node already states them.
+    node: rules/knowledge-base/compliance-deletion-reason-length
+  - file: src/modules/compliance-audit/dto/compliance-delete.dto.ts
+    where: >-
+      the doc comment above ListComplianceDeletionsQuerySchema, lines 74-79
+    evidence: >-
+      Time-range filters honor BR-09 (`from` inclusive, `to` exclusive). When both bounds are supplied, the parser rejects `from >= to` with `VALIDATION_OUT_OF_RANGE`.
+    cost: >-
+      The window-ordering rule is restated in prose, citing a back-spec rule (BR-09) rather than the node. The superRefine below it, `Date.parse(value.executed_from) >= Date.parse(value.executed_to)`, holds the ordering check, so the comment can only drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The superRefine in this file holds the ordering check, and the node states it.
+    node: rules/knowledge-base/audit-window-ordered
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only compliance DTO schemas, for example `export const UuidSchema = z.string().uuid();`. It carries no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares `ComplianceDeleteRequestSchema` and the listing schemas. It carries no ingestion operation or its refusals.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares compliance-deletion schemas only. It carries no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The only listing query is `ListComplianceDeletionsQuerySchema = z.object({ raw_information_id: ..., executed_from: ..., executed_to: ..., limit: ..., offset: ... })`. It concerns compliance deletions, not accepted fragments.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file's `ComplianceDeletionAffectedSchema` holds `chunks`, `fragments`, `links` and `attributes` counts. It has nothing about the affected nodes of an LLM run.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or node listing. Its only shapes are compliance-deletion DTOs.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      ListComplianceDeletionsQuerySchema, lines 80-98. Both `executed_from` and `executed_to` are `.optional()`, and the superRefine checks ordering only when both are present.
+    evidence: >-
+      executed_from: z.string().datetime({ offset: true }).optional(),
+      executed_to: z.string().datetime({ offset: true }).optional(), ... if (value.executed_from && value.executed_to) {
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking. Its `affected.chunks` is only a count: `chunks: z.number().int().min(0)`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node proposals or resolution. It declares only DTO schemas.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review. Its outcome enum is `z.enum(["deleted", "noop_already_deleted"])`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or attribute keys.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry. It declares only compliance-deletion DTOs.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file declares the compliance-deletion record shape, `ComplianceDeletionSchema`. It has no graph read or provenance visibility logic.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or name prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals, links or attributes consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The only paging in the file is `limit: z.coerce.number().int().min(1).max(100).default(50)` on the compliance-deletion listing. It has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue. `ComplianceDeletionListSchema` only types a `total` field.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no text parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The superRefine issue message is the bare string "VALIDATION_OUT_OF_RANGE", while the compliance-audit contract names the message "Time range bounds must satisfy `from < to`." Where the code is mapped to that message is another file's judgment. The comment's "`from` inclusive, `to` exclusive" half-open claim, which the audit-listing-window-half-open node holds, is carried by no code in this file.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit
+  - rules/knowledge-base/audit-page-defaults
+  - rules/knowledge-base/audit-window-ordered
+  - rules/knowledge-base/compliance-deletion-reason-length
+  - rules/knowledge-base/compliance-deletion-reason-trimmed
+  - rules/knowledge-base/audit-listing-window-half-open
+  - rules/knowledge-base/audit-filter-checks-order
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/affected-counts-non-negative
+  - domain/knowledge-base/compliance-deletion-filter
+  - domain/knowledge-base/compliance-deletion-outcome
+  - domain/knowledge-base/affected-counts
+  - domain/knowledge-base/compliance-deletion

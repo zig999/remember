@@ -1,0 +1,227 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the doc comment above sendError, lines 72-79
+    evidence: >-
+      "Unknown-error 500s are NOT re-thrown to the global handler here: the
+      shared mapper already produces the canonical SYSTEM_INTERNAL_ERROR /
+      SYSTEM_SERVICE_UNAVAILABLE envelopes byte-identical to what the global
+      handler would emit"
+    cost: >-
+      The comment is a second home for the access contract's answers to a failed request: 500
+      SYSTEM_INTERNAL_ERROR for any other cause, 503 SYSTEM_SERVICE_UNAVAILABLE for an unreachable
+      store. A reader who wants to know what the owner is told goes to this comment, not to
+      curation/mcp/error-envelope.ts where mapErrorToHttpResponse produces it, and the comment
+      does not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the prose. The answers are held by code in the imported mapErrorToHttpResponse
+      (curation/mcp/error-envelope.ts), which this file only calls.
+    node: contracts/knowledge-base/access
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the route path literals of every registration (app.get "/queue" at line 116, app.get
+      "/metrics" at line 137, app.post "/entity-matches/:node_id/resolve" at line 196,
+      "/nodes/merge" at line 222, "/disputes/resolve" at line 248, "/items/confirm" at line 272,
+      "/items/reject" at line 300, "/items/correct" at line 328) and the header comment
+      "Mounted under `/api/v1/curation/*`"
+    evidence: >-
+      app.post(
+        "/entity-matches/:node_id/resolve",
+        ...
+      app.post(
+        "/disputes/resolve",
+    cost: >-
+      The method-and-path under which each of the eight curation operations is served exists only
+      in this file. No node in the specification holds any route path (a search of the
+      specification root for these paths finds none). The next reader looks in the curation
+      contract for how an operation is reached and finds only the operation names.
+    kind: unstated
+    correction: >-
+      The curation contract, or a node it points to, would have to hold the address of each
+      operation. This is the analysis route's to decide, not this file's.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment block above the /metrics route (lines 126-135) and the comment inside its catch
+      (lines 152-153, 166-168)
+    evidence: >-
+      "ANY residual 500 outcome is re-mapped to 503 SYSTEM_SERVICE_UNAVAILABLE so the front spec
+      MetricsStrip (R1) can fall back to per-kind totals from /queue. 401 auth failures and 2xx
+      responses are NEVER degraded."
+    cost: >-
+      The comment restates the read-curation-metrics refusal (503 SYSTEM_SERVICE_UNAVAILABLE where
+      the metrics cannot be read), and adds a rationale and a 401/2xx exclusion that no node
+      states. The code holds the 500-to-503 re-map (`statusCode === 500 ? 503 : statusCode`), so
+      the pair conforms. The prose is a second home that a reader may take for the decision.
+    kind: restates
+    correction: >-
+      Remove the prose. The refusal is held by the catch branch of the /metrics handler in this
+      same file.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      the comment above the /metrics success reply, lines 145-149
+    evidence: >-
+      "Bare success body — consistent with every other curation REST endpoint
+      (queue/confirm/reject/...). The SPA's httpCuration returns the raw 2xx JSON, so an
+      `{ ok, result }` wrapper here would surface as all-undefined fields client-side"
+    cost: >-
+      The comment restates the contract's "HTTP 200 carrying, with no envelope" for the metrics
+      and the other curation answers. The code holds it (`return reply.status(200).send(result)`),
+      so the pair conforms. The comment is prose outside the running system.
+    kind: restates
+    correction: >-
+      Remove the prose. The envelope-free body is held by the reply.status(200).send(result)
+      calls in this file.
+    node: contracts/knowledge-base/curation
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file delegates every refusal to the shared mapper: `const { statusCode, envelope,
+      logLevel } = mapErrorToHttpResponse(err);` and `return reply.status(statusCode).send(envelope);`
+      Validation `.parse(...)` calls outside try/catch fall to the global handler. No
+      authentication, routing or health code is here; "handlers do NOT re-check the token" is a
+      comment only.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only curation routes (queue, metrics, entity-matches, nodes/merge,
+      disputes, items); it carries no ingestion operation.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only curation routes; no search, provenance, catalog listing or graph
+      read is here.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      No accepted-fragment listing exists in the file; the only query parse is
+      `ListReviewQueueQuerySchema.parse(request.query ?? {})`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no LLM run or affected-node code.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no LLM run or affected-node code.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking code.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal or node-resolution code; entity-match resolution is delegated to
+      `resolveEntityMatchService`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The confirm route only forwards: `await confirmItemService({ pool: deps.pool, logger:
+      deps.logger, catalog: deps.ingestionCatalog }, body)`. What confirmation changes is in the
+      service.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read or provenance code.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read or provenance code.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      The /metrics handler only calls `computeCurationMetricsService({ pool: deps.pool, logger:
+      deps.logger })` and sends its result. The count of disputed queue entries is computed in
+      the service.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search code.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal consolidation code.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal or validity-start code.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      The /queue handler only parses and forwards: `const query =
+      ListReviewQueueQuerySchema.parse(request.query ?? {}); const body = await
+      listReviewQueueService({ pool: deps.pool }, query);`. How the page windows the three row
+      sets is in the service and repository.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The /queue handler sends the service result unchanged: `return reply.status(200).send(body);`.
+      No total is counted here.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no text-parsing code.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal code.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal code.
+looked_past: >-
+  The pack omits contracts/knowledge-base/curation, the node that governs this file: the metrics
+  503 degradation, the envelope-free 200 bodies and the path validation before the body check all
+  conform to it, and the findings above name it. A header comment also claims the parent scope
+  enforces the Neon Auth JWT, with the code in another file, and the file's pino log messages
+  (curation_request_failed, curation_metrics_degraded) state no domain fact.
+candidates_opened:
+  - contracts/knowledge-base/curation

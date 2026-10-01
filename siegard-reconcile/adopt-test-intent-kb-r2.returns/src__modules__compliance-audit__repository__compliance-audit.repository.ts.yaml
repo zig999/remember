@@ -1,0 +1,222 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneRawInformation, lines 46-50 ("content_hash is intentionally left untouched (BR-04).")
+    evidence: >-
+      * content_hash is intentionally left untouched (BR-04).
+    cost: >-
+      The docstring states the node's fact a second time, outside any behavior. The UPDATE's SET list already
+      holds it, because it never names content_hash. The comment cites a back-spec rule number (BR-04), so the
+      next reader may take that document, and not the node, as the place where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the sentence by the comment route. The code in this file already holds the fact, so no behavior changes.
+    node: rules/knowledge-base/compliance-deletion-keeps-content-hash
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneRawInformation, lines 51-60 (the [REDACTED] literal and the BR-18 original_input CASE explanation)
+    evidence: >-
+      * The `[REDACTED]` literal is hardcoded — never read from config
+      * `original_input` is redacted in the SAME UPDATE statement using a
+      * CASE expression so null stays null
+    cost: >-
+      The docstring says a second time what the UPDATE does with `content = '[REDACTED]'` and
+      `original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END`. The prose also
+      gives a reason (an "audit-honest distinction") that no node holds. A reader who finds it here may
+      take it as the decided rule.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The SQL holds the fact. Any rationale for keeping null as null belongs in the node's decision log.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of tombstoneRawChunksOfRaw, lines 84-88
+    evidence: >-
+      * Spec UC-01 step 6 cascades BOTH
+      * `status = 'deleted'` and `superseded_at = now()`.
+    cost: >-
+      The prose restates the tombstone rule (status deleted plus the deletion moment as supersession time).
+      The UPDATE ... SET status = 'deleted', superseded_at = now() ... AND superseded_at IS NULL already
+      holds it. The same sentence is repeated for fragments at lines 109-110. The copies would drift from
+      the node if it moved.
+    kind: restates
+    correction: >-
+      Remove the sentences by the comment route (lines 87-88 and 109-110). The SQL in this file holds the fact.
+    node: rules/knowledge-base/compliance-deletion-tombstones
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstrings of tombstoneCascadedFragments, tombstoneCascadedLinks and tombstoneCascadedAttributes, lines 105-107, 139-141 and 174-176
+    evidence: >-
+      * BR-06 — tombstones every fragment whose `fragment_source` chain anchors
+      * ONLY chunks of the deleted raw. Cross-source fragments survive.
+    cost: >-
+      The cascade reach (only items resting on the deleted raw and on no other non-deleted raw) is said in
+      prose three times beside the `NOT EXISTS (... ri.id <> $1 AND ri.status <> 'deleted')` clauses that
+      hold it. The comments cite back-spec numbers (BR-06, BR-07), which points readers away from the node.
+    kind: restates
+    correction: >-
+      Remove the cascade-reach sentences by the comment route. The three NOT EXISTS clauses hold the fact.
+    node: rules/knowledge-base/compliance-deletion-propagates
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstrings of listComplianceDeletions (lines 306-309) and listCurationActions (lines 426-429)
+    evidence: >-
+      * UC-02 — list ComplianceDeletion rows newest-first with optional filters.
+      * BR-09: `executed_from` inclusive, `executed_to` exclusive (semi-open).
+    cost: >-
+      The docstrings restate the window rule (at or after the start, strictly before the end) that
+      `executed_at >= $n` / `executed_at < $n` and `created_at >= $n` / `created_at < $n` already hold.
+      A second home in prose can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the window sentences (BR-09 lines) by the comment route.
+    node: rules/knowledge-base/audit-listing-window-half-open
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstrings of listComplianceDeletions (line 307, "newest-first") and listCurationActions (line 427, "newest-first")
+    evidence: >-
+      * UC-02 — list ComplianceDeletion rows newest-first with optional filters.
+      * UC-04 — list CurationAction rows newest-first with optional filters.
+    cost: >-
+      The ordering rule is also said in prose. The `ORDER BY executed_at DESC` and `ORDER BY created_at DESC`
+      clauses already hold it, so the prose is a second home.
+    kind: restates
+    correction: >-
+      Remove "newest-first" from the two docstrings by the comment route.
+    node: rules/knowledge-base/audit-listing-order
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      docstring of insertCurationAction, lines 370-373
+    evidence: >-
+      * BR-08 — inserts the one CurationAction row per UC-01 `deleted` outcome.
+    cost: >-
+      The docstring says that a deleting compliance deletion records one curation action. This file only
+      inserts whatever row it is handed (`INSERT INTO curation_action (action, target_kind, target_id, payload, reason)`).
+      The kind compliance-delete, the target and the payload are chosen in another file. The sentence
+      therefore points at a service-side rule and not at anything this file holds.
+    kind: restates
+    correction: >-
+      Remove the sentence by the comment route. The caller that builds the row holds the fact.
+    node: rules/knowledge-base/compliance-deletion-records-curation-action
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file is a repository with no authentication, routing or health code; it only issues
+      `client.query(...)` calls such as `SELECT id, status FROM raw_information WHERE id = $1 FOR UPDATE`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No intake, proposal or extraction operation is carried here; the file only touches
+      raw_information/raw_chunk/information_fragment/knowledge_link/node_attribute for tombstoning.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance read, catalog or graph read is carried; the only reads are
+      `SELECT id, raw_information_id, reason, executed_at, affected FROM compliance_deletion` and the
+      curation_action equivalent.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing; ListComplianceDeletionsFilters declares only
+      raw_information_id, executed_from, executed_to, limit and offset.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes computation appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-nodes listing appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      listComplianceDeletions, lines 321-328: each bound is an independent optional branch
+    evidence: >-
+      if (f.executed_from) {
+          where.push(`executed_at >= $${i++}`);
+      if (f.executed_to) {
+          where.push(`executed_at < $${i++}`);
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never divides content into chunks; it only runs `UPDATE raw_chunk SET status = 'deleted', superseded_at = now()`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-name resolution appears in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No confirmation of an uncertain assertion appears; the only assertion writes are the deletion tombstones
+      `UPDATE knowledge_link AS kl SET status = 'deleted'`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or attribute key is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance and builds no excerpt; its provenance use is only inside the
+      `EXISTS (SELECT 1 FROM provenance p ...)` cascade predicates.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read. Its provenance joins select what to tombstone and do not filter any provenance entry out of a read.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics are computed; the curation_action reads return rows and a total count only.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or alias matching appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal handling or re-affirmation appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal or validity-start handling appears in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file; its only paging is `LIMIT $n OFFSET $n` over compliance_deletion and curation_action.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file; the only totals are `SELECT count(*)::int AS total FROM compliance_deletion` and its curation_action twin.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection or chunking appears in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No graph traversal appears in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No graph traversal appears in the file.
+looked_past: >-
+  The file's record shapes (ComplianceDeletionRow, CurationActionRow) and its listing paging are held by nodes outside the pack, such as audit-listing-total-before-pagination, and the code states them truly, so I filed nothing for them.
+candidates_opened:
+  - rules/knowledge-base/audit-listing-window-half-open
+  - rules/knowledge-base/audit-listing-order
+  - rules/knowledge-base/compliance-deletion-redacts-content
+  - rules/knowledge-base/compliance-deletion-tombstones
+  - rules/knowledge-base/compliance-deletion-propagates
+  - rules/knowledge-base/compliance-deletion-keeps-content-hash
+  - rules/knowledge-base/compliance-deletion-records-curation-action

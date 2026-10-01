@@ -1,0 +1,265 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the header comment, lines 4-32 (the list of branches of the decision)
+    evidence: |-
+      // Responsibility: given a fully-validated `propose_link` / `propose_attribute`
+      // call (5-layer validation already passed), look up the vigent row(s) under
+      // `SELECT ... FOR UPDATE` (A11) and decide between the five branches of
+      // §6.5:
+    cost: >-
+      The order of the five outcomes is described a second time in prose. A reader who finds it here
+      may take it for the decision. The decision is the order of the branches in consolidateLinkOnce
+      and consolidateAttributeOnce.
+    kind: restates
+    correction: >-
+      Remove the comment. consolidateLinkOnce and consolidateAttributeOnce hold the order.
+    node: rules/knowledge-base/consolidation-precedence
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring on SUCCESSION_MARKERS, line 82
+    evidence: |-
+      /** A textual succession marker — case-insensitive substring on any fragment. */
+    cost: >-
+      The docstring restates that the match ignores letter case. The nine-marker list and the lowercasing
+      sit in the code below it, so a reader may stop at the prose.
+    kind: restates
+    correction: >-
+      Remove the docstring. SUCCESSION_MARKERS and hasSuccessionSignal hold the fact.
+    node: rules/knowledge-base/succession-signal
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring on insertLinkProvenance and the docstring on promoteFragmentsToAccepted, lines 207-214 and 243-251
+    evidence: |-
+      * Creating a Provenance row is the §6.6 trigger that promotes each cited
+      * fragment `proposed -> accepted`, so each inserter follows the write with
+      * `promoteFragmentsToAccepted` in the same transaction.
+    cost: >-
+      The promotion rule is stated a second time in prose, beside the UPDATE with
+      `AND status = 'proposed'` that holds it. A reader may take the prose for the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. promoteFragmentsToAccepted holds the fact.
+    node: rules/knowledge-base/provenance-accepts-proposed-fragment
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring on closeVigentForSuccession, lines 266-278
+    evidence: |-
+      * `valid_to = closeDate` (the new version's `valid_from`, or `today` when the
+      * new row has none) and LEAVE `superseded_at = NULL`.
+    cost: >-
+      The closing date is described a second time in prose. The SQL CASE in closeVigentForSuccession holds it.
+    kind: restates
+    correction: >-
+      Remove the prose. The SQL and the closeDate argument hold the closing date.
+    node: rules/knowledge-base/succession-closing-date
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the intra-day collapse paragraph of the docstring on closeVigentForSuccession, lines 279-288
+    evidence: |-
+      * EXCEPTION — intra-day collapse: validity is day-granular (`date`, §5.1) and
+      * `valid_from < valid_to` is strict (CHECK + temporal.ts). When the vigent row's
+      * own `valid_from` is on/after `closeDate` (a same-effective-date succession),
+    cost: >-
+      The exception is stated a second time in prose. The `WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr}`
+      branches of the SQL hold it.
+    kind: restates
+    correction: >-
+      Remove the prose. The CASE expressions hold the fact.
+    node: rules/knowledge-base/succession-before-previous-start
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring on consolidateLink, lines 420-435
+    evidence: |-
+      * `ValidationFailure('SYSTEM_INTERNAL_ERROR')` per BR-25 / BR-27.
+    cost: >-
+      The docstring describes the retry-once rule and its refusal in prose. The `attempt <= 2` loop and the
+      ValidationFailure thrown on attempt 2 hold the rule, and consolidateAttribute repeats the same code.
+    kind: restates
+    correction: >-
+      Remove the prose. The retry loops in consolidateLink and consolidateAttribute hold the fact.
+    node: rules/knowledge-base/consolidation-race-refuses-second-collision
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the comment on branch (a) in consolidateLinkOnce, lines 530-548
+    evidence: |-
+      //     For MULTI-CURRENT types (`functional === false`): `valid_from`
+      //     equality is NOT required.
+    cost: >-
+      The node's condition (same target, change hint none, same validity start except for a link of a
+      multi-current type) is restated in prose and cites v7 §18. The `reaffirmation` const holds the condition,
+      so a reader may stop at the prose.
+    kind: restates
+    correction: >-
+      Remove the comment. The `reaffirmation` const and the attribute condition in consolidateAttributeOnce hold the fact.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the comment on branch (b) in consolidateLinkOnce, lines 558-561
+    evidence: |-
+      // (b) Correction — change_hint='correction' AND errata signal already
+      //     verified by validateTemporal. Same period preserved on the old
+      //     row (valid_to UNCHANGED) per §6.5-B; only mark superseded_at /
+    cost: >-
+      The correction rule is restated in prose. The UPDATE that sets only `superseded_at` and `status`, and the
+      insert with supersedes_link_id, hold the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The correction branches hold the fact.
+    node: rules/knowledge-base/correction-replaces
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the comment on branch (d) in consolidateLinkOnce, lines 616-618 and 631-632
+    evidence: |-
+      // (d) Dispute — functional vigent row exists with overlapping
+      //     period, different value, no succession / correction signal.
+    cost: >-
+      The dispute rule is restated in prose. The `UPDATE ... SET status = 'disputed'` and the insert with status
+      "disputed" and no supersedes link hold the rule, and the attribute branch repeats them.
+    kind: restates
+    correction: >-
+      Remove the comment. The dispute branches hold the fact.
+    node: rules/knowledge-base/conflict-disputes
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. It imports only `PoolClient`, the catalog row
+      types, `ValidationFailure` and `RunContext`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the throws in consolidateLink and consolidateAttribute on the second dup-guard collision, which carry the
+      refusal that propose-link and propose-attribute answer
+    evidence: |-
+      throw new ValidationFailure(
+        "SYSTEM_INTERNAL_ERROR",
+        "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
+        { scope: "knowledge_link" }
+      );
+      and the same message with { scope: "node_attribute" }. The outcomes consolidated, accepted,
+      superseded_previous and disputed are returned by consolidateLinkOnce and consolidateAttributeOnce.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only writes consolidated rows (INSERT/UPDATE on knowledge_link, node_attribute, provenance,
+      information_fragment). It reads nothing for search, provenance, listings or traversal.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing and no query parameter. It has no accepted-fragment listing.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file returns outcomes with link_id or attribute_id and does not derive a run's affected nodes. The
+      outcome set ConsolidateOutcome is "accepted" | "consolidated" | "superseded_previous" | "disputed".
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not list a run's affected nodes. No code looks up a node's presence for such a list.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no compliance-deletion listing. No execution-window filter appears in it.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk content. It only receives fragment ids.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file does not resolve node names or aliases. Its locks are `FOR UPDATE` on vigent link and attribute rows.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file does not confirm uncertain assertions. Its status writes are `'superseded'::assertion_status` and
+      `'disputed'::assertion_status`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only receives `AttributeKeyRow` for `allows_multiple_current`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file orders no allowed values. It builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no chunk text and reads no provenance for display. Its provenance statements are INSERT
+      statements.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file serves no graph read. It filters no provenance by compliance status.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file counts nothing for curation metrics. It sets rows to 'disputed' and does not count them.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file holds no node listing and no alias matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file holds no search and no graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      the `reaffirmation` const of consolidateLinkOnce and the branch (a) condition of consolidateAttributeOnce
+    evidence: |-
+      const reaffirmation =
+        sameTarget &&
+        args.change_hint === "none" &&
+        (!functional || sameValidFrom);
+      and for attributes
+      if (
+        sameValue &&
+        sameValidFrom &&
+        args.change_hint === "none"
+      ) {
+        await insertAttributeProvenance(client, vigent.id, args.fragment_ids);
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file never derives valid_from or a basis. It inserts args.valid_from and args.valid_from_basis as
+      given: `args.valid_from, args.valid_to, ... args.valid_from_basis`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue listing and no limit or offset.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue listing and no total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file parses no source text. It handles no speaker lines or time stamps.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does not traverse the graph. It reads only the vigent rows of one scope under lock.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does not traverse the graph and lists no reached nodes.
+looked_past: >-
+  The file's behavior is held by nodes outside the pack that I opened and found agreeing (consolidation-precedence, correction-replaces, conflict-disputes, succession-signal, succession-closes-previous, succession-closing-date, succession-before-previous-start, provenance-accepts-proposed-fragment, consolidation-race-refuses-second-collision). Two comments make claims no node holds: a "SPEC DIVERGENCE" note on `status='corrected'`, and a remark that a different valid_from on a multi-valued attribute is "coexistence". The second is prose and sits against one-current-attribute-per-value; it is the comment route's, not a finding here.
+candidates_opened:
+  - rules/knowledge-base/succession-signal
+  - rules/knowledge-base/succession-closing-date
+  - rules/knowledge-base/succession-closes-previous
+  - rules/knowledge-base/succession-before-previous-start
+  - rules/knowledge-base/correction-replaces
+  - rules/knowledge-base/conflict-disputes
+  - rules/knowledge-base/consolidation-precedence
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/provenance-accepts-proposed-fragment
+  - rules/knowledge-base/one-current-attribute-per-value
+  - rules/knowledge-base/one-current-link-per-target
+  - rules/knowledge-base/consolidation-race-refuses-second-collision
+  - rules/knowledge-base/link-provenance-once-per-fragment
+  - rules/knowledge-base/one-current-attribute-per-functional-key

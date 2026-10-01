@@ -1,0 +1,135 @@
+findings:
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      getLlmRunById, lines 97-119 (the BR-33 comment block and the try/catch around deriveAffectedNodes)
+    evidence: >-
+      "} catch {
+              // Best-effort — omit the field on a transient read failure; the
+              // caller can re-derive on the next poll.
+              affectedNodes = undefined;
+            }"
+    cost: >-
+      The code answers a completed run without its affected nodes whenever the derivation read fails, and the run is still returned as a successful read. No node states this degraded answer. The read-llm-run contract promises the affected nodes "when it is completed", and the rule affected-nodes-only-when-completed only limits when they are listed. A reader of the specification would expect a failed derivation to be refused. A caller cannot tell an omitted field from a run that has no affected nodes, because an empty list is also a valid completed-run payload.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide what read-llm-run answers for a completed run whose affected nodes cannot be derived, and give that decision a node. The likely home is contracts/knowledge-base/ingestion or a new rule beside affected-nodes-only-when-completed.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      getLlmRunById, comment at lines 97-102 ("BR-33 — attach `affected_nodes` ONLY when the run is `completed`...")
+    evidence: >-
+      "// BR-33 — attach `affected_nodes` ONLY when the run is `completed`. The
+        // field is the snapshot of the run at completion; a `running` or `failed`
+        // run does not surface a partial list."
+    cost: >-
+      The comment is prose that restates a rule a node holds. The same file holds the rule in code at `if (row.status === "completed") {`, so the pair conforms. The prose is a second home that can drift from the node and that `--check` does not follow. The comment at lines 254-256 is a similar second home; it restates the omission of the key and the preservation of an empty list.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch on `row.status === "completed"` already holds the fact.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. Its only HTTP-related code is the error classes' `statusCode = 409`, which belong to the ingestion contract's refusals.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      getLlmRunById (read-llm-run), listToolCallsByLlmRun (list-tool-calls), retryLlmRun with RunNotRetryableError (retry-llm-run), RunNotRunningError (the propose-* BUSINESS_RUN_NOT_RUNNING refusal), listRecentIngestions (list-recent-ingestions), toLlmRunResponse and toToolCallResponse (the response fields). The 80-character preview comes from the repository's findRecentIngestions, not from this file.
+    evidence: >-
+      "if (row === null) { throw new ResourceNotFoundError("llm_run", llmRunId); }"; "if (existing.status !== "failed") { throw new RunNotRetryableError(llmRunId, existing.status); }"; "return { total, limit: args.limit, offset: args.offset, items: rows.map(toToolCallResponse), };"; "readonly code = "BUSINESS_RUN_NOT_RUNNING" as const;"
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance, catalog or graph read. The nearest read is getLlmRunById, which belongs to the ingestion contract.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and parses no query parameters.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only calls `deriveAffectedNodes(client, llmRunId)` and gives the nodes back. The rule of which nodes count is not in this file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only calls `getCachedAffectedNodes` and `setCachedAffectedNodes`. It never checks whether a node is still held.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only lists and reads runs and tool calls.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file takes no proposals and resolves no node names.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no provenance entries or chunk excerpts.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no compliance-status handling.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file consolidates no proposals and re-affirms no assertions.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file handles no validity starts, no document date and no `received` basis.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue. Its only paging is the tool-call listing's `limit` and `offset`, which it passes through.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no parsing of speaker lines.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  Other comments in the file also restate rules, such as the 404-versus-409 ordering note on retryLlmRun and the RunNotRunningError docblock, but the code that holds them sits in other files this pass does not scan. One branch in retryLlmRun, which names status "running" while the refreshed status is "failed", is an unreachable defensive path that belongs to a code review.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-only-when-completed

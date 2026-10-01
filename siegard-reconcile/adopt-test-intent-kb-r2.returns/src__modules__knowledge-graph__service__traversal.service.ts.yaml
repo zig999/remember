@@ -1,0 +1,224 @@
+findings:
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 7-8, above assertDepth() at line 341
+    evidence: >-
+      //   - `depth ∈ [1, 3]`; out-of-range -> `InvalidTraverseDepthError`
+      //     (BR-05).
+    cost: >-
+      The depth bounds are written a second time in prose. The bounds are enforced by assertDepth() and the TRAVERSAL_DEPTH_MIN and TRAVERSAL_DEPTH_MAX constants imported from ../traversal/config.js. If the node moves, the comment keeps the old range and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the code of assertDepth() in this file and by the constants in ../traversal/config.js.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 9-10, above the direction branches at lines 190-209
+    evidence: >-
+      //   - `direction = both` decomposes into two independent BFS halves
+      //     (outbound + inbound) merged by `link.id` after dedup (BR-22).
+    cost: >-
+      Prose repeats how a traversal follows links by direction. The same rule is implemented by the `input.direction === "out" || ... "both"` branches. A change to the node would leave the comment stale and no check would reach it.
+    kind: restates
+    correction: >-
+      Remove the comment. The branches at lines 190-209 hold the fact.
+    node: rules/knowledge-base/traversal-direction
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment, line 11, above the scoring at line 245
+    evidence: >-
+      //   - Score = `TRAVERSAL_DECAY ** hop` (BR-14).
+    cost: >-
+      The scoring formula is stated again in prose. The formula is held by `const score = Math.pow(TRAVERSAL_DECAY, hop);`, and its base by the constant in ../traversal/config.js. If the node changes, the comment stays behind.
+    kind: restates
+    correction: >-
+      Remove the comment. The line 245 statement holds the formula.
+    node: rules/knowledge-base/traversal-link-score
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment lines 12-14, and the comment at lines 232-236 above buildMergedSubstitution()
+    evidence: >-
+      //   - Merged endpoints are substituted to their survivor BEFORE being
+      //     added to the response or enqueued for further expansion
+      //     (BR-13).
+    cost: >-
+      The merged-end substitution rule is written in prose in two places. Code holds it in buildMergedSubstitution() and in the `substitution.get(row.source_node_id) ?? row.source_node_id` lines. A change to the node would leave both comments describing the old behavior.
+    kind: restates
+    correction: >-
+      Remove both comments. buildMergedSubstitution() and the substitution applied to each hop link hold the fact.
+    node: rules/knowledge-base/traversal-substitutes-merged-ends
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment line 14, and the comments at lines 280-283 and 292 in the next-frontier loop
+    evidence: >-
+      //     (BR-13). Merged nodes themselves are NEVER expanded.
+      ... if (row.status === "merged") continue; // defensive — survivor is the one we follow
+    cost: >-
+      Prose states the expansion exclusion that the `deleted` and `merged` `continue` checks in the nextFrontier loop already enforce. The prose is a second home that nothing reads, so it can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the comments. The status checks at lines 291-292 hold the fact.
+    node: rules/knowledge-base/traversal-expands-live-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      header comment line 15, and the comments at lines 171-174 and 320-325 around the node accumulation and the final node list
+    evidence: >-
+      //   - The starting node is included in the result `nodes` list.
+    cost: >-
+      Prose repeats which nodes a traversal lists. The seeding with findNodesByIds and the `visitedNodeIds` loop that skips only merged rows hold the fact. The comment at lines 320-325 also gives a rationale ("Deleted nodes were never enqueued...") that no node holds. A reader trusting it would not look at the code.
+    kind: restates
+    correction: >-
+      Remove the comments. The seeding at lines 175-178 and the finalNodes loop at lines 326-332 hold the fact.
+    node: rules/knowledge-base/traversal-lists-reached-nodes
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      JSDoc of traverseNodeService, lines 77-78, above the merged starting-node resolution at lines 99-111
+    evidence: >-
+      * On a `merged` starting node, the result substitutes the survivor as
+      * the starting node id (BR-13) — the response includes the survivor in `nodes`.
+    cost: >-
+      The merged-start rule is restated in a docstring. The branch `starting.status === "merged" && starting.merged_into_node_id !== null` with the survivor `!== "deleted"` check holds it. The docstring omits the held-and-not-deleted condition, so it can mislead a reader.
+    kind: restates
+    correction: >-
+      Remove the docstring paragraph. The branch at lines 103-111 holds the fact.
+    node: rules/knowledge-base/traversal-merged-start
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment at lines 250-254, above isSubstitutionInducedSelfLoop
+    evidence: >-
+      // Skip self-edges that emerged purely because of merged substitution
+      // (both endpoints collapsed to the same survivor)
+    cost: >-
+      The rule for dropping links collapsed by merge substitution is written again in prose. `sourceId === targetId && row.source_node_id !== row.target_node_id` holds it. The comment would stay stale if the node changed.
+    kind: restates
+    correction: >-
+      Remove the comment. The isSubstitutionInducedSelfLoop test holds the fact.
+    node: rules/knowledge-base/traversal-drops-merge-self-loops
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment at lines 259-261, above the linksById.has check
+    evidence: >-
+      // Dedup links by underlying knowledge_link.id (BR-22). Keep the
+      // SMALLEST hop number seen so far (BFS guarantees the first sight is
+      // the minimum hop), so we only insert on first encounter.
+    cost: >-
+      The show-each-link-once-at-its-first-hop rule is restated in prose. `if (linksById.has(row.id)) continue;` holds it. The comment would stay stale if the node changed.
+    kind: restates
+    correction: >-
+      Remove the comment. The linksById.has guard holds the fact.
+    node: rules/knowledge-base/traversal-link-once
+read:
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      the node seeding at lines 175-178 and the finalNodes loop at lines 326-332 of traverseNodes()
+    evidence: >-
+      for (const id of visitedNodeIds) { const row = nodesById.get(id); if (row === undefined) continue; if (row.status === "merged") continue; finalNodes.push(row); }
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      the file carries no authentication, routing or health logic; it has no `Authorization`, `AUTH_` or `health` construct
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      the file carries no intake, proposal or ingestion operation; its only entry points are traverseNodeService and traverseNodes
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the traverse operation only: the return of traverseNodeService (lines 126-130) and the throws of InvalidTraverseDepthError, UnknownLinkTypeError, ResourceNotFoundError and NodeDeletedError. The error codes and messages live in ./errors.js, not here.
+    evidence: >-
+      return { starting_node_id: startingResolved.id, nodes: result.nodes.map(toNodeSummary), links: result.links.slice(), };
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      the file has no fragment listing; it reads only knowledge nodes, links and link provenance
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      the file has no LLM run or affected-nodes logic
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      the file has no LLM run or affected-nodes logic
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      the file has no compliance-deletion listing
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      the file does no chunking
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      the file does no node resolution or proposal handling
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      the file does no assertion review
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      the file builds no extraction prompt
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      the file builds no extraction prompt
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      the file builds no extraction prompt
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      the file only fetches provenance rows with `listProvenanceByTargets(client, "link", linkIds)` and groups them with groupProvenance; the excerpt is built elsewhere
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      the file applies no compliance filter to the rows it gets from `listProvenanceByTargets`; it passes them on through groupProvenance
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      the file has no curation metrics
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      the file has no node listing or name-prefix filter
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      the file has no search logic; it exposes traverseNodes for the search caller but decides nothing about search expansion
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      the file does no proposal consolidation
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      the file does no proposal validity handling
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      the file has no review queue
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      the file has no review queue
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      the file does no content parsing
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      the next-frontier loop at lines 284-294 of traverseNodes()
+    evidence: >-
+      if (row.status === "deleted") continue; if (row.status === "merged") continue; nextFrontier.push(substituted);
+looked_past: >-
+  The logger.warn "knowledge_graph_empty_provenance" line is a log line and the file's hard-coded `route` string, not a finding of this judgment. The behavior it logs, a link with no provenance still being shown with an empty list, is held by rules/knowledge-base/graph-read-shows-empty-provenance.
+candidates_opened:
+  - rules/knowledge-base/traversal-drops-merge-self-loops
+  - rules/knowledge-base/traversal-link-once
+  - rules/knowledge-base/traversal-link-score
+  - rules/knowledge-base/traversal-merged-start
+  - rules/knowledge-base/traversal-substitutes-merged-ends
+  - rules/knowledge-base/traversal-direction
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/traversal-expands-live-nodes

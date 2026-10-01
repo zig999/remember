@@ -1,0 +1,119 @@
+findings:
+  - file: src/shared/health.ts
+    where: >-
+      the docstring above collectHealth, lines 18-23
+    evidence: >-
+      Never
+      throws — a DB failure surfaces as `{ ok: false, database: "unreachable" }`
+      so callers always get a usable report (the BFF answering at all proves it is
+      running; the `database` field reports the dependency separately).
+    cost: >-
+      The docstring states the read-health answer a second time (ok false and database "unreachable" when the store does not answer) in prose no running system emits. The catch branch in this same file already holds that answer. Prose that restates a node's fact can drift from the node unnoticed, and the next reader may treat it as the place the rule was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring prose. The fact stays held by the HealthReport shape and the try/catch in collectHealth in this file, and by the node.
+    node: contracts/knowledge-base/access
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      HealthReport interface (lines 11-16) and the two return literals in collectHealth (try branch lines 28-33, catch branch lines 35-40). Only the read-health operation is carried by this file. authenticate-owner and route-request are nowhere here.
+    evidence: >-
+      export interface HealthReport { ok: boolean; service: "remember-bff"; database: "ok" | "unreachable"; checked_at: string; } and, in the try branch after `await pingDatabase(pool);`, `return { ok: true, service: "remember-bff", database: "ok", checked_at: checkedAt }`, with `database: "unreachable"` and `ok: false` in the catch. checkedAt is `new Date().toISOString()`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds only HealthReport and collectHealth. It has no intake, run, proposal or ingestion logic.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds only HealthReport and collectHealth. It has no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments and no query parameter handling. It contains only `export async function collectHealth(pool: Pool): Promise<HealthReport>`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or proposal handling. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run or affected-node listing. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window filter. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking code. It imports only `Pool` and `pingDatabase`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or proposal handling. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts nothing. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or name prefix matching. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or validity start handling. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing or pagination. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line pattern or text parsing. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal code. It contains only the health probe collectHealth.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal code. It contains only the health probe collectHealth.
+looked_past: >-
+  The header comment and the HealthReport JSDoc name the callers (GET /health in app.ts and the health MCP tool) and the import-cycle reason. I saw them and did not report them: the callers' code lies outside the file set, so I could not check the claim, and the cycle rationale is a design note, not a domain fact.

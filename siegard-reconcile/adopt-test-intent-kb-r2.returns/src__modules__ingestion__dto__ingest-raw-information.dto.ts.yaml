@@ -1,0 +1,165 @@
+findings:
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the JSDoc of IngestRawInformationRequestSchema, the `content` bullet (lines 16-18)
+    evidence: >-
+      - `content`: minLength 1 (empty document is meaningless), maxLength 10 MiB
+         in code points — the Fastify `bodyLimit` of 11 MiB on the route is a
+         coarser pre-filter; this Zod check is the precise contract from A5.
+    cost: >-
+      The bounds of content are restated in prose as "10 MiB in code points". The node counts UTF-16 code units, and the `z.string().min(1)...max(10 * 1024 * 1024)` on `content` also counts UTF-16 code units. A reader who trusts the comment will believe the limit is in code points, and a reader who looks in the specification finds a different unit. The 11 MiB `bodyLimit` it cites is a fact the specification does not hold and this file does not hold in code either.
+    kind: restates
+    correction: >-
+      Remove the `content` bullet. The code in this file already holds the bound, and the node holds the fact.
+    node: rules/knowledge-base/content-length
+  - file: src/modules/ingestion/dto/ingest-raw-information.dto.ts
+    where: >-
+      the JSDoc above the `original_input` field (lines 35-39)
+    evidence: >-
+      Never
+         * factored into `content_hash`. Capped at 10 MiB to match `content`.
+    cost: >-
+      The cap on original_input is restated in prose while the same schema enforces it with `.max(10 * 1024 * 1024, "original_input must not exceed 10 MiB")`. A change to the node would leave this sentence and the error message stale together.
+    kind: restates
+    correction: >-
+      Remove the sentence. The `.max(...)` in this file holds the cap, and the node holds the fact.
+    node: rules/knowledge-base/original-input-length
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      ChunkRefSchema (lines 56-61), a partial shape of the chunk: identity, chunk_index, offset_start and offset_end.
+    evidence: >-
+      export const ChunkRefSchema = z.object({
+        id: z.string().uuid(),
+        chunk_index: z.number().int().nonnegative(),
+        offset_start: z.number().int().nonnegative(),
+        offset_end: z.number().int().positive(),
+      });
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestRawInformationRequestSchema (lines 25-45), a partial shape of the raw information: source_type, content, storage_ref, metadata, original_input.
+    evidence: >-
+      source_type: SourceTypeSchema,
+        content: z
+          .string()
+          .min(1, "content must not be empty")
+          .max(10 * 1024 * 1024, "content must not exceed 10 MiB"),
+        storage_ref: z.string().nullable().optional(),
+        metadata: z.record(z.string(), z.unknown()).default({}),
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only the intake request and response schemas. It holds no authentication, routing or health answer: `export const IngestRawInformationRequestSchema = z.object({`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The ingest-raw-information operation only: IngestRawInformationRequestSchema (lines 25-45) for the request and its content, original-input, source-type and model/prompt-version refusals, and IngestOutcomeSchema with IngestRawInformationResponseSchema (lines 52-73) for the accepted answer. The other operations of the contract are not in this file.
+    evidence: >-
+      export const IngestOutcomeSchema = z.enum(["created", "noop_existing"]);
+      ...
+      raw_information_id: z.string().uuid(),
+        content_hash: z.string().regex(/^[0-9a-f]{64}$/),
+        chunk_count: z.number().int().positive(),
+        chunks: z.array(ChunkRefSchema),
+        llm_run_id: z.string().uuid(),
+        idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+      ...
+      model: z.string().min(1, "model is required"),
+        prompt_version: z.string().min(1, "prompt_version is required"),
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds only intake DTOs, with no search, provenance, catalog or graph-read schema: `export type IngestRawInformationResponse = z.infer<`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no accepted-fragment listing parameters.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no affected-nodes computation.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no affected-nodes listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no compliance-deletion listing window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only describes a chunk reference, `ChunkRefSchema`, and holds no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no proposal or node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no assertion review.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no graph provenance read.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no graph provenance read.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no proposal consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no validity-start handling. `metadata` is `z.record(z.string(), z.unknown()).default({})`, and nothing reads `document_date` from it.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no speaker-line recognition.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file declares only intake schemas and no traversal.
+looked_past: >-
+  Two comments state facts that no code in this file carries and no node holds: "`storage_ref`: nullable; must be `null` in v1.0.0 (BR carve-out, A5)", and that `metadata.document_date` "is consumed by future temporal validation". The schema accepts any nullable string for storage_ref and nothing consumes document_date, so both are prose, not findings, and their route is the comment route.
+candidates_opened:
+  - rules/knowledge-base/content-length
+  - rules/knowledge-base/original-input-length
+  - domain/knowledge-base/source-type

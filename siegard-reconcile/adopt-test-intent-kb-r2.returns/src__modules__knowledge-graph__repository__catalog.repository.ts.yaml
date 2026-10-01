@@ -1,0 +1,153 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/catalog.repository.ts
+    where: >-
+      the docstring above listAttributeValidValues, lines 157-161
+    evidence: >-
+      "Keys with no rows here have an OPEN domain and get no `valid_values`."
+    cost: >-
+      The docstring is a second home outside behavior for the retrieval contract's list-attribute-keys
+      statement that `valid_values` appears "only for a key the catalog closes". The code that holds it
+      is in another file, so a reader of this repository finds a rule that nothing here applies.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The fact stays held by the conditional in
+      catalog.service.ts that attaches `valid_values` only when a key has rows.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only runs SELECTs over node_type, link_type, link_type_rule, attribute_key and
+      attribute_valid_value. It holds no authentication, routing or health behavior.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file reads catalog tables only (`FROM node_type`, `FROM link_type`, `FROM attribute_key ak`).
+      It holds no intake, proposal or run behavior.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The column lists of listNodeTypes, listLinkTypes, listLinkTypeRules and listAttributeKeys. They
+      select the fields the list-node-types, list-link-types and list-attribute-keys answers carry,
+      and listAttributeValidValues supplies the closed-set rows. The file holds no refusals, no
+      envelope and no date formatting.
+    evidence: >-
+      `SELECT id, name, label, description, inverse_name, is_temporal, allows_multiple_current,
+      requires_valid_from, requires_valid_to_on_change, version FROM link_type`;
+      `src.name AS source_node_type, tgt.name AS target_node_type, r.valid_from, r.valid_to`;
+      `ak.requires_valid_from, ak.description, ak.version FROM attribute_key ak`
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no fragment listing. It only reads catalog tables.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run or proposal query. Every query targets a catalog table.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run or affected-node query.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no chunking. It reads catalog tables only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node resolution, alias handling or locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion review. It only runs SELECTs.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file supplies closed-value rows (`FROM attribute_valid_value avv`) but builds no extraction
+      prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt. `ORDER BY avv.attribute_key_id, avv.value ASC` orders catalog rows
+      by the database's own collation, which is not the prompt's string order.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt. It selects `avv.value` as stored.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no provenance or chunk query.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no provenance query or compliance status filter.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node listing and no alias or prefix matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal handling.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only selects `requires_valid_from` as a flag. It applies no start-date fallback.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue and no pagination.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue and no counts.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no text parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph traversal.
+looked_past: >-
+  The fixed ORDER BY clauses on the listings, the unused listLinkTypeRuleRows and the "kept here only to placate downstream unused-import checks" re-export are ordering and code-quality matters, not a domain fact the nodes govern, and the back-spec citations (BR-03, BR-30) are prose naming no node.

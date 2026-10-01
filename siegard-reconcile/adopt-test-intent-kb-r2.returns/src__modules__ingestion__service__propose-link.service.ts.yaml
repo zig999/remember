@@ -1,0 +1,163 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      Layer 4 (Confidence) returning before Layer 5 (Anti-hallucination), lines 167-194
+    evidence: >-
+      const route = routeConfidence(args.confidence);
+      if (route.kind === "below_floor") { ... return { ok: true, result }; }
+      // ---- Layer 5: Anti-hallucination ----
+      const anchored = await countFragmentsAnchoredToSource(client, {
+    cost: >-
+      A below-floor proposal that cites fragments not drawn from the run's source
+      gets outcome rejected with reason BELOW_CONFIDENCE_FLOOR, and the anchoring
+      refusal (VALIDATION_INVALID_FORMAT naming the fragments) is never raised.
+      The same proposal at or above the floor is refused. No node states which
+      answer takes precedence when both apply. The order lives only in this
+      file's sequence of awaits, so the next reader looks for it in the
+      specification and does not find it.
+    kind: unstated
+    correction: >-
+      The ingestion contract, or the rules cited-fragments-anchored and
+      below-confidence-floor-records-nothing, would have to state whether the
+      anchoring refusal or the below-floor result is answered first.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, layer 4 line (line 13) and the paragraph at lines 17-19
+    evidence: >-
+      //   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+    cost: >-
+      The 0.40 floor is restated in prose in a file the node is not bound to for
+      it. The running code holds it in src/modules/ingestion/validation/confidence.ts
+      (`CONFIDENCE_FLOOR = 0.4`, `routeConfidence`), so if the node's number
+      moves, this comment keeps saying the old one.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the node already holds the fact.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      Layer 3 comment (lines 139-142) and the consolidator-args comment (lines 206-208)
+    evidence: >-
+      // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The fallback rule for a required validity start is restated in prose here.
+      The code that holds it is src/modules/ingestion/validation/temporal.ts
+      (`valid_from: receivedDate, valid_from_basis: "received"`). The prose speaks
+      of a "chain" stated, document, received. The node says a source with a
+      document date keeps no start and no basis, and the code does that. A reader
+      of the comment would expect the document date to be used.
+    kind: restates
+    correction: >-
+      Remove the comments. The behavior is correct and the node already holds the fact.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file neither authenticates nor routes. It receives an open `client`,
+      `args` and `runCtx` and returns `McpEnvelope<ProposeLinkResult>`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the propose-link operation: the Layer 1-5 refusals and the below-floor result of proposeLinkService
+    evidence: >-
+      throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more fragment_ids do not resolve to a fragment row.", { fragment_ids: args.fragment_ids }); throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "fragment_id does not belong to this run.", { fragment_id: f.id, llm_run_id: runCtx.llmRunId }); throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more fragments are not anchored to the run's source chunks.", { fragment_ids: ..., expected_raw_information_id: runCtx.rawInformationId }); link_id: null, outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR"
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file performs no read, search, provenance or traverse operation. It is a write path (`consolidateLink`).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No fragment listing in this file. The only fragment query is `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file returns `{ link_id, outcome, superseded_link_id }` and computes no run-level affected-node list.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No affected-node listing in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking in this file. It only counts anchoring via `countFragmentsAnchoredToSource`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node name or alias. It only looks up node type by id with `findNodeTypeIdByNodeId`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt in this file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance read in this file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The re-affirmation decision is delegated: `const consolidation = await consolidateLink(client, { ..., change_hint: args.change_hint, valid_from: resolvedTemporal.valid_from, ... }, resolvedLink, fragmentTexts, runCtx)`. This file forwards the inputs and holds no comparison of target, value or start.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only selects the inputs (`SELECT (metadata->>'document_date') AS document_date, received_at FROM raw_information WHERE id = $1`) and passes `resolvedLink.requires_valid_from`, `document_date` and `received_at` to `validateTemporal`. The fallback decision is in validation/temporal.ts. Here it appears only as comment prose.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue in this file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing in this file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in this file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in this file.
+looked_past: >-
+  The file also carries comments (BR-13, BR-15, BR-17, BR-18, UC-10, the "previous behaviour" paragraph) that restate facts governed by nodes outside this pack, such as link-permitted-by-type-rule, cited-fragments-anchored and new-assertion-status-from-confidence. The code holds those facts here or in validation/ and the consolidator, so they are prose for the comment route, and the code-review question of the `statusForNewRow` plumbing is not this pass's.
+candidates_opened:
+  - rules/knowledge-base/below-confidence-floor-records-nothing
+  - rules/knowledge-base/cited-fragments-anchored

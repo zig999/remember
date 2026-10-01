@@ -1,0 +1,134 @@
+findings:
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      the file header comment (lines 1-44), the propose-* mirrors comment block (lines 409-428) and the docblock of handleProposeMirror (lines 484-497)
+    evidence: >-
+      "//   4. Return HTTP 200 for any reachable handler. The `ok: true/false` flag on
+      the body is the outcome indicator — a layered-validation rejection
+      (ValidationFailure) is a *business result*, not a transport error, and
+      surfaces as `{ ok: false, error: { code, message, details } }` with
+      HTTP 200."; " *   - `ResourceNotFoundError` -> HTTP 404 with `RESOURCE_NOT_FOUND` envelope.
+      *   - `RunNotRunningError`    -> HTTP 409 with `BUSINESS_RUN_NOT_RUNNING` envelope."
+    cost: >-
+      The answers of propose-fragment, propose-node, propose-link and propose-attribute (404 for an unknown run, 409 for a run that is not running, HTTP 200 carrying { ok: false, error } for a layered-validation rejection) are told a second time in prose. The code in this same file already holds them, in handleProposeMirror. When the contract moves, the comments stay behind and tell the next reader an answer the specification no longer gives.
+    kind: restates
+    correction: >-
+      Remove the three comment blocks. The fact stays held by handleProposeMirror in this file and by contracts/knowledge-base/ingestion.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      POST_INGEST_BODY_LIMIT, line 126, passed as bodyLimit to app.post("/raw-information", ...) at line 144
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
+    cost: >-
+      A threshold decides whether the ingest request is accepted before any validation runs, and no node holds it. The only size limit the specification states is 10,485,760 UTF-16 code units for content (rules/knowledge-base/content-length) and for original input (rules/knowledge-base/original-input-length). The 11 MiB request-body ceiling lives only in this constant, so someone reading the specification cannot learn it. It is also easy to mistake for the content limit.
+    kind: unstated
+    correction: >-
+      The analysis should decide whether the request-body ceiling for ingest-raw-information is a business fact. If it is, give it a node, either on contracts/knowledge-base/ingestion or as a rule beside rules/knowledge-base/content-length.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file mounts operation routes and sets no authentication, 404 routing or 422 mapping of its own. The validation failure mapping is left to the global handler: "Zod parse — failure surfaces as ZodError -> 422 via the global handler." Only a comment mentions authentication ("The parent scope (set in `app.ts`) already enforces Neon Auth JWT").
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      registerIngestionRoutes (the 404 and 409 mappings of the read, run, retry and run-extraction routes) and handleProposeMirror (run pre-check, 404/409 envelopes, 200 { ok: false } for a ValidationFailure with rollback)
+    evidence: >-
+      if (run.status !== "running") { throw new RunNotRunningError(llmRunId, run.status); } ... if (isValidationFailure(err)) { throw new ProposeMirrorEnvelopeReject({ ok: false, error: { code: err.code, message: err.message, details: err.details } }); } ... return reply.status(200).send(err.envelope); ... reply.status(409) for RunNotRunnableError and RunNotRetryableError, reply.status(502) for LlmProviderFatalError, reply.status(500) for ExtractionFatalError
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only ingestion routes (raw-information, llm-runs, retry, run, propose-*). It has no search, provenance, catalog listing, node, link, attribute or traverse route.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing route here. The only query parsed is ListToolCallsQuerySchema.parse(request.query).
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The routes only forward the service result: "const body = await getLlmRunById(client, params.llmRunId); return reply.status(200).send(body);". They do not compute affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never builds or filters a list of affected nodes. It only sends "reply.status(200).send(body)".
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing and no execution-window parameter in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      Chunking is not done here. The route calls "ingestRawInformation(client, body)" and "listChunksByRawInformationId(client, params.rawInformationId)" and forwards what they return.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The propose-node route delegates with "proposeNodeService(client, input, runCtx, { catalog })". It takes no lock and does no ordering of its own.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No curation or confirmation route in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt is built here. The run route only calls "runLlmExtraction(deps.pool, params.llmRunId, deps.logger, orchestratorCatalog, {...})".
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed-value ordering in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed-value text in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt in this file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance entry in this file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics route in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing route in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search route in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The propose-link and propose-attribute routes delegate with "proposeLinkService(client, input, runCtx, { catalog, now })". Re-affirmation is decided in the service.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The routes only supply the clock: "const now: () => Date = deps.now ?? (() => new Date());". The fallback of the start date is decided in the service.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue route in this file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue route in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection in this file. Chunking belongs to the ingestion service.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traverse route in this file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traverse route in this file.
+looked_past: >-
+  The header comment's remark that the parent scope in app.ts enforces the JWT restates contracts/knowledge-base/access, but enforcement sits in another file I was not handed, so I did not judge it.
+candidates_opened:
+  - rules/knowledge-base/content-length

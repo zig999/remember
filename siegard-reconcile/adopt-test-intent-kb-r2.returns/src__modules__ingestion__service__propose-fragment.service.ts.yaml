@@ -1,0 +1,164 @@
+findings:
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment inside the mismatch branch of proposeFragmentService, lines 50-55 (the line citing RESOURCE_NOT_FOUND)
+    evidence: >-
+      // "chunk_id resolves to no row -> RESOURCE_NOT_FOUND (UC-08 alt 2b)."
+      The code beneath it holds the same fact:
+      throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more chunk_ids do not resolve to an existing raw_chunk row.", { chunk_ids: args.chunk_ids })
+    cost: >-
+      The comment states, in prose, that a cited chunk which does not exist is refused with RESOURCE_NOT_FOUND. That is a second home for a fact the node holds. The code in this file already holds the fact, so the pair conforms. A reader who changes the rule may edit the comment and think they have changed the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The `throw new ValidationFailure("RESOURCE_NOT_FOUND", ...)` branch holds the fact. The node is not in this file's pack and is outside the candidate index. I found it by searching the specification root.
+    node: rules/knowledge-base/fragment-chunks-exist
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      the comment inside the mismatch branch of proposeFragmentService, lines 50-55 (the line citing VALIDATION_INVALID_FORMAT)
+    evidence: >-
+      // "chunk_id belongs to a different source -> VALIDATION_INVALID_FORMAT (cross-table FK mismatch, alt 2c)."
+      The code beneath it holds the same fact:
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })
+    cost: >-
+      The comment states, in prose, that a cited chunk from another source is refused with VALIDATION_INVALID_FORMAT. That is a second home for a fact the node holds. The code in this file already holds the fact, so the pair conforms. A reader who changes the rule may edit the comment and think they have changed the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", ...)` branch holds the fact. The node is not in this file's pack and is outside the candidate index. I found it by searching the specification root.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file states none of the authentication, routing or health answers. It only receives an open `client: PoolClient` and a `runCtx: RunContext`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      proposeFragmentService (the propose-fragment operation). The success return `return { ok: true, result }` carries `fragment_id: fragment.id, status: "proposed"`. The chunk refusals are the two ValidationFailure throws in the `matched !== args.chunk_ids.length` branch.
+    evidence: >-
+      const result: ProposeFragmentResult = { fragment_id: fragment.id, status: "proposed" };
+      throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more chunk_ids do not resolve to an existing raw_chunk row.", { chunk_ids: args.chunk_ids });
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId });
+      The error code and details agree with the operation's answers: RESOURCE_NOT_FOUND naming the chunks, and VALIDATION_INVALID_FORMAT naming the chunks and the expected raw information.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no search, provenance read, catalog listing or graph read. Its only reads are `countChunksInSource` and one `SELECT count(*)::text AS n FROM raw_chunk` for the write path.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no accepted fragments and takes no query parameters.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes. It returns only `fragment_id` and `status: "proposed"`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file lists no affected nodes of a run.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file divides no content into chunks. It only cross-checks existing chunk ids.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves no node names and takes no lock. Its only write is `insertFragmentWithSources`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file confirms no assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no graph read and builds no provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no graph read and filters on no compliance status.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node listing and no name prefix.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file runs no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file consolidates no link or attribute. Its comment says "Graph rules — N/A." and its code only inserts a fragment.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no validity start or basis. It takes only `text`, `confidence` and `chunk_ids`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue and no paging.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue and no paging.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file parses no speaker line and no source content.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no traversal.
+
+looked_past: >-
+  The header and docstring comments citing UC-08, BR-13, BR-19 and BR-23 and the layer-by-layer "N/A" notes are prose the framework's comment route removes, and nothing in the file's code states a domain fact beyond the two chunk refusals and the proposed status.
+
+candidates_opened:
+  - rules/knowledge-base/fragment-chunks-exist
+  - rules/knowledge-base/fragment-chunks-in-run-source

@@ -1,0 +1,129 @@
+findings:
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      the docstring above sha256Hex, lines 10-15
+    evidence: >-
+      /** `sha256(content)` -- 64 char lowercase hex string. Used as `raw_information.content_hash` (BR-01); the DB CHECK constraint on the column enforces the same regex. */
+    cost: >-
+      The docstring states a second copy of the content-hash rule next to the code that implements it. The copy cites a back-spec rule number, "BR-01", where the specification holds the rule as a node. When the node moves, nothing reaches this prose, so a reader can't tell which copy was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring and the header comment (lines 1-6). The code createHash("sha256").update(content, "utf8").digest("hex") holds the fact, and the node rules/knowledge-base/content-hash-is-sha256 already states it. This finding is about prose and does not touch the behavior.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      the docstring above composeIdempotencyKey, lines 20-27
+    evidence: >-
+      `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`, concatenated WITHOUT a separator. The order is exactly as defined in §8 of v7 and as documented in `ingestion.back.md` BR-08.
+    cost: >-
+      The docstring restates the idempotency-key composition (operands, order, no separator) and points to a v7 section and a back-spec rule instead of the specification node. The code in the same function also holds it, so the prose is a second home. If the node changes, this prose keeps asserting the old order.
+    kind: restates
+    correction: >-
+      Remove the docstring. The four h.update calls in order followed by h.digest("hex") hold the fact. The node rules/knowledge-base/idempotency-key states it.
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file only exports sha256Hex and composeIdempotencyKey. It has no authentication, routing or health behavior.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file only computes digests, `createHash("sha256").update(content, "utf8").digest("hex")`. It emits none of the contract's answers or refusals. The content hash and idempotency key derivations are held by two rules outside this pack, so they are not this contract's.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file has no read, search or traversal behavior.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic, only the two hash functions.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic, only the two hash functions.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. `chunking_version` is only a string operand: `h.update(args.chunking_version, "utf8");`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. `prompt_version` is only a string operand.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance excerpt logic.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or compliance-status logic.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search logic.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no text or line parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+looked_past: >-
+  The code holds two facts, the content hash (SHA-256 of the UTF-8 content, as lowercase hex) and the idempotency key (SHA-256 of content hash, prompt version, model and chunking version in order, with no separator). Both are held by nodes outside this pack, rules/knowledge-base/content-hash-is-sha256 and rules/knowledge-base/idempotency-key, and the code conforms to both, so I filed no code finding. The comments citing back-spec rule numbers (BR-01, BR-08) and v7 §8 are prose; they are filed only as the two restates findings above.
+candidates_opened:
+  - rules/knowledge-base/content-hash-is-sha256
+  - rules/knowledge-base/idempotency-key

@@ -1,0 +1,155 @@
+findings:
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      LlmRunRow, the status member (line 72)
+    evidence: >-
+      readonly status: "running" | "completed" | "failed";
+    cost: >-
+      The three run states are declared here as a type-level union. The node that
+      holds that vocabulary is domain/knowledge-base/run-status, and this file is
+      bound to neither it nor domain/knowledge-base/llm-run. If the enumeration
+      changes, `--check` never reaches this file. The next reader then finds two
+      declarations of the run states and cannot tell which one the business decided.
+    kind: contradicts
+    correction: >-
+      The vocabulary lives in one place. Either this file is bound to
+      domain/knowledge-base/run-status and domain/knowledge-base/llm-run, since
+      LlmRunRow declares their shape, or the row type takes its status type from
+      the file that is bound to them.
+    node: domain/knowledge-base/run-status
+  - file: src/modules/ingestion/repository/ingestion.repository.ts
+    where: >-
+      the doc comments of insertRawChunks (line 153) and findChunksByRawInformationId (lines 182-183)
+    evidence: >-
+      * Find every `raw_chunk` of the given `raw_information_id`, ordered by
+      * `chunk_index` ascending. Used by GET .../chunks.
+    cost: >-
+      The comment states the chunk listing order a second time as prose. The
+      running code already holds it in this file as `ORDER BY chunk_index ASC`
+      and `result.rows.sort((a, b) => a.chunk_index - b.chunk_index)`. The pair
+      conforms. What is owed is the removal of the prose, so that the only home
+      of the order is the code and the node.
+    kind: restates
+    correction: >-
+      Remove the prose that states the ordering (line 153 and lines 182-183).
+      The code that holds the ordering stays.
+    node: rules/knowledge-base/chunk-listing-order
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkRow interface (lines 54-63) and the INSERT/SELECT column lists of insertRawChunks and findChunksByRawInformationId
+    evidence: >-
+      readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly offset_end: number; readonly locator: ChunkLocator; readonly chunking_version: string;
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      the RawInformationRow interface (lines 36-51) and the insertRawInformation INSERT column list
+    evidence: >-
+      readonly source_type: SourceType; readonly content: string; readonly storage_ref: string | null; readonly content_hash: string; readonly received_at: Date; readonly metadata: Record<string, unknown>; readonly original_input: string | null;
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds only SQL for raw_information, raw_chunk and llm_run. It states no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      toRawInformationResponse and toRawChunkResponse (lines 248-274), the response fields of read-raw-information and list-raw-chunks
+    evidence: >-
+      id: row.id, source_type: row.source_type, content: row.content, storage_ref: row.storage_ref, content_hash: row.content_hash, received_at: row.received_at.toISOString(), metadata: row.metadata ?? {}
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance, catalog listing, node read or traversal.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds no accepted-fragment listing and no query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file holds no affected-node computation. insertLlmRun and findLlmRunByIdempotencyKey only read and write llm_run rows.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file holds no affected-node listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only receives chunks that were already divided (`chunks: readonly RawChunkInput[]`). The division itself is in the imported chunker and is not in this file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal handling and no node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file holds no graph read and no provenance excerpt. It returns the whole chunk text (`"text"`) and its offsets.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file holds no graph read and no compliance-status filter.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file holds no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file holds no node listing and no alias matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file holds no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal consolidation and no re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file holds no speaker-line detection. Only the chunker would hold it.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal.
+looked_past: >-
+  Comments citing BR-09, BR-19 and BR-34, the original_input remark that it never enters content_hash, and the note on the llm_run DB defaults restate no checkable node fact, or one the database holds. They are prose for the comment route, and the `*_CONSTRAINT` name constants are infrastructure, not a domain fact.
+candidates_opened:
+  - rules/knowledge-base/chunk-listing-order
+  - domain/knowledge-base/llm-run
+  - domain/knowledge-base/run-status
+  - rules/knowledge-base/ingestion-records-chunks-and-run

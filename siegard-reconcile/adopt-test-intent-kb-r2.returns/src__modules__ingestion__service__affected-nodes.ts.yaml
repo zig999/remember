@@ -1,0 +1,143 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the header comment (lines 27-30) and the comment above isContributingOutcome (lines 72-86)
+    evidence: >-
+      "`rejected` and `error` validation outcomes do NOT contribute (they did not touch the graph). De-dup is by `node_id`; first-write-wins on the entry. Iteration order on the final list is insertion order" and "Closed list per BR-33 / BR-27. propose_node: created_new | matched_existing | needs_review ... propose_link: accepted | consolidated | superseded_previous | disputed"
+    cost: >-
+      The outcome set, the one-listing-per-node rule and the first-reached order are written a second time in prose. If the node's outcome list moves, these comments still cite BR-33 and BR-27 and keep saying the old list, and a reader can take them for the decided rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact: the switch in isContributingOutcome, the `seen` Map in createAffectedNodeCollector and the `emitted` Set in resolveAffectedNodes.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the doc comment of resolveAffectedNodes (lines 225-228)
+    evidence: >-
+      "Rows whose `knowledge_node.status = 'merged_into'` are resolved transparently to the surviving node via `merged_into_node_id`."
+    cost: >-
+      The merge-following rule is stated again in prose. The node that holds it is outside this file's pack, so a reader of that node does not see this comment, and a later change to the node leaves this one stale.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact: the survivor lookup and the `row = survivor` step in resolveAffectedNodes.
+    node: rules/knowledge-base/affected-nodes-follow-merges
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the doc comment of resolveAffectedNodes (lines 229-231)
+    evidence: >-
+      "Ids the lookup does not find at all (e.g. a node compliance-deleted between the tool call and run-completion) are skipped silently"
+    cost: >-
+      The omission of absent nodes is stated again in prose, and the comment adds a compliance-deletion cause that no node states. A reader can take that cause for part of the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact: `if (row === undefined) continue;` in resolveAffectedNodes.
+    node: rules/knowledge-base/affected-nodes-omit-absent
+read:
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      affectedIdsFromEnvelope (propose_node id, link source and target ids, attribute node id), isContributingOutcome (the seven-outcome switch), createAffectedNodeCollector (once, first-reached order)
+    evidence: >-
+      case "created_new": case "matched_existing": case "needs_review": case "accepted": case "consolidated": case "superseded_previous": case "disputed": return true; and if (!seen.has(id)) { seen.set(id, true); }
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares no authentication, routing or health behaviour. It imports only `PoolClient` and `McpEnvelope`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the AffectedNode interface (id, canonical_name, node_type) and the SELECT in resolveAffectedNodes, for the read-llm-run and run-extraction affected-nodes part only
+    evidence: >-
+      export interface AffectedNode { readonly id: string; readonly canonical_name: string; readonly node_type: string; }
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file serves no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter check.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      resolveAffectedNodes, step 3 loop
+    evidence: >-
+      let row = byId.get(id); if (row === undefined) continue;
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file does no node resolution and takes no lock. It only reads proposal envelopes.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file does no graph read or provenance read.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file does no graph read or provenance read.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file reads the outcome of a proposal ("consolidated") but decides no re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file does no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no speaker-line parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no traversal.
+looked_past: >-
+  The header comment's claim that affected_nodes is attached only for a completed run (rules/knowledge-base/affected-nodes-only-when-completed) is prose here, because this file never tests the run status. Whether other code holds it was not in this file set. The in-process LRU of 256 entries, the tool_call rebuild and the best-effort wording are mechanisms, not domain facts, and I left them out.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-follow-merges
+  - rules/knowledge-base/affected-nodes-only-when-completed

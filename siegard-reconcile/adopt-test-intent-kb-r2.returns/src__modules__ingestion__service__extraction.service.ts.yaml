@@ -1,0 +1,216 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The header comment "Error paths", line 21
+    evidence: >-
+      //   - run not 'running' at entry           -> RunNotRunnableError (409)
+    cost: >-
+      The header says again a rule that a node holds and that the code applies in `if (run.status !== "running") { throw new RunNotRunnableError(llmRunId, run.status); }`. When the node moves, this prose still says the old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The check at line 424 holds the fact in this file, and the node holds it in the specification.
+    node: rules/knowledge-base/extraction-requires-running-run
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The header comment "Error paths", line 23, and the docstring of runLlmExtraction, line 404
+    evidence: >-
+      //   - >=3 consecutive 'error' outcomes      -> ExtractionFatalError (500)
+    cost: >-
+      The failure threshold is written in prose beside `export const FATAL_ERROR_BURST = 3 as const;`. A reader who changes one will not know the other must follow.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring line. `FATAL_ERROR_BURST` at line 386, with the comparison `consecutiveErrors >= FATAL_ERROR_BURST` at line 738, holds the fact in this file.
+    node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The comment above ANTHROPIC_REQUEST_TIMEOUT_MS, lines 190-199
+    evidence: >-
+      so a 5-minute ceiling is generous headroom while halving the
+      // worst-case stall before the turn is aborted-and-retried. `maxRetries` is
+      // pinned explicitly (matches the SDK default)
+    cost: >-
+      The five-minute wait and the retry count are written both in prose and in `ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000` and `ANTHROPIC_MAX_RETRIES = 2`. The comment also invites "per-deployment tuning", which would make a bound the specification fixed look configurable.
+    kind: restates
+    correction: >-
+      Remove the comment. The two constants at lines 200-201, passed to `new AnthropicClient`, hold the fact in this file.
+    node: constraints/extraction-model-call-bounded
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The same comment above ANTHROPIC_REQUEST_TIMEOUT_MS, lines 190-199
+    evidence: >-
+      A single extraction turn emits at most `MAX_TOKENS` (8000) output
+      // tokens plus adaptive thinking
+    cost: >-
+      The 8000-token ceiling is written in a comment of a file that does not hold it. The value is set in prompts/extraction.v1.ts (`export const MAX_TOKENS = 8000 as const;`), so a change there leaves this prose wrong.
+    kind: restates
+    correction: >-
+      Remove the parenthetical. The code that holds the fact is `max_tokens: input.prompt.MAX_TOKENS` at line 633, which forwards the value from src/modules/ingestion/prompts/extraction.v1.ts.
+    node: rules/knowledge-base/extraction-turn-token-ceiling
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The default branch of dispatchToolUse, lines 282-293
+    evidence: >-
+      default:
+            // P2.1 — unknown tool name is a structural-layer rejection
+            return {
+              ok: false,
+              error: {
+                code: "VALIDATION_INVALID_FORMAT",
+                message: `Unknown tool '${toolName}'.`,
+                details: { tool_name: toolName },
+              },
+            };
+    cost: >-
+      During extraction the model is told, in these words, that a tool name outside the four proposals is refused with VALIDATION_INVALID_FORMAT. No node holds that refusal or its message. The ingestion contract's refusals cover only the proposal operations, so this behavior is decided only here.
+    kind: unstated
+    correction: >-
+      Give the in-process refusal of an unknown tool name, and the "Input failed Zod parse." message of zodErrorEnvelope at line 307, a node. The natural home is next to the proposal rules of contracts/knowledge-base/ingestion, or a rule on how an extraction answers a malformed or unknown tool call. The ingestion contract's decision log already records that "Input failed Zod parse." was decided away for MCP in favor of "MCP tool args failed Zod parse.", which is a different transport from this in-process loop.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      zodErrorEnvelope, lines 297-317
+    evidence: >-
+      message: "Input failed Zod parse.",
+    cost: >-
+      The in-process loop gives the model a shape-failure message that differs from the one the ingestion contract holds for the same refusal ("MCP tool args failed Zod parse." over MCP). The contract's log records that "Input failed Zod parse." was the rejected wording. A reader of the contract cannot tell that the extraction loop still speaks it.
+    kind: unstated
+    correction: >-
+      Decide in the specification whether the extraction loop's shape-failure message is the contract's or its own, and give it a node.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      MAX_TURNS_PER_CHUNK and its use, lines 620-627 and 749-755
+    evidence: >-
+      const MAX_TURNS_PER_CHUNK = 64;
+      ...
+      "extraction_chunk_turn_cap_reached"
+      );
+      return { kind: "completed" };
+    cost: >-
+      A chunk is declared read, and the run goes on to completion, once the model has taken 64 turns on it, whatever it has or has not proposed. This is a threshold that decides whether knowledge of a chunk can be silently left out. No node holds the number or the outcome, so the business decision lives only here.
+    kind: unstated
+    correction: >-
+      Give the per-chunk turn limit, and the rule that reaching it is a soft completion and not a failure of the run, a node. It could sit next to rules/knowledge-base/extraction-reads-chunks-in-order.
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      The tool_use filtering in runChunkLoop, lines 668-686
+    evidence: >-
+      if (toolUseBlocks.length === 0) {
+            // No tool_use AND not an end_turn / refusal / pause_turn — treat as
+            // soft end_turn (the model has nothing more to say).
+            return { kind: "completed" };
+          }
+    cost: >-
+      A model turn that stops for any other reason and proposes nothing (for example max_tokens) counts as the chunk fully read, and `pause_turn` resumes the same chunk. No node says which stop reasons end a chunk. Knowledge truncated at the token ceiling would be dropped without any recorded outcome.
+    kind: unstated
+    correction: >-
+      State in a node which model stop reasons end the reading of a chunk, which resume it, and that a stop with no proposal counts as read. The existing rules/knowledge-base/model-refusal-skips-chunk covers only the refusal case.
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file neither authenticates, routes nor reports health. It only orchestrates extraction (`export async function runLlmExtraction(`).
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The run-extraction refusals: the three error classes RunNotRunnableError, LlmProviderFatalError and ExtractionFatalError (lines 90-148), and the status check at line 424.
+    evidence: >-
+      public readonly code = "BUSINESS_RUN_NOT_RUNNABLE" as const; ... public readonly code = "SYSTEM_LLM_PROVIDER_UNAVAILABLE" as const; ... public readonly code = "SYSTEM_INTERNAL_ERROR" as const; ... public readonly partialRun: LlmRunResponse;
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file performs no search, read, traversal or listing. It writes the run's close and reads its row through `readFinalRun`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file contains no listing of accepted fragments and no query-parameter validation.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only wires the collector (`input.affectedNodes.record(block.name, envelope);`) and resolves its ids (`resolved = await resolveAffectedNodes(client, collectedIds);`). The set of outcomes that count, and the once-in-first-reached order, are decided in ./affected-nodes.js, outside this file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file calls `resolveAffectedNodes(client, collectedIds)` and attaches the result as is. The omission of nodes no longer held is not in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file does not list compliance deletions or take an execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only reads the chunks already held (`findChunksByRawInformationId(client, rawInfo.id)`). It does not divide any content.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file dispatches each tool use in sequence (`for (const block of toolUseBlocks) { const envelope = await dispatchToolUse(`). Resolving a node name and reading its aliases is left to proposeNodeHandler.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file does not confirm or review any assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file only asks the prompt module for its text (`const systemText = input.prompt.system(input.catalog);`). What the prompt lists is rendered in the prompt modules.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      `input.prompt.system(input.catalog)` hands the catalog to the prompt module. The file sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file renders no allowed value. It only passes the prompt text along as `systemText`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph read and no provenance entry.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file builds no graph read and no provenance entry.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics. `aggregateToolCallOutcomes` summarizes the run's tool calls only.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file lists no nodes and applies no name prefix.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file runs no search query.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only hands the parsed input to `proposeLinkHandler` and `proposeAttributeHandler`. Consolidation is not decided here.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only reads `document_date` and `received_at` into the prompt metadata (`document_date: stringOrNull(metadataObj["document_date"]),`). The fallback of a proposal's start is not applied here.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue and applies no page.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue and counts no total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file recognizes no speaker line. It reads the chunk text as held (`chunkText: chunk.text`).
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file performs no traversal. The `traverse` that appears is only the `__testing__` surface of other functions.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file performs no traversal and lists no reached node.
+looked_past: >-
+  The prompt-caching breakpoint (`cache_control: { type: "ephemeral" }`), the `thinking: { type: "adaptive" }` request and the per-turn token-usage log carry no domain fact, so they belong to a code review. The facts the file does hold by code are three. The burst of three (`FATAL_ERROR_BURST`), the 200-character tail (`PREV_TAIL_CHARS`) and the soft skip of a refusal conform to candidate nodes outside this pack that I opened, and are not findings.
+candidates_opened:
+  - rules/knowledge-base/extraction-fails-on-repeated-system-errors
+  - constraints/extraction-model-call-bounded
+  - rules/knowledge-base/extraction-reads-chunks-in-order
+  - rules/knowledge-base/model-refusal-skips-chunk
+  - rules/knowledge-base/extraction-requires-running-run
+  - rules/knowledge-base/extraction-turn-token-ceiling

@@ -1,0 +1,119 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-toolset.ts
+    where: >-
+      The file-header comment (lines 18-23, "A Zod failure ... also goes through `runIngestHandler` so the rejected `tool_call` audit row is written") and the comment block above `extractLlmRunIdFromRaw` (lines 431-441).
+    evidence: >-
+      "A Zod failure (missing/invalid `llm_run_id` or malformed business DTO) also goes through `runIngestHandler` so the rejected `tool_call` audit row is written (BR-23 updated). When no `llm_run_id` is parseable from the raw input, the audit-row insert cannot resolve its FK; the shell's `safeWriteAuditOnRollback` logs and swallows that" and "a `tool_call` row with `validation_outcome='rejected'` is written under the same shell"
+    cost: >-
+      The prose restates, as a business rule, that a refused proposal is recorded as a tool call and that a failed recording is swallowed. The rule is held by rules/knowledge-base/every-proposal-audited. A second statement of it in a header comment gives a reader two places to look for the rule. If the node moves, `--check` does not reach this file's prose. The behavior itself is carried by code: `runZodFailureAudit` calls `runIngestHandler({ deps: { pool, logger, llm_run_id: llmRunId }, tool_name: toolName, input: rawInput as never, run: async () => { throw new ValidationFailure(...) } })`. The swallow-on-failure clause sits in handler-base.js, which is outside this file set.
+    kind: restates
+    correction: >-
+      Remove the two comment passages. The fact is already held by the node, and the code in this file and in handler-base.js already implements it. The route is the comment route followed by `/reconcile` over this file.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      The `health` tool registration (`mcp.registerTool("ingest", { name: "health", ... })`, lines 325-333). It serves the report as the MCP `health` tool and passes the report through. The report's fields (`service`, `database`, `checked_at`) are not declared in this file. `mapReadError` also routes `ZodError`, store-unavailable and unknown failures through the shared envelopes.
+    evidence: >-
+      `const report = await collectHealth(pool); return { ok: true, result: report };`, and in `mapReadError`: `message: "Request payload failed validation."`, `if (isPgUnavailable(err)) { return serviceUnavailableError().envelope; }`, `return internalError().envelope;`
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The MCP ingestion surface is registered here. `propose_fragment`, `propose_node`, `propose_link` and `propose_attribute` carry a Zod refusal through `runZodFailureAudit` (message "MCP tool args failed Zod parse."). `ingest_document` and `ingest_directed` are registered, and `ingest_document` has an inline validation refusal. `get_ingestion_status` serves read-llm-run, and `list_recent_ingestions` is registered. `mapReadError` supplies the validation, not-found, unavailable and internal answers for the two read tools.
+    evidence: >-
+      `"MCP tool args failed Zod parse."` with `code: "VALIDATION_INVALID_FORMAT"` and `issues: ... path: i.path.map((seg) => String(seg)).join("."), message: i.message`; `code: "VALIDATION_INVALID_FORMAT", message: "ingest_document arguments failed validation."`; `const result = await withReadOnly(pool, (client) => getLlmRunById(client, llm_run_id));`; `listRecentIngestions(client, limit)`; `code: err.code, message: err.message, details: { entity: err.entity, id: err.entityId }` for `ResourceNotFoundError`
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers only ingest tools: `propose_*`, `ingest_document`, `ingest_directed`, `health`, `get_ingestion_status`, `list_recent_ingestions`. It registers no search, provenance, catalog, node, link, attribute or traverse operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in this file; the registered tools are all ingestion tools.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      `get_ingestion_status` only calls `getLlmRunById(client, llm_run_id)`. The collection of affected nodes is not performed in this file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `getLlmRunById(client, llm_run_id)`. It has no filter on affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or time window appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking is done here. `ingestDocumentHandler(parsed.data, {...})` delegates it.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      `proposeNodeHandler(input, { pool, logger, llm_run_id, catalog })` is a delegation. No locking or alias reading appears in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation or curation tool is registered in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built here. It passes `anthropicApiKey`, `ingestModel` and `catalog` to the document handler.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or ordering of allowed values appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value text appears in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt appears in this file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance read appears in this file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or name-prefix filter appears in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search is registered in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Consolidation is not performed here. `proposeLinkHandler(input, { pool, logger, llm_run_id, catalog, now })` delegates it.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only passes `now` through to `proposeLinkHandler` and `proposeAttributeHandler`. It holds no validity-start fallback logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in this file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection appears in this file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal is registered in this file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal is registered in this file.
+looked_past: >-
+  The comment at lines 296-305 claims the directed handler's parse failure is "still STRUCTURAL_INVALID pending TC-05 migration", while contracts/knowledge-base/ingestion holds VALIDATION_INVALID_FORMAT for it. That is prose about a different file's code (directed-ingest.handler.ts), so it belongs to that file's pass and I did not report it. The other comments here that no node holds (BR/TC citations, the registrar's idempotency note, the `CHAT_INGEST_ENABLED` flag) are prose that no code or emitted text carries, so they are not findings.
+candidates_opened:
+  - rules/knowledge-base/every-proposal-audited

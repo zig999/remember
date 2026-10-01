@@ -1,0 +1,169 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the candidate query of step 2 (line 165, `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}`, with the constant at line 47), and the review-row loop over `decision.candidates` (lines 200-207)
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10; ... ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}`, ... for (const cand of decision.candidates) { await client.query(`INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)
+      The node says: "creates a knowledge node in status needs-review and records an entity match review pairing it with each such node and its similarity" (each active node of the type at a similarity of 0.55 or more).
+    cost: >-
+      When more than ten active nodes of the type reach 0.55, the code records reviews for only the ten most similar, while the node says every such node is paired. The ten-candidate cap is a value that exists only in this file. The next reader looks in the specification for which nodes get a review row and finds "each such node", so the owner's entity-match queue silently omits the lower-ranked candidates.
+    kind: contradicts
+    correction: >-
+      Either the code stops capping the reviewed candidates, or the cap is decided into ambiguous-candidates-need-review (or a node beside it). That decision belongs to the specification's owner.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the header comment, lines 10-14 ("Why the lock comes first (BR-20) ...")
+    evidence: >-
+      // Why the lock comes first (BR-20): two concurrent `propose_node` calls for
+      // the same `(node_type, norm(name))` must NOT race on the resolve-or-create
+      // branch. Acquiring the advisory lock before the first SELECT serialises both
+      // the candidate scan AND the subsequent INSERT inside the same transaction;
+    cost: >-
+      The comment says again, as prose, what the node holds, and the code holds it too at `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))` (lines 125-128). Two homes for the serialisation rule: if the node moves, a reader trusting this comment keeps the old rule. The prose owes its removal.
+    kind: restates
+    correction: >-
+      Remove the comment through the route that answers prose. The lock statement at lines 119-128 stays.
+    node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstrings of MATCH_STRONG and MATCH_FLOOR (lines 26-41) and of decideFromCandidates (lines 249-262)
+    evidence: >-
+      * Encodes the A12 decision table verbatim:
+      *   - Strong unique: exactly ONE candidate with `sim >= MATCH_STRONG` AND no
+      *     other candidate has `sim >= MATCH_FLOOR`.
+      The code holds the same decision at `export const MATCH_STRONG = 0.85;`, `export const MATCH_FLOOR = 0.55;` and `if (strong.length === 1 && aboveFloor.length === 1) {`.
+    cost: >-
+      The strong-match rule and its two thresholds are stated again in prose beside the code that holds them, a second home for a fact the node holds. If the node's thresholds change, the docstrings keep the old table. The prose owes its removal.
+    kind: restates
+    correction: >-
+      Remove the docstring prose through the route that answers prose.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the comment above the review-row loop, lines 196-199
+    evidence: >-
+      // One entity_match_review row PER ambiguous candidate (every candidate
+      // with sim >= MATCH_FLOOR, NOT just the strong ones — BR-25 / TC
+      // constraint: "entity_match_review inserts one row per candidate where
+      // sim >= MATCH_FLOOR").
+    cost: >-
+      The review-pairing rule is restated as prose, and it also quotes a constraint from a back spec outside the specification. The code holds the fact at the INSERT INTO entity_match_review loop. A reader who trusts the comment will not look at the node, which the code in fact departs from (the first finding).
+    kind: restates
+    correction: >-
+      Remove the comment through the route that answers prose.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behaviour. Its only exports are `resolveOrCreateNode`, `decideFromCandidates`, `MATCH_STRONG` and `MATCH_FLOOR`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the three return statements of resolveOrCreateNode (lines 150, 183, 216 and 233), which produce the propose-node resolution values; the wire answer itself is composed by the caller
+    evidence: >-
+      return { node_id: nodeId, resolution: "matched_existing" }; ... return { node_id: nodeId, resolution: "needs_review" }; ... return { node_id: nodeId, resolution: "created_new" };
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance, listing or graph read is in the file; it only writes nodes, aliases and entity_match_review rows.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only returns `node_id` and `resolution` per proposal. It does not compute a run's affected-node set.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No listing of a run's affected nodes appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It resolves node names against node_alias.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      the advisory-lock statements before the first node_alias read, lines 119-128
+    evidence: >-
+      await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, [lockKey]); with lockKey built from `CAST($1::text AS text) || E'\\x1F' || norm($2::text)` over the node type id and the name
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion confirmation is in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt and lists no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file does no graph read and handles no raw chunk text.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file does no graph read and handles no provenance entries.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file does no node listing. Its alias matching is exact `alias_norm = norm($1::text)` or trigram `%`, not a name-prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles node proposals only. It has no link or attribute re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file only inserts entity_match_review rows. It does not list the review queue or page it.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file does no review-queue listing or counting.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no content parsing or speaker-line detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no graph traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no graph traversal.
+looked_past: >-
+  The resolveOrCreateNode docstring and step comments restate further facts held by nodes outside this pack (exact-alias-resolves, new-node-aliases, matched-node-gains-only-aliases), and several comments cite back-spec labels (BR-20, BR-25, A12, ST-KN, UC-09) and describe the unused `catalog` argument. These are prose with the behavior correct in the code, and are left to the comment route.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review
+  - rules/knowledge-base/strong-candidate-resolves
+  - rules/knowledge-base/candidate-similarity
+  - rules/knowledge-base/exact-alias-resolves
+  - rules/knowledge-base/new-node-aliases
+  - rules/knowledge-base/matched-node-gains-only-aliases
+  - domain/knowledge-base/node-resolution

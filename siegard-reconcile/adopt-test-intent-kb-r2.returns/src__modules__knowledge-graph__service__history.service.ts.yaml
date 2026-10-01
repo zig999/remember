@@ -1,0 +1,123 @@
+findings:
+  - file: src/modules/knowledge-graph/service/history.service.ts
+    where: >-
+      assembleLinkHistory (lines 150-155) and assembleAttributeHistory (lines 174-179), the warning logged for a version with no provenance
+    evidence: >-
+      if (row.status !== "deleted" && provenance.length === 0) {
+        logger.warn(
+          { route, link_id: row.id, status: row.status },
+          "knowledge_graph_empty_provenance"
+        );
+      }
+      (the attribute twin logs { route, attribute_id: row.id, status: row.status } under the same message)
+    cost: >-
+      The code treats a non-deleted link or attribute version with an empty provenance list as an anomaly worth an alarm, and treats a deleted one as unremarkable. No node in the set or among the candidates states this. The nearest, rules/knowledge-base/graph-read-shows-empty-provenance, says only that a graph read answers such an item with an empty provenance list. A reader who looks in the specification for what an unsourced version means finds the answer in a log call.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether an unsourced non-deleted version is an alarm condition. If it is, the decision goes into a node, probably beside rules/knowledge-base/graph-read-shows-empty-provenance.
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file states no authentication, routing, validation or health answer. It only throws ResourceNotFoundError, NodeDeletedError and UnknownAttributeKeyError, which are imported from "./errors.js".
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file does no intake, proposal, extraction or run reads. It only has the history services getLinkHistoryService, getAttributeHistoryService and getAttributeKeyHistoryService.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      getLinkHistoryService, getAttributeHistoryService and getAttributeKeyHistoryService, with the assemblers assembleLinkHistory and assembleAttributeHistory. These cover the read-link-history, read-attribute-history and read-attribute-key-history operations. Both assemblers return `{ versions }`.
+    evidence: >-
+      `if (rows === null) { throw new ResourceNotFoundError("KnowledgeLink", linkId); }`. The attribute twin throws ResourceNotFoundError("NodeAttribute", attributeId). The key-history service throws ResourceNotFoundError("KnowledgeNode", input.nodeId) when the node is absent, and `if (node.status === "deleted") { throw new NodeDeletedError(input.nodeId); }`. A key missing from the catalog throws `new UnknownAttributeKeyError(node.node_type, input.key)`. A key with no rows returns `{ versions }` with an empty list. Each version is built with toLinkDetail(row, provenance) or toAttributeDetail(row, provenance).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no fragment listing and no query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-nodes computation.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-nodes computation.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file only groups provenance rows with `groupProvenance(provenanceRows)` and hands them to the formatters. The excerpt is computed in neither this file nor anything it visibly states.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file applies no compliance-status filter to provenance. `listProvenanceByTargets(client, "link", ids)` is passed through as returned.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal. The history services walk supersedes lineage through walkLinkHistory and walkAttributeHistory.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The header comment says the chain is walked in both directions and ordered ASC by recorded_at (oldest first). That prose is the only place the file mentions the ordering, because the SQL lives in graph.repository.ts, and no node in the pack states it. I filed it nowhere, since prose alone is not a finding. It is for the comment route and for whichever pass reads the repository.
+candidates_opened:
+  - rules/knowledge-base/graph-read-shows-empty-provenance

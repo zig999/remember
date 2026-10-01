@@ -1,0 +1,152 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      line 80, step 1 of the docstring of ingestRawInformation
+    evidence: >-
+      * 1. Compute `content_hash = sha256(content)`.
+    cost: >-
+      The docstring states the content-hash definition a second time, outside behavior. The first copy is rules/knowledge-base/content-hash-is-sha256, and the code that computes it is `sha256Hex(input.content)` in ../hash.js. If the digest definition moves, this prose keeps saying the old one.
+    kind: restates
+    correction: >-
+      Remove the docstring line. The code in ../hash.js already holds the fact, and the node already binds it.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      line 81, step 2 of the docstring of ingestRawInformation
+    evidence: >-
+      * 2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`.
+    cost: >-
+      The docstring restates the composition and order of the idempotency key. The code calls `composeIdempotencyKey({ content_hash, prompt_version, model, chunking_version })` from ../hash.js, so the code holds the fact. A reader of this prose could take it for the place the key is defined, when the node is rules/knowledge-base/idempotency-key.
+    kind: restates
+    correction: >-
+      Remove the docstring line. ../hash.js holds the composition and the node binds it.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      lines 87-93, the "Idempotent no-op path" paragraph of the docstring of ingestRawInformation
+    evidence: >-
+      * Return 200 with `outcome = "noop_existing"` and empty `chunks` array.
+    cost: >-
+      The prose restates the intake contract's noop_existing answer (HTTP 200, no chunks, the held run). The code in noopExisting holds it too (`status: 200`, `outcome: "noop_existing"`, `chunks: []`). When the contract moves, this prose is a second description that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the paragraph. noopExisting already carries the answer, and the node binds it.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no chunk shape. It only forwards chunker output and reads `c.chunk_index`, `c.offset_start` and `c.offset_end` from rows typed in ../repository/ingestion.repository.js: `chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))`.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no raw-information shape. It forwards values to `insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null })`. The shape is declared in the repository and DTO files.
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds none of the authentication, routing or health answers. The only HTTP-adjacent code is ResourceNotFoundError (`statusCode = 404`, `code = "RESOURCE_NOT_FOUND"`), which is an ingestion read answer, not an access one.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Partially, in ingestRawInformation (the 201 body), noopExisting (the 200 body), getRawInformationById and listChunksByRawInformationId. This covers ingest-raw-information, read-raw-information and list-raw-chunks. The file holds no other operation.
+    evidence: >-
+      `status: 201, body: { outcome: "created", raw_information_id, content_hash, chunk_count: chunkRows.length, chunks: [...], llm_run_id, idempotency_key }`. `status: 200, body: { outcome: "noop_existing", ..., chunks: [], llm_run_id: run.id }`. `throw new InvariantError(\`noopExisting: raw_information ${existing.id} exists ... but no llm_run row matches idempotency_key\`)` for a run not opened under the named model and prompt version. `throw new ResourceNotFoundError("raw_information", id)`. `return { total: rows.length, items: rows.map(toRawChunkResponse) }`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance, catalog, node or graph read. Its reads are limited to raw information and its chunks.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No fragment listing or query-parameter handling appears in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No affected-nodes computation appears. The file only inserts the run with `insertLlmRun(client, { model, prompt_version, input_raw_information_id, idempotency_key })`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No affected-nodes listing appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only calls `chunkV1(input.content, input.source_type)`. Determinism of the division lives in ../chunker/v1.js, and this file adds no variable input to the call.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution code appears in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction appears in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No provenance excerpt is built. Chunks are only listed through `rows.map(toRawChunkResponse)`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or compliance filtering appears in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No validity-start handling appears in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line detection appears in the file. Chunking is delegated to `chunkV1`.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+looked_past: >-
+  The header comment "`compliance_delete` (§11) is the only writer permitted to mutate `raw_information` rows post-creation ... BR-02 is enforced by the absence of code" states an immutability rule that no node holds and that no code or emitted text carries, so it is prose for the comment route, not an unstated finding.
+candidates_opened:
+  - rules/knowledge-base/content-hash-is-sha256
+  - rules/knowledge-base/content-hash-unique
+  - rules/knowledge-base/held-content-records-nothing
+  - rules/knowledge-base/idempotency-key
+  - rules/knowledge-base/idempotency-key-unique

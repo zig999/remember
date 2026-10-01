@@ -1,0 +1,173 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      Lines 18-22, the header comment on idempotency, and lines 159-163, the comment inside the
+      noop_existing branch.
+    evidence: >-
+      "Idempotency (BR-08): if the same content was already ingested,
+      `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
+      (the existing run is completed, or running, and re-running would either no-op
+      or 409). The tool reports `already_ingested` with the existing ids — never an
+      error." and "a non-`completed` run means the prior extraction did
+      not finish and recovery requires re-running that LLMRun (no retry tool is
+      exposed over MCP yet — see BR-30)."
+    cost: >-
+      Two comments restate the already_ingested outcome and the unfinished-run recovery. Code
+      holds both: the `outcome === "noop_existing"` branch returns `outcome: "already_ingested"`
+      with the existing ids and the status-dependent message, and the contract holds the same
+      fact. A reader can take the comment as a second home for the rule. It also cites a
+      back-spec rule number (BR-30) that no node carries.
+    kind: restates
+    correction: >-
+      Remove the two comments. The code in this file holds the fact and the node
+      contracts/knowledge-base/ingestion holds it.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      Lines 41-48, the doc comment on DEFAULT_INGEST_MODEL, and lines 68-70, the doc comment on
+      `ingestModel`.
+    evidence: >-
+      "Hard-coded fallback extraction model used only when the caller omits `model`
+      AND no `ingestModel` is wired ... Override per call (the
+      `model` arg) or via the INGEST_MODEL env (no recompile)."
+    cost: >-
+      The comment restates the fallback order for the extraction model. Code holds that order in
+      this file as `model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL`, and the
+      node holds it too. A second statement of a default value in prose will drift silently when
+      the model changes.
+    kind: restates
+    correction: >-
+      Remove the prose. The constant and the `??` chain in this file hold the fact, and the node
+      rules/knowledge-base/default-extraction-model holds it as well. That node is outside this
+      file's pack, so the file is not bound to it.
+    node: rules/knowledge-base/default-extraction-model
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      The `body` object built at lines 114-121, the `storage_ref` and `metadata` members.
+    evidence: >-
+      storage_ref: null,
+      metadata: input.metadata ?? {},
+    cost: >-
+      A document ingestion always records no storage reference and records empty metadata when
+      the caller gives none. Neither value is stated by the contract's ingest-document operation
+      or by any node I found (grep of projections/full-text.md for "storage reference", "storage_ref"
+      and "metadata"). Because it is not in the specification, the next reader will not find it
+      there, and this file becomes the place that decision lives.
+    kind: unstated
+    correction: >-
+      Give the fact a node, for example in the ingest-document operation or a rule on what a
+      document ingestion records, and bind this file to it.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      Partly: the pgDown branch of the catch in ingestDocumentHandler, lines 133 and 144-148.
+      The health, authentication and routing answers sit elsewhere.
+    evidence: >-
+      code: "SYSTEM_SERVICE_UNAVAILABLE",
+      message: "A backing service is temporarily unavailable."
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      ingestDocumentHandler, lines 106-265: the ingested outcome at lines 209-218, the
+      already_ingested outcome with its two status-dependent messages at lines 177-189, the
+      intake failure message at lines 149-152, the provider and extraction failure branch at
+      lines 223-245, and the unexpected-error message at lines 256-263.
+    evidence: >-
+      outcome: "already_ingested" ... "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered." ... message: "Failed to persist the document before extraction." ... message: "Unexpected error during document ingestion."
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file serves ingest_document only. It has no search, provenance, catalog listing or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and no query parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file returns `run` as the orchestrator gives it ("run,") and computes no affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file computes no affected nodes; it only forwards `run`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file delegates chunking to `ingestRaw(client, body)` and reads only `chunk_count`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no proposals; `runExtraction(...)` is a delegated call.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It only passes `prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file consolidates no proposals; consolidation happens in the delegated orchestrator.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file applies no validity-start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does not parse content lines; it passes `content: input.content` on.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The file holds the default extraction model, as `model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL`, and the default prompt version, imported as DEFAULT_PROMPT_VERSION. Both are held by nodes outside this pack (rules/knowledge-base/default-extraction-model and rules/knowledge-base/default-prompt-version), and the code agrees with both.
+candidates_opened:
+  - rules/knowledge-base/default-extraction-model
+  - rules/knowledge-base/default-prompt-version

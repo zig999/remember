@@ -1,0 +1,133 @@
+findings:
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 1-5 (the active and uncertain buckets)
+    evidence: >-
+      // Confidence routing (BR-17 of `ingestion.back.md`, A13 of v7).
+      //   confidence >= 0.75            -> assertion status = 'active'
+      //   0.40 <= confidence < 0.75     -> assertion status = 'uncertain'
+    cost: >-
+      The two thresholds and the status each one maps to are written a second time in prose. The code holds the same fact in this file, in CONFIDENCE_UNCERTAIN_UPPER, CONFIDENCE_FLOOR and routeConfidence. A change to the node moves neither the comment nor anything that checks it, so a reader may take the comment as the decided value.
+    kind: restates
+    correction: >-
+      Remove the header comment. The fact stays in rules/knowledge-base/new-assertion-status-from-confidence and in routeConfidence.
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 6-12 (the below-floor bucket), and the doc comment on routeConfidence at line 23
+    evidence: >-
+      //   confidence < 0.40             -> link/attribute NOT created;
+      // The third branch is NOT a 5-layer validation failure — it is a business
+      // result.
+    cost: >-
+      The rule that a proposal below 0.40 records nothing is restated in prose. The code holds it in this file as the `below_floor` return of routeConfidence. The comment also describes what the handler does with that result, which belongs to another file and to the contract, so it can drift from both without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays in rules/knowledge-base/below-confidence-floor-records-nothing and in routeConfidence.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file only exports `routeConfidence(confidence: number): ConfidenceRoute`. It has no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file classifies a number into `{ kind: "active" }`, `{ kind: "uncertain" }` or `{ kind: "below_floor" }`. It builds no `outcome: rejected` or `BELOW_CONFIDENCE_FLOOR` answer; the `{ ok: true, result: ... }` text appears only in a comment.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file contains no read, search or traversal operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or locking. It is a pure function of one number.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or review logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance logic.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance logic.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no metrics computation.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search logic.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no consolidation or re-affirmation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue logic.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue logic.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no text parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+looked_past: >-
+  The file's only code facts (0.75, 0.40 and the three-way routing) are held by two nodes outside this pack, rules/knowledge-base/new-assertion-status-from-confidence and rules/knowledge-base/below-confidence-floor-records-nothing, and the code agrees with both, so I filed no unstated or contradicts finding. The comment citations "BR-17" and "A13" point to documents outside the specification root, and I did not judge them.
+candidates_opened:
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/below-confidence-floor-records-nothing

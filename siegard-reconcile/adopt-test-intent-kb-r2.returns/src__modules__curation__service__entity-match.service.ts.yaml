@@ -1,0 +1,144 @@
+findings:
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      line 45, the comment above the self-merge guard in resolveEntityMatchService
+    evidence: >-
+      // BR-23 defence in depth on resolveEntityMatch (target == self).
+    cost: >-
+      The comment says again that a node is never merged into itself, using a back-spec rule number (BR-23) that is not a specification identity. The code below it holds the rule (`body.target_node_id === nodeId` throwing BUSINESS_SELF_MERGE_FORBIDDEN). A reader who follows the comment goes to a document the specification does not bind, and the prose stays behind when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The guard already holds the fact, and the trace is the place for the link from this file to the node.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      line 60, the comment inside the keep_separate branch, above loadNodesForUpdate
+    evidence: >-
+      // BR-26: lock node and assert needs_review.
+    cost: >-
+      The comment restates the rule that an entity-match resolution must resolve a node in needs-review, and cites a back-spec number (BR-26) in place of the node. The code holds the rule (`if (node.status !== "needs_review") { throw new ConflictError("BUSINESS_REVIEW_NOT_PENDING", ...`). The comment is a second home for the fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      line 90, the comment above the keep_separate deleteEntityMatchReviewByNode call
+    evidence: >-
+      // BR-10: drop review-context rows.
+    cost: >-
+      The comment restates the rule that an accepted resolution removes every entity match review of its node, citing a back-spec number (BR-10). The code holds it (`await deleteEntityMatchReviewByNode(client, nodeId);`, called in both branches). The prose duplicates the node's fact and points to a rule id the specification does not use.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/entity-match-resolution-clears-reviews
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. It only calls `withTransaction(deps.pool, ...)` and the curation repository.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No intake, proposal or ingestion operation appears. The file's two exports are `resolveEntityMatchService` and `mergeNodesService`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      No search, provenance, listing or graph read appears in the file. It only writes curation outcomes.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments and takes no query parameters.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      `affected` here is `MergeAffectedCounts` from performMerge, not an LLM run's affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run affected-node listing is built in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not touch raw content or chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file handles curation resolution (`loadNodesForUpdate(client, [nodeId])`), not node proposals or alias reading.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirm-item operation. Its curation actions are `resolve_entity_match` and `merge_nodes`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt appears in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance entry appears in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file does not list nodes or match names.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals and no re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file handles no validity start and no proposals.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue and applies no limit or offset. It only resolves a single entity match.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file counts no queue entries. The candidate index binds this rule to curation.repository.ts, not to this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no content parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The file's own facts belong to nodes outside this pack (merge-into-requires-target, entity-match-resolution-requires-pending-review, node-never-merged-into-itself, entity-match-resolution-clears-reviews, curation-refuses-deleted-node and the merge-* rules), and the code agrees with them. I judged the file against those only to attribute the three comment findings. The file header comment ("UC-02 ... UC-04") and the unreachable BUSINESS_TARGET_NODE_REQUIRED branch (which carries no `details.issues`) were not judged against them.
+candidates_opened:
+  - rules/knowledge-base/node-never-merged-into-itself
+  - rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - rules/knowledge-base/entity-match-resolution-clears-reviews
+  - rules/knowledge-base/entity-match-resolution-check-order
+  - rules/knowledge-base/merge-into-requires-target
+  - contracts/knowledge-base/curation

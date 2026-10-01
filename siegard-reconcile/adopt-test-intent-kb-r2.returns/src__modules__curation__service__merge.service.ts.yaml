@@ -1,0 +1,117 @@
+findings:
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the header comment, lines 1-11 ("Steps inside the open transaction (BR-13 layered validation)"), and the inline comments at lines 63, 81 and 95
+    evidence: >-
+      "//   1. SELECT ... FOR UPDATE on both rows (BR-26).
+      //   2. Inspect status: 404 if missing, 410 if deleted, 409/422 mismatch.
+      //   3. Enforce node_type match (BR-06)." and "// BR-12: 410 for tombstones; explicit before 409/422 status checks."
+    cost: >-
+      The check order is written a second time in prose, under back-spec rule numbers (BR-06, BR-12, BR-13, BR-26) that are not specification node identities. The code in performMerge already holds that order: self-merge, absent survivor, absent absorbed, deleted survivor, deleted absorbed, survivor not active, absorbed status, node type. If the node moves, a reader of this file sees the old order described as current, and the prose is not bound to the node.
+    kind: restates
+    correction: >-
+      Remove the header block and the BR-numbered inline comments. The order stays in the code of performMerge and in rules/knowledge-base/merge-check-order. This falls under the comment route, followed by /reconcile over the file.
+    node: rules/knowledge-base/merge-check-order
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. Its only throws are merge guards, for example `throw new ConflictError("BUSINESS_SELF_MERGE_FORBIDDEN", "survivor_id equals absorbed_id")`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file imports only curation repository functions (`copyAliases`, `loadNodesForUpdate`, `repointLinks` and others) and has no intake, proposal or run behavior.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      `performMerge` performs writes inside a transaction and reads, searches or traverses nothing for a caller.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing of accepted fragments and no parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file's `MergeAffectedCounts` counts links, attributes, aliases and compressed nodes. It does not list an LLM run's affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run affected-node listing. It throws `ResourceNotFoundError` for an absent merge node.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance deletion listing and no execution window.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking of content.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file's only lock is `loadNodesForUpdate(client, [args.survivorId, args.absorbedId])` on a merge's two nodes. It resolves no proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation of an assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance and no chunk excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance. Its only compliance reference is the `deleted` status check on merge nodes.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals. `repointLinks` and `repointAttributes` move existing assertions to the survivor.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity start or basis logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing and no paging.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing and no total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file parses no source text.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  None of the 25 pack nodes governs this file. The facts it applies (self-merge refusal, tombstone and status guards, node-type match, the status flip, path compression, alias copy and link and attribute repointing) are held by nodes outside the pack and outside the candidate index, namely rules/knowledge-base/node-never-merged-into-itself, curation-refuses-deleted-node, merge-survivor-active, node-merge-absorbs-active-node, merge-requires-same-node-type, merge-marks-absorbed-merged, merge-compresses-paths, merge-copies-aliases, merge-repoints-assertions and merge-counts-what-it-changed. The code agrees with them and with merge-check-order. The remaining BR-numbered comments (steps 4-7, "Defence in depth (BR-23)") restate those nodes and were not filed separately.

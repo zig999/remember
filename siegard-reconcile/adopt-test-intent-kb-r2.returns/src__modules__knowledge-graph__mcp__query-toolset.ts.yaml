@@ -1,0 +1,218 @@
+findings:
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      header comment, lines 1-2 and 10-12
+    evidence: >-
+      "// MCP `query` toolset registration — nine read-only tools mirroring the REST
+      // surface 1:1 (knowledge-graph.back.md BR-23, BR-25)." and "so REST and MCP surface
+      byte-identical error codes for the same thrown sentinel."
+    cost: >-
+      The same-answer rule between the two transports is described here as prose, citing a
+      back-spec rule by number. A reader chasing the rule is sent to a document outside the
+      specification nodes. A change to the node does not reach this prose, so the comment can
+      drift without anything flagging it.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior stays where it is: the handlers call the same service
+      functions as the REST routes and map every failure through mapErrorToEnvelope.
+    node: constraints/retrieval-transports-answer-alike
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      header comment, lines 4-6
+    evidence: >-
+      "opens its own short
+      // `BEGIN READ ONLY` transaction (BR-23 rule 4)"
+    cost: >-
+      The read-only-transaction rule is restated as prose with a back-spec citation. The node
+      is the specification's statement of it, and this comment is a second place that names the
+      fact.
+    kind: restates
+    correction: >-
+      Remove the comment. Code holds the fact: every handler runs through
+      `withReadOnly(pool, (client) => run(parsed, client))`, which imports from
+      shared/pg-transaction.ts.
+    node: constraints/retrieval-is-read-only
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      section comment above the per-tool input schemas, lines 69-74
+    evidence: >-
+      "Each schema is `.strict()` —
+      // any unknown property surfaces as `VALIDATION_INVALID_FORMAT`."
+    cost: >-
+      This prose restates the retrieval contract's refusal of undefined parameters. The
+      contract lets only MCP refuse them for some operations, so a reader who trusts the
+      comment cannot tell which operations the refusal covers. The comment also says "each
+      schema", but list_nodes, list_link_types and list_attribute_keys reuse the REST query
+      schemas unchanged.
+    kind: restates
+    correction: >-
+      Remove the comment. The `.strict()` calls on GetNodeInputSchema, TraverseInputSchema, the
+      three history schemas and ListNodeTypesInputSchema hold the refusal.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      QUERY_TOOL_NAMES (lines 161-171), the QueryToolInputJsonSchemas keys (lines 136-155) and
+      the registerTool calls
+    evidence: >-
+      "export const QUERY_TOOL_NAMES: readonly QueryToolName[] = [
+        \"get_node\",
+        \"traverse\",
+        \"get_history_link\",
+        \"get_history_attribute\",
+        \"get_history_attribute_key\",
+        \"list_nodes\",
+        \"list_node_types\",
+        \"list_link_types\",
+        \"list_attribute_keys\",
+      ];"
+    cost: >-
+      These are the names an LLM caller uses for the read operations, and flattened input
+      fields such as `node_id`, `link_id`, `attribute_id` and `key` come with them. The
+      retrieval contract names its operations read-node, read-link-history, list-node-types
+      and so on, and states no MCP tool name for them. The names live only in this file, so a
+      reader looking in the specification will not find them. The set of nine also leaves out
+      operations the contract lists, such as search, read-link, read-attribute and the
+      provenance reads, and the specification does not say which operations MCP exposes.
+    kind: unstated
+    correction: >-
+      Give the MCP tool names and the set of read operations MCP exposes a node, most likely
+      in contracts/knowledge-base/retrieval.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      makeHandler (lines 237-253) together with the strict input schemas (lines 77-110)
+    evidence: >-
+      "const result = await withReadOnly(pool, (client) => run(parsed, client));
+      return { ok: true, result };
+      } catch (err) {
+      return mapErrorToEnvelope(err);" and
+      "export const ListNodeTypesInputSchema = z.object({}).strict();". The service functions
+      called are the ones the REST routes use, and the schemas refusing undefined parameters
+      are `.strict()`.
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file states no authentication, routing or health behavior. Tool registration is
+      the only thing it does: `mcp.registerTool<GetNodeInput, unknown>("query", {`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file registers only read tools. It holds no ingestion operation, and none of
+      propose_*, ingest_document or ingest_directed appear in it.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the `.strict()` input schemas, for the undefined-parameter refusal only. The answers,
+      result shapes and other refusals are delegated to services and DTOs outside this file.
+    evidence: >-
+      "export const GetHistoryLinkInputSchema = LinkIdParamSchema.strict();" and
+      "(input, client) => getLinkHistoryService(client, input.link_id, svcLogger)". Result
+      shapes and error codes are never written here.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing tool is registered. The nine tools are listed in
+      QUERY_TOOL_NAMES.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run read. The names are get_node, traverse, the histories and the
+      catalog and node listings.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM-run read, and nothing in it computes affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing. Its tools are the read tools in
+      QUERY_TOOL_NAMES.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking, and its imports contain no chunker.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file registers no proposal tool. Every handler runs inside `withReadOnly`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no curation or confirmation behavior. It is the read-only query toolset.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt. The only prompt-like text is the tool descriptions in
+      QueryToolDescriptions, and they list no attribute values.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and orders no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and spells out no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file never builds a provenance excerpt. It forwards the service return value:
+      `return { ok: true, result };`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file applies no compliance-status filter. It delegates to getNodeByIdService,
+      traverseNodeService and the history services.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics. It registers nine read tools.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file only passes the filter along: `name_prefix: input.name_prefix,`. The matching
+      is done in the service.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search tool is registered in this file. The only graph walk is `traverse`, which
+      delegates to traverseNodeService.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or consolidation behavior. Every handler runs inside
+      `withReadOnly`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal behavior and no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. The only pagination is `limit: input.limit,
+      offset: input.offset,` passed to listNodesService.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing and computes no totals.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file parses no source text, and nothing in it matches speaker lines.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only dispatches: `traverseNodeService(client, catalog, { startingNodeId:
+      input.node_id, direction: input.direction, ...` The expansion filter lives in the
+      service.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only dispatches to traverseNodeService. It lists no nodes and filters no
+      merged or deleted nodes.
+looked_past: >-
+  Other comments restate back-spec identifiers (UC-nn, BR-23, BR-24, BR-25, TC-01) and
+  describe the tool-input flattening and the pinning of JSON Schemas; I saw them and did not
+  file them as findings. They are comment-route material, and the tool descriptions in
+  QueryToolDescriptions state the depth bounds 1..3, the page limit of 100, the "active"
+  catalog wording and the chronological order of attribute-key history consistently with the
+  nodes, or with no contradicting node.

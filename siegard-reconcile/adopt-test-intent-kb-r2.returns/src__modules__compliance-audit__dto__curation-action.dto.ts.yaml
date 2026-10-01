@@ -1,0 +1,126 @@
+findings:
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      the header comment, lines 1-5, and the docblock of CurationActionNameSchema, line 11
+    evidence: >-
+      "The `action` filter is validated at the API layer ONLY (BR-10) — the underlying DB column is plain `text` (schema line 454)." and "/** 7 curation-tool names of §14.4 (BR-10). */" above z.enum(["resolve_entity_match", "merge_nodes", "resolve_dispute", "confirm_item", "reject_item", "correct_item", "compliance_delete"])
+    cost: >-
+      The closed set of seven action kinds is stated in prose that cites a business rule number and a section of a retired document, while the node holds the set. The next reader may take the comment as the place the set is decided. The comment's section and BR numbers will not follow the node when it moves. The enumeration itself is declared in this file by the z.enum, so the prose is a second home for the fact.
+    kind: restates
+    correction: >-
+      Remove the header comment and the docblock. The z.enum already holds the set, and the node it answers to is bound to this file.
+    node: domain/knowledge-base/curation-action-kind
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      the docblock of ListCurationActionsQuerySchema, lines 33-37
+    evidence: >-
+      "BR-09 semi-open time-range honored (`from` inclusive, `to` exclusive); BR-10 action enum validated here."
+    cost: >-
+      The half-open window rule is restated as prose pointing at a BR number. The code that enforces it is the repository's `created_at >= $n` and `created_at < $n`, not this file, so a reader of this file sees a claim with no code behind it. The comment will go stale without any tool noticing.
+    kind: restates
+    correction: >-
+      Remove the docblock. The window's half-open behavior is held by code in src/modules/compliance-audit/repository/compliance-audit.repository.ts (`where.push(`created_at >= $${i++}`)` and `where.push(`created_at < $${i++}`)`).
+    node: rules/knowledge-base/audit-listing-window-half-open
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only curation-action query and row schemas; it has no authentication, routing or health construct. `export const CurationActionIdParamSchema = z.object({ curationActionId: UuidSchema })`
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No intake, proposal, extraction or ingestion construct appears in the file. `export const ListCurationActionsQuerySchema = z.object({ action: CurationActionNameSchema.optional(), ...`
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares no search, provenance, catalog, node or traversal read. It declares only curation-action audit DTOs, such as `CurationActionListSchema`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file concerns curation actions and has no accepted-fragment listing filter. `ListCurationActionsQuerySchema` is a plain z.object with no strict mode.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node construct appears in the file. The file ends with `CurationActionIdParamSchema`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node construct appears in the file. The file declares `TargetKindSchema` and the curation-action schemas.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The node constrains the compliance-deletion filter, which this file does not declare. The curation-action window check only runs when both bounds are given (`if (value.created_from && value.created_to)`), but that is the curation-action filter, not the node's subject.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking construct. `CurationActionSchema` declares id, action, target_kind, target_id, payload, reason and created_at.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution construct. `export const TargetKindSchema = z.enum(["node", "link", "attribute", "fragment", "raw_information"])`
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or assertion-review construct. It only declares audit-read DTOs.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or attribute-key construct. `CurationActionNameSchema` is a z.enum of curation action names.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt construct. The only enumerations are `CurationActionNameSchema` and `TargetKindSchema`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt or allowed-value construct. `CurationActionNameSchema` is a z.enum of curation action names.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read, provenance or excerpt construct. `CurationActionSchema` holds `payload: z.record(z.string(), z.unknown())` and `reason`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance construct. It only declares curation-action audit DTOs.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation-metrics construct. `CurationActionListSchema` is `z.object({ total, limit, offset, items })`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node-listing filter. The only filter is `ListCurationActionsQuerySchema`.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph-walk construct. It only declares curation-action audit DTOs.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or consolidation construct. It only declares curation-action audit DTOs.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or validity-start construct. `created_from` and `created_to` are audit-window bounds, not validity starts.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. `limit: z.coerce.number().int().min(1).max(100).default(50)` belongs to the curation-action listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. `total: z.number().int().min(0)` is on the curation-action list envelope.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no raw-information or speaker-line parsing construct. It only declares curation-action audit DTOs.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal construct. `TargetKindSchema` lists "node" only as a target kind of a curation action.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal construct. It only declares curation-action audit DTOs.
+looked_past: >-
+  The file's own facts are held by nodes outside this pack: domain/knowledge-base/curation-action-kind, curation-target-kind, curation-action-filter, rules/knowledge-base/audit-page-defaults, page-limit-bounds, page-offset-non-negative, audit-window-ordered and curation-action-reason-length. I read them in specification/projections/full-text.md and the code agrees with them: limit 1 to 100 with default 50, offset at least 0, window start strictly before end, reason at most 1000, and the seven action kinds and five target kinds. The node itself does not name a single sentinel message string for a window failure, and I did not judge the issue message "VALIDATION_OUT_OF_RANGE".

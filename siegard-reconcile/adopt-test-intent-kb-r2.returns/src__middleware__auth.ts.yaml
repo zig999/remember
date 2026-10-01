@@ -1,0 +1,153 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      the header comment, lines 9-12 (the "Error mapping" list)
+    evidence: >-
+      // Error mapping (registered in docs/specs/_global/error-codes.md):
+      //   - Missing/malformed `Authorization` header     -> 401 AUTH_UNAUTHORIZED
+      //   - Token expired (exp <= now)                   -> 401 AUTH_TOKEN_EXPIRED
+      //   - Bad signature / wrong issuer / not a JWT     -> 401 AUTH_TOKEN_INVALID
+    cost: >-
+      The authenticate-owner refusals are listed a second time in prose outside behavior. The list
+      omits the `sub`-claim refusal and names "wrong issuer", which the code does not check, so a
+      reader who trusts it learns a different set of refusals than the node holds. The code holds
+      the real mapping in this file (the `AuthError` constructions in `preHandler` and
+      `mapJoseError`).
+    kind: restates
+    correction: >-
+      Remove the comment. The refusals stay in the node and in the `AuthError` constructions.
+    node: contracts/knowledge-base/access
+  - file: src/middleware/auth.ts
+    where: >-
+      the comments on the local operator bypass: lines 110-113, 132-136 and 182-186
+    evidence: >-
+      // DEV-ONLY local operator bypass (see config/env.ts LOCAL_OPERATOR_TOKEN).
+      // Resolved once at build time: enabled only when running in development AND a
+      // token is configured. In any other mode this is `null` and the bypass branch
+      // below is dead — production never trusts a static bearer.
+    cost: >-
+      The rule that the local operator token admits the owner only in development, compared in
+      constant time, is stated again in prose. The rule already sits in a node and in this file's
+      code (`env.NODE_ENV === "development"` and `constantTimeEqual`). A change to the node would
+      leave these comments saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the comments. The code in this file already holds the fact, and the node outside the
+      pack holds it as well.
+    node: constraints/local-operator-token-development-only
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      the `preHandler` returned by `buildNeonAuth` (the four authenticate-owner refusals, and the
+      owner or `local-operator` identity attached to `request.user`), the `AuthError` class
+      (statusCode 401) and `mapJoseError`
+    evidence: >-
+      throw new AuthError("AUTH_UNAUTHORIZED", "Missing or malformed Authorization header (expected `Bearer <jwt>`).");
+      return new AuthError("AUTH_TOKEN_EXPIRED", "Authentication token expired.");
+      return new AuthError("AUTH_TOKEN_INVALID", "Invalid authentication token.");
+      throw new AuthError("AUTH_TOKEN_INVALID", "JWT missing required `sub` claim.");
+      request.user = { id: "local-operator", ... };
+      The route-request and read-health operations are not carried by this file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file only verifies the bearer token: `export function buildNeonAuth(` and
+      `export function extractBearer(`. It carries none of the ingestion operations or refusals.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      None of the retrieval operations is carried here. The file's `AuthErrorCode` union
+      (`"AUTH_UNAUTHORIZED" | "AUTH_TOKEN_EXPIRED" | "AUTH_TOKEN_INVALID"`) produces the 401 codes
+      that retrieval repeats by reference, and the access node holds that fact.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds no listing and no query-parameter handling: `export function extractBearer(header: string | undefined): string | null {`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file holds no run or proposal logic: `export interface NeonAuth { readonly preHandler: ... }`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file holds no run or node reads: `export interface NeonAuth { readonly preHandler: ... }`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no compliance deletion listing: `export function buildJwksUrl(neonAuthUrl: string): URL {`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file holds no chunking: `const match = /^Bearer\s+(\S+)\s*$/i.exec(header);` is its only text parsing.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or node resolution: `preHandler: async (request) => {`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no assertion review: `request.user = user;` is the only state it writes.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt: `import { createRemoteJWKSet, jwtVerify, errors as joseErrors, ... } from "jose";`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt or ordering of allowed values: `export class AuthError extends Error {`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt or allowed values: `export class AuthError extends Error {`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file holds no graph read or provenance: `export interface AuthenticatedUser { readonly id: string; readonly claims: Readonly<JWTPayload>; }`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file holds no graph read or provenance: `export interface AuthenticatedUser { readonly id: string; readonly claims: Readonly<JWTPayload>; }`.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file holds no curation metrics: `function constantTimeEqual(a: string, b: string): boolean {`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file holds no node listing or name matching: `export function buildJwksUrl(neonAuthUrl: string): URL {`.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file holds no search: `export function buildNeonAuth(env: ..., getKey?: JWTVerifyGetKey): NeonAuth {`.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal consolidation: `preHandler: async (request) => {`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or validity start handling: `const verified = await jwtVerify(token, jwks);`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue or pagination: `export function extractBearer(header: string | undefined): string | null {`.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file holds no review queue or pagination: `export function extractBearer(header: string | undefined): string | null {`.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file holds no speaker-line parsing: `const match = /^Bearer\s+(\S+)\s*$/i.exec(header);` parses an Authorization header only.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal: `declare module "fastify" { interface FastifyRequest { user?: AuthenticatedUser; } }`.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file holds no traversal: `declare module "fastify" { interface FastifyRequest { user?: AuthenticatedUser; } }`.
+looked_past: >-
+  The JWKS URL path, the cache TTL, the 30 s cooldown, and the Bearer-scheme regex are infrastructure and parsing choices rather than domain facts, so they are not reported as unstated. The pack's other nodes are unrelated to this file.
+candidates_opened:
+  - constraints/local-operator-token-development-only

@@ -1,0 +1,183 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 53-56, the constant PER_LAYER_FETCH_LIMIT and its use in the three layer calls at lines 128-148
+    evidence: >-
+      const PER_LAYER_FETCH_LIMIT = 200;  ... searchFragmentLayer(client, input.query, PER_LAYER_FETCH_LIMIT) ... searchNodeAliasLayer(client, input.query, PER_LAYER_FETCH_LIMIT) ... searchChunkLayer(client, input.query, PER_LAYER_FETCH_LIMIT)
+    cost: >-
+      The code keeps at most 200 hits per layer before ranking, and the search total is counted only over what survives that cut. No node states the number or the cap. search-total-before-pagination says the total counts "every search item", so for a broad query the total and the reachable results are smaller than that node reads, and the next reader looking in the specification will not find why.
+    kind: unstated
+    correction: >-
+      Give the per-layer candidate cap a node, or state in the total rule that the total counts the items kept after a per-layer cap.
+    node: rules/knowledge-base/search-total-before-pagination
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 178-184, the comment block after the dedup loop
+    evidence: >-
+      // BR-10: a chunk hit not anchored by ANY fragment in the result set is
+      // dropped (we never surface raw-chunk text without the fragment lens).
+      // We retain chunk hits only if explicitly requested and no fragment
+      // anchored them. Per the spec ("collapse predates ranking; the final
+      // list never carries a chunk row"), we DROP all chunk hits unconditionally
+    cost: >-
+      The prose restates "A chunk-layer match never surfaces as a search item". The code holds the fact, because no chunk hit is ever pushed to `items`, so the pair conforms. The comment also contradicts itself: it says chunk hits are retained when explicitly requested, then says all are dropped. A reader could take that as a second, unwritten rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact lives in the node and in the absence of any chunk push into `items` in this file.
+    node: rules/knowledge-base/chunk-match-never-surfaces
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 293-295, the comment above the link score
+    evidence: >-
+      // For each link returned by the traversal, surface a `link` SearchItem.
+      // Score = TRAVERSAL_DECAY ** hop * <source node score>.
+      // We look up the source-node score by searching the items array.
+    cost: >-
+      The prose restates the hop-decay scoring rule, which the code also holds at line 322 (`Math.pow(TRAVERSAL_DECAY, hop) * sourceScore`). It is a second home outside behavior: if the rule moves, the comment still states the old formula.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/expansion-decay
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 316-322, resolution of `sourceScore` for a link reached by expansion
+    evidence: >-
+      // The hop's source node id is one of the endpoints — pick whichever
+      // is in our scoring map; fall back to the highest source score.
+      const sourceScore =
+        nodeScoreById.get(link.source_node_id) ??
+        nodeScoreById.get(link.target_node_id) ??
+        0;
+      const score = Math.pow(TRAVERSAL_DECAY, hop) * sourceScore;
+    cost: >-
+      expansion-decay says a link reached at hop h scores 0.5^h times the score of the matched node it was reached from. This code takes the score of whichever endpoint is itself a matched node (the map holds only node hits). A link reached at hop 2 or 3, whose endpoints are not matched nodes, scores 0 instead of 0.5^h times its originating match's score. The fallback is 0, not the "highest source score" the comment promises. Such links rank last, and which endpoint wins is decided here and not by the node. This was read from this file alone; the shape of `traversal.links` was not opened.
+    kind: contradicts
+    correction: >-
+      Score each link from the matched node the traversal reached it from, as the node states, and not from whichever endpoint happens to be in the scoring map.
+    node: rules/knowledge-base/expansion-decay
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      lines 381-382, the comment above the sort
+    evidence: >-
+      // (i) Rank (BR-15): score DESC, recordedAtTs DESC, id ASC.
+    cost: >-
+      The prose restates the ranking order, which the sort comparator at lines 384-389 holds in this file. A second statement of the order outside behavior drifts silently when the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/search-ranking
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds the search service. It carries no authentication, routing or health logic, and nothing from this contract appears in it.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds no intake, proposal, extraction or ingestion logic. Its only imports are search repository functions and knowledge-graph traversal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      searchKnowledgeService, lines 90-422. It rejects layers outside the closed set, resolves link-type names against the catalog (only when expanding), refuses a query that parses empty, and returns the ranked page with its total.
+    evidence: >-
+      `throw new InvalidSearchLayerError(layer);` ... `throw new UnknownLinkTypeError(name);` ... `throw new InvalidSearchQueryError("empty_after_parse", {` ... `const total = filtered.length;` ... `const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file implements search, not the accepted-fragment listing. It defines no query-parameter refusal.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node computation appears in the file.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node listing appears in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file reads chunk hits (`searchChunkLayer`) and does not divide content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node-resolution logic appears in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file only maps `row.excerpt` through `toProvenanceEntry`. The excerpt is computed by the repository, and this file reads no chunk text or offsets.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file applies no compliance-status filter to provenance rows. It concerns graph reads, and this file is search.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file does no node listing or name-prefix matching. It only passes `input.query` to `searchNodeAliasLayer`.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      The guard at line 271 and the `traverseNodes` call inside it. `linkTypeIds` is also computed only under `input.expand`.
+    evidence: >-
+      `if (input.expand && nodeHits.length > 0) {` ... `const traversal = await traverseNodes(` ... `const linkTypeIds = input.expand ? resolveLinkTypeIds(catalog, input.expandLinkTypes) : undefined;`
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal or consolidation logic appears in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal or validity-start logic appears in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file. Its one pagination slice is of search items.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing appears in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file calls `traverseNodes` and implements no node expansion or status filtering. Whether the traversal skips deleted or merged nodes is decided outside this file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file reads only `traversal.links` and lists no reached nodes.
+looked_past: >-
+  The file's logger event names and messages (`query_retrieval_search_ok`, `query_retrieval_search_empty_link_provenance`) are emitted text that states no node fact, and the empty `layers` or `expandLinkTypes` array being treated as omitted is a small input-normalisation choice I did not report.
+candidates_opened:
+  - rules/knowledge-base/search-ranking
+  - rules/knowledge-base/search-total-before-pagination
+  - rules/knowledge-base/search-option-defaults
+  - rules/knowledge-base/expansion-decay
+  - rules/knowledge-base/chunk-match-never-surfaces
+  - rules/knowledge-base/item-flags
+  - domain/knowledge-base/search-item
+  - domain/knowledge-base/search-query
+  - domain/knowledge-base/search-layer

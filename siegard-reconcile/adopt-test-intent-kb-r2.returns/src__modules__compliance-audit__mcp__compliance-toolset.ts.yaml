@@ -1,0 +1,173 @@
+findings:
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      Lines 1-22, the file header comment
+    evidence: |-
+      // Per BR-15 (P2.1 canonical taxonomy — same codes on REST and MCP):
+      //   - Zod parse failure -> VALIDATION_REQUIRED_FIELD | VALIDATION_INVALID_FORMAT
+      //                         | VALIDATION_OUT_OF_RANGE (Zod-discriminated)
+      //   - raw_information_id resolves to no row -> RESOURCE_NOT_FOUND
+      //   - UC-01 alt 4c legacy orphan -> SYSTEM_INTERNAL_ERROR
+    cost: >-
+      The header restates the compliance-delete refusal codes. The code in this file also holds them, in
+      mapZodErrorToEnvelope and in the catch block's renderErrorEnvelope calls, and the node
+      contracts/knowledge-base/compliance-audit states them. The comment is a third home that names BR and UC
+      identifiers instead of the node. When the contract changes, this prose will still read as the
+      authority and will be wrong.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal codes are held by the code in this file and by
+      contracts/knowledge-base/compliance-audit.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      Lines 48-72, the docstrings above McpEnvelope and mapZodErrorToEnvelope
+    evidence: |-
+      * principle of §14 ("business outcomes are not errors"): idempotent no-op is
+      * a successful `ok: true` envelope with `outcome: noop_already_deleted`.
+      ...
+      *   3. `reason` length / trim violation (`too_small` / `too_big` on the `reason`
+      *      path) -> `VALIDATION_OUT_OF_RANGE`.
+    cost: >-
+      The docstrings restate the noop_already_deleted outcome and the rule that a reason must be non-empty
+      after trim and at most 1000 characters. The compliance-audit contract and the
+      rules/knowledge-base/compliance-deletion-reason-length rule that it cites hold both. The code here
+      forwards the outcome from complianceDelete() and holds the code and message in
+      renderErrorEnvelope("VALIDATION_OUT_OF_RANGE", ...). A reader who trusts the prose is looking at a
+      copy of the rule.
+    kind: restates
+    correction: >-
+      Remove the docstrings. The outcome is carried by the service result, and the codes are held by the
+      branches of mapZodErrorToEnvelope.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      Lines 139-143, the registerTool call
+    evidence: |-
+      deps.mcp.registerTool("curation", {
+          name: "compliance_delete",
+          description:
+            "Tombstone a RawInformation under LGPD or owner request. Idempotent.",
+    cost: >-
+      The tool name compliance_delete, its placement in the curation toolset, and the description text that
+      says what the tool is for are surface facts that the model and the owner see. No node holds them. The
+      compliance-audit contract names the operation "compliance-delete" and says only "over MCP". The next
+      reader looks for the MCP tool's name and toolset in the specification and finds this file.
+    kind: unstated
+    correction: >-
+      The analysis should give the MCP tool name, its toolset and its purpose a node. The natural home is
+      contracts/knowledge-base/compliance-audit.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file never authenticates or routes. It builds only the compliance_delete failure envelopes, for example
+      renderErrorEnvelope("VALIDATION_INVALID_FORMAT", "Request payload failed validation.", { issues }),
+      which belongs to the operation's own validation and not to the owner's authentication, request routing
+      or health report.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file registers only compliance_delete, via deps.mcp.registerTool("curation", ...). It holds no
+      intake, proposal, extraction or ingestion operation.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance, catalog, node or graph read. It only calls
+      complianceDelete({ logger: deps.logger }, client, body).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing appears. The only DTO is ComplianceDeleteRequestSchema.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file holds no compliance-deletion listing. The only window-related code is the `from < to` branch
+      of the error mapper, `i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE"`. It maps an
+      error and accepts or rejects nothing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file does no graph read or provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file performs the deletion only, through complianceDelete(). It reads no graph or provenance
+      entries.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no content parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The file's failure messages ("Field '<path>' is required.", "Field 'reason' must be non-empty after trim and ≤ 1000 characters.", "Unexpected internal error.", "Request payload failed validation.") agree with the compliance-audit contract. The pack holds no node for them, so they are no finding, and the Zod issue-priority ordering and the log lines are code-review matters.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit

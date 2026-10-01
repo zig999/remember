@@ -1,0 +1,144 @@
+findings:
+  - file: src/modules/curation/mcp/curation-toolset.ts
+    where: >-
+      CurationToolDescriptions.merge_nodes, lines 171-175. This is the description
+      served over tools/list, so it is emitted text.
+    evidence: >-
+      "every " +
+      "link / attribute / alias is repointed to the survivor in the same " +
+      "transaction (BR-04, BR-07). `reason` is mandatory."
+    cost: >-
+      The text the curation tool tells an LLM caller says the absorbed node's aliases
+      are repointed to the survivor. The rule says the survivor receives a copy of each
+      alias whose normalized form it does not hold, and the absorbed node keeps its own
+      aliases. A caller that plans from the description expects the absorbed node to be
+      left without aliases, and the next reader of this text does not learn that the
+      node held something different.
+    kind: contradicts
+    correction: >-
+      The description would have to say that links and attributes are moved to the
+      survivor and that the survivor is given copies of the absorbed node's aliases
+      it does not already hold. Whether that is worded as alias copying is for whoever
+      owns the tool description.
+    node: rules/knowledge-base/merge-copies-aliases
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file registers curation tools only. It holds no authentication, routing or
+      health operation. The only error handling is `return mapErrorToEnvelope(err);`
+      imported from "./error-envelope.js".
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation, proposal or run read is registered here. The seven tools
+      registered are list_review_queue, resolve_entity_match, merge_nodes,
+      resolve_dispute, confirm_item, reject_item and correct_item.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file registers no search, provenance, catalog, node or traverse read. It
+      registers only the curation toolset through `registerCurationToolset`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing exists in this file. Input is parsed with
+      `schema.parse(rawInput)` in `makeHandler`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node computation appears here. The only handler is
+      `makeHandler(schema, run)`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node listing appears in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing is registered here. The `compliance_delete` tool
+      is registered elsewhere and is not in `CURATION_TOOL_NAMES`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only wires curation tools to services.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or node resolution. The services own their own
+      transactions, and this file only calls them.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      `confirmItemService({ pool, logger, catalog: ingestionCatalog }, input)` is only
+      called here. The status-only change is not stated or enforced in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt exists in this file. The only prompt-like text is the tool
+      descriptions.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value ordering exists in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value spelling exists in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file performs no graph read and builds no provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file performs no graph read and holds no compliance-status handling.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file registers no curation metrics tool. `list_review_queue` delegates to
+      `listReviewQueueService({ pool }, input)`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file registers no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file registers no search and walks no graph.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal consolidation. The correct_item description concerns
+      corrections, not re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file holds no proposal or validity-start fallback logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The page window is not applied here. The call is
+      `listReviewQueueService({ pool }, input)`, and the windowing sits in the service
+      or repository.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file does not compute the total. The call is
+      `listReviewQueueService({ pool }, input)`, and the count is not in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file holds no raw-information parsing or speaker-line detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file registers no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file registers no traversal.
+looked_past: >-
+  The tool descriptions and header comments cite retired plan identifiers (BR-04, BR-07, BR-17, BR-18, BR-19, BR-29 and BR-31); I did not file them. The other tool descriptions state the page bounds, the prefer_one, keep_disputed, reject and correct behaviors, and the reason requirements consistently with their nodes, and the comment prose is not a domain fact.
+candidates_opened:
+  - rules/knowledge-base/merge-copies-aliases

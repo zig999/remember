@@ -1,0 +1,134 @@
+findings:
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the docstring above deriveFlags, lines 99-104
+    evidence: >-
+      " * Derive the display flags surfaced in `LinkDetail.flags` and
+      `AttributeDetail.flags`. Today this mirrors the storage `status` for
+      `uncertain` / `disputed`; `low_confidence` is reserved for a future
+      threshold-based flag."
+    cost: >-
+      The flag rule (uncertain when the status is uncertain, disputed when it is disputed, never low-confidence) is stated in prose beside the code that holds it. The prose also calls low_confidence "reserved for a future threshold-based flag", which the node does not say; it says the graph read never flags low-confidence. A reader who trusts the comment may take the flag as a planned feature rather than a decided exclusion.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in deriveFlags in this same file holds the fact, and rules/knowledge-base/graph-item-flags holds it in the specification.
+    node: rules/knowledge-base/graph-item-flags
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the timestamp fallbacks in toNodeAlias (line 127), toAttributeDetail (line 144), toLinkDetail (line 171) and toProvenanceEntry (lines 193-194)
+    evidence: >-
+      formatTimestamptz(row.created_at) ?? new Date(0).toISOString()
+      formatTimestamptz(row.recorded_at) ?? new Date(0).toISOString()
+      formatTimestamptz(row.received_at) ?? new Date(0).toISOString()
+    cost: >-
+      When a creation, recording or reception time is absent, the code reports the Unix epoch (1970-01-01T00:00:00.000Z) as if it were that time. No node holds this value or says what a read returns for an absent time. The epoch would read as a real date and would not show that the data was missing.
+    kind: unstated
+    correction: >-
+      Give the behavior a node, either through the retrieval contract's accepted shapes or a rule saying what a read returns when one of these times is absent. Otherwise the code must not substitute a date.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file maps rows to DTOs only. It has no authentication, routing or health construct. The nearest is `throw new InvariantError(`Unexpected source_type from DB: ${s}`)`, which is not part of this contract.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file carries no intake, proposal or ingestion operation. It only maps resolved rows, for example `export function toLinkDetail(row: LinkResolvedRow, provenance: ...)`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      toLinkDetail, toAttributeDetail, toNodeSummary, toNodeAlias, toProvenanceEntry and formatDateOnly, lines 54-197. The unstated timestamp fallback is a separate finding.
+    evidence: >-
+      toLinkDetail returns `id, source_node_id, target_node_id, link_type, link_inverse_name, valid_from: formatDateOnly(row.valid_from), valid_to: formatDateOnly(row.valid_to), recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence, valid_from_source, flags: deriveFlags(status), supersedes_link_id, provenance`. toAttributeDetail has the same shape with `attribute_key`, `value_type` and `value`. toProvenanceEntry returns `fragment_id, fragment_text, confidence, raw_information_id, source_type, received_at, excerpt`. toNodeSummary returns `id, node_type, canonical_name, status, merged_into_node_id`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter handling, only pure row mappers.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No construct in the file concerns LLM runs or affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No construct in the file concerns affected nodes of a run.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window logic.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only passes `excerpt: row.excerpt` through.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or node-resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or curation operation. It only maps rows.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. The only sets are `new Set(["active","uncertain",...])`, used to validate stored values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file does not compute the excerpt. It passes the repository's value through: `excerpt: row.excerpt`. The offset slice is not here.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      groupProvenance maps every row it receives (`for (const r of rows) { const entry = toProvenanceEntry(r);`) and filters none. Which rows exist is decided by the repository query, not in this file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics code.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node-listing filter. toNodeSummary only maps one row.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only formats `valid_from_source: row.valid_from_source` for reads. It computes no fallback start.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue or pagination code.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue or pagination code.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no raw-text parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic. It only maps rows.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic. toNodeSummary maps a single row.
+looked_past: >-
+  The function docstrings ("Format a YYYY-MM-DD date...", "Convert ProvenanceRow ...") and the header comment about the test file describe mechanics rather than a domain fact, so I did not report them.
+candidates_opened:
+  - rules/knowledge-base/graph-item-flags

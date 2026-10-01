@@ -1,0 +1,201 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment, lines 4-5, and the inline comment at line 106
+    evidence: >-
+      "//   - semi-open invariant: `valid_from < valid_to` when both are provided
+      //     (BR-16 / §13.3 / §5.2)."
+      The code that holds the fact is
+      "if (input.valid_from >= input.valid_to) { throw new ValidationFailure(\"BUSINESS_TEMPORAL_INCOHERENT\", ..."
+    cost: >-
+      The start-before-end rule is written a second time as prose citing retired document
+      sections (BR-16, §13.3). When the node moves, nobody is led to this comment, and it goes
+      on saying the old rule beside code that no longer matches it.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact, and the comment route removes
+      the prose.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 6-10 and the comment block at lines 128-135
+    evidence: >-
+      "//   - date justification chain (A14 / §6.5): when `requires_valid_from = true`
+      //     for the link_type or attribute_key, AND `valid_from` is supplied, the
+      //     caller must declare a non-null `valid_from_basis`."
+      The code that holds the fact is
+      "if (input.valid_from !== null && input.valid_from_basis === null) { throw new ValidationFailure(\"BUSINESS_DATE_UNJUSTIFIED\", ..."
+    cost: >-
+      The comment states the basis rule as conditional on `requires_valid_from = true`, but the
+      code throws whenever a start is stated without a basis. A reader trusting the prose takes
+      the wrong rule, and the node is not where they look.
+    kind: restates
+    correction: >-
+      Remove the comments. The code holds the fact, and the node states it.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 11-13, the doc comment at lines 61-65 and the inline comment at line 117
+    evidence: >-
+      "//   - correction signal: `change_hint = 'correction'` requires textual errata
+      //     evidence in at least one cited fragment."
+      and "* Errata-signal heuristic — `'correction'` requires textual evidence of an
+      * errata in at least one cited fragment (case-insensitive substring of any
+      * of the Portuguese/English markers used in the domain glossary)."
+      The code that holds the fact is
+      "const ERRATA_MARKERS = [\"errata\", \"errado\", \"correção\", \"corrigir\", \"correction\", \"correcao\"] as const;"
+      and "if (!hasErrataSignal(input.fragment_texts)) { throw new ValidationFailure(\"BUSINESS_TEMPORAL_INCOHERENT\", ..."
+    cost: >-
+      The correction-evidence rule appears again in prose, with a pointer to a "domain glossary"
+      as the origin of the marker list. The node and the code hold that list, so the pointer
+      sends a reader to the wrong place.
+    kind: restates
+    correction: >-
+      Remove the comments. The ERRATA_MARKERS constant and the throw hold the fact.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 15-22, the doc comment at lines 49-55 and the inline comments at lines 159, 167 and 175-176
+    evidence: >-
+      "// Fallback chain for `requires_valid_from = true` (v7 §6.5 / §13c / A14):
+      //   stated -> document -> received. When `valid_from` is not supplied and
+      //   `document_date` is absent BUT `received_at` is available, the layer
+      //   resolves `valid_from := received_at` (date portion) with
+      //   `valid_from_source := 'received'`."
+      The code that holds the fact is
+      "const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { return { valid_from: receivedDate, valid_from_basis: \"received\", }; }"
+      The comment names `valid_from_source`, but the field in the code is `valid_from_basis`.
+    cost: >-
+      The fallback rule exists as prose citing retired sections (§6.5, §13c, A14). The prose
+      also names a field, `valid_from_source`, that does not exist in the code, so a reader
+      comparing it with the node gets a vocabulary the node does not use.
+    kind: restates
+    correction: >-
+      Remove the comments. The branch at lines 143-166 holds the fact.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      header comment lines 19-20 and the comments at lines 128-135 and 167
+    evidence: >-
+      "//   rejection only fires when ALL THREE links of the chain are absent."
+      and "// ALL three links absent — only now is the row BUSINESS_DATE_UNJUSTIFIED."
+      The code that holds the fact is
+      "throw new ValidationFailure(\"BUSINESS_DATE_UNJUSTIFIED\", \"link_type / attribute_key requires_valid_from = true but no date is available ..."
+    cost: >-
+      The refusal condition (no stated start, no document date and no reception date) is
+      restated in prose. The node that governs it is a different one, so a change to that node
+      leaves this prose untouched.
+    kind: restates
+    correction: >-
+      Remove the comments. The throw at lines 168-172 holds the fact.
+    node: rules/knowledge-base/required-start-available
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file exports "export function validateTemporal(input: TemporalLayerInput): TemporalResolved" and states no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      only the temporal refusal codes, in the ValidationFailure throws at lines 109, 120, 137 and 168. The propose-link and propose-attribute answers (HTTP 200 carrying `{ ok: false, error }`) are not built here.
+    evidence: >-
+      "throw new ValidationFailure(\"BUSINESS_TEMPORAL_INCOHERENT\", \"valid_from must be strictly before valid_to.\", ..." and "throw new ValidationFailure(\"BUSINESS_DATE_UNJUSTIFIED\", \"valid_from supplied without a valid_from_basis (stated | document | received).\", ..."
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is a pure validation function with no read, search or provenance answer: "The layer is pure (no DB calls)."
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing filter appears in the file: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file never refers to runs' affected nodes: "export interface TemporalLayerInput { readonly valid_from: string | null; ..."
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not list affected nodes: "export interface TemporalResolved { readonly valid_from: string | null; ..."
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window: "export const __testing__ = { hasErrataSignal, toIsoDate };"
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file never divides content into chunks: "function toIsoDate(ts: string | null): string | null {"
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file holds no name resolution or concurrency: "The layer is pure (no DB calls)." is only a comment, and the code has no locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or status change: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt: "const ERRATA_MARKERS = [\"errata\", \"errado\", \"correção\", \"corrigir\", \"correction\", \"correcao\"] as const;"
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts nothing: "function hasErrataSignal(fragments: readonly string[]): boolean {"
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values: "function hasErrataSignal(fragments: readonly string[]): boolean {"
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file computes no provenance excerpt: "function toIsoDate(ts: string | null): string | null {"
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file handles no provenance or compliance status: "export interface TemporalLayerInput { ... readonly fragment_texts: readonly string[]; ..."
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or name comparison: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph walk: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Re-affirmation is decided in the consolidator, not here. The file only returns the resolved dates: "return { valid_from: input.valid_from, valid_from_basis: input.valid_from_basis, };"
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      the `if (input.requires_valid_from && input.valid_from === null)` branch, lines 143-166
+    evidence: >-
+      "if (input.document_date !== null) { return { valid_from: input.valid_from, valid_from_basis: input.valid_from_basis, }; }" (no start and no basis kept) and "const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { return { valid_from: receivedDate, valid_from_basis: \"received\", }; }"
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or paging: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or total: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file recognises no speaker lines. Its only pattern is the date guard "if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(head)) return null;"
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal: "export function validateTemporal(input: TemporalLayerInput): TemporalResolved".
+looked_past: >-
+  The comments cite retired document sections (BR-10, BR-16, UC-10, UC-11, A14, v7 §6.5, §13c) and a "domain glossary", and narrate a previous version of the function and a unit test, which is prose the comment route removes and no behavior.
+candidates_opened:
+  - rules/knowledge-base/validity-start-before-end
+  - rules/knowledge-base/correction-requires-errata-evidence
+  - rules/knowledge-base/stated-start-requires-basis
+  - rules/knowledge-base/required-start-available

@@ -1,0 +1,174 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the header comment, lines 1-6
+    evidence: >-
+      // Zod is applied at the route boundary (CLAUDE.md "DTO Pattern" / BR-02 /
+      // BR-19). Out-of-range values produce ZodError -> 422
+      // `VALIDATION_INVALID_FORMAT` / `VALIDATION_OUT_OF_RANGE` through the
+      // global error handler.
+    cost: >-
+      The comment states the refusal code for a request that fails validation, and it names two codes. The
+      specification holds only VALIDATION_INVALID_FORMAT for these operations. The ZodError mapping in
+      backend/src/middleware/error-handler.ts (`if (err instanceof ZodError)` ... `code: "VALIDATION_INVALID_FORMAT"`)
+      emits only that one. A reader who trusts the comment looks for a VALIDATION_OUT_OF_RANGE path on these routes
+      and finds none.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the access contract's route-request refusal and implemented in
+      backend/src/middleware/error-handler.ts.
+    node: contracts/knowledge-base/access
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment on TraverseDirectionSchema, lines 114-117
+    evidence: >-
+      * Direction enum mirrors `openapi.yaml` traverseNode `direction` parameter.
+      * Default in this schema is `both` (matches OpenAPI).
+    cost: >-
+      The comment states the traversal direction default a second time, outside behavior. This file also holds the
+      default in code (`direction: TraverseDirectionSchema.optional().default("both")`). If the node's default
+      changes, the comment claims a different authority (OpenAPI) than the one that decided it.
+    kind: restates
+    correction: >-
+      Remove the comment. The default is held by the node and implemented by `.default("both")` in this same file.
+    node: rules/knowledge-base/traversal-defaults
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      the doc comment on TraverseDepthCoercer, lines 130-136
+    evidence: >-
+      * Out-of-range `depth` is detected here AND re-asserted in the service layer
+      * (defence in depth, BR-05 of back spec). Zod failure surfaces as Zod parse
+      * error (422 VALIDATION_INVALID_FORMAT through the global handler); the
+      * service-layer assertion produces BUSINESS_INVALID_TRAVERSE_DEPTH so the
+    cost: >-
+      The comment states the depth bounds rule and the two refusal codes outside behavior. The bounds are enforced
+      by `assertDepth` in backend/src/modules/knowledge-graph/service/traversal.service.ts (`depth > TRAVERSAL_DEPTH_MAX`
+      then `throw new InvalidTraverseDepthError(depth, TRAVERSAL_DEPTH_MAX)`). The coercer below the comment checks
+      no range, only that the value is a number, so the claim that out-of-range depth is "detected here" is not
+      what the code does. A reader would conclude a Zod range check exists.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by the node and enforced in service/traversal.service.ts.
+    node: rules/knowledge-base/expansion-depth-bounds
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      This file declares only request schemas, for example `export const ListLinkTypesQuerySchema = z.object({
+      include_rules: BooleanQuery.optional().default(false) }).strict();`. It carries no authentication, routing or
+      error-envelope answer. The 422 VALIDATION_INVALID_FORMAT mapping lives in middleware/error-handler.ts.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares only knowledge-graph query and path schemas, such as `ListNodesQuerySchema` and
+      `TraverseQuerySchema`. It has no ingestion operation, run, proposal or intake.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The request-shape schemas. ListLinkTypesQuerySchema, ListAttributeKeysQuerySchema, ListNodesQuerySchema,
+      GetNodeByIdQuerySchema and TraverseQuerySchema each end in `.strict()`, so a parameter the operation does not
+      define is refused. NodeIdParamSchema, LinkIdParamSchema and AttributeIdParamSchema require `z.string().uuid()`.
+      BooleanQuery admits only a boolean or "true"/"false". IntegerQuery is piped through `.int()`. IsoDateOnly
+      requires `/^\d{4}-\d{2}-\d{2}$/`. Names are bounded by `.min(1).max(200)`. TraverseDirectionSchema is
+      `z.enum(["out", "in", "both"])`, and link_types elements are `z.string().min(1)`.
+    evidence: >-
+      `node_type: z.string().min(1).max(200).optional()`, `as_of: IsoDateOnly.optional()`,
+      `direction: TraverseDirectionSchema.optional().default("both")`, `}).strict();`. These match the contract's
+      parameter-malformed refusals for list-link-types, list-attribute-keys, list-nodes, read-node and traverse. The
+      depth range itself is not here; it is enforced in service/traversal.service.ts.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing schema. Its `.strict()` schemas cover link types, attribute keys,
+      nodes and traverse.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node computation appears in this file, only query and path-param schemas.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run or affected-node listing appears in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or time window appears in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking appears in this file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal or node resolution appears in this file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value ordering appears in this file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt or allowed-value spelling appears in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file declares request schemas only. No provenance entry or chunk excerpt is built here.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file declares request schemas only. No provenance entry or compliance status is read here.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file only declares the parameter, `name_prefix: z.string().min(1).max(200).optional()`. The
+      alias-matching semantics, with name comparison and the percent and underscore wildcards, are not stated here.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query or expansion appears in this file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal consolidation appears in this file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal validity start or basis appears in this file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in this file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue listing or total appears in this file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker-line parsing appears in this file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only validates the traversal request, in `TraverseQuerySchema`. It does not expand nodes.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only validates the traversal request, in `TraverseQuerySchema`. It does not list reached nodes.
+looked_past: >-
+  The page limit bounds and defaults (1 to 100, 20 and 0), the node-view defaults and the traversal depth default
+  are all held by nodes outside the pack, and the code agrees, so this is no domain-fact finding; the whole-number
+  check on a traversal depth and the calendar validity of an as-of date are enforced elsewhere and are other judgments.
+candidates_opened:
+  - rules/knowledge-base/expansion-depth-bounds
+  - rules/knowledge-base/traversal-defaults

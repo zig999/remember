@@ -1,0 +1,187 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the file-header comment, lines 7-15 (Transaction policy (BR-02))
+    evidence: >-
+      // The CALLER (route or MCP handler) opens BEGIN / COMMIT / ROLLBACK and
+      // hands the live `client` to `complianceDelete`. Every DB statement of
+      // UC-01 runs on that same client; commit is reached only after BR-08 has
+      // written BOTH audit rows.
+    cost: >-
+      The all-or-nothing rule for a compliance deletion is restated in prose in a file that does not
+      open the transaction. If the node moves, nobody has to touch this comment, and it will keep
+      describing the old rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the fact is `withTransaction(deps.pool, ...)` in
+      src/modules/compliance-audit/routes/compliance-audit.routes.ts, line 76.
+    node: constraints/compliance-deletion-is-atomic
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the docstring above REDACTED_LITERAL, lines 51-57, and the constant itself
+    evidence: >-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;
+    cost: >-
+      The literal that a compliance deletion writes over content is declared a second time here.
+      The actual redaction is the SQL in compliance-audit.repository.ts, `SET content = '[REDACTED]'`,
+      with `original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END`.
+      That SQL does not read this constant. The constant is only re-exported by index.ts and pinned
+      by a test. If the node's literal changes, the repository and this constant can diverge
+      silently, and the test pins the copy that nothing at runtime uses.
+    kind: contradicts
+    correction: >-
+      Keep one declaration of the literal, in the file that performs the redaction, or have that
+      file read this constant. The node is not bound to this file, so a bind cannot close the
+      duplicate.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      the docstring of complianceDelete, lines 72-75 (discriminated union return)
+    evidence: >-
+      * Discriminated union return:
+      *   - { outcome: 'deleted',              deletion } -> HTTP 201
+      *   - { outcome: 'noop_already_deleted', deletion } -> HTTP 200
+    cost: >-
+      The outcome-to-status mapping of the compliance-delete contract is restated in prose. The
+      mapping is chosen in the route, not here, so this comment can go stale without any check
+      noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The code that holds the mapping is `const status = result.outcome === "deleted" ? 201 : 200;`
+      in src/modules/compliance-audit/routes/compliance-audit.routes.ts, line 79.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      coerceNonNegativeInt (lines 338-347), used by rowToDto for each of the four affected counts
+    evidence: >-
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+          return Math.trunc(v);
+        }
+        ...
+        return 0;
+    cost: >-
+      A stored count that is absent, negative or not a number is reported to the owner as 0, and a
+      fractional one is truncated. No node states either rule. The specification only says the
+      counts are zero or more. The audit record can therefore show "0 links deleted" for a row that
+      holds no such figure, and the next reader will look in the specification for the reason and
+      not find it.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether a missing or invalid stored count is read as 0,
+      refused, or cannot occur, and state that in the node for the counts.
+    node: domain/knowledge-base/affected-counts
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. It only imports `pg`, `pino`, the
+      DTOs and the repository, and throws ResourceNotFoundError and InternalFailure.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds no intake, proposal, extraction or ingestion operation. Its functions are
+      complianceDelete, listComplianceDeletions, getComplianceDeletionById, listCurationActions and
+      getCurationActionById.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no search, provenance read, catalog listing or graph read. It only reads
+      compliance_deletion and curation_action records.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing, and no query parameter is refused anywhere in it.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file never computes the affected nodes of an LLM run. The only "affected" it builds is
+      `const affected = { chunks, fragments, links, attributes };`, which is the compliance counts.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run and no affected-node listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The service only forwards the bounds: `executed_from: query.executed_from, executed_to: query.executed_to,`.
+      It accepts or refuses nothing about a missing bound. That belongs to the DTO and the
+      repository, which are other files.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file tombstones chunks with `tombstoneRawChunksOfRaw(client, body.raw_information_id)` and
+      never divides content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals and no node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. The only curation behavior is
+      `insertCurationAction(client, { action: "compliance_delete", ... })`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read and no provenance entry.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file writes the compliance tombstones (`tombstoneCascadedFragments`, `tombstoneCascadedLinks`).
+      It does not read provenance, so it neither shows nor hides provenance entries.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, re-affirmation or consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal and no validity start.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue. Its paging only forwards `limit: query.limit, offset: query.offset`
+      to the audit listings.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue. Its listings return `total: result.total` for audit records, not
+      for the review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file parses no source text.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no graph traversal.
+looked_past: >-
+  The file's remaining comments (the UC-01 alt 4a/4b/4c markers, the BR-xx references and the cascade notes) and its log lines and error messages agree with the compliance-audit nodes outside this set and are not reported here, because they belong to the pass over those nodes.

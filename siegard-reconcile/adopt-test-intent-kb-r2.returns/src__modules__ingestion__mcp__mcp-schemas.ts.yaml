@@ -1,0 +1,178 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      StartAsyncIngestionMcpInputSchema and its type, lines 81-123
+    evidence: >-
+      export const StartAsyncIngestionMcpInputSchema = z.object({ ... "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary." ... — and the docblock "`start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for caller symmetry. The only difference is the new-run return semantics (immediate vs. awaited)"
+    cost: >-
+      The specification says the ingest toolset offers no tool that starts an ingestion and returns before it completes, and the retirement is recorded in its decision log. This file still declares and exports the input contract of exactly such a tool, with a description promising background extraction. The schema is not registered or imported anywhere in backend/src except a test. A later reader of the schema file will take the async tool as decided and may register it, which breaches the constraint without anything failing.
+    kind: contradicts
+    correction: >-
+      The schema and its type would have to leave the file, because the node retires the tool. If the owner wants the tool back, the constraint changes first, through analysis.
+    node: constraints/ingest-toolset-offers-no-async-ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      GetIngestionStatusSummarySchema, AffectedNodeOutputSchema and GetIngestionStatusOutputSchema, lines 206-249
+    evidence: >-
+      export const GetIngestionStatusOutputSchema = z.object({ id: z.string().uuid(), model: z.string(), prompt_version: z.string(), started_at: ..., finished_at: ..., status: z.enum(["running", "completed", "failed"]), attempts: z.number().int().positive(), input_raw_information_id: z.string().uuid(), idempotency_key: z.string().regex(/^[0-9a-f]{64}$/), summary: GetIngestionStatusSummarySchema, affected_nodes: z.array(AffectedNodeOutputSchema).optional() }); the docblock says "It mirrors `LlmRunResponseSchema` (`dto/llm-run.dto.ts`)"
+    cost: >-
+      The shape the read-llm-run operation answers (identity, model, prompt version, times, status, attempts, raw information, idempotency key, summary, affected nodes) is already declared in dto/llm-run.dto.ts as LlmRunResponseSchema, LlmRunSummarySchema and AffectedNodeSchema. This file declares it a second time, field for field. Nothing in src reads these schemas except a unit test, so the copy is a second authority that no transport follows. When the run shape moves, the copy stays behind, and the test asserts against the stale copy instead of the shape the transport emits.
+    kind: contradicts
+    correction: >-
+      The run read has one declaration, the one the transports use. This second declaration of the same shape would have to go. The bind for the contract belongs on the file that holds the real shape.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      header comment of the ingest_directed section, lines 270-273
+    evidence: >-
+      // opens a `RawInformation` + `LLMRun` (sentinels `model='directed'`,
+      // `prompt_version='directed-v1'`), then dispatches the items in dependency
+      // order through the existing `propose_*` handlers. No Anthropic round-trip.
+    cost: >-
+      This is a second home, in prose, for the directed run's sentinel model and prompt version. Code holds them in service/directed-ingestion.service.ts (`export const DIRECTED_PROMPT_VERSION = "directed-v1" as const;`). A reader who finds the sentinels in this schema file's comment may take it for the place they are decided, and the comment does not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the node and by the code in directed-ingestion.service.ts.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      comment on `confidence` in the ingest_directed section, lines 276-280
+    evidence: >-
+      //   - `confidence` is DELIBERATELY ABSENT from every item — the server forces
+      //     `confidence = 1.0` on every dispatched `propose_*` (BR-34 step 4 + the
+      //     contract: a directed payload is a stated fact by construction; callers
+      //     cannot lower confidence here).
+    cost: >-
+      This is a second home, in prose, for the rule that a directed ingestion proposes everything at confidence 1.0. Code holds the rule in service/directed-ingestion.service.ts (`confidence: 1.0`, lines 475, 632 and 712). The comment can drift from the node without any check noticing, and it tempts a later reader to add a `confidence` field here.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the node and by the code in directed-ingestion.service.ts.
+    node: rules/knowledge-base/directed-full-confidence
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      the `describe` of `node_id` in IngestDirectedNodeItemSchema, line 348
+    evidence: >-
+      Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node.
+    cost: >-
+      This text is advertised to the calling model on tools/list. The contract splits the two refusals. A pinned identity that names no knowledge node is reported with RESOURCE_NOT_FOUND, and one that names a node that is not active with VALIDATION_INVALID_FORMAT. The description gives VALIDATION_INVALID_FORMAT for both, so a caller that branches on the code the description promises will mishandle a pin to an unknown node.
+    kind: contradicts
+    correction: >-
+      The description would have to say that an unknown id is refused with RESOURCE_NOT_FOUND and an inactive node's id with VALIDATION_INVALID_FORMAT.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestDocumentMcpInputSchema (lines 125-156), which names content, source_type and metadata. Held in part, as an input shape.
+    evidence: >-
+      content: z.string().min(1, ...).max(10 * 1024 * 1024, ...), source_type: SourceTypeSchema.describe(...), metadata: z.record(z.string(), z.unknown()).optional()
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      `export const HealthMcpInputSchema = z.object({});` declares only the health tool's empty input. The health report, authentication and routing refusals are not in this file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      the request shapes of ingest-document (IngestDocumentMcpInputSchema), ingest-directed (IngestDirectedMcpInputSchema and its item schemas), list-recent-ingestions (ListRecentIngestionsMcpInputSchema) and read-llm-run (GetIngestionStatusMcpInputSchema), plus the propose_* inputs extended with llm_run_id. The response shape is declared a second time, which the findings report.
+    evidence: >-
+      IngestDirectedRefSchema = z.string().min(1).max(120); fragment text z.string().min(1).max(1000); name z.string().min(1).max(500); source_label z.string().min(1).max(200).optional(); attribute value z.union([z.string().min(1).max(2000), z.number().finite(), z.boolean()]); z.enum(["stated", "document"]); regex /^\d{4}-\d{2}-\d{2}$/; limit z.number().int().min(1).max(50).default(10); fragments and nodes .min(1)
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only ingest-toolset input and output schemas. It has no search, provenance, catalog listing, node read or traversal.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing is declared here. Only ingest inputs and `get_ingestion_status` are.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file declares only the wire shape `affected_nodes: z.array(AffectedNodeOutputSchema).optional()`. Which nodes a run counts as affected is computed in service/affected-nodes.ts.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      `.optional()` on `affected_nodes` is the only trace. Leaving out nodes that are no longer held is not decided in this file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only says the server chunks the document (describe text on `content`). No chunking is done here.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file extends the proposal inputs with `llm_run_id` (`ProposeNodeInputSchema.extend(LlmRunIdField)`). It has no ordering or locking of proposals.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review or confirmation appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt text or attribute-key value listing is in this file. The only prompt reference is `prompt_version: z.string().min(1).optional()`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt or ordering of allowed values appears in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt or allowed values appear in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance excerpt is declared here.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No graph read or provenance entry is declared here.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics appear in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing or name prefix appears in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search query appears in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file declares only proposal inputs and describes `change hint` nowhere. Consolidation is not decided here.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The only trace is the describe text `Optional ISO date when this attribute became valid. Required when the catalog AttributeKey requires it.` The fallback to a document date or reception date is not decided in this file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue listing appears in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No speaker line pattern appears in the file. The only regexes are the ISO date and the 64-hex idempotency key.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal appears in the file.
+looked_past: >-
+  Comments throughout the file, including a header line saying a pin to a non-active node is rejected `STRUCTURAL_INVALID`, are prose that no running code or emitted text carries, so I did not file them as findings.
+candidates_opened:
+  - constraints/ingest-toolset-offers-no-async-ingestion
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/run-summary
+  - domain/knowledge-base/llm-run
+  - rules/knowledge-base/directed-ingestion-run
+  - rules/knowledge-base/directed-full-confidence
+  - rules/knowledge-base/recent-ingestions-limit-default

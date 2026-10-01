@@ -1,0 +1,286 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of RecentIngestionRow, lines 38-44
+    evidence: >-
+      `content_preview` is the first 80 code points of the
+      raw text — enough for an operator to recognise a document after a client
+      timeout without shipping the whole content back.
+    cost: >-
+      The 80-character preview is stated in prose a second time, next to the `left(ri.content, 80)`
+      that holds it. The prose says "code points" and the node says "characters", so a reader
+      who trusts the comment and a reader who trusts the node can come away with different sizes.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by `left(ri.content, 80) AS content_preview` in
+      findRecentIngestions, in this file.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of findRecentIngestions, lines 59-63
+    evidence: >-
+      `limit` is validated (1..50) at the toolset
+       * boundary before it reaches here.
+    cost: >-
+      The 1..50 bound is restated in prose in a file that does not enforce it. The code that does
+      is in mcp/mcp-schemas.ts, so the next reader may look for the limit check here and not
+      find it.
+    kind: restates
+    correction: >-
+      Remove the prose. The bound is held by `limit: z.number().int().min(1).max(50).default(10)`
+      in ListRecentIngestionsMcpInputSchema, src/modules/ingestion/mcp/mcp-schemas.ts.
+    node: rules/knowledge-base/recent-ingestions-limit-bounds
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of aggregateToolCallOutcomes, lines 111-114
+    evidence: >-
+      Returns a fully-formed `LlmRunSummary` — every field
+       * present, missing buckets default to 0 (BR-12). Two parts:
+       *   - the 8 outcome buckets, grouped from `tool_call.validation_outcome`;
+    cost: >-
+      The zero-for-absent-outcome rule is stated in prose beside the code that implements it (the
+      zero-initialised `summary` object). A change to the node leaves this prose and its "BR-12"
+      citation pointing at an older statement.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the `summary` literal with every bucket at 0 and the
+      loop over the grouped `tool_call` rows, in this file.
+    node: rules/knowledge-base/summary-counts-tool-calls
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of aggregateToolCallOutcomes, lines 115-117, and the comment at lines 148-149
+    evidence: >-
+      `orphaned_fragments`, the count of this run's `proposed` fragments with
+       *     no provenance row (uncited → unsearchable; recall-gap signal). Defined
+       *     identically to the retry orphan-cleanup in `retryLlmRunRow` (BR-10).
+    cost: >-
+      The definition of an orphaned fragment and the summary's count of them are written out in
+      prose again. The "unsearchable; recall-gap signal" rationale is prose that no node holds.
+    kind: restates
+    correction: >-
+      Remove the prose. The count is held by the `information_fragment` query with
+      `status = 'proposed'` and `id NOT IN (SELECT fragment_id FROM provenance ...)`, in this file.
+    node: rules/knowledge-base/summary-counts-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of retryLlmRunRow, lines 165-171, and the comment at lines 188-189
+    evidence: >-
+      In the same transaction, orphan `proposed` fragments of this run are
+       *    flipped to `rejected`.
+    cost: >-
+      The retry rule that rejects orphaned fragments is restated in prose above the UPDATE that
+      performs it, so it exists in a second place that the node does not govern.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by `UPDATE information_fragment SET status = 'rejected'
+      WHERE llm_run_id = $1 AND status = 'proposed' AND id NOT IN (...)`, in this file.
+    node: rules/knowledge-base/retry-rejects-orphaned-fragments
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of findToolCallsByRun, line 237
+    evidence: >-
+      /** Page of `tool_call` rows ordered by `created_at` ascending. */
+    cost: >-
+      The listing order is stated in prose. The code orders by `created_at ASC, id ASC`, so the
+      prose is also incomplete next to the node, which names the identifier tiebreak.
+    kind: restates
+    correction: >-
+      Remove the prose. The order is held by `ORDER BY created_at ASC, id ASC` in
+      findToolCallsByRun, in this file.
+    node: rules/knowledge-base/tool-call-listing-order
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring of countFragmentsAnchoredToSource, lines 320-326
+    evidence: >-
+      BR-18 anti-hallucination check. For every fragment in `fragment_ids`, the
+       * fragment must exist AND have at least one `fragment_source` row pointing to
+       * a `raw_chunk` of `expected_raw_information_id`.
+    cost: >-
+      The anchoring rule is restated in prose and attributed to a back-spec "BR-18" rather than
+      to its node. Whoever edits the node will not reach this paragraph.
+    kind: restates
+    correction: >-
+      Remove the prose. The count is held by the `information_fragment` / `fragment_source` /
+      `raw_chunk` join in this file. The refusal that compares the count is in
+      service/propose-link.service.ts and service/propose-attribute.service.ts.
+    node: rules/knowledge-base/cited-fragments-anchored
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no raw-chunk shape. It only counts chunks:
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RecentIngestionRow, lines 45-57. It names the raw-information attributes source_type,
+      status (as raw_status) and received_at in part, plus a derived content_preview.
+    evidence: >-
+      export interface RecentIngestionRow { readonly raw_information_id: string;
+      readonly source_type: string; readonly raw_status: string; readonly received_at: Date;
+      readonly content_preview: string; ...
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no authentication, routing or health reporting. It has only repository
+      queries such as `SELECT id, model, prompt_version, ... FROM llm_run WHERE id = $1`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      findRecentIngestions, lines 64-93. It holds the list-recent-ingestions answer: the
+      raw-information fields, the first 80 characters, and the latest run. The tool-call page,
+      the run read and the retry are supported by findToolCallsByRun, findLlmRunById and
+      retryLlmRunRow.
+    evidence: >-
+      `left(ri.content, 80) AS content_preview` ... `LEFT JOIN LATERAL ( SELECT id, status,
+      started_at, finished_at, prompt_version, model FROM llm_run WHERE input_raw_information_id
+      = ri.id ORDER BY started_at DESC LIMIT 1 ) lr ON true`
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search, provenance, catalog or graph read. Its only reads are
+      `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1` and the run, tool-call and
+      ingestion queries.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. Its fragment code is
+      `INSERT INTO information_fragment (llm_run_id, "text", confidence)`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file computes no affected nodes. aggregateToolCallOutcomes only counts
+      `SELECT validation_outcome, count(*)::text AS n FROM tool_call`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      No affected-node listing exists in the file. The only knowledge_node read is
+      `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. Its only listings are
+      recent ingestions and tool calls.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only counts existing chunks: `FROM raw_chunk WHERE id =
+      ANY($1::uuid[])`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no node resolution and takes no lock. Its only node access is
+      `SELECT node_type_id FROM knowledge_node`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion review or confirmation. It only writes llm_run, tool_call,
+      information_fragment and fragment_source rows.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt. It only issues SQL statements, such as the INSERT into
+      tool_call.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no prompt and handles no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read and no chunk excerpt. It only counts chunks and fragments.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read and no compliance-status handling. Its only provenance access
+      is `SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL`, inside the
+      orphan test.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no curation metrics. The `disputed` it touches is a tool_call outcome bucket
+      in `summary[row.validation_outcome] = Number.parseInt(row.n, 10);`.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node listing and no alias or prefix matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts fragments and tool calls. It has no re-affirmation or consolidation
+      of links or attributes.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no validity-start logic. It reads no document date and applies no `received`
+      basis.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue. Its only paging is
+      `LIMIT $2 OFFSET $3` over tool_call rows.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue. countToolCalls counts a run's tool calls, not review items.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file parses no content and has no speaker-line pattern.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The prose citations "BR-10", "BR-12", "BR-18", "BR-19" and "BR-23" in the comments, and the
+  comment on insertToolCallStandalone that a separate transaction keeps the audit row on
+  rollback, are left out of the findings. They cite a back-spec, and I did not tie the audit-row
+  fact to a node I could quote.
+candidates_opened:
+  - rules/knowledge-base/llm-run-lifecycle
+  - rules/knowledge-base/orphaned-fragment
+  - rules/knowledge-base/retry-rejects-orphaned-fragments
+  - rules/knowledge-base/summary-counts-tool-calls
+  - rules/knowledge-base/summary-counts-orphaned-fragments
+  - rules/knowledge-base/tool-call-listing-order
+  - rules/knowledge-base/recent-ingestions-limit-bounds
+  - rules/knowledge-base/retry-counts-attempts
+  - rules/knowledge-base/closing-stamps-finish-time
+  - rules/knowledge-base/cited-fragments-anchored
+  - rules/knowledge-base/fragment-chunks-in-run-source
+  - domain/knowledge-base/run-summary

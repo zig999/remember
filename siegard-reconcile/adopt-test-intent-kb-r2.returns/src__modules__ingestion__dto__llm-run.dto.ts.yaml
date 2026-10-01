@@ -1,0 +1,162 @@
+findings:
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the doc comment on orphaned_fragments inside LlmRunSummarySchema, lines 51-59
+    evidence: >-
+      Fragments proposed by this run that carry NO provenance row — i.e. the
+      LLM extracted them but never cited them in any consolidated link/attribute.
+      Such fragments stay `status='proposed'` and are excluded from the partial
+      FTS index (`WHERE status='accepted'`)
+    cost: >-
+      The definition of an orphaned fragment is written a second time in prose beside a field that
+      only declares a count. The code that computes it is in
+      src/modules/ingestion/repository/llm-run.repository.ts (`summary.orphaned_fragments = orphan.rows[0]?.n ?? 0;`).
+      If the node's definition moves, this comment keeps saying the old one and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by the repository code that computes
+      the count.
+    node: rules/knowledge-base/orphaned-fragment
+  - file: src/modules/ingestion/dto/llm-run.dto.ts
+    where: >-
+      the doc comment on LlmRunResponseSchema, lines 80-90
+    evidence: >-
+      `affected_nodes` (BR-33, v1.3.0) is OPTIONAL — attached ONLY when
+      `status === 'completed'`.
+    cost: >-
+      The rule that affected nodes are listed only for a completed run is restated as prose in a
+      file that only declares the key as `.optional()`. The code that enforces it is in
+      src/modules/ingestion/service/llm-run.service.ts (`if (row.status === "completed") {`).
+      A reader of the DTO takes the comment for where the rule lives, and a change to the node
+      leaves it behind.
+    kind: restates
+    correction: >-
+      Remove the comment. The node holds the rule and llm-run.service.ts implements it.
+    node: rules/knowledge-base/affected-nodes-only-when-completed
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only LlmRun DTO schemas, such as `export const LlmRunStatusSchema = z.enum(["running", "completed", "failed"]);`.
+      It carries no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      RetryLlmRunRequestSchema, ListToolCallsQuerySchema, LlmRunResponseSchema, ToolCallResponseSchema
+      and ListToolCallsResponseSchema (lines 91-140)
+    evidence: >-
+      `reason: z.string().max(500).optional(),` ; `limit: z.coerce.number().int().min(1).max(100).default(50),` ;
+      `offset: z.coerce.number().int().min(0).default(0),` ;
+      `affected_nodes: z.array(AffectedNodeSchema).optional(),`.
+      These match the contract: retry reason over 500 characters is refused, the tool-call page has a limit and offset,
+      the run is read with its summary and affected nodes, and a tool call has identity, run, tool name, arguments,
+      result, validation outcome and recording time.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only LlmRun and ToolCall DTOs, such as `export const ToolCallResponseSchema = z.object({`.
+      It carries no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      `ListToolCallsQuerySchema` is a tool-call listing query. The file has no accepted-fragment listing.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only declares the shape `AffectedNodeSchema = z.object({ id: z.string().uuid(), canonical_name: z.string(), node_type: z.string() })`.
+      Which nodes count as affected is computed in other files, not here.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The only trace is `affected_nodes: z.array(AffectedNodeSchema).optional(),`. The file does not omit or list anything.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution-window filter.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling or node resolution. It only names the tool names in `IngestToolNameSchema`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance entry.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search query.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only enumerates validation outcomes (`"consolidated",`). It decides no re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity start or basis handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The other comments, such as the BR-33 and TC-02 citations and the remark that Fastify trusts the service layer's typed result, are prose that states no domain fact, so they are not reported here.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-offset-non-negative
+  - rules/knowledge-base/tool-call-page-defaults
+  - rules/knowledge-base/affected-nodes-only-when-completed
+  - rules/knowledge-base/orphaned-fragment
+  - rules/knowledge-base/summary-counts-orphaned-fragments
+  - domain/knowledge-base/llm-run
+  - domain/knowledge-base/tool-call
+  - domain/knowledge-base/ingest-tool
+  - domain/knowledge-base/validation-outcome
+  - domain/knowledge-base/run-summary
+  - domain/knowledge-base/run-status
+  - domain/knowledge-base/page

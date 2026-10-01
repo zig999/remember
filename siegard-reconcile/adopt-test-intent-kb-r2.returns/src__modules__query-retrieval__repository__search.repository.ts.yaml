@@ -1,0 +1,161 @@
+findings:
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      searchNodeAliasLayer, the ORDER BY of the node-layer SQL (line 130)
+    evidence: >-
+      ORDER BY score DESC, kn.canonical_name ASC, kn.id ASC
+      LIMIT $4
+      (the node says: "Search items are ranked by score descending, then by recording time descending with a knowledge node counting as never recorded, then by identifier ascending.")
+    cost: >-
+      The node layer breaks score ties by canonical name, a step the ranking node does not have. When the layer's LIMIT cuts the candidates, tied nodes survive in name order, not in identifier order. A reader who checks the ranking against search-ranking will not find the name tie-break, because it lives only in this SQL. Whether the service later re-sorts the survivors is outside this file.
+    kind: contradicts
+    correction: >-
+      Either the node-layer tie-break follows the node (score descending, then identifier ascending), or search-ranking is amended to state the canonical-name tie-break if that is what the business decided.
+    node: rules/knowledge-base/search-ranking
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      the excerpt expression in searchChunkLayer (lines 177-178), repeated in listProvenanceForFragments (264-265), listProvenanceForLinks (301-302) and listProvenanceForNodes (360-361)
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                FOR rc.offset_end - rc.offset_start) AS excerpt
+    cost: >-
+      A search result's chunk excerpt is cut from the chunk's own text starting at the chunk's start offset, for the chunk's length. No node states this cut for search. The only node that states it, graph-provenance-excerpt-is-chunk-excerpt, is scoped to "A graph read's provenance entry". Search is not a graph read, so the cut that decides what a search result shows lives only in this SQL, and the next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Analysis gives the search excerpt a node. The simplest route is to widen graph-provenance-excerpt-is-chunk-excerpt to cover search provenance entries, or to add a search-item rule that states the cut.
+    node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+  - file: src/modules/query-retrieval/repository/search.repository.ts
+    where: >-
+      the provenance lookups listProvenanceForFragments (lines 269-274), listProvenanceForLinks (306-312) and listProvenanceForNodes (365-373)
+    evidence: >-
+      JOIN fragment_source fs ON fs.fragment_id = f.id
+      JOIN raw_chunk rc       ON rc.id = fs.raw_chunk_id
+      JOIN raw_information ri ON ri.id = rc.raw_information_id
+      WHERE f.id = ANY($1::uuid[])
+      (no rc.superseded_at predicate and no raw_information status predicate in any of the three, while searchChunkLayer applies "AND rc.superseded_at IS NULL"; the node says: "Search shows no information fragment whose raw information was deleted for compliance, neither as a search item nor as the support of one.")
+    cost: >-
+      In this file the supporting provenance rows of a search item are read without the compliance exclusion the chunk layer applies. The link and node lookups also have no fragment status filter. A chunk excerpt or fragment text from raw information deleted for compliance can come back as the support of a search item unless another file filters it. The file's own comment says deleted content "must never come back through retrieval", yet only one of its four queries enforces that.
+    kind: contradicts
+    correction: >-
+      Every provenance lookup that supports a search item has to exclude compliance-deleted sources, or the exclusion has to be shown to sit elsewhere. This file does not carry it.
+    node: rules/knowledge-base/search-excludes-compliance-deleted-sources
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds only parameterized SELECTs through a PoolClient, such as `SELECT websearch_to_tsquery($1::regconfig, $2)::text AS q`. It does no authentication, routing or health probing.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No statement in the file writes or proposes anything. Every query reads: information_fragment, node_alias, raw_chunk, fragment_source, provenance, knowledge_link.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is the repository beneath the search operation. It declares row types such as `export interface SearchProvenanceRow` and runs the layer SQL. It holds none of the contract's answers or refusals (query validation, layer set, page bounds, authentication).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and takes no query parameters. It has `searchFragmentLayer(client, query, limit)` only.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns LLM runs or their affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      Nothing in the file concerns LLM runs or their affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing exists in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file reads existing `raw_chunk` rows and never divides content into chunks.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals, no node resolution and no locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review and writes nothing.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The same cut exists here, `substring(rc."text" FROM rc.offset_start + 1 FOR rc.offset_end - rc.offset_start) AS excerpt`. It is on search provenance and chunk-layer rows, not a graph read (read-link, read-attribute, traverse). The node is scoped to "A graph read's provenance entry". Reported as unstated.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The node concerns graph reads showing every provenance entry. The file's lookups serve search results, not graph reads. Its only compliance predicate is `AND rc.superseded_at IS NULL` in the chunk layer.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics and no disputed-item counting.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing and no name-prefix matching. Its alias match is the full-text `to_tsvector($1::regconfig, na.alias) @@ websearch_to_tsquery($1::regconfig, $2)`.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The decision whether a query expands is not in the file. Its only graph-adjacent function, `findLinksMetadata`, looks up named link ids with `WHERE kl.id = ANY($1::uuid[])` and walks nothing.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals and no consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposals and no validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue listing and no totals.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line recognition or any chunking text analysis.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal. `findLinksMetadata` is a lookup by link id.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal and lists no reached nodes.
+looked_past: >-
+  The file's comments (the BR-number citations, and the listProvenanceForNodes docblock that says "canonical_name token" while the code joins on `na.alias_norm`) are prose that no running system emits, and their removal is the comment route's, not this judgment's.
+candidates_opened:
+  - rules/knowledge-base/search-excludes-compliance-deleted-sources
+  - rules/knowledge-base/search-ranking
+  - rules/knowledge-base/node-surfaces-only-with-accepted-mention
+  - rules/knowledge-base/node-layer-matches-through-aliases
+  - rules/knowledge-base/node-layer-skips-merged-and-deleted
+  - rules/knowledge-base/chunk-layer-matches-current-chunks
+  - rules/knowledge-base/fragment-layer-matches-accepted-only
+  - rules/knowledge-base/layer-weights
+  - rules/knowledge-base/search-total-before-pagination
+  - rules/knowledge-base/chunk-match-cites-its-fragment
+  - rules/knowledge-base/chunk-match-never-surfaces
+  - rules/knowledge-base/expanded-link-requires-provenance
+  - rules/knowledge-base/search-option-defaults
+  - rules/knowledge-base/fragment-item-summary
+  - domain/knowledge-base/search-item
+  - domain/knowledge-base/search-layer

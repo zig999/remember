@@ -1,0 +1,182 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      JSDoc of ListAcceptedFragmentsQuerySchema, lines 20-24 (the llm_run_id / raw_information_id bullet)
+    evidence: >-
+      * - `llm_run_id` / `raw_information_id` are independently optional but at
+      *   least one MUST be supplied; otherwise the `.refine` raises a
+      *   `VALIDATION_INVALID_FORMAT` with the `requires_one_of` detail
+    cost: >-
+      The requirement that a listing name a run, a raw information or both is written in prose as well as in the `.refine` at lines 39-45. A change to the node would leave this comment stating the old rule, and no tool reaches it.
+    kind: restates
+    correction: >-
+      Remove the bullet. The `.refine` in this file holds the fact, so the comment only repeats it.
+    node: rules/knowledge-base/listing-requires-a-filter
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      JSDoc of ListAcceptedFragmentsQuerySchema, lines 26-27 (limit bound)
+    evidence: >-
+      * - `limit` is `[1..100]`, default `20`; `offset >= 0`, default `0` —
+    cost: >-
+      The 1 to 100 bound on a page's limit is stated again in prose beside `.min(1).max(100)` at line 33. The bound lives in the node, and a second copy in a comment will not follow it when it moves.
+    kind: restates
+    correction: >-
+      Remove the limit-bound clause of the comment. `IntegerQuery.pipe(z.number().int().min(1).max(100))` in this file holds the fact.
+    node: rules/knowledge-base/page-limit-bounds
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      JSDoc of ListAcceptedFragmentsQuerySchema, line 26 (offset bound)
+    evidence: >-
+      `offset >= 0`
+    cost: >-
+      The non-negative offset rule is stated in prose beside `z.number().int().min(0)` at line 36, as a second home that the node's own changes do not reach.
+    kind: restates
+    correction: >-
+      Remove the offset clause of the comment. `offset: IntegerQuery.pipe(z.number().int().min(0))` in this file holds the fact.
+    node: rules/knowledge-base/page-offset-non-negative
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      JSDoc of ListAcceptedFragmentsQuerySchema, lines 26-27 (defaults)
+    evidence: >-
+      default `20`; `offset >= 0`, default `0`
+    cost: >-
+      The default limit of 20 and default offset of 0 are written in prose beside `.default(20)` and `.default(0)`. The node decides them, and a comment copy would go stale without notice.
+    kind: restates
+    correction: >-
+      Remove the defaults from the comment. `.optional().default(20)` and `.optional().default(0)` in this file hold the fact.
+    node: rules/knowledge-base/page-defaults
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only the accepted-fragment query schema and the response interfaces. It authenticates no owner, routes nothing and reads no health. The 422 behavior is mentioned only in the header comment "Validation failures surface as 422 `VALIDATION_INVALID_FORMAT` through the global error handler".
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no ingestion, run or proposal operation. It declares only `export const ListAcceptedFragmentsQuerySchema` and the `AcceptedFragment*` interfaces.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      ListAcceptedFragmentsQuerySchema (lines 29-45) for the list-accepted-fragments request, and the interfaces AcceptedFragmentSourceRef, AcceptedFragmentItem and AcceptedFragmentList (lines 55-77) for its accepted answer
+    evidence: >-
+      export interface AcceptedFragmentItem { readonly fragment_id: string; readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; readonly source: AcceptedFragmentSourceRef; }, with source carrying raw_information_id, chunk_index, source_type, received_at and document_title. The request is `z.object({ llm_run_id: z.string().uuid().optional(), raw_information_id: ..., limit: ..., offset: ... }).strict().refine(...)`. This matches the contract's accepted fields and its refusals for a malformed identifier, a missing filter and an unknown parameter. The other operations of the contract are not in this file.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      the `.strict()` call on the object schema, line 38
+    evidence: >-
+      .strict()
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no run or affected-node logic. The only run reference is `readonly llm_run_id: string;`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no affected-node logic. It only declares `AcceptedFragmentItem` and the query schema.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or execution window. It has only the accepted-fragment query schema.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does no chunking. It only carries `readonly chunk_index: number;` as a response field.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal or node resolution logic. It declares only DTO types and one query schema.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no assertion review logic. It declares only DTO types and one query schema.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt. It has no prompt text and no attribute key.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read and no provenance entry. It has no chunk excerpt field.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no graph read and no compliance status logic.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no curation metrics and no disputed count.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no node listing and no name prefix filter.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no search query and no graph walk. It only mentions search in the comment "mirrors `SearchQuerySchema`".
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal or consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no proposal and no validity start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue listing. It has only the accepted-fragment page, `limit` and `offset` of one list.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no review queue listing. Its `total` in `AcceptedFragmentList` belongs to the accepted-fragment listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no speaker-line parsing or pattern.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no traversal logic.
+looked_past: >-
+  The header comment about the route boundary, the global error handler and the 422 status, and the "(openapi v1.3.0)" and "BR-04" citations, are prose with no fact of any node in the pack, so they are another judgment's (the comment route).
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - rules/knowledge-base/page-offset-non-negative
+  - rules/knowledge-base/listing-requires-a-filter
+  - rules/knowledge-base/page-defaults
+  - domain/knowledge-base/accepted-fragment-filter
+  - domain/knowledge-base/page

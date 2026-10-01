@@ -1,0 +1,194 @@
+findings:
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      line 67, the comment above the loop that checks every locked row's status
+    evidence: >-
+      // BR-22: every row must be `disputed`.
+    cost: >-
+      The comment cites "BR-22", an identifier from a back-spec that is not in the specification tree. It
+      restates what rules/knowledge-base/dispute-resolution-requires-disputed-items holds, which the loop
+      below it already enforces (`if (row.status !== "disputed") { throw new ConflictError("BUSINESS_ITEM_NOT_DISPUTED", ...`).
+      The next reader is sent to a rule number that does not resolve, and the comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is correct and the fact is already held by the node, so this is the
+      comment route.
+    node: rules/knowledge-base/dispute-resolution-requires-disputed-items
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      line 78 (the inline comment before assertSameScope) and line 285 (the docstring above assertSameScope)
+    evidence: >-
+      // BR-14: all items must share the same conflict scope.
+      /** BR-14: all items must share the same conflict scope. */
+    cost: >-
+      Both comments restate rules/knowledge-base/dispute-resolution-single-scope under a back-spec number. The
+      function body holds the rule (`"Items do not share the same conflict scope"`, `{ scope_mismatch: true }`).
+      A reader who looks up "BR-14" finds nothing in the specification.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/dispute-resolution-single-scope
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      lines 119-122 (prefer_one without a winner) and lines 202-205 (adjust_periods without periods), the messages of the two BusinessError throws
+    evidence: >-
+      throw new BusinessError("BUSINESS_DISPUTE_WINNER_REQUIRED", "decision=prefer_one requires winner_id");
+      throw new BusinessError("BUSINESS_DISPUTE_PERIODS_REQUIRED", "decision=adjust_periods requires periods[]");
+      The contract answers with the messages "decision=prefer_one requires winner_id (member of item_ids)" and "decision=adjust_periods requires periods[] (one entry per item_id)".
+    cost: >-
+      When either branch is reached, the owner's client receives a message without the parenthetical the
+      contract states. A client or test that matches the contract's message text does not match what this file
+      emits. The contract stays the authority, so the wording is not decided in the code.
+    kind: contradicts
+    correction: >-
+      Emit the messages exactly as contracts/knowledge-base/curation states them for resolve-dispute.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      line 208, the comment above the scopeAllowsMultipleCurrent call
+    evidence: >-
+      // BR-16: functional-scope predicate — at most one row may end with
+      // valid_to = NULL when the scope's `allows_multiple_current = false`.
+    cost: >-
+      The comment restates rules/knowledge-base/adjusted-periods-single-open under a back-spec number. The code
+      below holds the same rule (`if (!allowsMultipleCurrent) { ... if (openCount > 1) { throw new BusinessError("BUSINESS_TEMPORAL_INCOHERENT", ...`).
+      The comment is a second home for the rule, and its number does not resolve in the specification.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/adjusted-periods-single-open
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file serves none of authenticate-owner, route-request or read-health. It contains no AUTH_* code, no
+      401 and no health report. Its only error classes are `BusinessError`, `ConflictError` and `ResourceNotFoundError`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file implements none of the ingestion operations. It calls `resolveDisputeWinner`, `resolveDisputeLosers`
+      and `adjustItemPeriod`, and never mentions a raw information, a run or a proposal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file implements none of the retrieval reads. It has no search, provenance, listing or traversal;
+      it exports only `resolveDisputeService`.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing of accepted fragments appears. The file's one entry point is
+      `export async function resolveDisputeService(deps: DisputeServiceDeps, body: ResolveDisputeBody)`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file tracks no LLM run and lists no affected nodes. Its only items are the locked rows,
+      `const locked = await loadItemsForUpdate(client, body.item_kind, body.item_ids);`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No LLM run's affected-node listing is built here. The only absence handling is
+      `throw new ResourceNotFoundError("Item not found", { missing_id: missing, item_kind: body.item_kind })`,
+      which concerns curation items.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution window. It writes
+      `insertCurationAction(client, { action: "resolve_dispute", ... })`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It has no content, source type or chunk reference.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      No proposal is resolved and no node name is looked up. The lock the file takes covers dispute items, not
+      node names: `loadItemsForUpdate(client, body.item_kind, body.item_ids)`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirm operation. Its decisions are `"prefer_one" | "adjust_periods" | "keep_disputed"`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and lists no allowed values of an attribute key. It reads
+      `allows_multiple_current` from the catalog, and nothing else.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt and no ordering of allowed values appear in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt and no allowed values appear in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no provenance entry, raw chunk or chunk excerpt. The items it returns are
+      `{ item_id, resulting_status, valid_from, valid_to }`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file shows no provenance entry and checks no compliance status of a raw information.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file resolves disputes and counts no queue. The only count it computes is
+      `const openCount = periods.filter((p) => p.valid_to === null || p.valid_to === undefined).length;`,
+      which concerns adjusted periods, not the metric.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing, no alias comparison and no name prefix.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file runs no search query and walks no graph.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file consolidates no proposal and re-affirms no assertion. It does `resolveDisputeWinner` and
+      `resolveDisputeLosers` on rows that are already disputed.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file takes no validity-start fallback from a source. The validity dates it writes are the owner's
+      periods: `adjustItemPeriod(client, body.item_kind, p.item_id, p.valid_from, p.valid_to ?? null)`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue and applies no limit or offset.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file computes no review queue total. It returns `{ item_kind, decision, items, action_id }` for one resolution.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file parses no line of raw content and has no speaker pattern.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file traverses no graph and expands no knowledge node.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file traverses no graph and lists no reached node.
+looked_past: >-
+  The file implements the resolve-dispute operation, which none of this pack's nodes govern. The nodes that do
+  are outside the set, in contracts/knowledge-base/curation and the dispute-resolution rules. This file's
+  check order, scope check, keep-disputed result, prefer-one outcome, adjust-periods outcome and recorded
+  curation action all read as agreeing with those nodes. Two things were seen and not judged. The prefer_one
+  branch does not check that winner_id is a member of item_ids, and the adjust_periods branch checks only that
+  periods is non-empty, not that there is one period per item; the contract's messages say both, and whether
+  an upstream DTO enforces them is outside this file. The "BR-26: lock every item row." comment (line 56) cites
+  a back-spec number and states no node's fact that I could name.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/prefer-one-requires-winner
+  - rules/knowledge-base/adjust-periods-one-per-item
+  - rules/knowledge-base/adjusted-periods-single-open
+  - rules/knowledge-base/dispute-resolution-check-order
+  - rules/knowledge-base/prefer-one-outcome
+  - rules/knowledge-base/adjust-periods-outcome
+  - rules/knowledge-base/keep-disputed-changes-nothing
+  - rules/knowledge-base/dispute-resolution-records-curation-action

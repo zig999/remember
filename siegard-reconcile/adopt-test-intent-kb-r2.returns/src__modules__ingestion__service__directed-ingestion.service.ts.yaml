@@ -1,0 +1,283 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      IsoDateSchema (lines 99-102), used by valid_from and valid_to of
+      DirectedAttributeItemSchema (lines 141-142) and DirectedLinkItemSchema (lines 152-153)
+    evidence: >-
+      const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+      ... valid_to: IsoDateSchema.optional(),
+    cost: >-
+      The service accepts, shape-checks and forwards a validity end for directed attributes
+      and links, and emits a message naming it. The directed rules state only the validity
+      start's shape, and the decision log beside directed-validity-start-shape records that
+      only the validity start is stated. A reader looking in the specification for what a
+      directed item may carry will not find the validity end, so the code is the only place
+      it is decided.
+    kind: unstated
+    correction: >-
+      Either the specification states that a directed item may carry a validity end and its
+      shape, or the service stops accepting it.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedFragmentItemSchema (line 108), enforcing the fragment text length at the
+      directed input boundary
+    evidence: >-
+      export const DirectedFragmentItemSchema = z.object({ ref: DirectedRefSchema, text: z.string().min(1).max(1000), });
+    cost: >-
+      The 1 to 1000 limit on a fragment's text is held by fragment-text-length for an
+      information fragment. Here it is implemented a second time in a directed-only schema,
+      and the ingest-directed contract lists no refusal for it. If the node moves, nothing
+      moves this copy, and a directed call is refused before dispatch with a message the
+      contract does not name for this cause.
+    kind: contradicts
+    correction: >-
+      Leave the limit to the single place that holds it, or have the ingest-directed
+      contract state this refusal.
+    node: rules/knowledge-base/fragment-text-length
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedNodeItemSchema (lines 111-117), the name and aliases length limits
+    evidence: >-
+      name: z.string().min(1).max(500),
+      node_id: z.string().uuid().optional(),
+      aliases: z.array(z.string().min(1).max(500)).optional(),
+    cost: >-
+      The 1 to 500 limit on a node's name and each alias is held by node-name-length for a
+      node proposal. This is a second implementation in a directed-only schema, and the
+      ingest-directed contract lists no refusal for it. The two copies can diverge unseen,
+      and a directed call is refused with a cause the contract does not name.
+    kind: contradicts
+    correction: >-
+      Leave the limit to the single place that holds it, or have the ingest-directed
+      contract state this refusal.
+    node: rules/knowledge-base/node-name-length
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedAttributeItemSchema line 144 and DirectedLinkItemSchema line 155, forwarded
+      at lines 637 and 717
+    evidence: >-
+      change_hint: ChangeHintSchema.optional(),  ...  change_hint: item.change_hint ?? "none",
+    cost: >-
+      The node says a directed attribute or link is proposed with change hint none. The
+      service lets the caller state any change hint and forwards it, so a directed
+      supersession can be requested through this code. The decision log beside
+      directed-defaults records that the directed tool carries no change hint, so the
+      capability exists only here and the next reader of the node will not know it.
+    kind: contradicts
+    correction: >-
+      Remove the change hint from the directed item schemas and propose every directed
+      attribute and link with none.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 1, the Zod-failure return (lines 309-322)
+    evidence: >-
+      code: "VALIDATION_INVALID_FORMAT",
+      message: "Input failed Zod parse.",
+      details: {
+        issues: parsed.error.issues.map((i) => ({
+    cost: >-
+      The contract answers every directed validation refusal with message
+      "ingest_directed arguments failed validation." listing each failing field with its
+      path and message. This path tells the caller a different message and nests the list
+      under details.issues. A caller or test that reads the message the contract states
+      does not find it here. This file cannot show whether the tool handler validates
+      first and so makes this path unreachable.
+    kind: contradicts
+    correction: >-
+      Emit the message the contract states, or state in the contract that this service
+      path answers differently.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Header comment (lines 1-37), the sentinels and the no-language-model statement
+    evidence: >-
+      // the sentinels `model='directed'` / `prompt_version='directed-v1'`, ...
+      // NEVER calls Anthropic — the directed path is `model = 'directed'`,
+    cost: >-
+      The prose says again what directed-ingestion-run holds and what
+      DIRECTED_MODEL / DIRECTED_PROMPT_VERSION (lines 84 and 87) declare in this file. It is
+      a second home outside behavior that will go stale with the node, and no check reaches
+      it.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior stays as the constants carry it.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Comment above anchorChunkId (lines 449-455)
+    evidence: >-
+      // All fragments are anchored to the first chunk of the synthesised content.
+      ... const anchorChunkId = chunks[0]!.id;
+    cost: >-
+      The comment restates directed-fragments-anchor-first-chunk, which the next line of
+      code holds. It is prose that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Steps 4-5, the swallowed run close and the empty affected nodes on a failed resolution
+      (lines 764 and 776-787; closeRunCompletedSafe, lines 1006-1034)
+    evidence: >-
+      await closeRunCompletedSafe(deps.pool, llm_run_id, deps.logger);
+      ... // resolvedAffected stays []; the run is still completed.
+      ... /* swallow */
+    cost: >-
+      When the close transaction or the affected-nodes resolution fails, the response still
+      says status "completed" with affected_nodes empty, and only a log line records the
+      failure. The contract states a completed run with its affected nodes and names no
+      answer for a run that did not close or whose nodes could not be read. This
+      degradation is decided only in this file.
+    kind: unstated
+    correction: >-
+      A node states what a directed ingestion answers when the run cannot be closed or its
+      affected nodes cannot be resolved.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe fallback (lines 1050-1054) and the null finished_at branch (lines 1072-1074)
+    evidence: >-
+      const fallback = { started_at: new Date(0).toISOString(), finished_at: new Date(0).toISOString(), attempts: 1, };
+    cost: >-
+      The run's start and finish times and its attempts are reported as the epoch
+      (1970-01-01T00:00:00.000Z) and 1 when the closed run cannot be read. A caller
+      receives these invented values as if they were the run's, and no node says so.
+    kind: unstated
+    correction: >-
+      A node states what the run reports when its row cannot be read, or states that the
+      call fails instead.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file neither authenticates nor routes a request. It starts at `directedIngestionService(input: unknown, deps)`, after the transport has passed the request.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      directedIngestionService (lines 303-828) and verifyNodePin (lines 859-896), the ingest-directed operation. The validation message departs from the contract, per the finding.
+    evidence: >-
+      outcome: "ingested", with raw_information_id, llm_run_id, chunk_count, run, report, summary; the pin messages "node_id pin does not resolve to an existing knowledge_node row." with details { reason: "not_found" }, and "node_id pin resolves to a knowledge_node row whose status is '${row.status}' (only 'active' is accepted)." with details { reason: "inactive", current_status: row.status }; the intake messages "Failed to persist the directed payload before dispatch.", "Directed ingestion intake produced no chunks." and "Directed ingestion intake returned 'noop_existing'; the per-call nonce should make this unreachable."
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file reads no search, provenance, catalog listing or graph read. The only read is `SELECT status FROM knowledge_node WHERE id = $1 LIMIT 1` for the pin check.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file lists no accepted fragments.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only feeds the collector (`affectedNodes.record("propose_link", ...)`) and calls `resolveAffectedNodes(client, affectedNodes.ids())`. The rule of which nodes count is in affected-nodes.js.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      Leaving out a node that is no longer held is not decided in this file. It delegates to `resolveAffectedNodes`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file lists no compliance deletions.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does not chunk. It only reads `chunks[0]!.id` from the intake result.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      Resolution and its ordering are delegated to `proposeNode(nodeInput, ...)`. The file holds no lock or ordering of its own.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file confirms no assertion.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The directed path builds no prompt: `DIRECTED_PROMPT_VERSION = "directed-v1"` is a sentinel.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The directed path builds no prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The directed path builds no prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no graph or provenance.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file reads no graph or provenance.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file counts no curation metrics. `buildSummary` counts directed items by kind and status.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file lists no nodes.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file does no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Re-affirmation is decided inside the propose handlers (`proposeAttribute`, `proposeLink`). The file only maps their outcome with `mapLinkOutcomeToStatus`.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file forwards `valid_from` only when stated (`...(item.valid_from !== undefined ? { valid_from: item.valid_from } : {})`). The fallback to the received date is not decided here.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file lists no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking or speaker parsing. It sends `source_type: "chat"` to intake.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file does no traversal.
+looked_past: >-
+  The remaining comments restating the directed rules (cascade, dispatch order, confidence, defaults and the BR-34 citations), the unused synthesised nonce return, and the style of the helpers are comment-route or code-review matters, not unstated facts.
+candidates_opened:
+  - rules/knowledge-base/directed-defaults
+  - rules/knowledge-base/directed-ingestion-run
+  - rules/knowledge-base/directed-source-content
+  - rules/knowledge-base/directed-dependency-failed
+  - rules/knowledge-base/directed-pinned-node
+  - rules/knowledge-base/directed-item-status
+  - rules/knowledge-base/directed-attribute-value-as-text
+  - rules/knowledge-base/directed-attribute-value-shape
+  - rules/knowledge-base/directed-reference-length
+  - rules/knowledge-base/directed-source-label-length
+  - rules/knowledge-base/directed-requires-fragment-and-node
+  - rules/knowledge-base/directed-validity-start-shape
+  - rules/knowledge-base/directed-fragments-anchor-first-chunk
+  - rules/knowledge-base/directed-full-confidence
+  - rules/knowledge-base/directed-dispatch-order
+  - rules/knowledge-base/directed-run-completes
+  - rules/knowledge-base/directed-source-metadata
+  - rules/knowledge-base/directed-chat-pointer-whole
+  - rules/knowledge-base/directed-turn-is-original-input
+  - rules/knowledge-base/directed-later-reference-wins
+  - rules/knowledge-base/fragment-text-length
+  - rules/knowledge-base/node-name-length
+  - rules/knowledge-base/caller-never-states-received
+  - domain/knowledge-base/directed-ingestion
+  - domain/knowledge-base/directed-item
+  - domain/knowledge-base/directed-item-status

@@ -1,0 +1,154 @@
+findings:
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      line 62, comment above `const status: NodeStatus = input.status ?? "active";` in listNodesService
+    evidence: >-
+      // BR-15 — default to active when caller omits status.
+    cost: >-
+      The comment restates in prose, under a back-spec rule number, a fact the specification holds. A reader who changes the default in the node will go looking for BR-15 here, and the comment will not move with it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the `?? "active"` branch in this file, and by the node.
+    node: rules/knowledge-base/node-listing-by-status
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      line 65, comment above `name_prefix_norm` in listNodesService
+    evidence: >-
+      // BR-01 of `.spec.md` — apply norm() before the LIKE prefix lookup.
+    cost: >-
+      The comment restates how a node listing compares the name prefix "as a name". The code already holds this by calling `norm(input.name_prefix)`, so the comment is a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The `norm(...)` call carries the fact.
+    node: rules/knowledge-base/node-listing-name-prefix
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      line 101, comment above the `node.status === "deleted"` branch in getNodeByIdService
+    evidence: >-
+      // BR-11 — deleted -> 410 (row exists but tombstoned).
+    cost: >-
+      The comment restates the refusal of a read of a deleted node, including its HTTP status, in prose. The branch that throws NodeDeletedError holds the fact, and the status is stated in the contract. If the contract moves, the comment will still claim 410.
+    kind: restates
+    correction: >-
+      Remove the comment. The `throw new NodeDeletedError(input.nodeId)` branch carries the fact.
+    node: rules/knowledge-base/deleted-node-read-refused
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      line 126, comment above the warnIfEmptyProvenance call in getNodeByIdService
+    evidence: >-
+      // BR-17 — empty provenance on non-deleted item -> WARN (no client error).
+    cost: >-
+      The comment restates in prose that an attribute with no provenance is not refused to the client. The code holds this by returning `provenanceByAttrId.get(r.id) ?? []`, so the comment is a second home for the policy.
+    kind: restates
+    correction: >-
+      Remove the comment. The `?? []` in the attributes mapping carries the fact.
+    node: rules/knowledge-base/graph-read-shows-empty-provenance
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing, validation or health behavior. Its only imports are the repository, formatters, norm and errors: `import { norm } from "./norm.js";`
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file serves only the node listing and the node read. None of the ingestion operations (intake, proposals, runs, tool calls) appears in `listNodesService` or `getNodeByIdService`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      Partial, for the list-nodes and read-node operations. Held in listNodesService (lines 47-83) and getNodeByIdService (lines 92-139).
+    evidence: >-
+      `throw new UnknownNodeTypeError(input.node_type);` (unknown node-type filter), `throw new ResourceNotFoundError("KnowledgeNode", input.nodeId);` (no node held), `throw new NodeDeletedError(input.nodeId);` (deleted node), and the node-read answer `return { node: toNodeSummary(node), aliases: aliases.map(toNodeAlias), attributes: attributeRows.map(...) }`. The list answer is `{ total, limit, offset, items }`. The error codes and statuses live in errors.ts and the routes, which were not read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no accepted-fragment listing and reads no query parameters beyond the node-listing input fields in `ListNodesInput`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no LLM run, no proposal and no affected-nodes computation.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file does not list the affected nodes of a run.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing and no execution-window bounds.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking and holds no raw-chunk shape.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, no node resolution and no locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review or confirmation.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and sorts no allowed values.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt and handles no allowed values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `provenanceRows` to `groupProvenance` and `toAttributeDetail`. It computes no excerpt, so any excerpt rule lives in the formatters or the repository.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file calls `listProvenanceByTargets(client, "attribute", attributeIds)` and applies no compliance-status filter. Whether the entries are shown is decided in the repository.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      Partial: the name-as-name comparison, in listNodesService at lines 66-67. The alias matching with wildcards is outside the file.
+    evidence: >-
+      `const name_prefix_norm = input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;` followed by `name_prefix_norm,` in the repoListNodes call. The matching of aliases is done in the repository.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling or consolidation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal handling and no validity start.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue. Its `total` is `repoResult.total` from the node listing.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no parsing of raw information text.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The file's header comment and the remaining BR-xx comments (BR-03, BR-09, BR-16, the "Merged nodes return 200" note) cite back-spec rules in prose and name no node I could attribute. The empty-provenance WARN log `knowledge_graph_empty_provenance` is operational logging and states no domain fact, so I left it alone.
+candidates_opened:
+  - rules/knowledge-base/node-listing-by-status
+  - rules/knowledge-base/graph-read-shows-empty-provenance
+  - rules/knowledge-base/deleted-node-read-refused

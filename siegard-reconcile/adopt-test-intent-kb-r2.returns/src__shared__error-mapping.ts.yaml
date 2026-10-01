@@ -1,0 +1,154 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the comment above codeToHttpStatus, lines 73-81
+    evidence: >-
+      "every domain sentinel MUST publish its code here so REST + MCP surface byte-identical codes on the same business condition (P2.1 parity contract)."
+    cost: >-
+      The comment states the node's fact, that both transports answer a refusal with the same error code. Code in this file already holds it: codeToHttpStatus is the one registry, and toMcpToolResult serializes the same envelope.error.code. The comment is a second home outside behavior. A reader can mistake it for where the parity was decided, and it will go stale if the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the fact, and the constraint node carries it.
+    node: constraints/retrieval-transports-answer-alike
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the codeToHttpStatus entry RESOURCE_ALREADY_EXISTS, line 96
+    evidence: >-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      The code and its HTTP 409 are published as a refusal answer, but no node in the specification names this code or any condition that produces it (grep of the whole specification root finds no match). The 409 lives only in this registry. The next reader will look in the specification for what answers 409 and find only RESOURCE_CONFLICT.
+    kind: unstated
+    correction: >-
+      Either an analysis gives the code and its status a node, in the access contract's route-request answers or wherever the producing operation is, or the entry is dropped if no operation produces it.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the codeToHttpStatus entry BUSINESS_CHAT_INGEST_DISABLED, line 139
+    evidence: >-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      The code and its HTTP 503 are stated here, but no node holds them. The chat contract holds BUSINESS_CHAT_DISABLED and BUSINESS_CHAT_PROVIDER_UNAVAILABLE, and a grep for CHAT_INGEST and INGEST_DISABLED across the specification finds nothing. The refusal and its status live only in this registry, where the next reader of the chat contract will not look.
+    kind: unstated
+    correction: >-
+      An analysis gives the refusal a node in the chat conversations contract, stating when it is answered and with what message, or the entry is dropped if nothing produces it.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      the doc comment on internalError, line 194
+    evidence: >-
+      /** 500 — generic internal error. NEVER leaks `err.message` to the client. */
+    cost: >-
+      The comment restates the access contract's answer for a request that fails for any other cause, "error code SYSTEM_INTERNAL_ERROR with message "Internal server error.", withholding the cause". The function body already holds it by returning a fixed message. The comment is a second home outside behavior and goes stale if the node changes.
+    kind: restates
+    correction: >-
+      Remove the doc comment. The fixed message in internalError holds the fact.
+    node: contracts/knowledge-base/access
+read:
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      codeToHttpStatus, line 82, and toMcpToolResult, line 221. One registry renders REST and the MCP form wraps the same envelope.error.
+    evidence: >-
+      export const codeToHttpStatus: Record<string, number> = {   ...   content: [{ type: "text", text: JSON.stringify(envelope.error) }],
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      codeToHttpStatus entries AUTH_UNAUTHORIZED, AUTH_TOKEN_EXPIRED, AUTH_TOKEN_INVALID, AUTH_FORBIDDEN, VALIDATION_INVALID_FORMAT, RESOURCE_NOT_FOUND, RESOURCE_CONFLICT, SYSTEM_INTERNAL_ERROR and SYSTEM_SERVICE_UNAVAILABLE, plus serviceUnavailableError (line 187), internalError (line 195) and isPgUnavailable (line 55).
+    evidence: >-
+      AUTH_TOKEN_EXPIRED: 401,   VALIDATION_INVALID_FORMAT: 422,   RESOURCE_NOT_FOUND: 404,   RESOURCE_CONFLICT: 409,   SYSTEM_SERVICE_UNAVAILABLE: 503,   "A backing service is temporarily unavailable."   "Internal server error."
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      codeToHttpStatus entries BUSINESS_RUN_NOT_RETRYABLE, BUSINESS_RUN_NOT_RUNNABLE, BUSINESS_RUN_NOT_RUNNING, BUSINESS_LINK_RULE_VIOLATION, BUSINESS_UNKNOWN_NODE_TYPE, BUSINESS_UNKNOWN_LINK_TYPE, BUSINESS_DATE_UNJUSTIFIED, BUSINESS_TEMPORAL_INCOHERENT, SYSTEM_LLM_PROVIDER_UNAVAILABLE and SYSTEM_INTERNAL_ERROR.
+    evidence: >-
+      BUSINESS_RUN_NOT_RUNNABLE: 409,   BUSINESS_RUN_NOT_RETRYABLE: 409,   BUSINESS_RUN_NOT_RUNNING: 409,   SYSTEM_LLM_PROVIDER_UNAVAILABLE: 502,
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      codeToHttpStatus entries BUSINESS_INVALID_SEARCH_QUERY, BUSINESS_INVALID_SEARCH_LAYER, BUSINESS_UNKNOWN_LINK_TYPE, BUSINESS_UNKNOWN_NODE_TYPE, BUSINESS_UNKNOWN_ATTRIBUTE_KEY, BUSINESS_INVALID_TRAVERSE_DEPTH, BUSINESS_NODE_DELETED, BUSINESS_RAW_INFORMATION_DELETED and BUSINESS_FRAGMENT_NOT_ACCEPTED.
+    evidence: >-
+      BUSINESS_NODE_DELETED: 410,   BUSINESS_UNKNOWN_ATTRIBUTE_KEY: 404,   BUSINESS_INVALID_TRAVERSE_DEPTH: 422,   BUSINESS_RAW_INFORMATION_DELETED: 410,   BUSINESS_FRAGMENT_NOT_ACCEPTED: 404,
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file holds only an error-code-to-status registry and envelope builders, for example `VALIDATION_INVALID_FORMAT: 422`. It states no parameter check for the accepted-fragment listing.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file only maps error codes to statuses and builds envelopes. No run or node set is computed anywhere in it.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file only maps error codes to statuses and builds envelopes. It has no affected-nodes listing.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. No compliance-deletion window is read or validated.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no node resolution or locking.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does not confirm assertions.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It reads no provenance and computes no excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It reads no provenance. `BUSINESS_RAW_INFORMATION_DELETED: 410` belongs to the provenance-read refusal, not to this graph-read rule.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It computes no metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no name matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no search or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It consolidates no proposals.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. `BUSINESS_DATE_UNJUSTIFIED: 422` is only a status registry entry and applies no start fallback.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It pages no queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It counts no queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It parses no text.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file only holds `codeToHttpStatus` and envelope builders. It does no traversal.
+looked_past: >-
+  The 4xx-warn and 5xx-error log level in renderErrorEnvelope, the stale header comments, and the single status per code in the registry (for example 422 for BUSINESS_LINK_RULE_VIOLATION while the ingestion contract answers HTTP 200 with ok false over REST) were not reported. The first two are not domain facts or are comment-rule matters. The last depends on the route files, which are outside this file set.

@@ -1,0 +1,148 @@
+findings:
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      the header comment, lines 9-11 (repeated in the makeHandler docstring, lines 179-180)
+    evidence: >-
+      success -> { ok: true,  result: <service return value> } / failure -> { ok: false, error: { code, message, details? } }
+    cost: >-
+      The accepted answer of search and the three provenance reads is stated a second time in prose
+      outside behavior. The code that holds it is `return { ok: true, result };` in makeHandler,
+      and the failure shape is built in knowledge-graph/mcp/error-envelope.ts. When the contract
+      moves, this comment is not reached and keeps describing the old answer.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring lines. The fact is held by the contract node and, in
+      code, by makeHandler and the shared mapErrorToEnvelope.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      the header comment, lines 12-14
+    evidence: >-
+      The failure branch is built by the shared `mapErrorToEnvelope` from TC-01 (BR-24) so REST and MCP surface byte-identical error codes for the same thrown sentinel.
+    cost: >-
+      The two-transport parity rule is restated as a claim in a comment. The code that realizes it
+      is `return mapErrorToEnvelope(err);` here, with the shared mapper and the service functions
+      in other files. A reader may take the comment, not the constraint node, as where the parity
+      was decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The parity is held by the constraint node and, in code, by the shared
+      mapper and services.
+    node: constraints/retrieval-transports-answer-alike
+read:
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      makeHandler (lines 184-200) and the four registerTool calls (lines 218-284), as the MCP half
+      only. The failure path delegates to the shared mapper, and each tool calls a service function
+      imported from ../service/. The REST half is outside this file.
+    evidence: >-
+      return mapErrorToEnvelope(err); and, per tool, searchKnowledgeService(client, catalog, {...}, svcLogger) / getProvenanceByLinkService(client, input.link_id, svcLogger)
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file registers only search and the three get_provenance_* tools. It has no authentication, routing or health logic, and the word "health" does not appear in it.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation is registered here. The only tools are mcp.registerTool("query", { name: "search" ... }) and the three get_provenance_* tools.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the MCP exposure of search, read-link-provenance, read-attribute-provenance and
+      read-fragment-provenance: the registerTool calls (lines 218-284), the success envelope in
+      makeHandler (line 193) and the tool descriptions (lines 125-148). The refusals and the
+      shapes of the answers sit in the DTO, service and error-mapper files.
+    evidence: >-
+      return { ok: true, result }; and "...404 if missing or if the fragment is not in status='accepted'; 410 if any underlying raw is tombstoned." The descriptions agree with the contract (404 RESOURCE_NOT_FOUND / BUSINESS_FRAGMENT_NOT_ACCEPTED, 410 BUSINESS_RAW_INFORMATION_DELETED, limit max 100, expansion depth 1..3, layers fragment|node|chunk).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing tool is registered here, and the provenance schemas are left non-strict on purpose.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic. It only forwards to the search and provenance services.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-node logic. It only forwards to the search and provenance services.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing is present. The registered tools are search and the three provenance reads.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking logic is present. The file registers four read-only query tools.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file registers no proposal or node-resolution operation. Its transactions are read-only: withReadOnly(pool, (client) => run(parsed, client)).
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No curation or confirmation operation is present. The tools are read-only.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in this file. The only prompt-like text is the tool descriptions.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in this file. The only prompt-like text is the tool descriptions.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No extraction prompt is built in this file. The only prompt-like text is the tool descriptions.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file forwards to getProvenanceBy*Service and computes no excerpt. It has no graph-read logic.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file carries no graph-read provenance logic. The compliance-deletion refusal is mentioned only in the description text ("410 if any underlying raw is tombstoned"), which concerns the provenance reads, not graph reads.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics are present in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing tool is registered here.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `expand: input.expand` and `expandDepth: input.expand_depth` to searchKnowledgeService. It holds no graph-walk decision.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      No proposal or consolidation logic is present.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No proposal or validity-start logic is present.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue listing is present.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue listing is present.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No raw-information text parsing is present.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traverse tool is registered here. Only search and the three provenance reads are.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traverse tool is registered here. Only search and the three provenance reads are.
+looked_past: >-
+  Many comments cite back-spec identifiers (BR-23, BR-24, BR-25, UC-01, UC-07..09) and describe wiring choices such as the non-strict schemas and the idempotency of registerTool. These state no node fact and are comment-route material.
+candidates_opened:
+  - domain/knowledge-base/search-query
+  - domain/knowledge-base/search-layer

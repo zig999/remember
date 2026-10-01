@@ -1,0 +1,197 @@
+findings:
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the docstring above handleZodError, lines 182-189
+    evidence: >-
+      * Translate ZodError into our standard envelope. Two special-case mappings:
+      *  - issue.message === 'VALIDATION_OUT_OF_RANGE' (from `superRefine` for
+      *    semi-open range guards) -> error.code: VALIDATION_OUT_OF_RANGE.
+      *  - empty / missing `reason` or `raw_information_id` -> the most specific
+      *    code we can infer (VALIDATION_REQUIRED_FIELD vs VALIDATION_OUT_OF_RANGE).
+      *  - anything else -> VALIDATION_INVALID_FORMAT.
+    cost: >-
+      The docstring is a second home for the error-code mapping that the compliance-audit contract
+      holds. The mapping is also in the code just below, so the two can drift apart. The next reader
+      may take the docstring as the decided mapping and not the contract.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in handleZodError holds the mapping, and the contract
+      contracts/knowledge-base/compliance-audit holds the decided answers.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the `details` of every validation envelope in handleZodError (lines 206, 235, 255, 264) and the
+      zodIssuesAsDetails helper (lines 269-274)
+    evidence: >-
+      details: { issues: zodIssuesAsDetails(err) }
+    cost: >-
+      The access contract says a request that fails validation answers with "`details` a bare list of
+      `{ path, message }`, each path joined by "."". These routes send the list wrapped in an object
+      under `issues`. A client written to the access contract reads `details` as a list and gets an
+      object. The shape is decided in the specification, so the next reader would not look in this
+      file for a different one.
+    kind: contradicts
+    correction: >-
+      Either handleZodError sends the bare list as `details`, or the specification states that these
+      routes wrap the list under `issues`. The contract's own wording, "listing each failing field
+      with its path and message", does not settle the shape.
+    node: contracts/knowledge-base/access
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the comment before the third branch of handleZodError, lines 239-241
+    evidence: >-
+      // Priority 3 — `reason` length / trim violations. We can detect those by
+      // the path being "reason" and the issue being `too_small` (empty after
+      // trim) or `too_big` (> 1000 chars). Both map to OUT_OF_RANGE.
+    cost: >-
+      The comment states the 1000-character limit and its mapping to VALIDATION_OUT_OF_RANGE. The
+      contract holds this, and the limit is also enforced in dto/compliance-delete.dto.ts
+      (`z.string().trim().min(1).max(1000)`). The number now sits in a third place, and a change to
+      it would not reach this comment.
+    kind: restates
+    correction: >-
+      Remove the comment. dto/compliance-delete.dto.ts holds the limit, and this file's branch holds
+      the mapping.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/access
+    held_at: >-
+      nowhere
+    evidence: >-
+      The final branch of handleZodError sends `code: "VALIDATION_INVALID_FORMAT", message: "Request
+      payload failed validation."` but with `details: { issues: zodIssuesAsDetails(err) }`, not the
+      bare list the node states. See the finding. Authentication, routing, 404 and 5xx mapping and
+      health are not in this file.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only `app.post("/compliance/deletions", ...)` and the four compliance and
+      audit GET routes. Nothing in it concerns ingestion.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file registers only `app.get("/audit/curation-actions", ...)` and the compliance routes.
+      It has no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file has no accepted-fragment listing. The query parsing it does is
+      `ListComplianceDeletionsQuerySchema.parse(request.query ?? {})`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      No LLM run or affected-node logic in the file; it only calls `complianceDelete`,
+      `listComplianceDeletions`, `getComplianceDeletionById`, `listCurationActions` and
+      `getCurationActionById`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      nowhere
+    evidence: >-
+      No LLM run or affected-node logic in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      nowhere
+    evidence: >-
+      The route only forwards the parsed query: `const body = await listComplianceDeletions(deps.pool,
+      query);`. Whether a single window bound is accepted is decided in the DTO schema and the
+      service, not in this file. The only window logic here is the mapping of the DTO's
+      "VALIDATION_OUT_OF_RANGE" refinement message to a 422.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      nowhere
+    evidence: >-
+      No chunking in the file.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal or node resolution in the file.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No assertion review in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: >-
+      nowhere
+    evidence: >-
+      No extraction prompt in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      nowhere
+    evidence: >-
+      No graph read or provenance entry in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file records a compliance deletion (`complianceDelete({ logger: deps.logger }, client, body)`)
+      but has no graph read or provenance entry.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: >-
+      nowhere
+    evidence: >-
+      No curation metrics in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere
+    evidence: >-
+      No node listing in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: >-
+      nowhere
+    evidence: >-
+      No search in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal or consolidation in the file.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: >-
+      nowhere
+    evidence: >-
+      No proposal or validity start in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: >-
+      nowhere
+    evidence: >-
+      No review queue in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      nowhere
+    evidence: >-
+      No review queue in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      nowhere
+    evidence: >-
+      No speaker-line parsing in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No traversal in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      nowhere
+    evidence: >-
+      No traversal in the file.
+looked_past: >-
+  The header comment (lines 1-13) and the section banners restate the endpoint list and cite "BR-13", and no node of the pack holds those paths. This is prose that no running system emits, so it goes to the comment route and not to an `unstated` finding.
+candidates_opened:
+  - contracts/knowledge-base/compliance-audit

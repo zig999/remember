@@ -1,0 +1,120 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      class InvalidSearchQueryError, lines 1-22 (the reason union, the code field and the message ternary)
+    evidence: >-
+      public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const;
+      public readonly reason: "empty_after_trim" | "empty_after_parse" | "too_long";
+      ... : "query exceeds 1000 characters"
+    cost: >-
+      The retrieval contract gives a blank query (search-query-not-blank) and an over-length query (search-query-length)
+      the answer HTTP 422 with VALIDATION_INVALID_FORMAT. It gives BUSINESS_INVALID_SEARCH_QUERY only to a query whose
+      parse yields no term (search-query-must-parse). This class pairs BUSINESS_INVALID_SEARCH_QUERY with the reasons
+      empty_after_trim and too_long. If any caller raises it with those reasons, a blank or over-long query is answered
+      with a different error code than the contract states. A client branching on the code then follows the wrong path.
+      The shape also makes this file the place where the 1000-character limit appears, in the message text. The next
+      reader looks for that limit in the search-query-length rule. I did not open the callers, because they are outside
+      the file set, so whether the pairing is reachable is unverified.
+    kind: contradicts
+    correction: >-
+      The class would have to carry BUSINESS_INVALID_SEARCH_QUERY only for the empty-after-parse case. A blank or
+      over-long query would be answered with VALIDATION_INVALID_FORMAT, as the contract states.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The error classes InvalidSearchQueryError (empty_after_parse, line 3), InvalidSearchLayerError (lines 24-35),
+      FragmentNotAcceptedError (lines 37-49), RawInformationDeletedError (lines 51-65) and EmptyProvenanceError (lines 67-81).
+      The finding above covers where InvalidSearchQueryError departs from the contract.
+    evidence: >-
+      public readonly code = "BUSINESS_INVALID_SEARCH_LAYER" as const; public readonly allowed = ["fragment", "node", "chunk"] as const;
+      public readonly statusCode = 404; public readonly code = "BUSINESS_FRAGMENT_NOT_ACCEPTED" as const;
+      public readonly statusCode = 410; public readonly code = "BUSINESS_RAW_INFORMATION_DELETED" as const; public readonly deletedAt: Date;
+      public readonly statusCode = 500; public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only query-retrieval error classes. It carries no authentication, routing, validation-envelope or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion operation, run, proposal or intake refusal appears. The classes concern search, fragment provenance and compliance deletion.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file declares no accepted-fragment listing parameter handling. FragmentNotAcceptedError concerns provenance reads.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: The file has no LLM-run affected-nodes logic, only error classes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: The file has no LLM-run affected-nodes logic, only error classes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: No compliance-deletion listing window appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: The file has no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: The file has no proposal or node-resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: The file has no assertion-review logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: The file has no extraction prompt content.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: The file has no extraction prompt content.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: The file has no extraction prompt content.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: The file has no graph-read provenance excerpt logic.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph-read logic. RawInformationDeletedError concerns the provenance reads, not the graph reads.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: The file has no curation metrics logic.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: The file has no node-listing filter logic.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: The file has no search execution or graph-walk logic, only error classes.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: The file has no proposal consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: The file has no proposal validity-start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: The file has no review queue paging logic.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: The file has no review queue totalling logic.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: The file has no speaker-line recognition logic.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: The file has no traversal logic.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: The file has no traversal logic.
+looked_past: >-
+  The emitted messages "(legacy-data inconsistency)" in EmptyProvenanceError and "query parsed by websearch_to_tsquery is empty" in InvalidSearchQueryError name causes and implementation details that no node states. They state no domain rule, so I left them out as another judgment's.
+candidates_opened:
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-query-not-blank
+  - rules/knowledge-base/search-query-must-parse
+  - rules/knowledge-base/search-layer-outside-set-refused
+  - rules/knowledge-base/provenance-refused-after-compliance-deletion
+  - rules/knowledge-base/empty-provenance-chain-refused
+  - rules/knowledge-base/provenance-requires-accepted-fragment
+  - domain/knowledge-base/search-layer

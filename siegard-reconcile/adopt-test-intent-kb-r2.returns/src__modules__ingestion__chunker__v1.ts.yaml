@@ -1,0 +1,338 @@
+findings:
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 7-19, the header comment (Algorithm steps 1 and 2)
+    evidence: >-
+      "1. Split the content into "blocks" along the hard boundaries that apply to
+      `sourceType` (BR-06)." and "2. For each block, try to keep it as one chunk if its size is at most
+      `CHUNK_HARD_MAX` code points."
+    cost: >-
+      The block-then-chunk rule is written in prose in the file as well as held by the code
+      (splitByHardBoundaries and the loop in chunkV1). A reader of the comment sees a second statement
+      of the rule, and it will keep saying the old rule if the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the rule (splitByHardBoundaries, then
+      chunkV1's per-block loop), and the node binds it.
+    node: rules/knowledge-base/chunks-never-cross-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 11-12 and line 80, the header comment and the "Whole block fits" comment
+    evidence: >-
+      "try to keep it as one chunk if its size is at most `CHUNK_HARD_MAX` code points." and
+      "// Whole block fits — emit as a single chunk."
+    cost: >-
+      The short-block rule is restated in prose beside the branch `if (blockSize <= CHUNK_HARD_MAX)`.
+      The comment adds a second home for the 4000-code-point fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The branch in this file holds the rule, and CHUNK_HARD_MAX in config.ts holds
+      the value.
+    node: rules/knowledge-base/short-block-one-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 13-18 (header comment), 87 and 99-103 (inline comments) and 353-367 (splitBySentences doc comment)
+    evidence: >-
+      "fall back to sentence-level split via `Intl.Segmenter('pt', {granularity: 'sentence'})` (BR-07)."
+      and "close the buffer when adding the next sentence would push it above `CHUNK_TARGET[1]`" and
+      "a single 5000-char sentence will become one chunk; this is BR-07's documented limit"
+    cost: >-
+      The sentence-cut rule and the long-sentence limit are written again in prose. The prose
+      ("5000-char") already names a size that matches no node; the next reader may take it for the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. splitBySentences and the `tentativeSize > CHUNK_TARGET[1]` branch hold the rule
+      in this file, and config.ts holds the 2000 and 4000 values.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 99-103, the inline comment above `if (tentativeSize > CHUNK_TARGET[1])`
+    evidence: >-
+      "If the buffer itself is already empty and the first sentence is larger than CHUNK_HARD_MAX, emit it
+      standalone — we have no finer atom to split on"
+    cost: >-
+      The comment restates the long-sentence rule with a different threshold (CHUNK_HARD_MAX, 4000). The
+      node says a sentence of more than 2000 code points is a chunk on its own, which is what the code
+      does. The comment misleads the reader about where the line is.
+    kind: restates
+    correction: >-
+      Remove the prose. The `tentativeSize > CHUNK_TARGET[1]` branch holds the rule.
+    node: rules/knowledge-base/long-sentence-own-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 20-24, the header comment on offsets
+    evidence: >-
+      "All offsets are 0-based, semi-open, counted in Unicode code points of the ORIGINAL content (BR-05)."
+    cost: >-
+      The offset unit is restated in prose. The code in this file holds it (`Array.from(content)` and
+      buildChunk's offset_start/offset_end), so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The code point array and buildChunk hold the rule.
+    node: rules/knowledge-base/chunk-offsets-count-code-points
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 32-40, the exported type SourceType
+    evidence: >-
+      "export type SourceType =
+        | "pdf"
+        | "email"
+        | "ata"
+        | "chat"
+        | "artigo"
+        | "transcricao"
+        | "outro";" (its doc comment: "mirrors the PostgreSQL `source_type` enum.")
+    cost: >-
+      The source-type vocabulary is declared a second time in a file the source-type node does not bind.
+      src/modules/ingestion/dto/source-type.ts also carries these values. If the node's values change,
+      the check never reaches this union, and the exhaustiveness switch in splitByHardBoundaries follows
+      this copy.
+    kind: contradicts
+    correction: >-
+      Use the one declaration that the source-type node binds (the one in src/modules/ingestion/dto/
+      source-type.ts, if it declares the type) instead of declaring the union here. Alternatively, bind
+      this file to the node.
+    node: domain/knowledge-base/source-type
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 42-46, the RawChunkInput doc comment
+    evidence: >-
+      "`chunk_index` is the 0-based position within the document."
+    cost: >-
+      The indexing rule is restated in prose. The code holds it (`chunks.length` passed to buildChunk),
+      so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The `chunks.length` argument to buildChunk holds the rule.
+    node: rules/knowledge-base/chunk-index-follows-content
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 121-126, the comment above the `chunks.length === 0 && totalCodePoints > 0` fallback
+    evidence: >-
+      "Edge case: input was non-empty but consisted entirely of hard-boundary separators (e.g. a file
+      made of nothing but form-feed characters). We still emit one chunk covering the raw content"
+    cost: >-
+      The contentless-blocks rule is restated in prose beside the branch that holds it. The comment is a
+      second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The `chunks.length === 0` branch in this file holds the rule.
+    node: rules/knowledge-base/contentless-blocks-single-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 139-142 and 144-147, the splitByHardBoundaries doc comment (pdf)
+    evidence: >-
+      "- `pdf`:          form-feed (`\f`, U+000C). PDF extractors typically insert `\f` between pages."
+    cost: >-
+      The pdf block rule is restated in prose. The code holds it (`splitOnCharBoundary(codePoints, "\f")`),
+      so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The `case "pdf":` branch and splitOnCharBoundary hold the rule.
+    node: rules/knowledge-base/pdf-blocks-at-form-feeds
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 148-149 and 213-216, the email doc comments (header block)
+    evidence: >-
+      "- `email`:        first blank line (header/body separator)" and
+      "Split an email: first blank line closes the headers"
+    cost: >-
+      The email header rule is restated in prose. splitEmail holds it, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. The `!headersClosed && isBlank` branch of splitEmail holds the rule.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 148-149 and 213-216, the email doc comments (quotation blocks)
+    evidence: >-
+      "plus every transition into / out of a `>` quotation block." and
+      "every transition into or out of a quotation block (`^>+ `) closes a chunk."
+    cost: >-
+      The quotation rule is restated in prose, and the pattern shown (`^>+ `) differs from the code. The
+      code treats a line as quoted when its first character after spaces or tabs is `>`, with no
+      trailing space needed (isQuotedLine). The comment is a second home and it disagrees with the code.
+    kind: restates
+    correction: >-
+      Remove the prose. The `headersClosed && ... isQuoted !== prevQuoted` branch of splitEmail and
+      isQuotedLine hold the rule.
+    node: rules/knowledge-base/email-quote-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 150-154 and 261-266, the chat/transcript doc comments (turn blocks)
+    evidence: >-
+      "A line that starts with `[ \t]*[A-Za-z0-9_]+[ \t]*:[ \t]` (e.g. `João:`, `[12:00] Maria:`) opens a
+      new block. We never fuse two consecutive speakers into one chunk." and
+      "Split chat / transcript: a new "speaker line" opens a new block."
+    cost: >-
+      The turn-block rule is restated in prose. splitTurns holds it, so the comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the prose. splitTurns (the loop from line index 1) holds the rule.
+    node: rules/knowledge-base/turn-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 150-154, 261-266 and 341-350, the speaker-line comments
+    evidence: >-
+      "Accepts:
+         - `Name:` followed by white space (Name = ASCII identifier characters
+            plus single embedded spaces — we keep it strict to avoid false
+            positives on prose like "Importante: ...")."
+    cost: >-
+      The speaker-line definition is written in prose in three places. The code holds it in
+      SPEAKER_LINE_REGEX, which accepts `À-ÿ` and an optional `(`/`)` time stamp. The comments say "ASCII
+      identifier characters" and `[ \t]*[A-Za-z0-9_]+[ \t]*:[ \t]`. The comments disagree with the code,
+      so a reader who trusts them gets the wrong rule.
+    kind: restates
+    correction: >-
+      Remove the prose. SPEAKER_LINE_REGEX in this file holds the rule.
+    node: rules/knowledge-base/speaker-line
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      lines 229 and 289-307: `const isBlank = line.endExclusive === line.start;` and scanLines
+    evidence: >-
+      "Line terminator is `\n`; the terminator is NOT included in the range (so blank lines have
+      `start == endExclusive`)." with `if (codePoints[i] === "\n")` and
+      `const isBlank = line.endExclusive === line.start;`
+    cost: >-
+      The code decides what a line and a blank line are. A line ends only at `\n`, and a blank line has
+      no characters at all. A line holding only spaces, or `\r` as in a CRLF email, is not blank. This
+      decides where an email's header block ends and where its quote blocks start, and no node states
+      it. The next reader looks for it in the email-header-block rule and does not find it. A CRLF email
+      never closes its header block.
+    kind: unstated
+    correction: >-
+      Analysis should give the line-break convention and the meaning of a blank line a node, probably
+      email-header-block. The same line convention also sets the lines a speaker line is tested on.
+    node: rules/knowledge-base/email-header-block
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the exported interface RawChunkInput (lines 47-53) declares part of the shape, and buildChunk builds it
+    evidence: >-
+      "readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly
+      offset_end: number; readonly chunking_version: typeof CHUNKING_VERSION;"
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file is a pure chunker (`export function chunkV1(content: string, sourceType: SourceType)`). It
+      has no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      chunkV1 returns `RawChunkInput[]` and answers no operation. The intake outcomes, identities and
+      refusals are not produced in this file.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file performs no read, search or provenance answer. It only returns chunk inputs.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing or query-parameter handling appears in the file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file knows no run, proposal or knowledge node.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file knows no run or knowledge node.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing or execution-window handling appears in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: >-
+      chunkV1 as a whole (lines 62-131) and splitBySentences. Every step is a pure function of
+      `(content, sourceType)`.
+    evidence: >-
+      "export function chunkV1(content: string, sourceType: SourceType): RawChunkInput[]" with no clock,
+      randomness or I/O; the sentence split is `new Intl.Segmenter("pt", { granularity: "sentence" })`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, node name or alias handling.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion, review or status handling.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      buildChunk returns `text: codePoints.slice(start, endExclusive).join("")` and the offsets. The
+      file builds no graph read or provenance entry, and shows no excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read, provenance or compliance status handling.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics or disputed-item counting.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or alias matching.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or graph walk.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal, link or attribute handling.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or validity-start handling.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or page window.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: >-
+      the constant SPEAKER_LINE_REGEX (line 351), applied by isSpeakerLine (lines 330-339)
+    evidence: >-
+      "const SPEAKER_LINE_REGEX = /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/;"
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal or knowledge node handling.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal or knowledge node handling.
+looked_past: >-
+  The file has no comment that a tool consumes. Comments on every function and the `void seenBlank;` / `void _exhaustive;` no-op statements are code-quality matters for the comment route and not part of this pass.
+candidates_opened:
+  - domain/knowledge-base/source-type
+  - rules/knowledge-base/chunks-never-cross-blocks
+  - rules/knowledge-base/pdf-blocks-at-form-feeds
+  - rules/knowledge-base/email-header-block
+  - rules/knowledge-base/email-quote-blocks
+  - rules/knowledge-base/turn-blocks
+  - rules/knowledge-base/short-block-one-chunk
+  - rules/knowledge-base/long-block-sentence-chunks
+  - rules/knowledge-base/long-sentence-own-chunk
+  - rules/knowledge-base/contentless-blocks-single-chunk
+  - rules/knowledge-base/chunk-index-follows-content
+  - rules/knowledge-base/chunk-offsets-ordered
+  - rules/knowledge-base/chunk-offsets-count-code-points
+  - rules/knowledge-base/chunking-version

@@ -1,0 +1,161 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 19, the lower bound CHUNK_TARGET[0]
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+    cost: >-
+      The specification holds 2000 as the point past which a chunk closes (long-block-sentence-chunks)
+      and holds no lower bound of 1500. The number lives only in this file, so the next reader
+      looking for the chunk-size window in the specification will find only the upper edge.
+      Nothing else in the tree reads CHUNK_TARGET[0]; only CHUNK_TARGET[1] is read, at v1.ts line 104.
+    kind: unstated
+    correction: >-
+      Either a node (probably beside rules/knowledge-base/long-block-sentence-chunks) states the
+      1500 lower bound, or the lower bound leaves the file.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 30, READING_TAIL
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+    cost: >-
+      A 200 code-point reading-tail overlap is declared as a chunking constant and no node holds
+      it. Nothing in the tree reads it, so it sits here looking like a decided value, and a later
+      retrieval layer would inherit 200 from the file instead of from the specification.
+    kind: unstated
+    correction: >-
+      The analysis gives the reading tail a node if the business decided it, or the constant is
+      removed.
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      the doc comment above CHUNK_HARD_MAX, line 21
+    evidence: >-
+      /** Hard ceiling on a single chunk. A block above this size is sentence-split. */
+    cost: >-
+      Prose restating the long-block rule next to the number, so the cut-over exists as prose in
+      a second place. The running behavior is in v1.ts (line 80, `if (blockSize <= CHUNK_HARD_MAX)`).
+      The comment adds a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      the header comment, lines 6-7
+    evidence: >-
+      // Units: Unicode code points (BR-05) — we measure block size by code-point
+      // count, not by UTF-16 units or bytes.
+    cost: >-
+      Prose restating the code-point counting rule that a node holds, while the counting is done
+      in v1.ts. This second home outside behavior can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the prose.
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only chunker constants: `export const CHUNKING_VERSION = "v1" as const;`.
+      No authentication, routing or health behavior.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares only constants (`export const CHUNK_HARD_MAX = 4000 as const;`). It
+      states no operation, answer or refusal of the ingestion surface.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file declares only chunker constants and holds no search, provenance or graph-read behavior.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      `export const CHUNKING_VERSION = "v1" as const;` and the other constants carry nothing about listings.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file carries only `CHUNK_TARGET`, `CHUNK_HARD_MAX` and `READING_TAIL`; nothing about run affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about compliance-deletion listings.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file only declares constants (`export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;`).
+      Dividing the same content into the same chunks is done in v1.ts, not here.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about node resolution.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about assertion review.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about extraction prompts.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about prompt value ordering.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about prompt values.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants (`export const READING_TAIL = 200 as const;`);
+      no excerpt computation.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about provenance visibility.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about node listings.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about proposals.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about validity-start fallback.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about the review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about the review queue total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file declares only numeric and version constants; the speaker-line pattern is not in it.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file carries only chunker constants; nothing about traversal.
+looked_past: >-
+  The file declares CHUNKING_VERSION "v1" and the 4000 and 2000 values, which nodes outside this pack hold (rules/knowledge-base/chunking-version, short-block-one-chunk, long-block-sentence-chunks), and these are conformant declarations that need no finding.

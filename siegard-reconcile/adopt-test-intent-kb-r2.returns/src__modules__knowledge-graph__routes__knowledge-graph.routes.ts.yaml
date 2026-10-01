@@ -1,0 +1,193 @@
+findings:
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      the opening comment block, lines 3-5
+    evidence: >-
+      // already enforces Neon Auth JWT (BR-01); individual handlers do NOT
+      // re-check the token.
+    cost: >-
+      The owner-authentication fact is a second home in prose. The next reader may look here, or in the
+      node, for what authenticates a request. The code that holds it is the scope hook, and it is
+      elsewhere.
+    kind: restates
+    correction: >-
+      Remove the sentence. The scope hook in src/app.ts holds the fact:
+      `scoped.addHook("preHandler", auth.preHandler);`.
+    node: contracts/knowledge-base/access
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      the opening comment block, lines 7-20 (the endpoint list)
+    evidence: >-
+      //   - GET /api/v1/nodes/{node_id}/traverse                    (UC-06)
+      //   - GET /api/v1/links/{link_id}/history                     (UC-09)
+      //   - GET /api/v1/nodes/{node_id}/attributes/{key}/history    (UC-11)
+    cost: >-
+      The retrieval operations are listed in prose a second time, next to the `app.get(...)` registrations
+      that hold them. The list is tied to delivery labels (TC-04, TC-05, UC-xx), so it goes stale as the
+      route set moves.
+    kind: restates
+    correction: >-
+      Remove the comment. The `app.get(...)` registrations in this file hold the routes.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      the docblock above isMappableServiceError, lines 335-352 (global-handler paragraph)
+    evidence: >-
+      // (`backend/src/middleware/error-handler.ts`), which logs them via pino and
+      // applies its own pg-unavailable / 500 mapping.
+    cost: >-
+      The route-request refusals (store unreachable gives 503, any other cause gives 500) are restated in
+      prose. The code that holds them is the middleware, which is a different file. A reader of this file
+      could take the prose for where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the prose. src/middleware/error-handler.ts holds the mapping, as in
+      `return "SYSTEM_SERVICE_UNAVAILABLE";`.
+    node: contracts/knowledge-base/access
+  - file: src/modules/knowledge-graph/routes/knowledge-graph.routes.ts
+    where: >-
+      the docblock above isMappableServiceError, lines 347-351 (MCP paragraph)
+    evidence: >-
+      // the shared mapper's "anything else → SYSTEM_INTERNAL_ERROR" branch is the
+      // terminal branch on that path).
+    cost: >-
+      How an MCP read fails for any other cause (SYSTEM_INTERNAL_ERROR) is stated in prose in a REST route
+      file. The code that holds it is the terminal branch of the mapper in mcp/error-envelope.ts. A reader
+      here could take this comment for the home of the MCP-side rule.
+    kind: restates
+    correction: >-
+      Remove the prose. `return internalError();` at the end of mapErrorToHttpResponse in
+      src/modules/knowledge-graph/mcp/error-envelope.ts holds the fact.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      the route handlers of this file. They hand known service errors to the mapper shared with the MCP
+      transport (handleReadError, handleTraversalError, handleAttributeKeyHistoryError, all calling
+      mapErrorToHttpResponse). The REST-only leniency for the node-type listing, the link and attribute
+      reads and the three history reads is held by those routes parsing no query.
+    evidence: >-
+      app.get("/node-types", async (_req, reply) => ...) parses no query;
+      app.get("/links/:link_id", ...) parses only `LinkIdParamSchema.parse(request.params)`;
+      the history routes parse only params. The other retrieval routes parse a strict query schema, for
+      example `ListLinkTypesQuerySchema.parse(request.query ?? {})`, and queries.dto.ts closes those with
+      `.strict()`.
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file registers no authentication or routing behavior. It relies on the parent scope and rethrows
+      unmapped errors: `if (!isMappableServiceError(err)) throw err;`. The authentication and the
+      503/500/422 handling live in src/app.ts and src/middleware/error-handler.ts.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No ingestion, run, proposal or chunk route is registered here. The only routes are
+      `app.get("/node-types", ...)` through `app.get("/nodes/:node_id/attributes/:key/history", ...)`.
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      the app.get registrations of registerKnowledgeGraphRoutes. They cover list-node-types,
+      list-link-types, list-attribute-keys, list-nodes, read-node, read-link, read-attribute, the three
+      history reads and traverse. Each wraps a service call in withReadOnly and replies with an
+      `{ ok: true, result }` envelope. The route-context details the contract names for REST are passed to
+      the mapper.
+    evidence: >-
+      `return reply.status(200).send({ ok: true, result: body });`.
+      `return handleReadError(err, reply, { node_id: params.node_id });`.
+      `return handleAttributeKeyHistoryError(err, reply, { node_id: params.node_id, key: params.key });`.
+      `return handleTraversalError(err, reply, { node_id: params.node_id });`.
+      search, the provenance reads and the accepted-fragment listing are not registered in this file.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing route exists in this file.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file computes nothing about LLM runs or their affected nodes.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file computes nothing about LLM runs or their affected nodes.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing is registered in this file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file registers read routes only, with no proposal or resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no curation or review route.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The routes forward the service body unchanged, `reply.status(200).send({ ok: true, result: body })`.
+      They compute no provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The routes forward the service body unchanged. They apply no compliance-status filtering.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation-metrics route.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The route only forwards the parameter, `name_prefix: query.name_prefix`. The matching of
+      prefix to aliases is not in this file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file registers no search route.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file registers read routes only, with no proposal or consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file registers read routes only, with no proposal logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue route. The only paging it forwards is `limit: query.limit, offset: query.offset` for /nodes.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue route.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no content parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The route delegates the walk, `traverseNodeService(client, deps.catalog, {...}, deps.logger)`. It does
+      not decide which nodes are expanded.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The route delegates the walk to traverseNodeService and forwards `body`. It does not select the listed nodes.
+looked_past: >-
+  Operational log lines (knowledge_graph_list_nodes_ok, knowledge_graph_traverse_ok) and the delivery labels
+  TC-04, TC-05 and UC-xx in the comments state no node's fact, so I left them to the code-review and comment
+  routes.

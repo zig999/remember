@@ -1,0 +1,166 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      the doc comment above ValidFromBasisSchema, lines 5-15 (the sentences on the `received` basis)
+    evidence: >-
+      "Only `stated` and `document` are accepted at the API boundary. The third
+      value, `received`, is a backend-only fallback ... it is never sent by an LLM or any external
+      caller, so it MUST NOT appear in this input enum."
+    cost: >-
+      The rule that a caller never states `received` is written a second time in prose. The enum
+      on line 16 already carries it, and the node does not bind a comment. If the node moves, the
+      comment keeps saying the old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the sentences of the doc comment that restate the rule. The code holds the fact at
+      `export const ValidFromBasisSchema = z.enum(["stated", "document"]);` in this file.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      the doc comment above ValidFromBasisSchema, lines 5-15 (the sentences on the temporal
+      validator's fallback)
+    evidence: >-
+      "The third value, `received`, is a backend-only fallback that the temporal validator
+      applies internally when neither `stated` nor `document` can justify the date"
+    cost: >-
+      The fallback rule (take the reception date with basis `received`) is described a second
+      time in a file that does not implement it. The comment sits in a DTO but speaks for the
+      validator, and it can drift from the validator without anyone noticing.
+    kind: restates
+    correction: >-
+      Remove the sentence. The code holds the fact in
+      backend/src/modules/ingestion/validation/temporal.ts, which resolves `valid_from := received_at`
+      with `valid_from_source := 'received'`.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      the `change_hint` field of ProposeLinkInputSchema, line 69
+    evidence: >-
+      change_hint: ChangeHintSchema.default("none").describe(
+    cost: >-
+      The code treats an omitted `change_hint` as `none`, so an omitted hint takes the re-affirmation
+      path. No node states that default for propose-link. The enumeration node lists the values,
+      and the re-affirmation rule speaks only of a hint that is none. A reader looking in the
+      specification for what an omitted hint means will not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the omitted-hint default a node. The ingestion contract's propose-link
+      operation or the proposal domain node would be the natural home.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only the propose-link input and result shapes. It has no authentication,
+      routing or health fact, for example `export const ProposeLinkInputSchema = z.object({`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      ProposeLinkInputSchema (lines 28-72) and ProposeLinkResult / ProposeLinkOutcome (lines 75-88), for the propose-link operation only
+    evidence: >-
+      "export type ProposeLinkOutcome = | "accepted" | "consolidated" | "superseded_previous" | "disputed" | "rejected";"
+      and `readonly reason?: "BELOW_CONFIDENCE_FLOOR";` match the operation's accepted answer.
+      `link_type: z.string().min(1)` and `fragment_ids: z.array(z.string().uuid()).min(1)` carry the shape side of the refusals.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file holds no read, search or traversal fact. It has only the propose-link input and result shapes.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter schema, only `ProposeLinkInputSchema`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run summary or affected-node computation. It declares `ProposeLinkResult` only.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run summary or affected-node computation.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or locking. The only name-bearing fields are node ids: `source_node_id: z.string().uuid()`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no confirmation or assertion-review code.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance filtering.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only describes the hint to the caller: `"'none' = plain assertion (re-affirming an identical fact consolidates, never duplicates)..."`.
+      The re-affirmation decision is not made here, only the `consolidated` outcome value is declared.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      Only the doc comment mentions the fallback ("a backend-only fallback that the temporal validator applies internally").
+      No code in this file applies it. See the restates finding.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking or speaker-line parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The field `.describe(...)` strings, which are emitted text, state the confidence tiers (">=0.75 stored active; 0.40-0.74 kept but flagged uncertain; <0.40 dropped") and the half-open interval "[from, to)". They agree with rules/knowledge-base/new-assertion-status-from-confidence and rules/knowledge-base/below-confidence-floor-records-nothing, so I reported nothing. The `IsoDateSchema` regex error message, the `ProposeLinkResult` shape and the comment style are not this judgment's.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/proposal-confidence-range
+  - rules/knowledge-base/link-or-attribute-cites-a-fragment
+  - rules/knowledge-base/below-confidence-floor-records-nothing
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - domain/knowledge-base/change-hint
+  - domain/knowledge-base/proposal

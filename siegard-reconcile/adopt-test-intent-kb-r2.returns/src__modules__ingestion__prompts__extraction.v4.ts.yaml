@@ -1,0 +1,132 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      The header comment (lines 1-25) and the docstring above RECEIVED_AT_ANCHOR_DIRECTIVE (lines 42-49).
+    evidence: >-
+      "v4 teaches the model to use it as the FALLBACK anchor: resolve against `document_date` when present, against `received_at` otherwise."
+      and "Carries the `received_at` fallback rule: when `document_date` is absent, the relative-date anchor is `received_at`"
+    cost: >-
+      The v4 anchor rule is written out in prose, with a citation of "BR-26 step 5a v1.4.2". The same rule is held by the running directive in this file, so a reader has two places to look. When the node moves, the prose does not, and `--check` does not reach it.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring prose. The code in RECEIVED_AT_ANCHOR_DIRECTIVE already holds the fact. This is the comment route, followed by /reconcile over this file. The directive's strings are emitted text and are not to be edited.
+    node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 60-62: the instruction on the basis to give a date resolved from `received_at`.
+    evidence: >-
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`.",
+    cost: >-
+      The prompt sent to the model tells it to state the basis `received`. The node says "A proposal MUST NOT state the basis received." A model that follows the prompt produces a proposal the rule forbids. The decision log of the anchor rule records this as an open, unsettled contradiction, so the prompt is the only place the instruction lives.
+    kind: contradicts
+    correction: >-
+      The owner has to settle which of the two nodes gives way: the prompt stops asking for basis `received`, or the rule changes. The log of rules/knowledge-base/extraction-relative-date-falls-back-to-reception says the owner has not yet asked for this to be settled.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file only builds a prompt string: `return \`${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}\``. It carries no authentication, routing or health answer.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file only builds a prompt string: `return \`${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}\``. It carries no ingestion operation or refusal.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only builds a prompt string: `return \`${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}\``. It carries no read or search operation.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file has no listing or query-parameter handling. It exports `PROMPT_VERSION`, `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file computes nothing about a run's affected nodes. It only appends a directive to the v3 system prompt.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file computes nothing about a run's affected nodes. It only appends a directive to the v3 system prompt.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing. It exports `PROMPT_VERSION`, `RECEIVED_AT_ANCHOR_DIRECTIVE` and `system`.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It re-exports `MAX_TOKENS, user` from extraction.v1.js and builds a system prompt.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no node resolution or proposal handling. It only appends a directive to a prompt.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion-review logic. It only appends a directive to a prompt.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file does not render the catalog. It calls `systemV3(catalog)` and the header says the catalog rendering is "reused VERBATIM from v1 (via v3)". No allowed-value listing appears here.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file does not sort or list allowed values. The catalog rendering is delegated to `systemV3(catalog)`.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file does not list allowed values. The catalog rendering is delegated to `systemV3(catalog)`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance excerpt logic. It only builds a prompt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance logic. It only builds a prompt.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no curation-metrics code. It only builds a prompt.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or name-prefix matching. It only builds a prompt.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search code. It only builds a prompt.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation logic. It only appends a directive to a prompt.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file does not decide a proposal's validity start. It only instructs the model on relative-date anchors: "use basis `\"received\"`". That instruction concerns the model's output, not the system's fallback for a proposal that states no start.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. It only builds a prompt.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review-queue listing. It only builds a prompt.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no speaker-line detection. It only builds a prompt.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal code. It only builds a prompt.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal code. It only builds a prompt.
+looked_past: >-
+  The directive's other lines (never invent a date, absolute dates remain "stated", the supersession of the v3 omission rule) are emitted text agreeing with nodes outside the pack, so they are no finding. The composition over v3 and the re-export from v1 are code structure, which is another judgment's.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/extraction-relative-date-falls-back-to-reception

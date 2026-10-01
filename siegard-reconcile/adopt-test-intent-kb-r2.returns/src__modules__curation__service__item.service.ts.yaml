@@ -1,0 +1,152 @@
+findings:
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above the valid_from_fragment_id check in correctItemService, lines 212-213
+    evidence: >-
+      // BR-17: when `valid_from_fragment_id` is supplied, the fragment must
+      // exist AND its status must be `accepted`.
+    cost: >-
+      The comment states, under a back-spec id (BR-17), a fact that a node already holds and that the branch at
+      lines 214-229 already enforces. A reader can take the comment for the place where the rule lives, and it
+      will not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch `if (!fragment || fragment.status !== "accepted")` holds the fact.
+    node: rules/knowledge-base/correction-fragment-accepted
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment block above the attribute value validation in correctItemService, lines 231-241, with the
+      continuations at 249-251, 259-263, 271, 288-289 and 296-297
+    evidence: >-
+      // BR-23 (TC-04): when correcting an attribute AND `corrected.value` is
+      // supplied, run two legs against the predecessor's `attribute_key`
+      // BEFORE any DB write: ... curation re-raises as `BUSINESS_INVALID_ATTRIBUTE_VALUE` (HTTP 422)
+    cost: >-
+      The comment restates, in prose, the type leg, the closed-domain leg and the
+      BUSINESS_INVALID_ATTRIBUTE_VALUE / HTTP 422 mapping. The curation contract holds those, and the code at
+      lines 242-312 enforces them. It is a second home for the rule, outside behavior, and it will drift from the
+      contract.
+    kind: restates
+    correction: >-
+      Remove the comments. Lines 242-312 (the parseAttributeValue call, the domainOf / assertValueInDomain call
+      and the BusinessError throws) hold the fact.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above the errata fragment append in correctItemService, lines 341-342
+    evidence: >-
+      // 4. Append the errata fragment if supplied (BR-19).
+    cost: >-
+      The comment cites a back-spec id (BR-19) for the rule that a correction's new item carries the cited
+      fragment's provenance. A node holds that rule and the code at lines 342-352 enforces it, so the citation is
+      a second reference to it outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The appendProvenanceFragment call holds the fact, together with the copyProvenance
+      call at line 339.
+    node: rules/knowledge-base/corrected-item-provenance
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file authenticates, routes and reports health nowhere. It exports only `confirmItemService`,
+      `rejectItemService` and `correctItemService`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file declares no ingestion operation. It only imports `CatalogSnapshot` and `domainOf` from
+      "../../ingestion/index.js" to validate a corrected value.
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file serves no search, listing, provenance read or graph read. It holds only the three curation
+      services.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: The file lists no fragments. It has no listing code.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: The file computes no run's affected nodes. It has no code on LLM runs.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: The file computes no run's affected nodes. It has no code on LLM runs.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: The file lists no compliance deletions. It has no window or listing code.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: The file divides no content into chunks. It has no chunking code.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node proposals. The only locking is `loadItemsForUpdate(client, body.item_kind,
+      [body.item_id])` on curated items.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      confirmItemService delegates the write with `await confirmItem(client, body.item_kind, body.item_id)`. The
+      statement that changes status and keeps confidence and dates is not in this file. The file only returns
+      `resulting_status: "active"`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: The file builds no extraction prompt.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only reads `detail.allowed_values ?? []` from a failure for an
+      error detail.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: The file builds no extraction prompt.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: The file reads no graph and builds no provenance excerpt.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: The file reads no graph. It only copies provenance with `copyProvenance`.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: The file computes no curation metrics.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: The file lists no nodes.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: The file has no search code.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: The file handles no proposals. It has no change-hint or re-affirmation code.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposals. It forwards `correctedValidFrom: body.corrected.valid_from ?? null` and
+      applies no fallback.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: The file lists no review queue and applies no limit or offset.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: The file lists no review queue and computes no total.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: The file parses no speaker lines.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: The file runs no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: The file runs no traversal.
+looked_past: >-
+  The comment `// 1. Supersede predecessor — valid_to UNCHANGED (BR-18).` at line 314 is prose that is the only
+  place in this file naming a fact (the superseded predecessor keeps its valid_to), and I found no node in the
+  nodes I opened that holds it. The code that would hold it is in the repository file, which is outside this
+  pass, so I did not file it.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/correction-fragment-accepted
+  - rules/knowledge-base/confirmation-requires-uncertain
+  - rules/knowledge-base/rejection-and-correction-require-live-item
+  - rules/knowledge-base/corrected-item-provenance
+  - domain/knowledge-base/assertion-status
+  - domain/knowledge-base/assertion-correction
+  - domain/knowledge-base/corrected-values

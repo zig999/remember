@@ -1,0 +1,151 @@
+findings:
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the header comment, lines 1-16 (the "Three families" list)
+    evidence: |-
+      //   - ResourceNotFoundError -> 404 / RESOURCE_NOT_FOUND
+      //   - ValidationFailure     -> 422 / VALIDATION_*  (code set by the caller)
+      //   - InternalFailure       -> 500 / SYSTEM_INTERNAL_ERROR (BR-17 legacy-orphan alarm)
+    cost: >-
+      The status and code of the compliance-audit refusals are written again in prose. The classes
+      below already carry them (`statusCode = 404`, `code = "RESOURCE_NOT_FOUND" as const`,
+      `statusCode = 422`, `statusCode = 500`, `code = "SYSTEM_INTERNAL_ERROR" as const`).
+      The contract that holds them is contracts/knowledge-base/compliance-audit, which is outside
+      this file's node pack. When that contract moves, this list keeps saying the old mapping, and
+      the trace does not reach prose.
+    kind: restates
+    correction: >-
+      Remove the comment. The classes hold the fact, and the contract holds it for the pair. The
+      comment route applies, then /reconcile over this file.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the docblock above InternalFailure, lines 54-59
+    evidence: |-
+      * 500 — UC-01 alt `4c` legacy inconsistency: `raw_information.status =
+      * 'deleted'` exists with no `compliance_deletion` row. BR-17 mandates an
+      * operational alarm (already emitted at the service layer) and a generic
+      * 500 to the client.
+    cost: >-
+      The condition for this refusal (a raw information already deleted with no compliance deletion
+      on record) and its generic 500 are stated in prose. Code holds the same fact in another file:
+      compliance-audit.service.ts has `throw new InternalFailure("legacy_orphan_tombstone", {`,
+      and this file holds the status, code and message `super("Unexpected internal error.", details)`.
+      The contract contracts/knowledge-base/compliance-audit also states it. The docblock is a
+      second home the next reader may trust over the contract, and it names a back-spec
+      (UC-01, BR-17) instead of a node.
+    kind: restates
+    correction: >-
+      Remove the docblock. The condition is held by the service's throw, and the answer is held by
+      the class and by the contract.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file declares only compliance-audit error classes. `export class ResourceNotFoundError`
+      carries `statusCode = 404` and `code = "RESOURCE_NOT_FOUND" as const` with a message supplied
+      by the caller. It holds none of this contract's authentication, routing or health answers,
+      and it has no framework-message handling.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds no ingestion refusal. `ValidationFailure` takes `code` from its caller, and
+      the file names no ingestion code (no BUSINESS_RUN_NOT_RUNNING, no
+      VALIDATION_INVALID_FORMAT for ingestion fields).
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      `ResourceNotFoundError` is the compliance-audit 404. The file holds no retrieval refusal
+      (no BUSINESS_NODE_DELETED, no BUSINESS_RAW_INFORMATION_DELETED).
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      The file declares only error classes and has no listing parameter handling.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file has no run or node-resolution logic; it declares `ComplianceAuditError` and three subclasses.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file has no run or affected-nodes logic.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no window-bound handling. `ValidationFailure` only carries a code and message
+      given by its caller.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file has no chunking logic.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal or resolution logic.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file has no assertion review logic.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file has no prompt text.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file has no provenance or excerpt logic.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file has no graph read or provenance logic.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file has no metrics logic.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing logic.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search logic.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file has no proposal consolidation logic.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The file has no validity-start logic.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue logic.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue logic.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file has no text parsing.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal logic.
+looked_past: >-
+  The file's real facts (404 RESOURCE_NOT_FOUND, 422 with a caller-supplied code, 500 SYSTEM_INTERNAL_ERROR with the message "Unexpected internal error.") belong to contracts/knowledge-base/compliance-audit, which neither the pack nor the candidate index carries; I opened it under the specification root and the code agrees with it, so no code finding stands.

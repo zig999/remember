@@ -1,0 +1,149 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the header comment, lines 1-14 (steps 3 to 5 of the handler shape)
+    evidence: >-
+      // 4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
+      //    short TX to write the audit `tool_call` row (BR-23).
+      // 5. On uncaught error: ROLLBACK, write `tool_call` with `error`, surface
+      //    `SYSTEM_INTERNAL_ERROR` envelope.
+    cost: >-
+      The audit rule is stated in prose here while runIngestHandler and safeWriteAuditOnRollback already hold it. A reader who finds the comment first takes it for the place the rule lives. If the node moves, the comment keeps saying the old thing and no check reaches it.
+    kind: restates
+    correction: >-
+      Remove the header prose. The fact is held by runIngestHandler (the insertToolCall call inside the transaction, and insertToolCallStandalone with "rejected" or "error" on the rollback paths) and by the node.
+    node: rules/knowledge-base/every-proposal-audited
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring of deriveValidationOutcome, lines 55-65
+    evidence: >-
+      Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+      branch returns this), the audit row is `'rejected'` per BR-17. Every other
+      `ok:true` envelope is `'accepted'`.
+    cost: >-
+      The mapping from a proposal's outcome to the tool call's validation outcome is stated in prose beside the switch that implements it. It also says "every other ok:true envelope is accepted", which the switch immediately below contradicts. A reader of the docstring would be misled about the rule.
+    kind: restates
+    correction: >-
+      Remove the docstring. The switch in deriveValidationOutcome holds the fact, and the node holds the rule.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring of runIngestHandler, lines 125-131
+    evidence: >-
+      BR-23: even when the business transaction rolls back, the audit row is
+      written via a SEPARATE short transaction (`insertToolCallStandalone`).
+    cost: >-
+      The audit-on-rollback rule is cited by a back-spec code (BR-23) in prose, although the code in this file holds it. The citation invites the next reader to treat the comment as the authority.
+    kind: restates
+    correction: >-
+      Remove the docstring prose. safeWriteAuditOnRollback and its calls hold the fact.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file holds no authentication, routing or health behavior. It only builds `{ ok: false, error: { code: "SYSTEM_INTERNAL_ERROR", message: "Internal error in MCP handler." } }` for a failed MCP ingest handler.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      assertRunIsRunning (lines 103-123) and the internal-error envelope in runIngestHandler (lines 185-201), for the propose-* refusals only
+    evidence: >-
+      throw new ValidationFailure("BUSINESS_RUN_NOT_RUNNING", `LLMRun ${llmRunId} is not running (status='${row.status}').`, { llm_run_id: llmRunId, status: row.status }); throw new ValidationFailure("RESOURCE_NOT_FOUND", ...); error: { code: "SYSTEM_INTERNAL_ERROR", message: "Internal error in MCP handler." } (no details key).
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file is the ingest-handler shell. It has no search, provenance, catalog or graph read.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No listing or query parameter handling in the file. Only runIngestHandler, deriveValidationOutcome and assertRunIsRunning.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file never collects a run's affected nodes. deriveValidationOutcome reads only `result?.outcome ?? result?.resolution`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      No affected-node listing in the file.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      No compliance-deletion listing in the file.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      No chunking in the file. assertRunIsRunning returns `{ input_raw_information_id: row.input_raw_information_id }` only.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file opens one transaction per call (`await client.query("BEGIN")`) and never resolves node names or takes a lock.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      No assertion review in the file.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in the file.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      No prompt construction in the file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      No graph read or excerpt in the file.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      No provenance read in the file.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      No curation metrics in the file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      No node listing in the file.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      No search in the file.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      The file only classifies the outcome tag of an already-decided result (`case "consolidated": return "consolidated";`). It does not decide re-affirmation.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      No validity-start handling in the file.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      No review queue in the file.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      No review queue in the file.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      No text parsing in the file.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in the file.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      No traversal in the file.
+looked_past: >-
+  The comments citing BR-21 (a call with no ambient llm_run_id writes no tool_call row, "filtered at the MCP transport"), the "NEVER log raw arguments" note, and the code-style comments belong to the comment route or to other files; the BR-21 behavior itself sits in the transport, outside this file set.
+candidates_opened:
+  - rules/knowledge-base/every-proposal-audited
+  - rules/knowledge-base/tool-call-validation-outcome
+  - rules/knowledge-base/refused-proposal-records-only-its-tool-call
+  - domain/knowledge-base/validation-outcome

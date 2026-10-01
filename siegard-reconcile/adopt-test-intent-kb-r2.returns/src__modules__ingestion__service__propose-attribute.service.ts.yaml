@@ -1,0 +1,157 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 71-80, the cross-table guard after the attribute key lookup
+    evidence: |-
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "attribute_key.node_type_id does not match the node's node_type_id.",
+          { node_id: args.node_id, key: args.key }
+        );
+      }
+    cost: >-
+      The guard is a second implementation of the refusal for a key that does not belong to the node's type, and it answers with a different code and message. The specification answers that case with BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key. The comment above the guard says it is unreachable today. If the catalog cache scope is ever relaxed, as that comment contemplates, the owner would get VALIDATION_INVALID_FORMAT with a message no node states, and anyone reading the specification would not expect it.
+    kind: contradicts
+    correction: >-
+      Remove the guard, because the lookup keyed by (node_type_id, key) already is the rule. Or make it refuse with the code the contract names for this case, BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 85-92, the comment block above the closed-domain gate
+    evidence: >-
+      // key is closed and `assertValueInDomain` rejects out-of-domain literals
+      // with `VALIDATION_INVALID_FORMAT` carrying `{ value, allowed_values }`.
+      // Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The prose restates the allowed-values rule (exact match, the refusal code, the details it carries), and a second copy of a rule can drift from the node. The code holds the rule: the `domainOf` branch here, and `assertValueInDomain` in src/modules/ingestion/validation/structural.ts, which sorts and returns `{ value, allowed_values }`.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file and in structural.ts already carries the behavior.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 131-134, the comment above the source metadata query
+    evidence: >-
+      // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+      // and is consumed by `validateTemporal` as the fallback for
+      // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The prose restates the received-date fallback, which the required-start-fallback node holds. The code holds it in validateTemporal in src/modules/ingestion/validation/temporal.ts (`valid_from_basis: "received"`). The comment is a second home for the fact, and it would go stale unnoticed if the node moved.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior stays in validateTemporal.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: contracts/knowledge-base/access
+    held_at: nowhere
+    evidence: >-
+      The file never authenticates, routes or reports health. It takes an open `PoolClient` and a `RunContext`: `export async function proposeAttributeService(client: PoolClient, args: ProposeAttributeInput, runCtx: RunContext, deps: ProposeAttributeDeps)`.
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The propose-attribute operation's validation sequence and its accepted shapes in `proposeAttributeService`, lines 46-223. It checks the node, key, value parse and allowed values, fragment existence and ownership, temporal, confidence floor and anchoring, in that order. It returns the below-floor rejection and the consolidation outcome. One departure is the guard at lines 74-79, filed as a finding.
+    evidence: |-
+      const result: ProposeAttributeResult = {
+        attribute_id: null,
+        outcome: "rejected",
+        reason: "BELOW_CONFIDENCE_FLOOR",
+      };
+      return { ok: true, result };
+      ...
+      ? { ...baseResult, superseded_attribute_id: consolidation.superseded_attribute_id }
+  - node: contracts/knowledge-base/retrieval
+    held_at: nowhere
+    evidence: >-
+      The file only writes a proposal through `consolidateAttribute` and reads no search, provenance, catalog or graph surface.
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: nowhere
+    evidence: >-
+      No accepted-fragment listing appears in the file. Its only fragment query is `SELECT id, "text", llm_run_id FROM information_fragment WHERE id = ANY($1::uuid[])`.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: nowhere
+    evidence: >-
+      The file computes no run-affected node set. It returns only the attribute identity and the outcome: `attribute_id: consolidation.attribute_id, outcome: consolidation.outcome`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: nowhere
+    evidence: >-
+      The file never lists a run's affected nodes. Its only return is `return { ok: true, result };`.
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: nowhere
+    evidence: >-
+      The file has no compliance-deletion listing or window. It holds only the propose-attribute service.
+  - node: rules/knowledge-base/chunking-deterministic
+    held_at: nowhere
+    evidence: >-
+      The file does no chunking. It only checks fragments' anchoring with `countFragmentsAnchoredToSource(client, { fragment_ids, expected_raw_information_id })`.
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: nowhere
+    evidence: >-
+      The file resolves no node name and takes no lock. It looks the node up by identity: `findNodeTypeIdByNodeId(client, args.node_id)`.
+  - node: rules/knowledge-base/confirmation-keeps-assertion-values
+    held_at: nowhere
+    evidence: >-
+      The file records a new proposal and confirms nothing. It sets `status_for_new_row: statusForNewRow`.
+  - node: rules/knowledge-base/extraction-prompt-lists-closed-values
+    held_at: nowhere
+    evidence: >-
+      The file builds no extraction prompt. It only gates a proposed value with `if (domain !== null) { assertValueInDomain(args.value, domain); }`.
+  - node: rules/knowledge-base/extraction-prompt-values-ascending
+    held_at: nowhere
+    evidence: >-
+      The file sorts and lists no values. The sorted `allowed_values` is built in `assertValueInDomain` in structural.ts, not here.
+  - node: rules/knowledge-base/extraction-prompt-values-verbatim
+    held_at: nowhere
+    evidence: >-
+      The file builds no prompt. It passes `args.value` unchanged to `assertValueInDomain(args.value, domain)`.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: nowhere
+    evidence: >-
+      The file reads no graph provenance excerpt. It reads only fragment `id`, `text` and `llm_run_id`.
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: nowhere
+    evidence: >-
+      The file is a write path with no graph read and no compliance status handling.
+  - node: rules/knowledge-base/metrics-disputed-queue-count
+    held_at: nowhere
+    evidence: >-
+      The file computes no curation metrics. It returns only the outcome of one proposal.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: nowhere
+    evidence: >-
+      The file has no node listing or name prefix. It looks the node up only by identity.
+  - node: rules/knowledge-base/non-expanding-search-walks-no-graph
+    held_at: nowhere
+    evidence: >-
+      The file has no search or traversal. It has no query other than the fragment and source metadata selects.
+  - node: rules/knowledge-base/reaffirmation-consolidates
+    held_at: nowhere
+    evidence: >-
+      Re-affirmation versus new assertion is decided in `consolidateAttribute` in graph-consolidation.service.ts. The file only forwards `change_hint: args.change_hint` and the temporal values to it.
+  - node: rules/knowledge-base/required-start-fallback
+    held_at: nowhere
+    evidence: >-
+      The fallback decision is made in `validateTemporal` in validation/temporal.ts. This file only reads `document_date` and `received_at` and forwards them: `document_date: documentDate, received_at: receivedAt`, then `valid_from: resolvedTemporal.valid_from`. The only prose about the fallback is a comment, filed as `restates`.
+  - node: rules/knowledge-base/review-queue-page-windows-entries
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or pagination.
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: nowhere
+    evidence: >-
+      The file has no review queue or totals.
+  - node: rules/knowledge-base/speaker-line
+    held_at: nowhere
+    evidence: >-
+      The file does no content parsing or speaker detection.
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: nowhere
+    evidence: >-
+      The file has no traversal.
+looked_past: >-
+  The header comment (lines 1-14) and the "Layer" banner comments restate the validation layers and the catalog scoping of attribute keys, and the file also cites BR-14, BR-25, BR-27 and BR-30; that is prose the comment route owns, and I did not file it as separate findings.
+candidates_opened:
+  - rules/knowledge-base/attribute-key-for-node-type
