@@ -1,0 +1,18 @@
+findings: []
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      The two refusal probes in the DO block (lines 13-32). Each inserts into compliance_deletion without a usable affected value and requires a check_violation or not_null_violation. This file does not declare the aggregate's shape. It only asserts that the required attribute `affected` is refused when absent.
+    evidence: |-
+      INSERT INTO compliance_deletion (raw_information_id, reason)
+          SELECT id, 'test' FROM raw_information WHERE content_hash = repeat('a', 64);
+        EXCEPTION WHEN check_violation OR not_null_violation THEN
+      ...
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+          SELECT id, 'test', NULL FROM raw_information WHERE content_hash = repeat('a', 64);
+  - node: domain/knowledge-base/affected-counts
+    held_at: nowhere
+    evidence: >-
+      The file never names chunks, fragments, links or attributes. The only reference is the opaque column `affected`, in `INSERT INTO compliance_deletion (raw_information_id, reason, affected)`. The shape of affected-counts is declared elsewhere.
+looked_past: >-
+  The fixture values ('fixture', repeat('a', 64), 'test') and the transaction and rollback scaffolding are test mechanics, not domain facts.

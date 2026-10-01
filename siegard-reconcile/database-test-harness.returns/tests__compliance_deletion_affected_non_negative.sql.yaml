@@ -1,0 +1,28 @@
+findings:
+  - file: tests/compliance_deletion_affected_non_negative.sql
+    where: >-
+      the DO block, lines 28-32 (the FOREACH loop over the four count keys) and the failure message on line 30
+    evidence: >-
+      IF NOT pg_temp.is_refused(jsonb_set(zeros, ARRAY[k], '-1'::jsonb)) THEN
+            RAISE EXCEPTION 'criterion 6: an affected value with a negative % count was accepted', k;
+    cost: >-
+      The test makes "a negative count is refused" a requirement of the schema. The nodes only say each count is an integer ("type: integer", "required: true"), and "How many ... marked deleted". Nothing in them, and no other node I found, says a count below zero is refused. The refusal therefore exists only in this test, and in whatever schema constraint the test forces. A later reader checking what a compliance deletion's affected value may hold will read the specification, find only "integer", and miss the rule.
+    kind: unstated
+    correction: >-
+      Analysis would need to state in domain/knowledge-base/affected-counts, or in a rule constraining it, that each count is zero or more and that a value with a negative count is refused. The test would then have a node to answer to. The zero-accepted control on line 24 depends on the same unstated rule.
+    node: domain/knowledge-base/affected-counts
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not declare the shape. It builds a fixture, `zeros constant jsonb := '{"chunks":0,"fragments":0,"links":0,"attributes":0}'`, and loops over `ARRAY['chunks', 'fragments', 'links', 'attributes']`. It passes values along to the table and asserts only the refusal of negatives, which the node does not state.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only inserts into the table: `INSERT INTO compliance_deletion (raw_information_id, reason, affected) SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);`. It declares none of the aggregate's shape and asserts nothing about executed_at or reason.
+looked_past: >-
+  The fixture details (`repeat('a', 64)` as a content hash, `enum_range(NULL::source_type))[1]` as a source type, the literal reason 'test') are test scaffolding and not a domain fact. I also left aside, as code review, that the `not_null_violation` branch counts any not-null failure as a refusal.
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-counts-what-it-marked

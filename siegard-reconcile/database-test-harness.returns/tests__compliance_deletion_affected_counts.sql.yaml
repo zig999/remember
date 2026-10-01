@@ -1,0 +1,13 @@
+findings: []
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      The DO block (lines 19-41). It names the four counts and asserts that the database refuses a value lacking any of them or carrying a non-integer. The shape is declared in the migration, not in this file.
+    evidence: >-
+      good constant jsonb := '{"chunks":3,"fragments":2,"links":1,"attributes":0}'; FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP ... IF NOT pg_temp.is_refused(good - k) ... FOREACH v IN ARRAY ARRAY['"5"', '1.5', 'null', 'true', '{}', '[]'] LOOP ... IF NOT pg_temp.is_refused(jsonb_set(good, ARRAY[k], v::jsonb))
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for compliance_deletion. It only inserts a row, `INSERT INTO compliance_deletion (raw_information_id, reason, affected) SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);`, to exercise the `affected` attribute. The attributes executed_at and reason and the reference to raw-information are not declared or asserted here.
+looked_past: >-
+  The failure message on line 26 says "non-negative integers", and the file's "criterion N" labels refer to task criteria outside the nodes. I found no node that holds non-negativity for the counts. I take both as a test's own wording, because this file never asserts a negative value, so I did not file them.

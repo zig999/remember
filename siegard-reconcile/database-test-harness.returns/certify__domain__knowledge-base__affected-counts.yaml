@@ -1,0 +1,34 @@
+certified:
+  - node: domain/knowledge-base/affected-counts
+    state: partial
+    tests:
+      - file: tests/compliance_deletion_affected_counts.sql
+    why: >-
+      The shape is exercised, and the proof would fail if any part of it
+      stopped holding. The value has four counts: chunks, fragments, links
+      and attributes. The proof inserts a compliance_deletion whose affected
+      value carries all four. Each count is required: dropping any one of
+      them must be refused. Each count is an integer: replacing any one with
+      "5", 1.5, null, true, {} or [] must also be refused.
+      What goes unexercised is what the counts mean. The node says each
+      count is how many rows of that kind one compliance deletion marked
+      deleted. Nothing in the proof runs a compliance deletion and compares
+      affected against the chunks, fragments, links and attributes it
+      actually marked deleted. The proof's accepted value
+      {chunks:3, fragments:2, links:1, attributes:0} is stored against a
+      fixture raw_information that has no chunks, fragments, links or
+      attributes. So the proof also asserts that the store accepts a reach
+      no deletion could have produced. The node does not establish that.
+      This test would break the day the store, or the operation that writes
+      the row, ties the counts to what was actually deleted.
+      The test's failure message also calls the counts "non-negative
+      integers". The node does not state non-negativity, and no assertion in
+      the proof submits a negative count.
+    remainder: testable
+    remainder_why: >-
+      One input: a compliance deletion over a raw_information that has a
+      known number of chunks, fragments, links and attributes. One expected
+      result: the recorded affected value equals those four numbers. That
+      means chunks equals the raw chunks it marked deleted, fragments the
+      information fragments, links the knowledge links, and attributes the
+      node attributes.
