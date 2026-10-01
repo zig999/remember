@@ -1,0 +1,23 @@
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      The DO block, lines 8-34. It checks that `affected` is required on a compliance deletion, once with the column omitted and once with an explicit NULL. The table's shape is not declared in this file.
+    evidence: >-
+      INSERT INTO compliance_deletion (raw_information_id, reason) ... EXCEPTION WHEN check_violation OR not_null_violation THEN refused := true; ... IF NOT refused THEN RAISE EXCEPTION 'criterion 7: a compliance deletion with the affected column omitted was accepted'; and the second case INSERT INTO compliance_deletion (raw_information_id, reason, affected) SELECT id, 'test', NULL ...
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never declares or reads the shape of the counts. The only reference is the column name `affected`, passed as omitted or NULL. There are no `chunks`, `fragments`, `links` or `attributes` attributes anywhere in it.
+  - node: rules/knowledge-base/affected-counts-non-negative
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains no non-negative check and inserts no negative count. It only tests omission and NULL of `affected`: `SELECT id, 'test', NULL FROM raw_information WHERE content_hash = repeat('a', 64);`
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file performs no deletion, marks no rows, and compares no counts. It only inserts a `raw_information` fixture row and attempts two refused `compliance_deletion` inserts, then ends with `ROLLBACK;`.
+looked_past: >-
+  The fixture values (`'fixture'`, `repeat('a', 64)`, the first `source_type` enum member) and the `criterion 7` numbering in the failure messages are test scaffolding and traceability labels, not domain facts. Whether the schema declares the counts' shape or the non-negative and what-it-marked rules is for the migration's own review, not this file.

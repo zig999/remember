@@ -1,0 +1,24 @@
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      the DO block, lines 19-41. It builds the four-count value and checks that each count is required and must be an integer.
+    evidence: >-
+      good constant jsonb := '{"chunks":3,"fragments":2,"links":1,"attributes":0}';
+      FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP
+      IF NOT pg_temp.is_refused(good - k) THEN ... FOREACH v IN ARRAY ARRAY['"5"', '1.5', 'null', 'true', '{}', '[]'] LOOP
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the pg_temp.is_refused function, lines 8-17. It inserts a compliance_deletion row with raw_information_id, reason and affected, which are the attributes and the reference the node names.
+    evidence: >-
+      INSERT INTO compliance_deletion (raw_information_id, reason, affected)
+      SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);
+  - node: rules/knowledge-base/affected-counts-non-negative
+    held_at: nowhere
+    evidence: >-
+      The file accepts a value whose attributes count is 0 (`"attributes":0`). It never submits a negative count, so no construct refuses one. The refused values are `'"5"', '1.5', 'null', 'true', '{}', '[]'` and missing keys.
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: nowhere
+    evidence: >-
+      The file only inserts a compliance_deletion row with a hand-written affected value. It never marks any chunk, fragment, link or attribute deleted, so nothing compares the counts to what was marked. The inserted value is `'{"chunks":3,"fragments":2,"links":1,"attributes":0}'`.
+looked_past: >-
+  The test never checks that a negative count is refused or that the counts equal what a deletion marked, which is a question of test coverage rather than of a fact the source states without a node; it also cites criterion numbers (1-4, 5, 8) in its failure messages that belong to the plan, not to any node.

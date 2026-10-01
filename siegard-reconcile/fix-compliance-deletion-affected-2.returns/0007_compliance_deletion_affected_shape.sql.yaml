@@ -1,0 +1,26 @@
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      the CHECK constraint compliance_deletion_affected_ck (lines 3-9), which names the four attributes chunks, fragments, links and attributes and requires each to be present and an integer
+    evidence: >-
+      COALESCE((affected -> 'chunks')::text     ~ '^[0-9]+$', false)
+      AND COALESCE((affected -> 'fragments')::text  ~ '^[0-9]+$', false)
+      AND COALESCE((affected -> 'links')::text      ~ '^[0-9]+$', false)
+      AND COALESCE((affected -> 'attributes')::text ~ '^[0-9]+$', false)
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for compliance_deletion. It only alters the existing table, with "ALTER TABLE compliance_deletion ALTER COLUMN affected DROP DEFAULT;" and then adds a constraint on the affected column. The attributes executed_at and reason and the reference to raw-information are not declared here.
+  - node: rules/knowledge-base/affected-counts-non-negative
+    held_at: >-
+      the CHECK constraint compliance_deletion_affected_ck (lines 3-9). The pattern '^[0-9]+$' admits only digit strings, so each count is zero or more.
+    evidence: >-
+      ADD CONSTRAINT compliance_deletion_affected_ck CHECK ( COALESCE((affected -> 'chunks')::text ~ '^[0-9]+$', false) AND ... ) NOT VALID;
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file contains only "ALTER COLUMN affected DROP DEFAULT" and a format CHECK. Neither relates a count to the rows a deletion marked deleted, so the rule is not held in this file. Dropping the default only means a row can no longer be written with counts nobody supplied.
+looked_past: >-
+  The NOT VALID clause (existing rows are not checked when the constraint is added) and the choice of a text-pattern CHECK over a jsonb-type test are migration mechanics, not domain facts, so I did not judge them.

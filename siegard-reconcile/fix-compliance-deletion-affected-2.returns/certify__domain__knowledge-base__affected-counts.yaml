@@ -1,0 +1,28 @@
+certified:
+  - node: domain/knowledge-base/affected-counts
+    state: partial
+    tests:
+      - file: tests/compliance_deletion_affected_counts.sql
+    why: >-
+      The proof covers the shape of the value. It inserts a compliance deletion whose
+      affected value carries chunks, fragments, links and attributes as integers, and
+      that value is accepted. It then refuses the value with each of the four removed.
+      It also refuses each of the four when set to a string, a fractional number, null,
+      a boolean, an object or an array. The check is a real one: if the constraint were
+      dropped, the missing-key insert would succeed and the block would raise. So
+      "required" and "integer" are exercised for all four attributes. What goes
+      unexercised is what the node says the four numbers are: how many raw chunks,
+      information fragments, knowledge links and node attributes one compliance deletion
+      marked deleted. No test in the set performs a compliance deletion and compares the
+      recorded counts with the rows it marked deleted. The fixture records
+      {"chunks":3,"fragments":2,"links":1,"attributes":0} against a raw information that
+      has no chunks, fragments, links or attributes at all, and that is accepted. So a
+      deletion that recorded any four integers would pass, even ones that do not match
+      what it marked.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result: run a compliance deletion over a raw
+      information with a known number of raw chunks, information fragments, knowledge
+      links and node attributes. Include some already superseded, which the deletion
+      leaves alone. Then assert that the deletion's recorded chunks, fragments, links and
+      attributes equal the numbers of each that the deletion marked deleted.

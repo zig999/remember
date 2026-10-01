@@ -1,0 +1,35 @@
+read:
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the affected counts. It passes them as a fixture value:
+      `zeros constant jsonb := '{"chunks":0,"fragments":0,"links":0,"attributes":0}'` and
+      `INSERT INTO compliance_deletion (raw_information_id, reason, affected)`. The four key names
+      match the node's attributes, but a value handed to an insert does not declare their shape.
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no table or type for the aggregate. It only inserts into it:
+      `INSERT INTO compliance_deletion (raw_information_id, reason, affected) SELECT id, 'test', v FROM raw_information WHERE content_hash = repeat('a', 64);`
+  - node: rules/knowledge-base/affected-counts-non-negative
+    held_at: >-
+      The DO block, lines 19-34. It checks that all four zero counts are accepted, then that a
+      -1 in each of chunks, fragments, links and attributes is refused.
+    evidence: >-
+      `FOREACH k IN ARRAY ARRAY['chunks', 'fragments', 'links', 'attributes'] LOOP
+      IF NOT pg_temp.is_refused(jsonb_set(zeros, ARRAY[k], '-1'::jsonb)) THEN
+      RAISE EXCEPTION 'criterion 6: an affected value with a negative % count was accepted', k;`
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file never counts, marks or deletes anything. It inserts literal affected values
+      (`zeros`, and `jsonb_set(zeros, ARRAY[k], '-1'::jsonb)`) and checks only whether the insert
+      is refused. Nothing relates a count to what a deletion marked.
+looked_past: >-
+  The fixture values (the first `source_type` enum member, `repeat('a', 64)` as the content hash,
+  and the reason 'test') and the plan-criterion label "criterion 6" in the failure message are
+  test scaffolding, not domain facts. Whether the migration's CHECK constraint exists and is
+  correct belongs to the migration's own pass.
