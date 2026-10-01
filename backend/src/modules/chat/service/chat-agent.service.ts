@@ -1,29 +1,3 @@
-// ChatAgentService — the agentic tool-use loop that drives the Anthropic
-// streaming API, dispatches the 13 read-only `query`-toolset tools, enforces
-// the wall-clock + iteration ceilings, and yields an `AsyncIterable<ChatEvent>`.
-//
-// Source: `docs/specs/domains/chat/back/chat.back.md` §1.2 + BR-06..BR-24
-// (`runTurn` contract) and `docs/specs/domains/chat/chat.spec.md` §3 UC-01..05
-// + §5 state machine (event ordering).
-//
-// What lives here, what does NOT:
-//
-//   - HERE: the per-turn loop, iteration counter, turn-timeout `setTimeout`,
-//     abort propagation, tool dispatch via `McpTool.handler`, per-tool
-//     wall-clock race, tool-result truncation, output-guard scrub, token
-//     accumulation across iterations, terminal-frame guarantee (BR-24).
-//
-//   - NOT here: Zod parsing (route owns it — BR-01..04), `reply.hijack()` and
-//     SSE framing (route owns it — `chat.back.md` §1.1), the pino INFO
-//     turn record (route owns it — BR-19), pre-stream auth / kill-switch
-//     short-circuit (route owns them — BR-14 / BR-23), database access
-//     (delegated to the tool handlers — BR-06).
-//
-// The contract surface is intentionally narrow: ONE method `runTurn(input)`
-// returns an `AsyncIterable<ChatEvent>`. The route consumes the iterable,
-// serialises each event as a single SSE frame, and emits a single pino
-// record after the iterator returns or throws.
-
 import type { Logger } from "pino";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
@@ -49,23 +23,6 @@ import { selectChatPromptModule } from "../prompts/index.js";
 import { defaultAnthropicFactory } from "../../ingestion/service/extraction.service.js";
 import type { AnthropicFactory } from "../../ingestion/service/extraction.service.js";
 
-// ---------------------------------------------------------------------------
-// Anthropic streaming-event surface — chat-local
-//
-// The chat module needs an `Anthropic.messages.stream(...)` whose returned
-// stream supports the SDK's event-listener API (`on('text', ...)`,
-// `on('error', ...)`, `on('end', ...)`, `abort()`, `finalMessage()`). The
-// real `AnthropicClient` satisfies BOTH this shape AND `ingestion`'s
-// `AnthropicLike` — we cast across at the boundary. Tests pass a structurally
-// compatible stub via the same `AnthropicFactory` type and we cast on entry.
-// ---------------------------------------------------------------------------
-
-/**
- * Subset of `Anthropic.MessageStream` we consume. Mirrors the named events on
- * the SDK type plus the abort + final-message awaiters. The `[Symbol.iterator]`
- * is intentionally absent — we drive the stream entirely through event
- * listeners + `finalMessage()`, which is the most stable surface in the SDK.
- */
 export interface ChatMessageStream {
   on(event: "text", handler: (delta: string, snapshot: string) => void): this;
   on(event: "error", handler: (err: unknown) => void): this;
@@ -75,12 +32,8 @@ export interface ChatMessageStream {
   finalMessage(): Promise<Anthropic.Messages.Message>;
 }
 
-/** Request shape passed to `messages.stream(...)` from the chat loop. */
 export interface ChatMessageRequest {
   readonly model: string;
-  // `string` (route default) OR a content-block array carrying cache_control
-  // (prompt caching, P0). Render order is tools → system, so a cache breakpoint
-  // on the system block caches the whole tools+system prefix.
   readonly system: string | readonly Anthropic.Messages.TextBlockParam[];
   readonly max_tokens: number;
   readonly tools: readonly Anthropic.Messages.Tool[];
@@ -91,71 +44,24 @@ export interface ChatMessageRequest {
   readonly messages: ReadonlyArray<Anthropic.Messages.MessageParam>;
 }
 
-/** Minimum surface chat expects on the SDK client. */
 export interface ChatAnthropicLike {
   readonly messages: {
     stream(req: ChatMessageRequest): ChatMessageStream;
   };
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/**
- * `max_tokens` ceiling per Anthropic call. Chat is conversational — the model
- * rarely needs more than a few thousand output tokens per iteration. We use a
- * generous-but-finite ceiling so a runaway generation is bounded by the SDK,
- * not just by the per-turn wall-clock.
- */
 const MAX_TOKENS_PER_ITERATION = 4096;
 
-/**
- * Internal abort reason used by the turn-timeout `setTimeout`. The service
- * inspects the abort reason to distinguish a client-cancel (no reason — the
- * route's `AbortController.abort()` is called without an argument) from a
- * timeout (this constant).
- */
 const TURN_TIMEOUT_REASON = "turn_timeout" as const;
 
-// ---------------------------------------------------------------------------
-// Service factory
-// ---------------------------------------------------------------------------
-
-/**
- * Service-level dependencies passed by the route registrar. The resolved tool
- * catalog is required — `registerChatRoutes(...)` does not mount the route
- * when `buildChatToolCatalog(mcp, env)` returns `undefined` (BR-05).
- *
- * v2.8 (BR-43 / BR-44 / TC-04): the chat-side async-ingestion seam was
- * retired. `ingest_directed` flows through the SAME standard catalog dispatch
- * path as any other tool (`catalog[toolName].handler`) — no special-case
- * branch, no chat-owned adapter. The route layer is no longer responsible for
- * injecting an ingestion dispatcher into the service.
- */
 export interface ChatAgentServiceFactoryDeps extends ChatAgentServiceDeps {
   readonly catalog: ResolvedChatToolCatalog;
 }
 
-/**
- * Public observable surface — the route handler reads these after the
- * iterator returns so it can build the §9 pino turn record. The `stats`
- * accessor is populated lazily by `runTurn` as the loop progresses.
- */
 export interface ChatAgentServiceWithStats extends ChatAgentService {
-  /**
-   * Snapshot of the most recent run's accumulated stats. `undefined` when
-   * `runTurn` has not yet been invoked. The reference is stable for the
-   * lifetime of one turn; the route MUST read it AFTER consuming the iterable.
-   */
   readonly lastStats: ChatRunStats | undefined;
 }
 
-/**
- * Build a `ChatAgentService` bound to the given dependencies. The factory
- * resolves the Anthropic client ONCE (BR-21) and caches it for the lifetime
- * of the service instance.
- */
 export function createChatAgentService(
   deps: ChatAgentServiceFactoryDeps
 ): ChatAgentServiceWithStats {
@@ -164,25 +70,16 @@ export function createChatAgentService(
     deps.anthropicFactory ?? defaultAnthropicFactory;
   const now = deps.now ?? Date.now;
 
-  // BR-14: defensive parallel guard. The route handler is the authoritative
-  // owner of the kill-switch (it must short-circuit BEFORE `reply.hijack()`).
-  // We surface a typed error so a misuse — the route forgot to check —
-  // produces a deterministic failure rather than an unhealthy SSE.
   if (env.CHAT_ENABLED === false) {
     throw new ChatDisabledError();
   }
 
-  // BR-21: construct the client once at first runTurn call (lazy). We cache
-  // it here on the closure so concurrent turns share the same instance.
   let cachedClient: ChatAnthropicLike | undefined;
   function getClient(): ChatAnthropicLike {
     if (cachedClient !== undefined) return cachedClient;
     try {
       cachedClient = factory(env.ANTHROPIC_API_KEY) as unknown as ChatAnthropicLike;
     } catch (err) {
-      // BR-21 pre-stream: factory throws. The route handler catches this and
-      // emits the standard REST envelope (BR-23). The service NEVER folds
-      // factory errors into an SSE frame because the SSE has not yet opened.
       deps.logger.error(
         { event: "chat.provider_factory_failed", error: serializeError(err) },
         "chat anthropic factory failed"
@@ -192,17 +89,10 @@ export function createChatAgentService(
     return cachedClient;
   }
 
-  // BR-18: resolve prompt module at service construction (fail-loud on a
-  // misconfigured CHAT_PROMPT_VERSION — parallel to ingestion's behaviour).
   const promptModule = selectChatPromptModule(env.CHAT_PROMPT_VERSION);
 
-  // BR-06: the `tools` array we send to Anthropic is the resolved catalog,
-  // turned into the SDK's `Tool` shape via Zod-derived JSON Schema. We build
-  // it once per service instance.
   const tools = buildToolDescriptors(deps.catalog, deps.logger);
 
-  // `stats` is overwritten on each `runTurn` invocation. The route handler
-  // reads it after consuming the iterable to build the pino INFO record.
   let stats: ChatRunStats | undefined;
 
   const service: ChatAgentServiceWithStats = {
@@ -210,9 +100,6 @@ export function createChatAgentService(
       return stats;
     },
     runTurn(input: ChatRunInput): AsyncIterable<ChatEvent> {
-      // Build a fresh accumulator per turn — concurrent turns get isolated
-      // stats. The accumulator is exposed via the closure-bound `stats`
-      // variable so the route handler can read it after consumption.
       const accumulator = createStatsAccumulator();
       stats = accumulator.snapshot();
 
@@ -237,10 +124,6 @@ export function createChatAgentService(
   return service;
 }
 
-// ---------------------------------------------------------------------------
-// The agentic loop
-// ---------------------------------------------------------------------------
-
 interface RunTurnContext {
   readonly client: ChatAnthropicLike;
   readonly catalog: ResolvedChatToolCatalog;
@@ -254,12 +137,6 @@ interface RunTurnContext {
   readonly publishStats: (next: ChatRunStats) => void;
 }
 
-/**
- * The core `runTurn` AsyncIterable. Written as an async generator so the
- * structural invariant of BR-24 ("exactly one terminal event per turn") is
- * enforced by `try { ... } finally { ... }` rather than by repeated yield
- * sites — the `yield* terminate(...)` helper always yields exactly one frame.
- */
 function runTurnIterable(ctx: RunTurnContext): AsyncIterable<ChatEvent> {
   return {
     [Symbol.asyncIterator](): AsyncIterator<ChatEvent> {
@@ -268,16 +145,9 @@ function runTurnIterable(ctx: RunTurnContext): AsyncIterable<ChatEvent> {
   };
 }
 
-/** The generator. See `runTurnIterable` for the rationale. */
 async function* runTurnGenerator(
   ctx: RunTurnContext
 ): AsyncGenerator<ChatEvent, void, void> {
-  // BR-16: turn-timeout `AbortController`. The reason argument is inspected
-  // on cancel to distinguish "client closed" from "wall-clock expired".
-  //
-  // BR-12: we also forward `input.abortSignal` (the route bound it to
-  // `req.raw.on('close')`) into our controller. Forwarding (vs. observing
-  // both signals separately) keeps the inspection logic on a single source.
   const turnController = new AbortController();
   const turnTimeoutMs = ctx.env.TURN_TIMEOUT_MS;
   const turnTimer = setTimeout(() => {
@@ -285,28 +155,16 @@ async function* runTurnGenerator(
   }, turnTimeoutMs);
 
   const externalAbortListener = (): void => {
-    // Client-cancel: forward to the turn controller WITHOUT a reason (so
-    // we can distinguish from timeout via `.reason`).
     if (!turnController.signal.aborted) {
       turnController.abort();
     }
   };
   if (ctx.input.abortSignal.aborted) {
-    // Pre-aborted: fire synchronously.
     externalAbortListener();
   } else {
     ctx.input.abortSignal.addEventListener("abort", externalAbortListener);
   }
 
-  // BR-08 + BR-20: gather text deltas for the assistant turn fed back on the
-  // next iteration. We accumulate the FILTERED text (after the output guard
-  // dropped any marker-containing delta) so a leak never round-trips back
-  // into the model.
-  //
-  // BR-22: tool_choice is unconditional `auto` + parallel tool use disabled.
-  //
-  // v2 (BR-31): `input.messages` are already Anthropic-shaped MessageParams
-  // produced by the context-builder — the loop no longer reshapes them.
   const inLoopHistory: Anthropic.Messages.MessageParam[] = ctx.input.messages.map(
     (m) => ({
       role: m.role,
@@ -314,32 +172,15 @@ async function* runTurnGenerator(
     })
   );
 
-  // v2.2 (chat.back.md — faithful multi-row persistence): accumulate the
-  // CURRENT iteration's assistant content blocks. RESET after each tool-bearing
-  // iteration (see the `iteration_end` emit below). We append:
-  //   - `{ type: "text", text: <delta> }` for each filtered text_delta (BR-08).
-  //   - The raw `tool_use` block(s) emitted by Anthropic this iteration.
-  // On a tool-bearing iteration these blocks are carried on `iteration_end`
-  // (the route persists them as the iteration's assistant row, paired with the
-  // synthetic user `tool_result` row). On the FINAL (non-tool) iteration they
-  // are carried on the terminal `done`/`error` event (the closing assistant
-  // text row, BR-29 step 8 — always text-only by construction). The
-  // accumulator captures ONLY what the model emitted (post-guard) — never the
-  // raw upstream string of an SDK error.
   const iterationBlocks: unknown[] = [];
 
-  // The "currently active" stream — used by the abort handler to call
-  // `stream.abort()` so the SDK tears down its socket promptly.
   let activeStream: ChatMessageStream | undefined;
 
-  // Helper: tear down active stream on abort. Idempotent.
   const abortActive = (): void => {
     if (activeStream !== undefined) {
       try {
         activeStream.abort();
       } catch (err) {
-        // The SDK may have already ended the stream — aborting twice is benign.
-        // Log at debug so the swallow is observable without alarming.
         ctx.logger.debug(
           { cause_message: err instanceof Error ? err.message : "unknown" },
           "chat stream abort (on signal) no-op — stream already ended"
@@ -350,15 +191,6 @@ async function* runTurnGenerator(
 
   turnController.signal.addEventListener("abort", abortActive);
 
-  // TC-02 / BR-34 (Path 1) — assemble the transport-neutral invocation_context
-  // ONCE per turn. The same record is forwarded to every tool handler via
-  // `raceToolHandler` (generic — no per-tool branch at the dispatch site). Only
-  // `ingest_directed` actually consumes it (reads `source_excerpt` +
-  // `pointer`); the other 13 read-only handlers receive the argument and
-  // ignore it. We omit either key (rather than passing `undefined`) when the
-  // route did not thread a value, so handlers can use `key in ctx` semantics
-  // cleanly. When neither field is present the record is `undefined` and the
-  // dispatch passes no second argument.
   const invocationContext: Record<string, unknown> | undefined = (() => {
     const out: Record<string, unknown> = {};
     if (ctx.input.current_user_turn !== undefined) {
@@ -374,11 +206,7 @@ async function* runTurnGenerator(
   let lastModel = ctx.input.model;
 
   try {
-    // Outer loop — one iteration per Anthropic call.
     while (true) {
-      // BR-15: enforce ceiling BEFORE opening iteration N+1. The check fires
-      // when we are about to open a new iteration AFTER the ceiling has
-      // already been reached, so the SSE sequence is `... tool_result -> done`.
       iteration += 1;
       if (iteration > ctx.env.MAX_ITERATIONS) {
         yield* terminate(
@@ -392,8 +220,6 @@ async function* runTurnGenerator(
         return;
       }
 
-      // Early-abort check — if the client cancelled before we even opened
-      // this iteration, emit the cancel terminal without an `llm_start`.
       if (turnController.signal.aborted) {
         const reason = turnController.signal.reason;
         const stopReason: DoneStopReason =
@@ -413,18 +239,6 @@ async function* runTurnGenerator(
       ctx.accumulator.bumpIteration();
       ctx.publishStats(ctx.accumulator.snapshot());
 
-      // Open the Anthropic stream + subscribe to text deltas. We collect
-      // deltas into a queue (`deltaQueue`) and yield them as the generator
-      // is pulled. Errors and ends are signalled via `streamSettled`.
-      //
-      // v2 (chat.back.md §1.2): `system` comes from the route's context-builder
-      // (ctx.input.system) — the service no longer assembles the prompt itself.
-      // P0 prompt caching: cache the stable tools+system prefix. Render order
-      // is tools → system, so a single `cache_control` breakpoint on the system
-      // block caches BOTH the 13 tool schemas and the system prompt. The prefix
-      // is byte-identical across every iteration of this turn AND across turns
-      // (static prompt-version + static tool schemas), so reads bill at ~0.1x
-      // after the first write. Cost-only change — no behavior change.
       const systemParam: Anthropic.Messages.TextBlockParam[] =
         typeof ctx.input.system === "string"
           ? [
@@ -445,9 +259,6 @@ async function* runTurnGenerator(
       });
       activeStream = stream;
 
-      // BR-08 / BR-20: deltas are gathered as the SDK emits them and yielded
-      // synchronously as the consumer pulls. We use a small async queue so
-      // text events and the stream-end signal can be ordered by the consumer.
       type DeltaItem =
         | { kind: "delta"; delta: string }
         | { kind: "end" }
@@ -463,9 +274,7 @@ async function* runTurnGenerator(
         }
       };
       stream.on("text", (delta) => {
-        // BR-08: drop empty deltas before the guard sees them.
         if (delta.length === 0) return;
-        // BR-20: output guard against system-prompt leakage.
         const decision = inspectDelta(delta, ctx.logger);
         if (decision.drop) return;
         enqueue({ kind: "delta", delta });
@@ -474,16 +283,12 @@ async function* runTurnGenerator(
         enqueue({ kind: "error", err });
       });
       stream.on("abort", (err) => {
-        // SDK `abort` event — we treat it like a stream error so the
-        // post-loop `finalMessage()` await can reject cleanly.
         enqueue({ kind: "error", err });
       });
       stream.on("end", () => {
         enqueue({ kind: "end" });
       });
 
-      // Drain text deltas until the stream ends OR errors. We do NOT await
-      // `finalMessage()` here so the consumer sees deltas in real time.
       let streamErrored: unknown | undefined;
       let streamEnded = false;
       while (!streamEnded && streamErrored === undefined) {
@@ -495,9 +300,6 @@ async function* runTurnGenerator(
         }
         const item = queue.shift()!;
         if (item.kind === "delta") {
-          // v2 (BR-29): accumulate the filtered delta as a `text` block on the
-          // assistant content blocks array. The persisted assistant row keeps
-          // the same shape Anthropic itself returns.
           iterationBlocks.push({ type: "text", text: item.delta });
           yield { type: "text_delta", delta: item.delta } as const;
         } else if (item.kind === "end") {
@@ -507,10 +309,6 @@ async function* runTurnGenerator(
         }
       }
 
-      // After end/error: capture the final message + stop_reason + usage.
-      // `finalMessage()` resolves once the stream has fully buffered. If the
-      // stream errored we await it to surface the error; the SDK forwards
-      // the same error there.
       let finalMessage: Anthropic.Messages.Message | undefined;
       try {
         finalMessage = await stream.finalMessage();
@@ -520,11 +318,6 @@ async function* runTurnGenerator(
       activeStream = undefined;
 
       if (streamErrored !== undefined) {
-        // BR-11 + BR-12 + BR-16: distinguish provider-error from abort.
-        // The Anthropic SDK throws `APIUserAbortError` on abort; we detect
-        // by name (the SDK's class is exported under several different
-        // names across versions, so a name-based check is safer than
-        // `instanceof`).
         if (isAbortError(streamErrored) || turnController.signal.aborted) {
           const reason = turnController.signal.reason;
           const stopReason: DoneStopReason =
@@ -539,7 +332,6 @@ async function* runTurnGenerator(
           );
           return;
         }
-        // Non-abort provider error — BR-11.
         ctx.logger.warn(
           {
             event: "chat.provider_stream_error",
@@ -561,7 +353,6 @@ async function* runTurnGenerator(
       }
 
       if (finalMessage === undefined) {
-        // Defensive — should not happen if the SDK is healthy.
         yield* terminateError(
           ctx,
           "SYSTEM_INTERNAL_ERROR",
@@ -579,9 +370,6 @@ async function* runTurnGenerator(
         finalMessage.usage?.input_tokens ?? 0,
         finalMessage.usage?.output_tokens ?? 0
       );
-      // P0/P1 — log per-iteration token usage incl. cache hit/write so the
-      // prompt-cache effect is observable (cache_read should dominate after the
-      // first iteration/turn; cache_creation > 0 only on the first write).
       ctx.logger.info(
         {
           event: "chat.iteration_usage",
@@ -598,11 +386,8 @@ async function* runTurnGenerator(
       );
       ctx.publishStats(ctx.accumulator.snapshot());
 
-      // Branch on stop_reason.
       const stop = finalMessage.stop_reason;
 
-      // Append the assistant turn to the in-loop history (preserves
-      // `tool_use` blocks for the next iteration's tool_result reply).
       inLoopHistory.push({ role: "assistant", content: finalMessage.content });
 
       const toolUseBlocks = finalMessage.content.filter(
@@ -610,18 +395,11 @@ async function* runTurnGenerator(
       );
 
       if (stop === "tool_use" || toolUseBlocks.length > 0) {
-        // BR-22 disables parallel tool use, so toolUseBlocks.length is at
-        // most 1; we still iterate to be safe.
         const toolResultBlocks: Anthropic.Messages.ToolResultBlockParam[] = [];
         for (const block of toolUseBlocks) {
-          // v2 (BR-29): the assistant tool_use block is part of the assistant
-          // content blocks fed back on the next iteration. Persist it as-is
-          // so the chat_message row can be re-replayed against Anthropic if
-          // the conversation is resumed in the future.
           iterationBlocks.push(block);
 
           const toolName = block.name;
-          // BR-09: redacted args summary.
           const argsSummary = buildArgsSummary(toolName, block.input);
           yield {
             type: "tool_start",
@@ -631,19 +409,8 @@ async function* runTurnGenerator(
           ctx.accumulator.addTool(toolName);
           ctx.publishStats(ctx.accumulator.snapshot());
 
-          // v2 (BR-32): wall-clock for the tool call. Persisted on the
-          // chat_tool_call row by the route handler.
           const toolStartedAt = ctx.now();
 
-          // v2.8 (BR-43 / BR-44 / TC-04): every chat tool — including
-          // `ingest_directed` — flows through the SAME generic catalog
-          // dispatch. `ingest_directed` is deterministic, NO-LLM, and lives
-          // on the `ingest` MCP toolset just like any other handler; there
-          // is no chat-side adapter, no special-case branch, no per-tool
-          // dispatcher injection. The seam that previously short-circuited
-          // the retired async-ingestion tool was removed together with it.
-          //
-          // BR-10: defensive guard for unknown tool name.
           const tool = ctx.catalog[toolName];
           let toolEnvelope: ToolEnvelope;
           if (tool === undefined) {
@@ -655,13 +422,6 @@ async function* runTurnGenerator(
               },
             };
           } else {
-            // BR-17: per-tool wall-clock race. Failure (timeout) feeds an
-            // envelope back to the model and DOES NOT end the turn.
-            //
-            // TC-02 / BR-34 (Path 1): pass the turn-scoped `invocationContext`
-            // through generically. Every handler receives it; only
-            // `ingest_directed` reads `source_excerpt` + `pointer`. The other
-            // 13 read-only handlers ignore it silently — no per-tool branch.
             toolEnvelope = await raceToolHandler(
               tool.handler,
               block.input,
@@ -670,10 +430,6 @@ async function* runTurnGenerator(
             );
           }
 
-          // v2 (BR-32 persistence payload): the FULL envelope (untruncated)
-          // is exposed on the ChatEvent so the route handler can persist it.
-          // The SSE wire frame is a projection of this — the route drops the
-          // persistence-only fields before serialising (BR-09).
           const durationMs = ctx.now() - toolStartedAt;
           const isError = !toolEnvelope.ok;
           const errMsg =
@@ -692,7 +448,6 @@ async function* runTurnGenerator(
             duration_ms: durationMs,
           } as const;
 
-          // BR-13: truncate the JSON-serialised body before feeding back.
           const bodyJson = JSON.stringify(toolEnvelope);
           const truncated = truncateToolResult(
             bodyJson,
@@ -707,17 +462,10 @@ async function* runTurnGenerator(
           });
         }
 
-        // Feed all tool_result blocks back as a single user turn (BR-13).
         if (toolResultBlocks.length > 0) {
           inLoopHistory.push({ role: "user", content: toolResultBlocks });
         }
 
-        // v2.2 (BR-29 step 6.d): emit the per-iteration persistence pair. The
-        // route persists `assistant_content` (this iteration's guarded text +
-        // tool_use blocks) and `tool_results` as TWO atomic chat_message rows
-        // so the next turn's replay is a valid Anthropic sequence. INTERNAL —
-        // not written to the SSE wire. Reset the accumulator for the next
-        // iteration so the terminal `done` carries ONLY the closing text.
         yield {
           type: "iteration_end",
           iteration,
@@ -726,12 +474,9 @@ async function* runTurnGenerator(
         } as const;
         iterationBlocks.length = 0;
 
-        // Loop — open the next iteration.
         continue;
       }
 
-      // No tool_use — terminate with the model's stop_reason mapped to our
-      // DoneStopReason union (BR-24).
       const mappedStop = mapStopReason(stop);
       yield* terminate(
         ctx,
@@ -744,8 +489,6 @@ async function* runTurnGenerator(
       return;
     }
   } catch (err) {
-    // BR-23 in-stream: any uncaught exception in the loop is mapped to a
-    // SYSTEM_INTERNAL_ERROR SSE error frame.
     ctx.logger.error(
       {
         event: "chat.loop_internal_error",
@@ -764,16 +507,12 @@ async function* runTurnGenerator(
     );
     return;
   } finally {
-    // Belt-and-braces: ensure timer + listener are cleaned up even if a
-    // consumer abandons the iterator mid-flight (e.g. `for await` break).
     clearTimeout(turnTimer);
     ctx.input.abortSignal.removeEventListener("abort", externalAbortListener);
     if (activeStream !== undefined) {
       try {
         activeStream.abort();
       } catch (err) {
-        // Cleanup-path abort — stream may already be torn down. Benign; log at
-        // debug for observability rather than swallowing silently.
         ctx.logger.debug(
           { cause_message: err instanceof Error ? err.message : "unknown" },
           "chat stream abort (cleanup) no-op — stream already ended"
@@ -782,10 +521,6 @@ async function* runTurnGenerator(
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Terminal-frame helpers — single source of truth for BR-24
-// ---------------------------------------------------------------------------
 
 async function* terminate(
   ctx: RunTurnContext,
@@ -806,7 +541,6 @@ async function* terminate(
     model,
     tokens_in: snapshot.tokens_in,
     tokens_out: snapshot.tokens_out,
-    // v2 (BR-29): the route handler persists this on the assistant chat_message row.
     content: iterationBlocks.slice(),
   } as const;
 }
@@ -829,12 +563,6 @@ async function* terminateError(
     type: "error",
     code,
     message,
-    // v2.2 (BR-29 error path): the route persists the partial content + the
-    // synthetic stop_reason on the closing assistant chat_message row. We strip
-    // any non-text block (a `tool_use` may have been pushed this iteration
-    // before the failure) — a TERMINAL assistant row is never followed by a
-    // `tool_result`, so a surviving `tool_use` would be a dangling block that
-    // breaks the NEXT turn's replay.
     content: iterationBlocks.filter(
       (b) =>
         typeof b === "object" &&
@@ -846,10 +574,6 @@ async function* terminateError(
     synthetic_stop_reason: syntheticStopReason,
   } as const;
 }
-
-// ---------------------------------------------------------------------------
-// Stats accumulator
-// ---------------------------------------------------------------------------
 
 interface StatsAccumulator {
   bumpIteration(): void;
@@ -889,30 +613,12 @@ function createStatsAccumulator(): StatsAccumulator {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tool dispatch — BR-17 race
-// ---------------------------------------------------------------------------
-
 interface ToolEnvelope {
   readonly ok: boolean;
   readonly result?: unknown;
   readonly error?: { readonly code: string; readonly message: string; readonly details?: unknown };
 }
 
-/**
- * Race the tool handler against a wall-clock. On timeout, return a synthetic
- * failure envelope mapped to `SYSTEM_SERVICE_UNAVAILABLE` (BR-17). The
- * underlying handler promise is NOT cancelled — v1 accepts that the SQL
- * runs to completion (see `chat.back.md` §7 "Tool timeout does not cancel
- * the SQL").
- *
- * On a handler exception, we emit a synthetic failure envelope mapped to
- * `SYSTEM_INTERNAL_ERROR` so the loop does not crash. This is defensive —
- * the resolved tool handlers are expected to return envelopes themselves.
- */
-// Exported for unit tests (TC-02). The dispatch loop calls this internally;
-// tests exercise the invocation_context forwarding contract directly without
-// spinning up the whole Anthropic streaming surface.
 export async function raceToolHandler(
   handler: (
     input: unknown,
@@ -935,11 +641,6 @@ export async function raceToolHandler(
     }, timeoutMs);
   });
   try {
-    // TC-02 / BR-34 (Path 1): forward `invocation_context` GENERICALLY to
-    // every handler. When the caller omitted it we call `handler(input)`
-    // with no second argument so legacy 1-arg handlers (and stubs in tests)
-    // continue to type-check and run unchanged. The handler ignores extras
-    // it does not know how to read.
     const invocation = invocation_context === undefined
       ? handler(input)
       : handler(input, invocation_context);
@@ -956,12 +657,6 @@ export async function raceToolHandler(
   }
 }
 
-/**
- * Coerce an arbitrary handler return into the standard envelope. Tool
- * handlers already return `{ ok, result }` / `{ ok, error }` per the
- * `McpServer` contract; this is a defensive wrapper in case a handler
- * returned a bare value.
- */
 function coerceEnvelope(value: unknown): ToolEnvelope {
   if (
     value !== null &&
@@ -971,7 +666,6 @@ function coerceEnvelope(value: unknown): ToolEnvelope {
   ) {
     return value as ToolEnvelope;
   }
-  // Bare value — wrap as success envelope.
   return { ok: true, result: value };
 }
 
@@ -985,44 +679,17 @@ function synthesiseInternalErrorEnvelope(err: unknown): ToolEnvelope {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tool descriptor builder
-// ---------------------------------------------------------------------------
-
-/** Permissive fallback `input_schema` used when a tool's Zod schema cannot
- *  be converted into an Anthropic-compatible JSON Schema. Logged at WARN
- *  level so the operator can patch the offending tool, but the chat surface
- *  stays up. */
 const PERMISSIVE_INPUT_SCHEMA: Anthropic.Messages.Tool.InputSchema = {
   type: "object",
   additionalProperties: true,
 } as unknown as Anthropic.Messages.Tool.InputSchema;
 
-/**
- * Convert a single tool's Zod input schema to an Anthropic-compatible
- * `input_schema`. Uses `z.toJSONSchema` (Zod v4) with `target: 'draft-7'`
- * so the emitted shape stays inline (no `$defs`/`$ref`) for the simple
- * object schemas our 13-15 tools use. We strip the `$schema` meta-field
- * (Anthropic does not need it; keeping it is harmless but noisy) and
- * verify the result has `type === "object"` at the root — Anthropic
- * rejects anything else. If the conversion throws OR the result is not a
- * root-level object schema, return `undefined` so the caller can fall
- * back to the permissive shape and log.
- *
- * Determinism: `z.toJSONSchema` is a pure function of the Zod schema. The
- * P0 prompt-cache prefix (system + tools) therefore remains byte-stable
- * across process lifetime once the catalog is resolved — exactly one
- * re-cache happens on rollout (schemas change once), then stable.
- */
 function toolInputSchemaFromZod(
   toolName: string,
   inputSchema: unknown,
   logger: Logger
 ): Anthropic.Messages.Tool.InputSchema | undefined {
   try {
-    // `z.toJSONSchema` accepts any `ZodType`; the catalog stores `ZodTypeAny`.
-    // `draft-7` keeps inline `additionalProperties: false` for `z.object` and
-    // avoids 2020-12 quirks Anthropic may not have updated for.
     const raw = z.toJSONSchema(inputSchema as Parameters<typeof z.toJSONSchema>[0], {
       target: "draft-7",
     });
@@ -1045,10 +712,6 @@ function toolInputSchemaFromZod(
       );
       return undefined;
     }
-    // Strip JSON Schema meta-keys Anthropic does not need. `$schema` is
-    // emitted by Zod's draft-7 target; `$defs`/`definitions` would only
-    // appear if the schema used `z.lazy`/recursion — none of our 13-15
-    // chat tools do, so logging is sufficient.
     if ("$defs" in record || "definitions" in record) {
       logger.warn(
         { event: "chat.tool_schema_has_defs", tool: toolName },
@@ -1056,9 +719,8 @@ function toolInputSchemaFromZod(
       );
       return undefined;
     }
-    // Drop `$schema` (meta only, not consumed by Anthropic). Keep everything
-    // else verbatim: properties, required, enums, descriptions, min/max.
-    const { $schema: _drop, ...clean } = record;
+    const clean: Record<string, unknown> = { ...record };
+    delete clean["$schema"];
     return clean as unknown as Anthropic.Messages.Tool.InputSchema;
   } catch (err) {
     logger.warn(
@@ -1073,24 +735,6 @@ function toolInputSchemaFromZod(
   }
 }
 
-/**
- * Build the Anthropic `Tool[]` descriptor array from the resolved catalog.
- * Each `McpTool` carries a Zod input schema; we convert it via
- * `z.toJSONSchema` so the model receives the real shape (required fields,
- * enums, types) and stops wasting a round-trip on a first attempt that
- * omits required fields (e.g. `ingest_directed.source_type`).
- *
- * Per BR-06 the Zod schema is re-applied by the tool handler on dispatch
- * (defense in depth) — an invalid shape still surfaces as a structured
- * envelope rather than an SDK validation rejection. The advertised schema
- * is a guide for the model, not the boundary check.
- *
- * Fallback (per-tool): if a single tool's schema cannot be converted,
- * fall back to a permissive `{ type:'object', additionalProperties:true }`
- * for THAT tool only and log — never derail the chat boot.
- *
- * Exported for unit testing (BR-06 advertised-schema invariant).
- */
 export function buildToolDescriptors(
   catalog: ResolvedChatToolCatalog,
   logger: Logger
@@ -1098,7 +742,7 @@ export function buildToolDescriptors(
   const out: Anthropic.Messages.Tool[] = [];
   for (const name of Object.keys(catalog)) {
     const tool = catalog[name];
-    if (tool === undefined) continue; // unreachable — catalog is dense by BR-05
+    if (tool === undefined) continue;
     const derived = toolInputSchemaFromZod(name, tool.inputSchema, logger);
     out.push({
       name,
@@ -1108,10 +752,6 @@ export function buildToolDescriptors(
   }
   return out;
 }
-
-// ---------------------------------------------------------------------------
-// Misc utilities
-// ---------------------------------------------------------------------------
 
 function mapStopReason(
   stop: Anthropic.Messages.Message["stop_reason"] | null | undefined
@@ -1124,10 +764,6 @@ function mapStopReason(
     case "stop_sequence":
       return "stop_sequence";
     default:
-      // Any other stop reason (refusal, pause_turn, null, ...) collapses
-      // to `end_turn` for the chat SSE — the model is signalling it has
-      // nothing more to say. The accumulator still records the original
-      // reason internally if a future requirement adds richer surfacing.
       return "end_turn";
   }
 }
@@ -1138,8 +774,6 @@ function isAbortError(err: unknown): boolean {
   if (typeof name === "string") {
     if (name === "AbortError" || name === "APIUserAbortError") return true;
   }
-  // DOMException check (some runtimes wrap aborts as DOMException with
-  // name === 'AbortError'). The name check above already catches this.
   return false;
 }
 

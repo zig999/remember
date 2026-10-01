@@ -1,13 +1,3 @@
-// Repository layer for the curation module.
-//
-// All queries are parameterized (CLAUDE.md "Security"). Functions are pure
-// SQL wrappers — the service layer owns transaction wiring (BEGIN / COMMIT)
-// and decides which repo function to call inside the open transaction.
-//
-// BR-26: every write UC issues `SELECT ... FOR UPDATE` on every row to be
-// mutated at the START of the transaction. The corresponding `loadXForUpdate`
-// functions live here.
-
 import type { PoolClient } from "pg";
 
 import { InvariantError } from "../../../shared/invariant-error.js";
@@ -17,10 +7,6 @@ import type {
   NodeStatus,
 } from "../dto/enums.dto.js";
 
-// ---------------------------------------------------------------------------
-// knowledge_node
-// ---------------------------------------------------------------------------
-
 export interface KnowledgeNodeLockedRow {
   readonly id: string;
   readonly node_type_id: string;
@@ -29,10 +15,6 @@ export interface KnowledgeNodeLockedRow {
   readonly merged_into_node_id: string | null;
 }
 
-/**
- * Load multiple knowledge_node rows with `FOR UPDATE` lock. Returns rows in
- * an arbitrary order; caller is expected to match by id.
- */
 export async function loadNodesForUpdate(
   client: PoolClient,
   nodeIds: readonly string[]
@@ -48,7 +30,6 @@ export async function loadNodesForUpdate(
   return res.rows;
 }
 
-/** UC-02 / UC-03: set status of a node previously locked. */
 export async function updateNodeStatusKeepSeparate(
   client: PoolClient,
   nodeId: string
@@ -64,7 +45,6 @@ export async function updateNodeStatusKeepSeparate(
   return res.rowCount ?? 0;
 }
 
-/** UC-02 / UC-04: mark `absorbed` as merged, pointing at `survivor`. */
 export async function updateNodeMerged(
   client: PoolClient,
   absorbedId: string,
@@ -82,7 +62,6 @@ export async function updateNodeMerged(
   return res.rowCount ?? 0;
 }
 
-/** BR-07: path compression — repoint anything that was pointing at absorbed. */
 export async function pathCompressMergedInto(
   client: PoolClient,
   absorbedId: string,
@@ -98,15 +77,6 @@ export async function pathCompressMergedInto(
   return res.rowCount ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// node_alias (copy on merge — BR-08)
-// ---------------------------------------------------------------------------
-
-/**
- * Copy aliases from absorbed -> survivor. The absorbed node's canonical alias
- * is downgraded to `kind = 'alias'` on the survivor (the survivor's canonical
- * is preserved by the partial unique index `node_alias_one_canonical_uq`).
- */
 export async function copyAliases(
   client: PoolClient,
   absorbedId: string,
@@ -123,10 +93,6 @@ export async function copyAliases(
   );
   return res.rowCount ?? 0;
 }
-
-// ---------------------------------------------------------------------------
-// knowledge_link / node_attribute repointing (BR-09)
-// ---------------------------------------------------------------------------
 
 export async function repointLinks(
   client: PoolClient,
@@ -160,10 +126,6 @@ export async function repointAttributes(
   return res.rowCount ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// entity_match_review (delete on resolution — BR-10)
-// ---------------------------------------------------------------------------
-
 export async function deleteEntityMatchReviewByNode(
   client: PoolClient,
   nodeId: string
@@ -174,10 +136,6 @@ export async function deleteEntityMatchReviewByNode(
   );
   return res.rowCount ?? 0;
 }
-
-// ---------------------------------------------------------------------------
-// Item-level (link/attribute) operations — UC-05, UC-06, UC-07, UC-08, UC-09, UC-10
-// ---------------------------------------------------------------------------
 
 export interface ItemLockedRow {
   readonly id: string;
@@ -191,17 +149,12 @@ export interface ItemLockedRow {
   readonly valid_from: string | null;
   readonly valid_to: string | null;
   readonly status: AssertionStatus;
-  readonly confidence: string; // numeric returned by pg as string
+  readonly confidence: string;
   readonly valid_from_source: "stated" | "document" | "received" | null;
   readonly superseded_at: Date | null;
   readonly supersedes_id?: string | null;
 }
 
-/**
- * Load multiple link OR attribute rows with FOR UPDATE. The `item_kind`
- * argument selects the table; the caller is responsible for ensuring every
- * id refers to the same kind.
- */
 export async function loadItemsForUpdate(
   client: PoolClient,
   itemKind: ItemKind,
@@ -242,7 +195,6 @@ export async function loadItemsForUpdate(
   return res.rows;
 }
 
-/** UC-08: confirm_item — flip `uncertain` -> `active`. BR-21. */
 export async function confirmItem(
   client: PoolClient,
   itemKind: ItemKind,
@@ -268,7 +220,6 @@ export async function confirmItem(
   return res.rowCount ?? 0;
 }
 
-/** UC-09: reject_item — pair status='deleted' AND superseded_at=now() (BR-20). */
 export async function rejectItem(
   client: PoolClient,
   itemKind: ItemKind,
@@ -298,7 +249,6 @@ export async function rejectItem(
   return res.rowCount ?? 0;
 }
 
-/** UC-05 (prefer_one, winner): disputed -> active. */
 export async function resolveDisputeWinner(
   client: PoolClient,
   itemKind: ItemKind,
@@ -324,7 +274,6 @@ export async function resolveDisputeWinner(
   return res.rowCount ?? 0;
 }
 
-/** UC-05 (prefer_one, losers): pair status='deleted' AND superseded_at=now(). */
 export async function resolveDisputeLosers(
   client: PoolClient,
   itemKind: ItemKind,
@@ -353,7 +302,6 @@ export async function resolveDisputeLosers(
   return res.rowCount ?? 0;
 }
 
-/** UC-06 (adjust_periods): set new (valid_from, valid_to) and status='active'. */
 export async function adjustItemPeriod(
   client: PoolClient,
   itemKind: ItemKind,
@@ -385,10 +333,6 @@ export async function adjustItemPeriod(
   return res.rowCount ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// UC-10: correct_item — predecessor + new row + provenance
-// ---------------------------------------------------------------------------
-
 export interface CorrectionMutationArgs {
   readonly predecessorId: string;
   readonly correctedValue?: string | null;
@@ -398,7 +342,6 @@ export interface CorrectionMutationArgs {
   readonly correctedValidFromSource?: "stated" | "document" | "received" | null;
 }
 
-/** UC-10 predecessor UPDATE — `valid_to` is NOT in the SET list (BR-18). */
 export async function supersedePredecessor(
   client: PoolClient,
   itemKind: ItemKind,
@@ -428,7 +371,6 @@ export async function supersedePredecessor(
   return res.rowCount ?? 0;
 }
 
-/** UC-10 new row creation — SELECT-then-INSERT with COALESCE overrides. */
 export async function insertCorrectedRow(
   client: PoolClient,
   itemKind: ItemKind,
@@ -507,7 +449,6 @@ export async function insertCorrectedRow(
   return row.id;
 }
 
-/** UC-10 BR-19 provenance copy from predecessor to successor. */
 export async function copyProvenance(
   client: PoolClient,
   itemKind: ItemKind,
@@ -538,7 +479,6 @@ export async function copyProvenance(
   return res.rowCount ?? 0;
 }
 
-/** UC-10 BR-19 (extension): append the errata fragment if supplied. */
 export async function appendProvenanceFragment(
   client: PoolClient,
   itemKind: ItemKind,
@@ -565,10 +505,6 @@ export async function appendProvenanceFragment(
   return res.rowCount ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// information_fragment — BR-17 date justification check
-// ---------------------------------------------------------------------------
-
 export interface InformationFragmentRow {
   readonly id: string;
   readonly status: string;
@@ -584,10 +520,6 @@ export async function findInformationFragmentById(
   );
   return res.rows[0] ?? null;
 }
-
-// ---------------------------------------------------------------------------
-// curation_action — audit row (BR-24)
-// ---------------------------------------------------------------------------
 
 export interface CurationActionInsertArgs {
   readonly action: string;
@@ -619,10 +551,6 @@ export async function insertCurationAction(
   }
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Queue listing — UC-01
-// ---------------------------------------------------------------------------
 
 export interface EntityMatchQueueRow {
   readonly node_id: string;
@@ -674,10 +602,6 @@ export interface DisputedLinkRow {
   readonly target_node_id: string;
   readonly link_type_id: string;
   readonly link_type_name: string;
-  /** Cardinality of the link type (A10). false = functional (one current per
-   *  (source, link_type)) → competing targets are SIDES of one dispute; true =
-   *  multi-valued → conflict scope includes the target. Drives the queue
-   *  dispute grouping (queue.service.groupDisputedLinks). */
   readonly allows_multiple_current: boolean;
   readonly valid_from: string | null;
   readonly valid_to: string | null;
@@ -772,18 +696,6 @@ export async function countDisputedAttributes(
   return Number(res.rows[0]?.total ?? 0);
 }
 
-// ---------------------------------------------------------------------------
-// BR-33: curation_metrics — read-only §16 calibration aggregates.
-//
-// Each statement below is a separate `client.query(...)` issued inside the
-// SAME `BEGIN READ ONLY` transaction (opened by `withReadOnly` in the service
-// layer) so all seven aggregates see one coherent MVCC snapshot — the
-// `computed_at` guarantee declared by `openapi.yaml` (CurationMetricsResponse).
-//
-// SQL sources are spelled out in `curation.back.md` BR-33 ("SQL sources" table).
-// ---------------------------------------------------------------------------
-
-/** Accept actions are the five non-reject curator verbs (BR-33 spec table). */
 const ACCEPT_ACTIONS = [
   "resolve_entity_match",
   "merge_nodes",
@@ -792,15 +704,8 @@ const ACCEPT_ACTIONS = [
   "correct_item",
 ] as const;
 
-/** Row shape used by `aggregateCurationMetrics` to surface the snapshot. */
 export interface CurationMetricsRow {
-  /** `accept_rate` numerator/denominator; pre-divided to keep service simple. */
   readonly accept_rate: number;
-  /**
-   * Map of `error.code` → fraction (in [0, 1]) for explicit reject_item rows
-   * whose `payload->>'error_code'` is populated. Empty `{}` is the canonical
-   * empty state (NEVER omitted from the response — BR-33).
-   */
   readonly reject_rate_by_code: Readonly<Record<string, number>>;
   readonly needs_review_count: number;
   readonly uncertain_count: number;
@@ -809,19 +714,9 @@ export interface CurationMetricsRow {
   readonly disputed_queue_count: number;
 }
 
-/**
- * Run the BR-33 aggregate snapshot inside the caller's transaction. The
- * service layer is expected to have already opened a `BEGIN READ ONLY` block
- * (`withReadOnly`) — every statement below is parameterless and read-only.
- */
 export async function aggregateCurationMetrics(
   client: PoolClient
 ): Promise<CurationMetricsRow> {
-  // -- accept_rate ---------------------------------------------------------
-  // Numerator: rows whose `action` is one of the five accept verbs.
-  // Denominator: total curation_action rows. Zero-division → 0 at BFF layer
-  // (documented choice; matches the OpenAPI "Share of curator actions"
-  // description for an empty-table cold start — see acceptance criterion #3).
   const totalActionsRes = await client.query<{ total: string }>(
     `SELECT count(*)::text AS total FROM curation_action`
   );
@@ -838,11 +733,7 @@ export async function aggregateCurationMetrics(
     acceptRate = accepted / totalActions;
   }
 
-  // -- reject_rate_by_code -------------------------------------------------
-  // Today `curation_action.payload` of `reject_item` is `'{}'` (BR-25), so
-  // this map is empty in practice. We still surface the field as `{}` rather
-  // than omit it (BR-33 — front spec depends on the key being present).
-  let rejectRateByCode: Record<string, number> = {};
+  const rejectRateByCode: Record<string, number> = {};
   if (totalActions > 0) {
     const rejectsRes = await client.query<{ code: string; total: string }>(
       `SELECT (payload->>'error_code') AS code,
@@ -858,10 +749,6 @@ export async function aggregateCurationMetrics(
     }
   }
 
-  // -- needs_review_count + entity_match_queue_count -----------------------
-  // BR-33: surfaced as two separate fields even though they are logically
-  // equal under BR-10 — the OpenAPI contract requires both, and they are NOT
-  // guaranteed equal across out-of-band repairs.
   const needsReviewRes = await client.query<{ total: string }>(
     `SELECT count(*)::text AS total
        FROM knowledge_node
@@ -870,8 +757,6 @@ export async function aggregateCurationMetrics(
   const needsReviewCount = Number(needsReviewRes.rows[0]?.total ?? 0);
   const entityMatchQueueCount = needsReviewCount;
 
-  // -- uncertain_count -----------------------------------------------------
-  // Sum of resolved-view rows whose effective_status='uncertain' (§5.4/§6.6).
   const uncertainRes = await client.query<{ total: string }>(
     `SELECT (
        (SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'uncertain')
@@ -880,7 +765,6 @@ export async function aggregateCurationMetrics(
   );
   const uncertainCount = Number(uncertainRes.rows[0]?.total ?? 0);
 
-  // -- disputed_count ------------------------------------------------------
   const disputedRes = await client.query<{ total: string }>(
     `SELECT (
        (SELECT count(*) FROM knowledge_link_resolved WHERE effective_status = 'disputed')
@@ -889,14 +773,6 @@ export async function aggregateCurationMetrics(
   );
   const disputedCount = Number(disputedRes.rows[0]?.total ?? 0);
 
-  // -- disputed_queue_count ------------------------------------------------
-  // Per-assertion-scope count (links keyed by (source, target, link_type)).
-  // NOTE: this is an ADVISORY metric and is NOT fully consistent with the
-  // queue's dispute grouping (queue.service.groupDisputedLinks), which is
-  // cardinality-aware and collapses competing targets of a FUNCTIONAL link
-  // into ONE group. For functional multi-target disputes this can over-count
-  // vs. the number of queue items. Reconciling the two is a follow-up (the
-  // queue grouping is the user-facing source of truth).
   const disputedQueueRes = await client.query<{ total: string }>(
     `SELECT count(*)::text AS total
        FROM (
