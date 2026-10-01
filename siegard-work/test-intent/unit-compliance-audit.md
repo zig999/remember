@@ -1,0 +1,1 @@
+- Uma listagem de exclusões de compliance que informa apenas o início da janela de tempo (sem o fim) é aceita, deixando o fim indefinido — teste: src/__tests__/unit/compliance-audit/dto.spec.ts::ListComplianceDeletionsQuerySchema — BR-09 semi-open range > accepts unbounded one-sided range (BR-09) — fonte: src/modules/compliance-audit/dto/compliance-delete.dto.ts

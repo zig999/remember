@@ -1,0 +1,1 @@
+- Uma listagem de fragmentos aceitos que traga parâmetro de consulta desconhecido é recusada (validação estrita das chaves) — teste: src/modules/query-retrieval/dto/fragment.dto.spec.ts::ListAcceptedFragmentsQuerySchema > rejects unknown query keys (strict) — fonte: src/modules/query-retrieval/dto/fragment.dto.ts

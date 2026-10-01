@@ -1,0 +1,2 @@
+- Um recurso que já existe responde HTTP 409 com o código RESOURCE_ALREADY_EXISTS — teste: src/__tests__/unit/shared/error-mapping.spec.ts::codeToHttpStatus > covers every RESOURCE_ code from the catalog — fonte: src/shared/error-mapping.ts
+- A ingestão de chat desabilitada responde HTTP 503 com o código BUSINESS_CHAT_INGEST_DISABLED — teste: src/__tests__/unit/shared/error-mapping.spec.ts::codeToHttpStatus > covers every chat BUSINESS_ code — fonte: src/shared/error-mapping.ts

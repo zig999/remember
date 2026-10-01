@@ -1,0 +1,1 @@
+- uma busca com expand=false não percorre o grafo de conhecimento (nenhuma travessia é executada) — teste: src/__tests__/integration/query-retrieval/routes.spec.ts::query-retrieval — GET /api/v1/search > does NOT invoke traverseNodes() when expand=false — fonte: src/modules/query-retrieval/service/search.service.ts
