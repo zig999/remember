@@ -7,6 +7,3 @@ ALTER TABLE compliance_deletion
     AND COALESCE((affected -> 'links')::text      ~ '^[0-9]+$', false)
     AND COALESCE((affected -> 'attributes')::text ~ '^[0-9]+$', false)
   ) NOT VALID;
-
-COMMENT ON COLUMN compliance_deletion.affected IS
-  'Contagens do alcance do apagamento: objeto com chunks, fragments, links e attributes, cada um inteiro nao negativo. Sem default.';
