@@ -899,7 +899,7 @@ answers:
   - *id003
   - &id004
     when: The proposal is missing a required field or holds one of the wrong shape.
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
+    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "Input failed Zod parse."'
   - *id002
   - &id005
     rule: rules/knowledge-base/proposal-requires-running-run
@@ -913,6 +913,9 @@ answers:
     answer: 'error code RESOURCE_NOT_FOUND naming the chunks, HTTP 200 carrying `{ ok: false, error }` over REST'
   - rule: rules/knowledge-base/fragment-chunks-in-run-source
     answer: 'error code VALIDATION_INVALID_FORMAT naming the chunks and the expected raw information, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - &id015
+    when: A proposal fails for a cause no other refusal names, other than an unreachable store.
+    answer: 'error code SYSTEM_INTERNAL_ERROR carrying no details, HTTP 500 over REST with the message "Internal server error.", and over MCP the message "Internal error in MCP handler."'
 - operation: propose-node
   accepted: '`{ ok: true, result }` carrying the node''s identity and its resolution matched_existing, created_new or needs_review'
   refusals:
@@ -924,6 +927,7 @@ answers:
     answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
   - rule: rules/knowledge-base/node-type-in-catalog
     answer: 'error code BUSINESS_UNKNOWN_NODE_TYPE naming the node type, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: propose-link
   accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome consolidated, accepted, superseded_previous with the superseded link''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
@@ -962,6 +966,12 @@ answers:
   - &id014
     rule: rules/knowledge-base/cited-fragments-anchored
     answer: 'error code VALIDATION_INVALID_FORMAT naming the fragments and the expected raw information, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - &id016
+    rule: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
+  - rule: rules/knowledge-base/consolidation-race-refuses-second-collision
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope knowledge_link in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: propose-attribute
   accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome consolidated, accepted, superseded_previous with the superseded attribute''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
@@ -986,6 +996,10 @@ answers:
   - *id012
   - *id013
   - *id014
+  - *id016
+  - rule: rules/knowledge-base/consolidation-race-refuses-second-collision
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope node_attribute in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: ingest-document
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
@@ -1004,18 +1018,30 @@ answers:
   - when: The extraction fails for a cause no other refusal names.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
   refusals:
   - rule: rules/knowledge-base/directed-requires-fragment-and-node
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-reference-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-attribute-value-shape
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-source-label-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/caller-never-states-received
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
+  - rule: rules/knowledge-base/directed-validity-start-shape
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
+  - when: The store cannot be reached while the directed payload is persisted before dispatch.
+    answer: error code SYSTEM_SERVICE_UNAVAILABLE with the message "A backing service is temporarily unavailable."
+  - when: Persisting the directed payload before dispatch fails for a cause other than an unreachable store.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the directed payload before dispatch.", carrying no details
+  - when: The directed payload's content is found already held when it is persisted before dispatch.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "Directed ingestion intake returned ''noop_existing''; the per-call nonce should make this unreachable.", carrying the raw information''s and run''s identities'
+  - when: Persisting the directed payload before dispatch produces no chunk.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Directed ingestion intake produced no chunks.", carrying the raw information's and run's identities
+  - when: The directed ingestion fails for a cause no other refusal names.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during directed ingestion.", carrying no details
 - operation: list-recent-ingestions
   accepted: '`{ ok: true, result }` carrying the recent ingestions, each with its raw information''s identity, source type, status and reception time, the first 80 characters of its content, and its latest run''s identity, status, start and finish times, prompt version and model'
   refusals:
@@ -1055,6 +1081,38 @@ entries:
   unstated: The material does not say what ingest-document tells a caller whose content is already held beyond the identities, the chunk count and the run's status.
   decided: The already_ingested answer also carries a message, one wording for a completed run and one naming the status for any other, and a status of null where the run's status cannot be read.
   why: The owner holds the code as the truth, and callers act on that message to recover a run that did not finish.
+- field: answers
+  unstated: The material does not say what message ingest-directed answers when its arguments fail validation, while other contracts fix "Request payload failed validation." for the same code.
+  decided: Every validation refusal of ingest-directed answers the message "ingest_directed arguments failed validation." with the failing fields.
+  why: The owner holds the code as the truth, and the directed tool's handler answers exactly that message on a failed parse.
+- field: answers
+  unstated: The material does not say what ingest-directed answers when persisting its payload fails, finds its content already held, produces no chunk or fails for any other cause.
+  decided: Each of these answers SYSTEM_INTERNAL_ERROR with its own fixed message and no cause, and an unreachable store answers SYSTEM_SERVICE_UNAVAILABLE.
+  why: The owner holds the code as the truth, and the directed service and handler answer exactly these on those conditions.
+- field: answers
+  unstated: The material does not say what a directed ingestion reports for a node whose pinned identity names no node or an inactive one.
+  decided: The node is reported rejected, with RESOURCE_NOT_FOUND for an absent node and VALIDATION_INVALID_FORMAT for an inactive one, each with its message and details.
+  why: The owner holds the code as the truth, and the pin check reports exactly these inside an accepted ingestion.
+- field: answers
+  unstated: The material does not say what message a proposal refused for its shape answers over MCP.
+  decided: Over MCP the message is "Input failed Zod parse." for all four proposals, while REST answers HTTP 422.
+  why: The owner holds the code as the truth, and the four MCP proposal handlers answer exactly that message.
+- field: answers
+  unstated: The material does not say what a proposal answers when it fails for a cause no other refusal names.
+  decided: It answers SYSTEM_INTERNAL_ERROR with no details, HTTP 500 and "Internal server error." over REST, and "Internal error in MCP handler." over MCP.
+  why: The owner holds the code as the truth, and the shared handler and the global error handler answer exactly these.
+- field: answers
+  unstated: The material does not say what a link or attribute proposal answers when it meets a concurrently committed current assertion a second time.
+  decided: It answers SYSTEM_INTERNAL_ERROR with a fixed message and the scope knowledge_link or node_attribute, HTTP 200 carrying the refusal over REST.
+  why: The owner holds the code as the truth, and the consolidation answers exactly this after its second attempt.
+- field: answers
+  unstated: A fixed message that never names the cause is required of an unexpected failure, while the second-collision refusal's message names a concurrent commit.
+  decided: A second collision is a named cause and not an unexpected one, so its message names it.
+  why: The owner holds the code as the truth, and the consolidation refuses on a cause it recognises by name.
+- field: answers
+  unstated: The unreachable store answers unavailable and never an internal failure, while the shared proposal handler answers an internal failure for any cause it does not recognise.
+  decided: The proposal's internal failure answer is stated for a cause other than an unreachable store.
+  why: Stating it for an unreachable store would contradict a constraint no finding asked to change.
 ---
 
 === contracts/knowledge-base/retrieval
@@ -6189,6 +6247,54 @@ entries:
   why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
 ---
 
+=== rules/knowledge-base/consolidation-race-decided-again
+---
+type: policy
+statement: A link or attribute proposal whose recording meets a current assertion that a concurrent proposal committed first is decided again, once, against that assertion.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/consolidation-race-decided-again.log
+---
+entries:
+- field: consistency
+  unstated: The material does not say how this rule holds across the separate records it concerns.
+  decided: eventual
+  why: Each case concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+---
+
+=== rules/knowledge-base/consolidation-race-refuses-second-collision
+---
+type: policy
+statement: A link or attribute proposal whose second decision again meets a current assertion that a concurrent proposal committed first is refused.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/knowledge-link
+- domain/knowledge-base/node-attribute
+consistency: eventual
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/consolidation-race-refuses-second-collision.log
+---
+entries:
+- field: consistency
+  unstated: The material does not say how this rule holds across the separate records it concerns.
+  decided: eventual
+  why: Each case concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+---
+
 === rules/knowledge-base/consolidation-records-provenance
 ---
 type: policy
@@ -6672,6 +6778,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/directed-chat-pointer-whole
+---
+type: invariant
+statement: A chat turn's conversation and message identities are recorded in a directed ingestion's raw information together or not at all.
+constrains:
+- domain/knowledge-base/directed-ingestion
+- domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/directed-defaults
 ---
 type: invariant
@@ -6865,6 +6984,19 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/directed-source-metadata
+---
+type: invariant
+statement: A directed ingestion records, in its raw information's metadata, that it is directed, its label when it has one and, when it is made from a chat turn, the turn's conversation and message identities.
+constrains:
+- domain/knowledge-base/directed-ingestion
+- domain/knowledge-base/raw-information
+---
+
+## Description
+
+None.
+
 === rules/knowledge-base/directed-turn-is-original-input
 ---
 type: invariant
@@ -6877,6 +7009,27 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/directed-validity-start-shape
+---
+type: invariant
+statement: A directed attribute's or link's validity start MUST be written as four digits, two digits and two digits, separated by hyphens.
+constrains:
+- domain/knowledge-base/directed-item
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/directed-validity-start-shape.log
+---
+entries:
+- field: statement
+  unstated: The service accepts a validity end on a directed attribute or link, while the directed tool's schema declares only a validity start.
+  decided: Only the validity start is stated, because the tool strips any other field before the service reads it.
+  why: The tool is the only entry of a directed ingestion, so a validity end never arrives.
+---
 
 === rules/knowledge-base/dispute-entry-time
 ---
@@ -7163,7 +7316,7 @@ None.
 === rules/knowledge-base/every-proposal-audited
 ---
 type: invariant
-statement: Every proposal made within an LLM run is recorded as one of its tool calls, with its arguments, its result and its validation outcome, whichever transport carried it and whether it was taken, refused or failed.
+statement: Every proposal made within an LLM run is recorded as one of its tool calls, with its arguments, its result and its validation outcome, whichever transport carried it and whether it was taken, refused or failed, unless recording the tool call of a refused or failed proposal itself fails.
 constrains:
 - domain/knowledge-base/llm-run
 - domain/knowledge-base/tool-call
@@ -7181,6 +7334,10 @@ entries:
   unstated: The material has MCP proposals record a tool call on every outcome and REST proposals record none; the two decide differently for a proposal carried over REST.
   decided: Every proposal within a run records its tool call, whichever transport carried it.
   why: A run's summary is counted from its tool calls, so a proposal without one would vanish from its run's account.
+- field: statement
+  unstated: The material has a refused or failed proposal always recorded as a tool call, while the code keeps none when recording that tool call itself fails.
+  decided: A refused or failed proposal whose tool call cannot be recorded is the one exception to being recorded.
+  why: The owner holds the code as the truth, and the handler logs the failed recording and answers the original refusal.
 ---
 
 === rules/knowledge-base/exact-alias-resolves
@@ -7395,10 +7552,88 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-dates-events
+---
+type: invariant
+statement: Under prompt version v2 and later, an extraction asks the model to propose an event's event_date, and its end_date when the end is distinct, whenever the document states the date of the occurrence.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-dates-events.log
+---
+entries:
+- field: statement
+  unstated: The material shows the event-dating directive in the v2 prompt module only.
+  decided: The rule holds under prompt version v2 and later.
+  why: The v3 and v4 prompts are built by appending to the v2 prompt, so they carry the directive.
+---
+
+=== rules/knowledge-base/extraction-event-date-is-the-value
+---
+type: invariant
+statement: Under prompt version v2 and later, an extraction asks the model to give an event's occurrence date as the value of event_date and the date that value became known, typically the document date, as its validity start.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-event-date-is-the-value.log
+---
+entries:
+- field: statement
+  unstated: The material shows the event-date directive in the v2 prompt module only.
+  decided: The rule holds under prompt version v2 and later.
+  why: The v3 and v4 prompts are built by appending to the v2 prompt, so they carry the directive.
+---
+
+=== rules/knowledge-base/extraction-event-type-fallback
+---
+type: invariant
+statement: Under prompt version v3 and later, an extraction asks the model to use the event type outro only when no other value fits and then to lower its confidence to at most 0.74.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-event-type-fallback.log
+---
+entries:
+- field: statement
+  unstated: The material shows the event-type fallback in the v3 prompt module only.
+  decided: The rule holds under prompt version v3 and later.
+  why: The v4 prompt is built by appending to the v3 prompt, so it carries the directive.
+---
+
 === rules/knowledge-base/extraction-fails-on-repeated-system-errors
 ---
 type: invariant
 statement: An extraction fails its LLM run when three proposals in a row within one chunk fail with a system error.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-never-invents-a-date
+---
+type: invariant
+statement: An extraction asks the model never to invent a date.
 constrains:
 - domain/knowledge-base/llm-run
 ---
@@ -7419,6 +7654,50 @@ constrains:
 
 None.
 
+=== rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+---
+type: invariant
+statement: Under prompt version v4, an extraction asks the model to resolve a relative date in a chunk against the document date when the source has one and otherwise against the date of its reception.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-relative-date-falls-back-to-reception.log
+---
+entries:
+- field: statement
+  unstated: The v4 directive tells the model to give the basis received to a date taken from the reception time, which another rule forbids a proposal to state.
+  decided: The rule states the anchor of a relative date and leaves the basis out.
+  why: Stating the basis would write the contradiction into this rule, and the owner has not asked for it to be settled.
+---
+
+=== rules/knowledge-base/extraction-relative-date-needs-document-date
+---
+type: invariant
+statement: Under prompt version v3, an extraction asks the model to resolve a relative date in a chunk against the document date and to omit the date when the source has none.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/prompt-version
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-relative-date-needs-document-date.log
+---
+entries:
+- field: statement
+  unstated: The material shows the omission of an undated relative date only in the v3 prompt, which v4 replaces.
+  decided: The rule holds under prompt version v3 alone.
+  why: The v4 prompt declares that it supersedes this v3 rule.
+---
+
 === rules/knowledge-base/extraction-requires-running-run
 ---
 type: invariant
@@ -7431,6 +7710,40 @@ constrains:
 ## Description
 
 None.
+
+=== rules/knowledge-base/extraction-stated-basis-needs-written-start
+---
+type: invariant
+statement: An extraction asks the model to give a validity start the basis stated only when the start is written in the chunk and supported by a cited fragment.
+constrains:
+- domain/knowledge-base/llm-run
+- domain/knowledge-base/valid-from-basis
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-turn-token-ceiling
+---
+type: invariant
+statement: An extraction asks the language model for at most 8000 tokens of output on each turn.
+constrains:
+- domain/knowledge-base/llm-run
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/extraction-turn-token-ceiling.log
+---
+entries:
+- field: statement
+  unstated: The material does not say whether the output ceiling of an extraction turn is a fact of the business or a setting of the implementation.
+  decided: It is recorded as a rule of extraction, like the default extraction model.
+  why: The owner holds the code as the truth, and all four prompt versions pass the same ceiling to every model call.
+---
 
 === rules/knowledge-base/fragment-chunks-exist
 ---
@@ -7904,6 +8217,19 @@ type: invariant
 statement: A knowledge link never names itself as the one it supersedes.
 constrains:
 - domain/knowledge-base/knowledge-link
+---
+
+## Description
+
+None.
+
+=== rules/knowledge-base/link-or-attribute-cites-a-fragment
+---
+type: invariant
+statement: A link or attribute proposal MUST cite at least one information fragment.
+constrains:
+- domain/knowledge-base/proposal
+- domain/knowledge-base/information-fragment
 ---
 
 ## Description
@@ -10388,6 +10714,25 @@ involves:
 ## Description
 
 The two links compete for the same ground although their targets differ, because the link type admits a single current link.
+
+=== scenarios/knowledge-base/go-live-date-is-the-value
+---
+subject: rules/knowledge-base/extraction-event-date-is-the-value
+given:
+- a document dated 2026-06-20 announces a go-live on 2026-08-01
+when:
+- an extraction under prompt version v2 or later reads it
+then:
+- the model is asked to propose event_date 2026-08-01 for the go-live
+- the model is asked to give 2026-06-20 as that proposal's validity start with the basis document
+involves:
+- rules/knowledge-base/extraction-dates-events
+- domain/knowledge-base/valid-from-basis
+---
+
+## Description
+
+None.
 
 === scenarios/knowledge-base/held-content-under-another-model
 ---

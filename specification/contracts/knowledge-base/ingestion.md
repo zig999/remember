@@ -90,7 +90,7 @@ answers:
   - *id003
   - &id004
     when: The proposal is missing a required field or holds one of the wrong shape.
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
+    answer: 'error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST, and over MCP the message "Input failed Zod parse."'
   - *id002
   - &id005
     rule: rules/knowledge-base/proposal-requires-running-run
@@ -104,6 +104,9 @@ answers:
     answer: 'error code RESOURCE_NOT_FOUND naming the chunks, HTTP 200 carrying `{ ok: false, error }` over REST'
   - rule: rules/knowledge-base/fragment-chunks-in-run-source
     answer: 'error code VALIDATION_INVALID_FORMAT naming the chunks and the expected raw information, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - &id015
+    when: A proposal fails for a cause no other refusal names, other than an unreachable store.
+    answer: 'error code SYSTEM_INTERNAL_ERROR carrying no details, HTTP 500 over REST with the message "Internal server error.", and over MCP the message "Internal error in MCP handler."'
 - operation: propose-node
   accepted: '`{ ok: true, result }` carrying the node''s identity and its resolution matched_existing, created_new or needs_review'
   refusals:
@@ -115,6 +118,7 @@ answers:
     answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
   - rule: rules/knowledge-base/node-type-in-catalog
     answer: 'error code BUSINESS_UNKNOWN_NODE_TYPE naming the node type, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: propose-link
   accepted: '`{ ok: true, result }` carrying the link''s identity and its outcome consolidated, accepted, superseded_previous with the superseded link''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
@@ -153,6 +157,12 @@ answers:
   - &id014
     rule: rules/knowledge-base/cited-fragments-anchored
     answer: 'error code VALIDATION_INVALID_FORMAT naming the fragments and the expected raw information, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - &id016
+    rule: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message, HTTP 422 over REST
+  - rule: rules/knowledge-base/consolidation-race-refuses-second-collision
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope knowledge_link in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: propose-attribute
   accepted: '`{ ok: true, result }` carrying the attribute''s identity and its outcome consolidated, accepted, superseded_previous with the superseded attribute''s identity, or disputed; below the confidence floor, outcome rejected with no identity and reason BELOW_CONFIDENCE_FLOOR'
   refusals:
@@ -177,6 +187,10 @@ answers:
   - *id012
   - *id013
   - *id014
+  - *id016
+  - rule: rules/knowledge-base/consolidation-race-refuses-second-collision
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row." and the scope node_attribute in its details, HTTP 200 carrying `{ ok: false, error }` over REST'
+  - *id015
 - operation: ingest-document
   accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count and the extraction''s run summary; with outcome already_ingested, when the content is already held, the held raw information''s and run''s identities, its chunk count, its run''s status or null where that cannot be read, and a message: for a completed run "This exact content was already ingested and its extraction completed; returning the existing run. No new extraction was triggered.", for any other status "This exact content was already ingested, but its run is ''<status>'' (not completed) — the prior extraction did not finish. No new extraction was triggered; recovery requires re-running that LLMRun.", naming the status or unknown where it cannot be read'
   refusals:
@@ -195,18 +209,30 @@ answers:
   - when: The extraction fails for a cause no other refusal names.
     answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during document ingestion.", carrying the run's and the raw information's identities
 - operation: ingest-directed
-  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status'
+  accepted: '`{ ok: true, result }` with outcome ingested, the raw information''s and run''s identities, the chunk count, the completed run with its affected nodes, one report entry per item with its reference, kind and status, and a summary counting the items by kind and status; a node whose pinned identity names no knowledge node is reported rejected with error code RESOURCE_NOT_FOUND, the message "node_id pin does not resolve to an existing knowledge_node row." and the details node_id and reason not_found; a node whose pinned identity names a knowledge node that is not active is reported rejected with error code VALIDATION_INVALID_FORMAT, the message "node_id pin resolves to a knowledge_node row whose status is ''<status>'' (only ''active'' is accepted)." and the details node_id, reason inactive and current_status'
   refusals:
   - rule: rules/knowledge-base/directed-requires-fragment-and-node
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-reference-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-attribute-value-shape
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/directed-source-label-length
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
   - rule: rules/knowledge-base/caller-never-states-received
-    answer: error code VALIDATION_INVALID_FORMAT listing each failing field with its path and message
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
+  - rule: rules/knowledge-base/directed-validity-start-shape
+    answer: 'error code VALIDATION_INVALID_FORMAT with the message "ingest_directed arguments failed validation." listing each failing field with its path and message'
+  - when: The store cannot be reached while the directed payload is persisted before dispatch.
+    answer: error code SYSTEM_SERVICE_UNAVAILABLE with the message "A backing service is temporarily unavailable."
+  - when: Persisting the directed payload before dispatch fails for a cause other than an unreachable store.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Failed to persist the directed payload before dispatch.", carrying no details
+  - when: The directed payload's content is found already held when it is persisted before dispatch.
+    answer: 'error code SYSTEM_INTERNAL_ERROR with the message "Directed ingestion intake returned ''noop_existing''; the per-call nonce should make this unreachable.", carrying the raw information''s and run''s identities'
+  - when: Persisting the directed payload before dispatch produces no chunk.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Directed ingestion intake produced no chunks.", carrying the raw information's and run's identities
+  - when: The directed ingestion fails for a cause no other refusal names.
+    answer: error code SYSTEM_INTERNAL_ERROR with the message "Unexpected error during directed ingestion.", carrying no details
 - operation: list-recent-ingestions
   accepted: '`{ ok: true, result }` carrying the recent ingestions, each with its raw information''s identity, source type, status and reception time, the first 80 characters of its content, and its latest run''s identity, status, start and finish times, prompt version and model'
   refusals:
