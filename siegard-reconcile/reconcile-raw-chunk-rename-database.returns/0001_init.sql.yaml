@@ -1,0 +1,64 @@
+findings:
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE raw_chunk, lines 248-249, the offset_start and offset_end column definitions
+    evidence: >-
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      offset_end         int  NOT NULL,
+    cost: >-
+      The node declares offset_start and offset_end without required: true, so a chunk may carry
+      no offsets. The schema forbids that. A reader who trusts the node will build a producer or
+      reader that expects absent offsets and will be refused by the database. A reader who trusts
+      the DDL will not see that the node leaves the two optional. Which of the two was decided is
+      not recoverable from either place.
+    kind: contradicts
+    correction: >-
+      Settle which is decided. Either the node marks offset_start and offset_end required, or the
+      columns become nullable. The CHECKs of chunk-offsets-ordered already let a NULL pass, so
+      they would not change.
+    node: domain/knowledge-base/raw-chunk
+  - file: 0001_init.sql
+    where: >-
+      CREATE TABLE raw_chunk, line 252, the default on the status column
+    evidence: >-
+      status             node_status NOT NULL DEFAULT 'active', -- cascata UC-01 passo 6 (decisão 8)
+    cost: >-
+      The schema applies the rule that a raw chunk is recorded active unless told otherwise. No
+      node holds it. The node rules.source-status-active-or-deleted limits the values to active
+      or deleted and says nothing about the initial one. The default is therefore a business
+      decision that lives only in the DDL, where a reader of the specification will not look for
+      it.
+    kind: unstated
+    correction: >-
+      Give the initial status of a raw chunk to a node. The raw-chunk node is the natural home,
+      since it declares the status attribute.
+    node: domain/knowledge-base/raw-chunk
+
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      CREATE TABLE raw_chunk, lines 243-258. Eight columns carry the node's attributes:
+      chunk_index, text, offset_start, offset_end, locator, chunking_version, status and
+      superseded_at.
+    evidence: >-
+      chunk_index        int  NOT NULL CHECK (chunk_index >= 0),  -- spec: `index`
+      "text"             text NOT NULL,
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      offset_end         int  NOT NULL,
+      locator            jsonb,
+      chunking_version   text NOT NULL DEFAULT 'v1',
+      status             node_status NOT NULL DEFAULT 'active',
+      superseded_at      timestamptz,
+  - node: rules/knowledge-base/chunk-offsets-ordered
+    held_at: >-
+      CREATE TABLE raw_chunk, line 248 (the inline CHECK on offset_start) and line 256 (the
+      table CHECK raw_chunk_offsets_ck)
+    evidence: >-
+      offset_start       int  NOT NULL CHECK (offset_start >= 0),
+      CONSTRAINT raw_chunk_offsets_ck CHECK (offset_end > offset_start),
+
+looked_past: >-
+  Comments in the file restate rules other nodes hold (the code-point offset counting, the
+  one-per-version-and-index uniqueness and the full-text matching), and the file also carries the
+  other eighteen tables, which belong to the judgments of the nodes bound to them. None of this
+  was reported here.
