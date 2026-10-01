@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/short-block-one-chunk
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`ata`, `artigo`, `outro`: no hard boundary — single chunk under CHUNK_HARD_MAX"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: preserves a moderate-size block (below CHUNK_HARD_MAX) as one chunk
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: returns one chunk for content of length 1
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: counts emoji as one position (Unicode code points, not UTF-16 units)
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: counts accented characters as one position each
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: offset_end equals total code-point count for single-chunk inputs
+    why: >-
+      Every test here shows that a short block stays one raw chunk. None of them
+      tests the 4000 code-point bound the fact names. The largest single block
+      that must stay one chunk is the roughly 500 code-point input in "preserves a
+      moderate-size block (below CHUNK_HARD_MAX) as one chunk". A chunker that
+      split any block longer than about 600 code points would pass the whole file.
+      The oversize test would also pass, because it only asserts more than one
+      chunk, each at most CHUNK_HARD_MAX. Nothing in the file checks that
+      CHUNK_HARD_MAX is 4000. The oversize test is written relative to the
+      imported constant, so changing the constant to a smaller value fails
+      nothing. The three emoji and accented-character tests assert one chunk
+      only on the way to asserting their offsets, so they bear on the fact
+      incidentally.
+    remainder: testable
+    remainder_why: >-
+      Take one block with no hard boundary (for example source type `ata`) that
+      is exactly 4000 code points long, made of sentence-terminated text and
+      including characters outside the BMP so that code points and UTF-16 units
+      differ. The expected result is exactly one raw chunk with offset_start 0,
+      offset_end 4000 and text equal to the whole input.

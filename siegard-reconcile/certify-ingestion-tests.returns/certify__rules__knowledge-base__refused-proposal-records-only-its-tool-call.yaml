@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/tool-call-audit.spec.ts
+        name: writes tool_call with validation_outcome='rejected' on validation failure
+    why: >-
+      The test sends one propose_fragment proposal and refuses it at the chunk lookup, which
+      the mock answers with a count of zero. It checks that the first transaction rolled back
+      with no commit, and that exactly one tool_call row was written with outcome 'rejected',
+      tool name propose_fragment and the run id. That covers the half of the fact that says
+      the tool call is recorded. The half that says nothing else is recorded is mostly not
+      checked. The mock only captures INSERT INTO tool_call. Every other statement is answered
+      silently with an empty result and never inspected. So a fragment, provenance or other
+      business row written in the committed audit transaction, or in any transaction after
+      the first, would not fail the test. The refusal is also triggered at a lookup, before
+      any business write is attempted. That means the rollback check has nothing to undo, and
+      the test never shows that a write made before the refusal stays unrecorded. Only one
+      kind of proposal (propose_fragment) and one refusal are covered. A proposal that fails
+      with a system error rather than a validation refusal is never run. The other proposal
+      tools are never refused here.
+    remainder: testable
+    remainder_why: >-
+      Refuse a proposal after its business write has been issued, once for each proposal
+      tool, and also make one fail with a system error. Capture every write statement
+      across all transactions. The expected result is that the only committed write is the
+      single tool_call row with the refused or failed outcome, and that no row other than
+      tool_call was committed.

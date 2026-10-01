@@ -1,0 +1,44 @@
+certified:
+  - node: rules/knowledge-base/required-start-available
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: rejects BUSINESS_DATE_UNJUSTIFIED when requires_valid_from but ALL three chain links are absent
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-2: still rejects BUSINESS_DATE_UNJUSTIFIED when received_at is ALSO null"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: accepts requires_valid_from = true when document_date is available
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-1: falls back to received_at when stated and document dates are absent"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: "AC-3: no behaviour change when valid_from IS present (stated)"
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: received_at fallback rejected when timestamp is malformed
+    why: >-
+      The rule is exercised only inside the temporal validation layer, with
+      the requirement and the source's dates handed in as literal arguments
+      (requires_valid_from, document_date, received_at). Given those
+      arguments, the tests prove that the proposal is refused when no start
+      is stated and the source has no document date and no reception date.
+      They also prove it is accepted when a start is stated, when a document
+      date is present, or when a reception date is present. The fact,
+      though, is about a proposal for a link type or attribute key whose
+      catalog entry requires a validity start, and about the dates of the
+      source that proposal comes from. Nothing in the offered proof makes a
+      proposal against a link type or attribute key and checks that the
+      requirement is read from that catalog entry. Nothing reads the
+      document date or reception date from the proposal's source raw
+      information either. If the flag or the dates stopped reaching the
+      validator from those places, the fact would stop holding and every
+      test here would still pass. The test "rejects BUSINESS_DATE_UNJUSTIFIED
+      when valid_from supplied without basis" refuses a proposal that does
+      state a start. That goes beyond this fact, which a stated start
+      already satisfies. It is not cited as proof here.
+    remainder: testable
+    remainder_why: >-
+      Two cases close it. First input: a link proposal and an attribute
+      proposal whose link type or attribute key requires a validity start,
+      stating no start, in a run whose source raw information has neither a
+      document date nor a reception date. Expected result: a refusal with
+      BUSINESS_DATE_UNJUSTIFIED. Second input: the same proposals against a
+      source that has one of those dates. Expected result: acceptance.

@@ -1,0 +1,43 @@
+certified:
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (a) forwards invocation_context.source_excerpt as deps.sourceExcerpt to the orchestrator
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (g) passes sourceExcerpt as original_input to ingestRawInformation
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (c) forwards original_input to insertRawInformation when provided
+      - file: src/__tests__/unit/ingestion/original-input-capture.spec.ts
+        name: (d) emits original_input in the INSERT column list and RETURNING clause
+    why: >-
+      The recording half is exercised. In (c), ingestRawInformation is given an
+      original_input, and the test checks that this value goes into the
+      raw_information INSERT through a recording client. In (d), the repository's
+      INSERT parameters carry the value, and the row it returns reads it back.
+      However, (d)'s regexes over the SQL text only check how the SQL is written,
+      not what gets stored.
+
+      The directed-ingestion-from-a-chat-turn half is exercised only through
+      internal calls. (a) stubs the orchestrator and checks the key in the deps
+      object it receives (deps.sourceExcerpt). (g) stubs ingestRaw, makes it throw
+      right after intake, and checks the argument it was called with. Each of these
+      binds one seam's naming rather than the fact. Renaming a key on both sides
+      breaks them while the behavior stays correct. A break between the seams
+      passes them all. Nothing in the set starts at a chat turn. So the step where
+      the turn's own excerpt becomes invocation_context.source_excerpt is never
+      exercised. Also, no test runs one directed ingestion end to end, from the
+      turn to the raw information it creates, and reads that raw information's
+      original input back.
+
+      The tests about absence and hashing do not bear on this fact. These are
+      (b), (b'), (c'), (c''), (e), (e'), (g'), (c.regression) and (f). The node
+      says nothing about ingestions that do not come from a chat turn, or about
+      content_hash.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. The input is a chat turn whose text
+      is X, which leads to a directed ingestion. The expected result is that the
+      raw information this ingestion created, read back, has original input equal
+      to the turn's excerpt X. The test must use no stub between the turn and the
+      persisted raw information.

@@ -1,0 +1,70 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      the header comment, lines 7-12, and the docstring above EVENT_CLASSIFICATION_DIRECTIVE, lines 45-51
+    evidence: >-
+      "events whose kind fell outside the original closed
+      `event_type` domain {reunião, go-live, workshop, outro} landed on `outro`
+      with a lowered confidence (→ `uncertain`). Migration
+      `0003_event_type_taxonomy.sql` widened that closed domain (cobrança,
+      decisão, escalonamento, bloqueio, marco)"
+    cost: >-
+      The comment lists the allowed values of Event.event_type, a fact the specification holds as a
+      node. A third place now states the list, and nothing keeps it current when the taxonomy
+      changes. The values are also held in code at migrations/seeds/0003_event_type_taxonomy.sql
+      (the row `('Event', 'event_type', 'escalonamento', 'Escalonamento', 7)`), so the comment is
+      prose over a fact code already holds.
+    kind: restates
+    correction: >-
+      Remove the enumerated domain and the migration history from the comment. The fact stays in
+      the node and in the seed.
+    node: rules/knowledge-base/allowed-event-types
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      EVENT_CLASSIFICATION_DIRECTIVE, lines 60-62 (the `outro` fallback instruction in the system
+      prompt sent to the model)
+    evidence: >-
+      "- Use `outro` ONLY when NO domain value fits — and, in that case, LOWER the",
+      "  confidence (≤ 0.74) to flag a possible catalog gap to curation. Do not force",
+      "  a value that does not describe the fact.",
+    cost: >-
+      The prompt tells the model to use `outro` only as a last resort and to lower confidence so
+      that curation sees a catalog gap. No node holds this extraction policy. The allowed-event-types
+      node lists `outro` as one value among nine and says nothing about when it applies. The
+      new-assertion-status-from-confidence node holds the 0.40-0.75 band, but not the use of that
+      band as a catalog-gap signal. The decision therefore lives only in this prompt, and a reader
+      looking in the specification for how `outro` is meant to be used will not find it.
+    kind: unstated
+    correction: >-
+      Give the `outro` fallback and its lowered-confidence signal a node, probably alongside
+      rules/knowledge-base/allowed-event-types or as an extraction rule.
+  - file: src/modules/ingestion/prompts/extraction.v3.ts
+    where: >-
+      EVENT_CLASSIFICATION_DIRECTIVE, lines 63-66 (the relative-date instruction in the system
+      prompt)
+    evidence: >-
+      "- RELATIVE DATES in the text (\"hoje\", \"ontem\", \"amanhã\", \"semana que vem\")",
+      "  resolve against `document_date`: `event_date` (the VALUE) gets the computed",
+      "  date and `valid_from_basis`=\"document\". With no known `document_date`, omit",
+      "  the date (the backend records `received`). NEVER invent a date.",
+    cost: >-
+      The prompt makes the model compute an Event's date from relative expressions against the
+      document date and tag it with basis `document`, or omit the date when there is none. No node
+      holds that extraction behavior. The specification holds only the backend fallback (a
+      proposal that states no start takes the document date, or else the reception date) and the
+      rule that a caller never states `received`. The date-resolution policy therefore sits only
+      in prompt text.
+    kind: unstated
+    correction: >-
+      Give the resolution of relative dates against the document date during extraction a node, or
+      state it in the extraction-reads-chunks-in-order family of rules.
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      the exported constant PROMPT_VERSION, line 40, which is the "v3" member of the enumeration.
+      The enumeration's own declaration of v1..v4 is not in this file.
+    evidence: >-
+      export const PROMPT_VERSION = "v3" as const;
+candidates_opened:
+  - rules/knowledge-base/allowed-event-types
+  - rules/knowledge-base/new-assertion-status-from-confidence

@@ -1,0 +1,45 @@
+certified:
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_node ok:true with each resolution contributes the node_id
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_link contributes BOTH source and target on contributing outcomes; not on rejected
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: propose_attribute contributes node_id on contributing outcomes only
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: ok:false envelopes do NOT contribute (layered-validation rejections)
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: de-duplicates by node_id — first-write-wins, insertion order preserved
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: preserves the input id order on the output
+      - file: src/__tests__/unit/ingestion/affected-nodes.spec.ts
+        name: re-applies the collector over tool_call.result rows and resolves
+    why: >-
+      The proof checks that nodes reached by node proposals are included. It
+      checks that both ends of a link proposal are included when the link was
+      accepted or consolidated. It checks that the described node of an
+      attribute proposal is included when the attribute was accepted,
+      consolidated or disputed. It checks that rejected and ok:false proposals
+      add nothing. It checks that each node appears once, in the order it was
+      first reached. The fact also counts proposals that superseded a previous
+      assertion, and nothing in the set records a link or attribute proposal
+      with that outcome. The fact also counts disputed link proposals, and
+      nothing in the set records a link proposal whose outcome is disputed. So
+      the collector could drop the superseded outcome for both kinds, or the
+      disputed outcome for links, and every offered test would still pass. The
+      file also asserts several things the node does not state. Examples are
+      the LRU cache capacity and recency, the single knowledge_node JOIN
+      node_type query, swapping in the survivor through merged_into_node_id,
+      and skipping ids the lookup does not find. These are facts beyond this
+      node and do not close the gap above.
+    remainder: testable
+    remainder_why: >-
+      Three single-input assertions would close it. First, record a
+      propose_link proposal whose outcome superseded a previous assertion and
+      expect both its source and target node ids in the affected list. Second,
+      record a propose_link proposal whose outcome is disputed and expect both
+      its source and target node ids in the list. Third, record a
+      propose_attribute proposal whose outcome superseded a previous assertion
+      and expect its node id in the list.

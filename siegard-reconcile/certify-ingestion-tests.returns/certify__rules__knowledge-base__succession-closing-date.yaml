@@ -1,0 +1,34 @@
+certified:
+  - node: rules/knowledge-base/succession-closing-date
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: superseded_previous — different value on a functional key with succession signal
+    why: >-
+      Only one test checks the closing date's value. The intra-day test asserts
+      that the close binds 2026-06-01, the new assertion's validity start. But in
+      that fixture the closed assertion also starts on 2026-06-01, so code that
+      took the close date from the closed assertion would pass the same way. In
+      that same case the guarded UPDATE also leaves valid_to unwritten, so the
+      test never sees a validity end actually applied. The ordinary link
+      succession (closed assertion starting 2026-01-01, new one 2026-06-01) and
+      the attribute succession (2026-01-10 vs 2026-06-10) check only that the
+      UPDATE's SQL text contains "valid_to". That ties the test to the query's
+      wording, not to the date the closed assertion ends on, so a close at the
+      wrong date would still pass. The second half of the fact is not tested at
+      all: no test in the file submits a succession whose new assertion has no
+      validity start. So closing at today, the injected now() of 2026-06-12, is
+      never checked for links or for attributes.
+    remainder: testable
+    remainder_why: >-
+      Two tests would close it, each run once for a link and once for an
+      attribute. First, a succession whose new assertion starts on a date after
+      the closed assertion's start, for example closed starting 2026-01-01 and
+      new starting 2026-06-01, against the closed assertion getting exactly
+      2026-06-01 as its validity end. Second, a succession whose new assertion
+      has no validity start, with now() fixed at 2026-06-12, against the closed
+      assertion getting 2026-06-12 as its validity end.

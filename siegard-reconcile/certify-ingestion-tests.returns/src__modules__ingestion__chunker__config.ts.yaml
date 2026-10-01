@@ -1,0 +1,57 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 19, the CHUNK_TARGET declaration (lower bound, index 0)
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+    cost: >-
+      The 1500 lower bound of the chunk size window is declared here and no node holds it. The long-block-sentence-chunks node holds only the 2000 ceiling and the 4000 threshold. The next reader looking for the minimum chunk size in the specification will not find it, and this constant becomes the only place that value is decided. The only consumer found, v1.ts, reads only CHUNK_TARGET[1], so nothing in the tree runs on the 1500 either.
+    kind: unstated
+    correction: >-
+      Either an analysis gives the 1500 lower bound a node, or the value leaves the declaration. Which of the two is a person's decision.
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      lines 21-22, the docstring and declaration of CHUNK_HARD_MAX
+    evidence: >-
+      /** Hard ceiling on a single chunk. A block above this size is sentence-split. */
+      export const CHUNK_HARD_MAX = 4000 as const;
+    cost: >-
+      The docstring restates in prose the rule that a block over 4000 code points is cut at sentence boundaries. Code holds that rule in another file: v1.ts line 80 has `if (blockSize <= CHUNK_HARD_MAX) {`. The prose is a second home that no running system emits. If the node moves, the comment stays behind and still reads as authoritative. The label "Hard ceiling on a single chunk" is also looser than the node. The node says a block of at most 4000 is one chunk and a longer one is cut by sentence boundaries; it does not describe a ceiling on every chunk.
+    kind: restates
+    correction: >-
+      Remove the docstring. The value stays in the declaration, which is where the node is held.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      lines 24-30, the READING_TAIL declaration
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+    cost: >-
+      A 200 code point "reading tail" overlap for a future retrieval layer is declared here as a domain value, and no node holds it for that purpose. The only 200 the specification holds is the last 200 characters of the previous chunk shown to the model during extraction (the node rules/knowledge-base/extraction-reads-chunks-in-order). That is a different use, and its home is prompts/extraction.v1.ts, which carries its own PREV_TAIL_CHARS. A reader could take this constant for that rule, or for a retrieval rule that the specification never stated. If the two ever disagree, nobody can tell which was decided.
+    kind: unstated
+    correction: >-
+      Either an analysis gives the retrieval-time tail window a node, or the constant leaves the file. If it is meant to be the extraction tail, the specification already holds that value in the candidate node and no second declaration is needed.
+
+read:
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      the CHUNKING_VERSION declaration, line 10
+    evidence: >-
+      export const CHUNKING_VERSION = "v1" as const;
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      the values this file declares for the rule, CHUNK_HARD_MAX (4000) on line 22 and the upper bound of CHUNK_TARGET (2000) on line 19. The cutting behavior itself sits in v1.ts, outside this file.
+    evidence: >-
+      export const CHUNK_HARD_MAX = 4000 as const;
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      the CHUNK_HARD_MAX declaration, line 22. The one-chunk branch itself is in v1.ts.
+    evidence: >-
+      export const CHUNK_HARD_MAX = 4000 as const;
+
+looked_past: >-
+  The header and docstring prose cite BR-03 through BR-07 and A22 and claim that a version bump is required when a constant changes. This is a comment-route matter, and the file's code states nothing about it.
+
+candidates_opened:
+  - rules/knowledge-base/extraction-reads-chunks-in-order

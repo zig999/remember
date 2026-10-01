@@ -1,0 +1,142 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      header comment, lines 29-31, and the UserPromptArgs.prevTail doc comment, line 231
+    evidence: >-
+      // `prev_tail` carries the last ≤ `PREV_TAIL_CHARS` (200) characters of the
+      // previous chunk to provide minimal cross-chunk continuity (BR-26 step 5a).
+      // It is empty for `chunk_index = 0`.
+    cost: >-
+      The 200-character window is stated in prose here as well as in code. The prose is a second home for the number. A reader who finds it here may take this file for the place that decides it, and the comment would not change if the window did.
+    kind: restates
+    correction: >-
+      Remove the comment. The window is held in code at src/modules/ingestion/service/extraction.service.ts (`export const PREV_TAIL_CHARS = 200 as const;` and `chunk.text.slice(-PREV_TAIL_CHARS)`), and the node holds it.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      MAX_TOKENS constant, line 42
+    evidence: >-
+      /** Per-turn Anthropic `max_tokens` (TC-12 known_context — 8000). */
+      export const MAX_TOKENS = 8000 as const;
+    cost: >-
+      The ceiling on one extraction call's output is a value the code applies. No node in the specification states it, and a grep of the specification root for max tokens, token ceiling and 8000 found no extraction node holding it. The only source cited is a task's "known_context", not a node. The next reader will not find it in the specification.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the per-turn output ceiling of an extraction is a business fact. If it is, a node holds it. Otherwise the value stays configuration outside the specification.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      comment inside system(), lines 89-99
+    evidence: >-
+      // `allowed_values` diagnostic, keeping prompt and rejection envelope in
+      // sync). Open-domain keys (no rows in `attribute_valid_value`,
+      // `domainOf` returns `null`) print unchanged — backward-compatible. The
+      // runtime check (`assertValueInDomain`, BR-30) is still the authoritative
+      // gate; this is a hint to steer the LLM toward in-domain values.
+    cost: >-
+      The comment says again that a value for a closed-domain key must come from its allowed values, and names a runtime gate that enforces it. The prose is a second home for the rule beside the code, and it ages without any check.
+    kind: restates
+    correction: >-
+      Remove the comment. The check is held in code outside this file, at src/modules/ingestion/service/propose-attribute.service.ts and src/modules/ingestion/validation/structural.ts. That is where the candidate index binds the rule, and the node holds it.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), "Dates" section, lines 164-165
+    evidence: >-
+      "- Justify it with `valid_from_basis`: `stated` only when the start date is",
+      "  written in the chunk (and supported by a cited fragment); `document` uses",
+    cost: >-
+      The prompt tells the model that a proposal whose start has basis `stated` rests on a cited fragment. The specification holds that only for a correction ("A correction whose validity start has the basis stated MUST cite an information fragment"). It holds nothing like it for a proposal. The rule reaches the model's behavior and so the knowledge recorded, and a reader of the specification cannot find it.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether a proposal with basis stated must cite a fragment, as a correction must. If it must, a node holds it. If it need not, the prompt's wording is not the business's.
+  - file: src/modules/ingestion/prompts/extraction.v1.ts
+    where: >-
+      system(), "Output contract" section, lines 195-196
+    evidence: >-
+      "- `propose_link` / `propose_attribute` MUST cite ≥ 1 `fragment_id` returned",
+      "  by `propose_fragment` in this same chunk.",
+    cost: >-
+      The prompt requires at least one cited fragment, from this same chunk. The node that governs proposals allows a link or attribute proposal any number of cited fragments, and every cited-fragment rule is scoped to the LLM run, not to the chunk. The model is told something stricter than the specification decided, and the next reader cannot tell which is meant.
+    kind: contradicts
+    correction: >-
+      Either the prompt wording or the proposal node's cardinality has to change so that they agree. The node is the authority, so the cardinality is where the change would be decided.
+    node: domain/knowledge-base/proposal
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      system(), opening lines 126-130, in the prompt text it emits to the model
+    evidence: >-
+      "traceable knowledge by calling the four tools `propose_fragment`,",
+      "`propose_node`, `propose_link`, `propose_attribute`.",
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      PROMPT_VERSION constant, line 45
+    evidence: >-
+      export const PROMPT_VERSION = "v1" as const;
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      DocumentMetadata interface, lines 52-61. It names four of the node's attributes, in part: source_type, received_at, document_date and title.
+    evidence: >-
+      export interface DocumentMetadata {
+        readonly source_type: string;
+        readonly received_at: string;
+        readonly document_date: string | null;
+        readonly title: string | null;
+      }
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      system(), "Dates" section lines 164-167, and the worked example's `valid_from_basis:"document"`. It is emitted text and states the three values consistently with the node.
+    evidence: >-
+      "- Justify it with `valid_from_basis`: `stated` only when the start date is",
+      "  written in the chunk (and supported by a cited fragment); `document` uses",
+      "  the document date; otherwise omit `valid_from`/basis and the backend",
+      "  records `received`. NEVER invent a date. Dates are ISO `YYYY-MM-DD`.",
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the valuesSuffix construction in system(), lines 106-112. It prints each closed-domain key's allowed values in the catalog section, verbatim and JSON-quoted. Enforcement is held in other files.
+    evidence: >-
+      const valuesSuffix =
+        domain !== null
+          ? `, values: [${[...domain]
+              .sort()
+              .map((v) => JSON.stringify(v))
+              .join(",")}]`
+          : "";
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      system(), rule 7, line 153. The prompt tells the model the floor truthfully. The code that records nothing below 0.40 is not in this file.
+    evidence: >-
+      "7. CONFIDENCE ∈ [0,1], be honest: ≥ 0.75 → stored active; 0.40–0.74 →",
+      "   `uncertain` (kept, flagged); < 0.40 → dropped. Lower it for hedged",
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      user(), lines 240-273. It builds the metadata block (source type, document date, title, reception time) and the previous-chunk-tail block for one chunk. The chunk loop, the index order and the 200-character slice are in src/modules/ingestion/service/extraction.service.ts, not here.
+    evidence: >-
+      `- source_type: ${meta.source_type}`,
+      `- received_at: ${meta.received_at}`,
+      meta.document_date !== null
+        ? `- document_date: ${meta.document_date}`
+        : "- document_date: (unknown)",
+      meta.title !== null ? `- title: ${meta.title}` : "- title: (unknown)",
+      ...
+      "## Previous-chunk tail (context, do not re-extract)",
+      args.prevTail,
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      system(), rule 7, line 153. The prompt tells the model the two bands truthfully. The code that assigns the status is not in this file.
+    evidence: >-
+      "7. CONFIDENCE ∈ [0,1], be honest: ≥ 0.75 → stored active; 0.40–0.74 →",
+      "   `uncertain` (kept, flagged); < 0.40 → dropped. Lower it for hedged",
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      system(), "Dates" section lines 164-167, and the worked example's proposals, which pair `valid_from` with `valid_from_basis`. The enforcing check is in other files.
+    evidence: >-
+      "- Justify it with `valid_from_basis`: `stated` only when the start date is",
+      "  written in the chunk (and supported by a cited fragment); `document` uses",
+      "  the document date; otherwise omit `valid_from`/basis and the backend",
+      ...
+      "    confidence:0.9, fragment_ids:[F1], valid_from:\"2026-06-11\", valid_from_basis:\"document\"}",
+looked_past: >-
+  Comments that assert facts neither code nor emitted text in this file carries (the claim at line 59 that the title comes from `raw_information.metadata.title`, and the comment listing source_type values) are prose and are not reported here. The prompt's extraction guidance (atomicity, node-versus-attribute classification, order of calls) was not judged against any node, because no node governs prompt wording.
+candidates_opened:
+  - domain/knowledge-base/proposal

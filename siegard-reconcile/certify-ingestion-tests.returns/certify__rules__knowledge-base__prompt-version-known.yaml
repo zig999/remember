@@ -1,0 +1,35 @@
+certified:
+  - node: rules/knowledge-base/prompt-version-known
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: throws UnknownPromptVersionError for an unregistered version (BR-26 — fail loud, no silent fallback)
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: dispatches 'v1' → v1 module
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: dispatches 'v2' → v2 module
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: the recommended default always resolves to a registered module (v2 no longer the default)
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: dispatches 'v4' → v4 module with PROMPT_VERSION === 'v4'
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: keeps v1/v2/v3 registered (backward-compatibility — audit-trail honesty)
+    why: >-
+      The tests check the prompt registry, not an extraction. selectPromptModule
+      throws UnknownPromptVersionError for "extraction.v1" and "v99", and it resolves
+      v1, v2, v3, v4 and the default to their modules. So the registry refuses a version
+      it does not hold. The node states the fact about an extraction (the LLMRun it
+      constrains), and nothing in the offered tests starts an extraction or records an
+      LLMRun with a prompt_version the system does not hold. If the extraction path
+      stopped calling the registry, caught its error, fell back to a default, or recorded
+      the run before refusing, both files would still pass. That an extraction carrying
+      an unknown prompt version is refused is not exercised. Every other test in the two
+      files asserts prompt text, MAX_TOKENS or user-block content and does not bear on
+      this fact.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Start an extraction (create the LLMRun /
+      run ingest_document) with a prompt_version the system does not hold, for example
+      "v99", and expect it to be refused, with no LLMRun recorded under that version and
+      no extraction performed. Starting the same extraction with a held version, for
+      example "v4", should be accepted and record that version.

@@ -1,0 +1,11 @@
+certified:
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: splits a block above CHUNK_HARD_MAX into sentence-level chunks
+    why: >-
+      The test gives an "ata" block of more than 4000 code points, built from repeated short sentences ending in a full stop. It checks three things: the block is split into more than one chunk, no chunk is longer than CHUNK_HARD_MAX (4000), and the chunk spans add up to the block's full code-point count. So the block is shown to be cut, but neither part of how the fact says it is cut is checked. First, the test never checks where a chunk ends. Nothing compares a chunk's offset_end to a sentence end, so a chunker that cut in the middle of a sentence would still pass. Second, it never checks the 2000-code-point limit. The only bound it asserts is 4000, so a chunker that cut a 4200-code-point block into one chunk of 4000 and one of 200 would pass. Nothing checks that each chunk stops before the sentence that would take it past 2000. The test "preserves a moderate-size block (below CHUNK_HARD_MAX) as one chunk" uses a block of about 500 code points. That is below 2000 as well as 4000, so it cannot tell whether the "more than 4000" condition is in force or a 2000 one is. Nothing gives a block between 2000 and 4000 code points.
+    remainder: testable
+    remainder_why: >-
+      Input: a block of more than 4000 code points made of Portuguese sentences of known lengths. Expected result: every chunk's offset_end falls at a sentence end, every chunk is at most 2000 code points long, and adding the next sentence to any chunk except the last would take it past 2000. A second assertion closes the condition: a block of between 2000 and 4000 code points comes back as a single chunk.

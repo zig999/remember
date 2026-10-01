@@ -1,0 +1,36 @@
+certified:
+  - node: rules/knowledge-base/strong-candidate-resolves
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: returns strong_unique when exactly one candidate is >= MATCH_STRONG and no other is >= MATCH_FLOOR
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: returns ambiguous when one candidate is strong AND a second is in [FLOOR, STRONG)
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 2: trigram strong-unique -> matched_existing (no node insert, no review rows)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3: ambiguous (one strong + one in [FLOOR, STRONG)) -> needs_review + 2 review rows"
+    why: >-
+      Exercised: a proposal with no exact alias and one candidate well above 0.85 (0.92 / 0.95),
+      with the only other candidate well below 0.55 (0.3), resolves as matched-existing to that
+      candidate with no node created. A second candidate at 0.6 stops the match. Unexercised: the
+      inclusive bounds the fact states. Nothing in the set offers a candidate at exactly 0.85, or a
+      second candidate at exactly 0.55 or just under it. So "at least 0.85" and "reaches 0.55" are
+      never pinned against a strict comparison, and moving either boundary would leave every test
+      passing. Also unexercised: "active" and "of its node type". The stub client in buildClient
+      returns its canned candidate rows whatever the SQL filters, so nothing shows that an inactive
+      node, or a node of another type, is left out as the match and cannot block it. The test
+      "exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55" is not cited. It checks the values of
+      the exported constants, not how they are compared or whether resolution uses them. It still
+      passes if the comparison changes from >= to >, so it binds the code's shape rather than the
+      fact.
+    remainder: testable
+    remainder_why: >-
+      Four input-against-result assertions close it, each with no exact alias. (1) A single
+      candidate at exactly 0.85 resolves as matched-existing to that node. (2) A strong candidate
+      plus a second active node of the same type at exactly 0.55 does not resolve as
+      matched-existing. (3) Against a database: a strong active node of the proposal's type plus an
+      inactive (merged or deleted) node of that type at 0.55 or above still resolves as
+      matched-existing to the active node. (4) Against a database: a node of a different type at
+      0.85 or above is not matched, and a same-type node is not blocked by a different-type node
+      at 0.55 or above.

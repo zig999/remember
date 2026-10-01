@@ -1,0 +1,43 @@
+certified:
+  - node: rules/knowledge-base/correction-replaces
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: >-
+          closes vigent with status='superseded' (transaction axis only) and inserts a chained new row; outcome=accepted
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: >-
+          correction — change_hint='correction' + errata text, outcome=accepted, valid_to untouched
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: >-
+          branch "correction (outcome=accepted)" inserts >= 1 provenance row
+    why: >-
+      Both correction tests, one for a link and one for an attribute, check two parts of
+      the fact. The new assertion names the met one in supersedes_link_id or
+      supersedes_attribute_id. The returned superseded id is the met assertion's.
+      Three parts are left unexercised or only loosely bound.
+      (1) Every correction proposal in the set also carries errata text in its cited
+      fragment ("errata: ..."). Nothing submits change_hint='correction' over neutral
+      text. If the code needed a textual errata marker as well as the hint, these tests
+      would still pass, even though the fact makes the change hint enough on its own.
+      (2) The tests check that the met assertion was superseded and that its validity end
+      was left alone only by matching tokens in the captured UPDATE text: it contains
+      'superseded' and superseded_at, and does not contain valid_to. The UPDATE's
+      bindings are never checked against the met assertion's id, so an UPDATE that
+      superseded the wrong row would pass. The checks are also tied to how the SQL is
+      written. A correct statement whose WHERE clause mentions valid_to, or one that
+      binds the status as a parameter, would fail them while the behavior stays right.
+      (3) Only functional types (leads, deadline) are corrected, each with a different
+      target or value over the same period. Nothing corrects an assertion of a
+      multi-valued type, which the fact also covers. The provenance-invariant test for
+      the correction branch only checks that a provenance row exists. It touches this
+      fact incidentally and proves none of it.
+    remainder: testable
+    remainder_why: >-
+      The input is a proposal with change_hint='correction' whose cited fragment text is
+      neutral, against a current assertion, run once for a link and once for an
+      attribute, including a multi-valued type. The expected result has three parts. The
+      met assertion's row, picked out by its id in the UPDATE bindings or by reading it
+      back, ends with status 'superseded'. Its valid_to keeps the value it had before.
+      One new assertion is recorded whose supersedes_link_id or supersedes_attribute_id
+      equals the met assertion's id.

@@ -1,0 +1,47 @@
+certified:
+  - node: rules/knowledge-base/conflict-disputes
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: flags both old and new row as disputed and surfaces conflicting_link_id
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: disputed — divergent value, same overlapping period, no signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: functional link with different valid_from does NOT auto-consolidate (still requires sameValidFrom)
+    why: >-
+      Two tests cover the second half of the fact, one for links and one for
+      attributes. In both, a proposal for a type that allows only one current
+      assertion meets a current assertion with no signal. Both tests check that
+      exactly one new assertion is recorded, that its status is 'disputed', and
+      that its supersedes reference is null. That holds for the functional link
+      type "leads" and for the functional attribute key "deadline".
+
+      The first half is not covered: nothing checks that the current assertion
+      the proposal met is the one marked disputed. Both tests count one UPDATE
+      and check that its SQL text contains the literal 'disputed'. Neither checks
+      that the UPDATE is bound to the met assertion (EXISTING_LINK_ID or
+      EXISTING_ATTR_ID), or that the assertion's status afterwards is disputed.
+      Two wrong behaviours would still pass: an UPDATE that marks some other
+      row, and an UPDATE whose SQL only mentions 'disputed' in a WHERE clause.
+      Both tests would fail only if the SQL stopped containing that word.
+
+      The third test, "functional link with different valid_from does NOT
+      auto-consolidate", touches the fact only in passing. Its purpose is to
+      show that branch (a) still requires the same valid_from. Along the way it
+      checks the 'disputed' outcome and one insert. It does not check the new
+      row's status, its supersedes reference, or the marking of the existing
+      row.
+
+      The name "flags both old and new row as disputed and surfaces
+      conflicting_link_id" claims more than the test checks. No assertion reads
+      conflicting_link_id.
+    remainder: testable
+    remainder_why: >-
+      The test that would close it: propose an assertion against a current
+      assertion of a functional link type, and the same for a functional
+      attribute key, with the proposal meeting it as a dispute. The expected
+      result is that the existing assertion, identified by its own id, ends up
+      with status 'disputed'. Check this by asserting that the status-setting
+      UPDATE is bound to that id, or by reading the assertion back. Keep the
+      existing check that the one new assertion has status 'disputed' and
+      supersedes nothing.

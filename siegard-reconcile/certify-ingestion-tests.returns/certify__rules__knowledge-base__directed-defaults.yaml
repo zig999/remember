@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/directed-defaults
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "forced confidence: dispatched propose_* args carry confidence=1.0 even when the caller payload has no confidence field"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "happy path: dispatches fragments → nodes → attributes → links in order; run closes 'completed'"
+    why: >-
+      Half of the fact is checked, and only on the side. Both named tests send a
+      directed attribute and a directed link with no basis, and both check that
+      the dispatched args carry valid_from_basis "stated". The forced-confidence
+      test checks this on captured args, and the happy-path test checks it inside
+      its propose_attribute and propose_link stubs. In both tests the check sits
+      beside the assertion the test is named for: confidence 1.0 in one, dispatch
+      order in the other. Nothing marks the basis check as the point of either
+      test. The change-hint half is not exercised at all. No assertion in the file
+      inspects a change hint on the args passed to propose_attribute or
+      propose_link. If those args carried any change hint other than none, or none
+      at all, every test in the file would still pass.
+    remainder: testable
+    remainder_why: >-
+      Input: one directed attribute and one directed link, neither stating a
+      basis. Expected: the args captured for propose_attribute and propose_link
+      each carry change hint none and valid_from_basis "stated", asserted in a
+      test whose subject is these defaults.

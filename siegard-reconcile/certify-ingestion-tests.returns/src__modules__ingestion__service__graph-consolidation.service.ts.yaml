@@ -1,0 +1,240 @@
+findings:
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLinkOnce, the `reaffirmation` constant of branch (a), lines 549-552
+    evidence: |-
+      const reaffirmation =
+        sameTarget &&
+        args.change_hint === "none" &&
+        (!functional || sameValidFrom);
+    cost: >-
+      The node says a type that allows multiple current assertions re-affirms whenever the hint is not
+      correction. The code also requires hint none for those types. A multi-valued link proposal that
+      meets a current link with the same target and carries hint succession is not re-affirmed. It
+      skips branch (b) and (c) (c is functional-only) and falls through to (e), a second insert against
+      the current-link duplicate guard (the `knowledge_link_current_dup_guard` index). That ends in the
+      retry and then SYSTEM_INTERNAL_ERROR, instead of the consolidation the node decided. The wrong
+      outcome sits in code, so a reader of the specification would not expect it.
+    kind: contradicts
+    correction: >-
+      For a type that allows multiple current assertions, the re-affirmation condition becomes
+      `sameTarget && args.change_hint !== "correction"`. The hint-none and same-validity-start
+      requirement applies only to functional types.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateAttributeOnce, branch (a) re-affirmation, lines 777-781
+    evidence: |-
+      if (
+        sameValue &&
+        sameValidFrom &&
+        args.change_hint === "none"
+      ) {
+    cost: >-
+      The node has a multi-valued attribute with the same value re-affirm whatever its validity start,
+      as long as the hint is not correction. The code requires the same validity start and hint none
+      for every type. A multi-valued attribute re-stated with another validity start, or with hint
+      succession, is not consolidated. It falls to (e) and inserts a second row, which meets the
+      current-attribute duplicate guard (`node_attribute_current_dup_guard`) and ends in
+      SYSTEM_INTERNAL_ERROR. The comment at lines 852-854 ("different valid_from on a multi-valued
+      attribute is coexistence") states a rule no node holds. The link branch of the same file decides
+      this case differently.
+    kind: contradicts
+    correction: >-
+      Apply the node's condition: for a type that allows multiple current assertions, re-affirm when
+      the value is the same and the hint is not correction. Require the same validity start and hint
+      none only for functional keys.
+    node: rules/knowledge-base/reaffirmation-consolidates
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the `change_hint` members of ConsolidateLinkArgs (line 124) and ConsolidateAttributeArgs (line 140)
+    evidence: |-
+      readonly change_hint: "none" | "succession" | "correction";
+    cost: >-
+      The change-hint vocabulary is declared a second time in a file the node is not bound to. When the
+      enumeration moves, `--check` does not reach this file, and the code and the node can disagree
+      with no sign of which was decided.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/change-hint to the file that is meant to declare the vocabulary. Code
+      cannot read the specification, so the bind is what keeps this declaration answerable to the node.
+    node: domain/knowledge-base/change-hint
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      consolidateLink (lines 443-485) and consolidateAttribute (lines 710-745), the two-attempt loop on a
+      duplicate-guard violation
+    evidence: |-
+      // Two attempts max (BR-27 / task contract).
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+      ...
+      if (attempt === 2) {
+        throw new ValidationFailure(
+          "SYSTEM_INTERNAL_ERROR",
+          "graph consolidation: dup-guard constraint hit on retry; a concurrent transaction committed a conflicting row.",
+          { scope: "knowledge_link" }
+        );
+    cost: >-
+      No node holds the rule that a duplicate-guard race is re-decided exactly once, and that a second
+      race is refused as SYSTEM_INTERNAL_ERROR. The retry count and the refusal live only in this file,
+      so the next reader looks for them in the specification and does not find them.
+    kind: unstated
+    correction: >-
+      The analysis would give this concurrency behavior a node, or decide that it is not a domain fact.
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the header comment, lines 1-39 (the five-branch list)
+    evidence: |-
+      // decide between the five branches of
+      // §6.5:
+      //
+      //   * consolidated      — same value / same valid_from / change_hint='none'
+      //                         AND a vigent row already exists
+    cost: >-
+      The consolidation order and the branch conditions are restated as prose beside the code that
+      holds them. The prose also states the re-affirmation condition (same value, same valid_from, hint
+      none) that the multi-valued case contradicts. A second home for the precedence outside behavior
+      can drift from the node, and the cost is carried by whoever believes the comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by the sequence of branches (a) to (e) in
+      consolidateLinkOnce and consolidateAttributeOnce.
+    node: rules/knowledge-base/consolidation-precedence
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring of closeVigentForSuccession, lines 266-278
+    evidence: |-
+      set
+       * `valid_to = closeDate` (the new version's `valid_from`, or `today` when the
+       * new row has none) and LEAVE `superseded_at = NULL`.
+    cost: >-
+      The closing-date rule is restated in prose while `closeVigentForSuccession` holds it. It is a
+      second home that can drift when the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The code at lines 298-314 holds the fact.
+    node: rules/knowledge-base/succession-closing-date
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring of closeVigentForSuccession, lines 279-289 (EXCEPTION — intra-day collapse)
+    evidence: |-
+      * EXCEPTION — intra-day collapse: validity is day-granular (`date`, §5.1) and
+       * `valid_from < valid_to` is strict
+    cost: >-
+      The succession-before-previous-start rule is restated as prose, with spec section numbers and a
+      "documented day-granularity limitation". The CASE expressions at lines 302-311 hold it. The
+      prose is a second home that drifts from the node.
+    kind: restates
+    correction: >-
+      Remove the prose.
+    node: rules/knowledge-base/succession-before-previous-start
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the header comment, lines 19-23 and 45-62 (the correction branch and "SPEC DIVERGENCE — status='corrected'")
+    evidence: |-
+      close the vigent row (superseded_at=now(),
+      //                         status='superseded'; valid_to untouched) and
+      //                         insert the new row chained via supersedes_*.
+    cost: >-
+      The correction rule is restated in prose, together with a history of which spec text said
+      'corrected'. The UPDATE at lines 565-571 and the insert with `supersedes_link_id: vigent.id` hold
+      the fact. The history is a claim nobody can check against a node.
+    kind: restates
+    correction: >-
+      Remove the comment. Any rationale belongs in the decision log.
+    node: rules/knowledge-base/correction-replaces
+  - file: src/modules/ingestion/service/graph-consolidation.service.ts
+    where: >-
+      the docstring of promoteFragmentsToAccepted, lines 243-251
+    evidence: |-
+      * §6.6 state machine: an InformationFragment cited by an accepted
+       * consolidation (a `Provenance` row was just created) transitions
+       * `proposed -> accepted`.
+    cost: >-
+      The invariant is restated as prose over the UPDATE `SET status = 'accepted' ... AND status = 'proposed'`
+      that holds it. The second home can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/provenance-accepts-proposed-fragment
+read:
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the `valid_from_basis` members of ConsolidateLinkArgs (line 123) and ConsolidateAttributeArgs (line 139)
+    evidence: |-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: rules/knowledge-base/conflict-disputes
+    held_at: >-
+      branch (d) of consolidateLinkOnce (lines 628-649) and of consolidateAttributeOnce (lines 834-851)
+    evidence: |-
+      SET status = 'disputed'::assertion_status
+      ...
+      const newRow = await insertLinkRow(client, args, runCtx, {
+        status: "disputed",
+        supersedes_link_id: null,
+      });
+  - node: rules/knowledge-base/consolidation-records-provenance
+    held_at: >-
+      insertLinkProvenance and insertAttributeProvenance (lines 215-241), called on the row each branch lands on
+    evidence: |-
+      INSERT INTO provenance (link_id, fragment_id)
+         SELECT $1, f FROM unnest($2::uuid[]) AS f
+         ON CONFLICT DO NOTHING
+  - node: rules/knowledge-base/correction-replaces
+    held_at: >-
+      branch (b) of consolidateLinkOnce (lines 562-583) and of consolidateAttributeOnce (lines 787-805)
+    evidence: |-
+      SET superseded_at = now(),
+          status        = 'superseded'::assertion_status
+      WHERE id = $1
+      ...
+      supersedes_link_id: vigent.id,
+  - node: rules/knowledge-base/new-assertion
+    held_at: >-
+      branch (e) of consolidateLinkOnce (lines 654-659) and of consolidateAttributeOnce (lines 858-863)
+    evidence: |-
+      const newRow = await insertLinkRow(client, args, runCtx, {
+        status: args.status_for_new_row,
+        supersedes_link_id: null,
+      });
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    held_at: >-
+      promoteFragmentsToAccepted (lines 252-264)
+    evidence: |-
+      UPDATE information_fragment
+          SET status = 'accepted'
+        WHERE id = ANY($1::uuid[])
+          AND status = 'proposed'
+  - node: rules/knowledge-base/succession-before-previous-start
+    held_at: >-
+      the CASE expressions of closeVigentForSuccession (lines 302-312)
+    evidence: |-
+      WHEN valid_from IS NOT NULL AND valid_from >= ${closeExpr}
+        THEN valid_to
+      ELSE ${closeExpr}
+  - node: rules/knowledge-base/succession-closes-previous
+    held_at: >-
+      branch (c) of consolidateLinkOnce (lines 588-614) and of consolidateAttributeOnce (lines 808-831)
+    evidence: |-
+      functional &&
+      !sameTarget &&
+      (args.change_hint === "succession" ||
+        hasSuccessionSignal(fragmentTexts))
+  - node: rules/knowledge-base/succession-closing-date
+    held_at: >-
+      closeVigentForSuccession (lines 292-316)
+    evidence: |-
+      const closeExpr = closeDate !== null ? "$2::date" : "now()::date";
+  - node: rules/knowledge-base/succession-signal
+    held_at: >-
+      SUCCESSION_MARKERS and hasSuccessionSignal (lines 83-106)
+    evidence: |-
+      const lower = f.toLowerCase();
+      for (const m of SUCCESSION_MARKERS) {
+        if (lower.includes(m)) return true;
+looked_past: >-
+  Other comments in the file (the savepoint design, the branch (d) discussion, the "Visible for unit tests" notes) are prose around code that already holds the behavior, and no claim of theirs turned on a node in the set.
+candidates_opened:
+  - rules/knowledge-base/reaffirmation-consolidates
+  - rules/knowledge-base/consolidation-precedence
+  - domain/knowledge-base/change-hint
+  - domain/knowledge-base/assertion-status

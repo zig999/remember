@@ -1,0 +1,45 @@
+certified:
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`pdf`: splits on form-feed (U+000C)"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: is deterministic for a multi-block PDF input
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: text field is the verbatim slice between offset_start and offset_end
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: returns chunks ordered by chunk_index ascending
+    why: >-
+      Two parts of the fact are exercised. First, a pdf's content is cut into
+      blocks at every form feed. Second, the form feed belongs to no block.
+      "`pdf`: splits on form-feed (U+000C)" checks that "página 1\fpágina
+      2\fpágina 3" gives exactly three blocks with texts "página 1", "página 2"
+      and "página 3", none of them holding the form feed. "returns chunks
+      ordered by chunk_index ascending" checks that "A\fB\fC\fD" gives texts
+      ["A","B","C","D"].
+
+
+      "text field is the verbatim slice between offset_start and offset_end"
+      checks that each block's text matches the original between its offsets.
+      Because of that, a block whose span took in its form feed would fail
+      there too. The helper `reconstruct` in that test asserts nothing: it is
+      defined, voided and never called.
+
+
+      In "is deterministic for a multi-block PDF input", the block count of
+      three comes along incidentally on the way to the determinism assertion.
+
+
+      The third part of the fact is unexercised. That an empty span between two
+      form feeds forms no block is never tested. Every pdf input in the set
+      has a non-empty span between each pair of form feeds. No input holds two
+      form feeds in a row, so an implementation that emitted an empty block
+      there would pass every test in the set.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result would close it. Take pdf content
+      with two form feeds in a row, such as "página 1\f\fpágina 2". The
+      expected result is exactly two blocks, with texts "página 1" and "página
+      2" and chunk_index [0, 1]. No block may have an empty text or a zero-width
+      offset span.

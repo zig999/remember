@@ -1,0 +1,34 @@
+certified:
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-document-handler.spec.ts
+        name: "created → drives extraction and reports `ingested`"
+      - file: src/__tests__/unit/ingestion/ingest-document-handler.spec.ts
+        name: "noop_existing (completed) → `already_ingested` + run_status, WITHOUT re-running extraction"
+      - file: src/__tests__/unit/ingestion/ingest-document-handler.spec.ts
+        name: "noop_existing (FAILED prior run) → surfaces run_status='failed' and a not-completed message (fail loud)"
+    why: >-
+      The handler's branching is exercised, and only through stubs. When the stubbed ingestRaw
+      says "created", the first test checks that the injected runExtraction is called once with
+      the run id the stub returned. When the stub says "noop_existing", the two noop tests check
+      that runExtraction is never called. Three parts of the fact go unexercised. First, nothing
+      checks that the document is recorded: ingestRaw is a vi.fn that resolves a canned body, so
+      a broken intake that records no RawInformation would still pass every test. Second,
+      nothing checks that the run is new: "run-1" is a literal the stub hands back, so no test
+      tells a newly created LLM run apart from a reused one. Third, nothing checks that held
+      content is detected: "already held" is the stub's claim, never decided from content a
+      first ingest recorded. Both halves are also asserted only as calls on the injected
+      runExtraction seam. Those assertions bind how the handler is wired: they fail if
+      extraction is driven some other way, and they pass if runExtraction extracts nothing. The
+      other tests in the file (provider fatal, extraction fatal, untyped error, defaults, both
+      intake errors) do not bear on this fact. "intake error (non-pg)" also asserts that
+      runExtraction is not called, but that is about intake failure, not about content already
+      being held.
+    remainder: testable
+    remainder_why: >-
+      Two ingests of the same document through ingest_document, against a real store. Input one
+      is a document whose content is not held yet. Expected: a RawInformation row is recorded,
+      a new LLMRun is created for it, and extraction runs under that run's id (its extraction
+      records carry that llm_run_id). Input two is the same content again. Expected:
+      already_ingested, no new LLMRun, and no extraction activity recorded under any run.

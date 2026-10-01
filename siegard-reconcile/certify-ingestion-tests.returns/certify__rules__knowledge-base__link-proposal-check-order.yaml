@@ -1,0 +1,40 @@
+certified:
+  - node: rules/knowledge-base/link-proposal-check-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/validation-order.spec.ts
+        name: temporal check does NOT run before graph rules pass (BUSINESS_LINK_RULE_VIOLATION)
+    why: >-
+      The fact sets an order for seven checks: known link type, existing source
+      and target knowledge nodes, cited fragments that exist and belong to the
+      LLM run, a permitting link type rule, dates, confidence, and fragment
+      anchoring. It also says checking stops at the first check that fails. The
+      named test exercises one pair of those checks. Its proposal fails two of
+      them: no link type rule permits it, and its dates are incoherent
+      (valid_from after valid_to). The test asserts that the refusal is
+      BUSINESS_LINK_RULE_VIOLATION, so the link-type-rule check returns before
+      the date check. Nothing in the set submits a proposal that fails any other
+      pair. An unknown link type is never checked against missing nodes. Missing
+      source or target nodes are never checked against foreign or missing
+      fragments. Fragments from another run are never checked against a missing
+      rule. A bad date is never checked against low confidence. Low confidence
+      is never checked against unanchored fragments. So the position of the
+      first three checks and the last two goes unexercised. Every check in the
+      test's input passes before the rule check: the link type is known, the
+      fake pool returns both nodes, and it returns the fragment under the
+      proposal's run. So the test cannot show that those checks run before it.
+      The stopping half is only shown through which refusal comes back. The test
+      collects the query list from the fake pool and never asserts on it. A
+      handler that went on to the date, confidence or anchoring checks after the
+      rule failure, but still returned the first failure, would pass.
+    remainder: testable
+    remainder_why: >-
+      The order is a finite sequence of seven checks. For each adjacent pair,
+      one proposal that fails both checks should get the earlier check's
+      refusal. The pairs are: unknown link type with a missing source node;
+      missing target node with a fragment from another LLM run; a nonexistent
+      fragment with no permitting link type rule; incoherent dates with
+      confidence below threshold; confidence below threshold with fragments not
+      anchored in the run's source chunks. The stopping half needs one more
+      assertion: after the first failure, the queries recorded for that
+      proposal include none that a later check issues.

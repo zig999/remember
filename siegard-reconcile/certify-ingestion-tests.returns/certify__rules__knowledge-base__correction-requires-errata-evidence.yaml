@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: requires errata signal when change_hint = 'correction'
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: accepts change_hint='correction' when fragment text contains 'errata'
+    why: >-
+      Two parts of the fact are exercised. A correction proposal whose only
+      fragment has none of the words is refused. A correction proposal whose
+      fragment contains the lowercase word "errata" is accepted. Three parts
+      are not exercised. First, nothing in the set offers a fragment carrying
+      errado, correção, corrigir, correction or correcao. The fact names six
+      words and only one is ever tried, so a validator that accepted only
+      "errata" would pass every test. Second, the only word tried is
+      lowercase, so the "in any letter case" clause is never tested. A
+      case-sensitive match would pass every test. Third, every proposal in
+      the set cites exactly one fragment, so "at least one" is never tested
+      against a mix of fragments with and without a word. Separately, the
+      refusal test checks for the code BUSINESS_TEMPORAL_INCOHERENT. The node
+      names no error code, so that check asserts more than the fact
+      establishes.
+    remainder: testable
+    remainder_why: >-
+      For each of errado, correção, corrigir, correction and correcao, a
+      correction proposal whose fragment contains that word should be
+      accepted. A correction proposal whose fragment contains one of the
+      words in uppercase or mixed case, such as "ERRATA" or "Correção",
+      should be accepted. A correction proposal that cites several fragments,
+      only one of which contains a word, should be accepted. Each of these is
+      one input against one expected result.

@@ -1,0 +1,235 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 9-10 ("dispatches the items in dependency order (fragments → nodes → attributes → links)")
+    evidence: >-
+      // the items in dependency order (fragments → nodes → attributes → links)
+    cost: >-
+      The dispatch order is stated a second time in prose that no running system emits. If the order changes, this comment goes stale beside the loops that actually hold it (3a to 3d, lines 472, 513, 603 and 682). The node binds this file, so `--check` will never flag the comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The loops at lines 472, 513, 603 and 682 hold the fact.
+    node: rules/knowledge-base/directed-dispatch-order
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 26-27 ("Forces `confidence = 1.0` ...")
+    evidence: >-
+      //   - Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+    cost: >-
+      The confidence value is restated in prose that no running system emits, while code holds it (`confidence: 1.0` at lines 475, 632 and 712). A reader can take the comment as the place the value was decided.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-full-confidence
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 28-31 ("Cascade rule: ...") and the docstring at lines 898-900 of checkCascade
+    evidence: >-
+      //   - Cascade rule: when a ref dependency is missing (the referenced
+      //     fragment/node was rejected at its own step), the dependent item is
+      //     skipped with a synthetic `dependency_failed` report entry
+    cost: >-
+      The cascade rule is stated in prose that no running system emits, while the same rule is held in `checkCascade` and `checkLinkCascade` (lines 907-908 and 917-919). If the node moves, the comment keeps the old wording.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/directed-dependency-failed
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      docstring above DirectedAttributeValueSchema, lines 119-124
+    evidence: >-
+      *   - boolean → `"true"` / `"false"`
+      *   - number  → JSON `String(n)` (`5`, `-1.5`)
+    cost: >-
+      The value-to-text rule is stated again in a docstring, while `canonicaliseAttributeValue` (lines 941-945) holds it. The docstring is a second home in prose.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/directed-attribute-value-as-text
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedAttributeItemSchema and DirectedLinkItemSchema, lines 141-142 and 152-153 (`IsoDateSchema`, lines 99-102)
+    evidence: >-
+      valid_from: IsoDateSchema.optional(),
+      valid_to: IsoDateSchema.optional(),
+      ... z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+    cost: >-
+      The code accepts a validity start and end on a directed attribute or link, in the format YYYY-MM-DD, and forwards them to the proposal. The directed nodes hold no validity dates for a directed item. The decision log of directed-defaults even says the directed tool declares no validity end. The directed validity surface therefore lives only in this schema, and the next reader will look for it in the specification and not find it.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a directed attribute or link carries a validity start and end, and in what format, and give that a node (directed-item or a new rule).
+    node: domain/knowledge-base/directed-item
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedAttributeItemSchema and DirectedLinkItemSchema `change_hint` (lines 144 and 155), applied at lines 637 and 717
+    evidence: >-
+      change_hint: ChangeHintSchema.optional(),
+      ...
+      change_hint: item.change_hint ?? "none",
+    cost: >-
+      The node says a directed attribute or link is proposed with change hint none, and gives no other case. The code proposes with whatever change hint the caller states, and falls back to none only when it is omitted. A service caller can supply `succession` or `correction` and change how the proposal supersedes a current assertion. The decision log of directed-defaults says the tool never delivers a change hint, but this file does not enforce that.
+    kind: contradicts
+    correction: >-
+      Either the code stops accepting `change_hint` on directed items and always proposes `"none"`, or the node is amended to say a caller-stated change hint is honored.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedIngestionDeps.sourceExcerpt docstring, lines 274-280
+    evidence: >-
+      * Verbatim user turn that triggered this directed run (TC-01 / BR-34).
+      ... Forwarded as
+      * `original_input` to `ingestRawInformation`; NEVER mixed into
+    cost: >-
+      The rule that the turn's excerpt is recorded as original input is stated again in a docstring, while code holds it at line 366 (`original_input: deps.sourceExcerpt ?? null`).
+    kind: restates
+    correction: >-
+      Remove the docstring and the comment at lines 362-365.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 2 comment, lines 333-337, and the docstring of synthesiseContent, lines 834-838
+    evidence: >-
+      // Content is the concatenation of fragments[].text (one per line, prefixed
+      // with `[ref]`) + a trailing line carrying timestamp + nonce.
+    cost: >-
+      The content layout is restated in prose that no running system emits, while `synthesiseContent` (lines 839-852) holds it.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      intakeMetadata construction, lines 338-351
+    evidence: >-
+      const intakeMetadata: Record<string, unknown> = {
+          directed: true,
+        };
+        if (payload.source_label !== undefined) {
+          intakeMetadata.source_label = payload.source_label;
+        }
+        ...
+          intakeMetadata.conversation_id = deps.metadataPointer.conversation_id;
+          intakeMetadata.message_id = deps.metadataPointer.message_id;
+    cost: >-
+      The metadata a directed raw information carries, namely a `directed` marker, the label and a pointer to the chat conversation and message, is a domain fact that only this code states. The directed nodes say what the content lists and what the original input is, and nothing about the metadata. The next reader who looks for it in the specification will not find it.
+    kind: unstated
+    correction: >-
+      Analysis should give the metadata of a directed raw information (marker, label, conversation and message pointer) a node, probably beside directed-source-content.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the intake catch block (lines 369-391), the noop_existing guard (lines 405-424) and the no-chunks guard (lines 429-447)
+    evidence: >-
+      message: "Failed to persist the directed payload before dispatch."
+      ...
+      "Directed ingestion intake returned 'noop_existing'; the per-call nonce should make this unreachable."
+      ...
+      message: "Directed ingestion intake produced no chunks."
+    cost: >-
+      The ingest-directed contract lists only the validation refusals. These whole-call refusals (SYSTEM_INTERNAL_ERROR with these three messages, and SYSTEM_SERVICE_UNAVAILABLE for an unreachable store) are what the system tells the caller, and no node holds them. The analogous ingest-document refusal is held ("Failed to persist the document before extraction.").
+    kind: unstated
+    correction: >-
+      Analysis should give the contract's ingest-directed operation the refusals for a failed intake, or decide that the guards need none.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 3b comment, lines 511-512 ("`node_id` pin bypasses BR-25 fuzzy resolution")
+    evidence: >-
+      // 3b. Nodes — `node_id` pin bypasses BR-25 fuzzy resolution; otherwise
+      //     delegate to `propose_node` (advisory lock + resolution).
+    cost: >-
+      The rule that a pinned node skips entity resolution is restated in prose that no running system emits, while the branch at line 514 (`if (item.node_id !== undefined)`) and `verifyNodePin` hold it.
+    kind: restates
+    correction: >-
+      Remove the comment and the docstring at lines 854-857.
+    node: rules/knowledge-base/directed-pinned-node
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      pin-failure branch, lines 534-552, and verifyNodePin, lines 877-891
+    evidence: >-
+      (pinResult.details as { reason?: unknown }).reason === "not_found"
+                ? "RESOURCE_NOT_FOUND"
+                : "VALIDATION_INVALID_FORMAT";
+      ...
+      message: `node_id pin resolves to a knowledge_node row whose status is '${row.status}' (only 'active' is accepted).`
+    cost: >-
+      The node holds that a pin must exist and be active. It does not say what a failed pin reports. Which error code a missing pin answers, which one an inactive pin answers, and the messages and `details` (`reason`, `current_status`) exist only in this code. The code takes the inactive-pin case as VALIDATION_INVALID_FORMAT from a spec table (`ingestion.back.md` v1.6.0), but no node holds it.
+    kind: unstated
+    correction: >-
+      Analysis should give a failed pin its answer in directed-pinned-node or in the ingest-directed contract.
+    node: rules/knowledge-base/directed-pinned-node
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      Step 3c comment, lines 599-601
+    evidence: >-
+      `confidence = 1.0`; `valid_from_basis` defaults to
+      //     `'stated'` when omitted by caller (BR-34 Defaults matrix).
+    cost: >-
+      The basis default is restated in prose that no running system emits, while code holds it at lines 636 and 716 (`valid_from_basis: item.valid_from_basis ?? "stated"`).
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-defaults
+read:
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      canonicaliseAttributeValue, lines 941-945, called at line 631
+    evidence: >-
+      if (typeof v === "boolean") return v ? "true" : "false";
+        return String(v);
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      lines 636-637 and 716-717. The basis default holds. The change hint default holds only when the caller omits it, which is the contradiction filed above.
+    evidence: >-
+      valid_from_basis: item.valid_from_basis ?? "stated",
+      change_hint: item.change_hint ?? "none",
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      checkCascade (lines 902-910) and checkLinkCascade (lines 912-921), with the report entries at lines 606-611 and 685-690
+    evidence: >-
+      if (!refToNodeId.has(item.node_ref)) return item.node_ref;
+        if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref;
+      ... status: "dependency_failed",
+        reason: cascade,
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      the four loops in directedIngestionService, in sequence: fragments (line 472), nodes (513), attributes (603), links (682). The report is pushed in that order.
+    evidence: >-
+      for (const item of payload.fragments) {
+      ...
+        for (const item of payload.nodes) {
+      ...
+        for (const item of attributeItems) {
+      ...
+        for (const item of linkItems) {
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      the fragment input (line 475), the attribute input (line 632) and the link input (line 712)
+    evidence: >-
+      confidence: 1.0,
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      the fragment report (line 492), the node report (lines 577-579), the attribute and link outcome mapping (lines 654 and 737, and 951-958), and classifyEnvelopeFailureStatus (lines 971-975)
+    evidence: >-
+      return envelope.error.code.startsWith("SYSTEM_") ? "error" : "rejected";
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      the pin branch (lines 514-555) and verifyNodePin (lines 859-896), with no call to proposeNode on the pin path
+    evidence: >-
+      const pinResult = await verifyPin(deps.pool, item.node_id);
+      ...
+      if (row.status !== "active") {
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      synthesiseContent (lines 839-852) and the `source_type: "chat"` passed at line 357
+    evidence: >-
+      lines.push(`-- source_label=${payload.source_label}`);
+        }
+        lines.push(`-- directed_at=${at.toISOString()} nonce=${nonce}`);
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the ingestRaw call, line 366
+    evidence: >-
+      original_input: deps.sourceExcerpt ?? null,
+looked_past: >-
+  The file also declares the DirectedItemStatus vocabulary in a spelling of its own (`superseded_previous`, `dependency_failed`) and carries sentinel constants DIRECTED_MODEL and DIRECTED_PROMPT_VERSION. Both belong to nodes outside this set (directed-item-status as an enumeration and directed-ingestion-run), and style questions such as the epoch placeholders in readClosedRunSafe are another judgment's.

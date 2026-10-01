@@ -1,0 +1,51 @@
+certified:
+  - node: rules/knowledge-base/directed-item-status
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "happy path: dispatches fragments → nodes → attributes → links in order; run closes 'completed'"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "per-item rejection: one link rejected → report shows rejected; run still completes"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (valid): bypasses propose_node; resolution=matched_existing"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (invalid): unknown UUID → RESOURCE_NOT_FOUND; dependent items cascade"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "classifies envelope failures: SYSTEM_* → error, everything else → rejected"
+    why: >-
+      Several parts of the fact are exercised. A recorded fragment reports
+      accepted (happy path, per-item rejection). A node whose resolution is
+      created_new or matched_existing reports accepted (happy path, valid pin).
+      A refusal that is not a system error reports rejected, both for a link
+      refused with BUSINESS_LINK_RULE_VIOLATION and for a pinned node refused
+      with RESOURCE_NOT_FOUND.
+
+      Other parts go unexercised. No node in the set has a resolution that
+      sends it to review, so the needs-review half of "needs-review or
+      accepted for a node according to its resolution" is never asserted.
+      Every taken attribute and link returns the outcome "accepted", so a
+      status hard-coded to accepted would pass just as well as one carrying
+      the item's outcome. "Its outcome for a taken attribute or link" is
+      therefore not shown to carry anything except accepted. The error half
+      is asserted only on the internal __testing__.classifyEnvelopeFailureStatus
+      helper. No orchestrator test has a propose_* handler refuse with a
+      SYSTEM_* code and then reads the report entry's status. If the
+      orchestrator stopped routing item refusals through that helper, the
+      suite would still pass with the item reported wrongly.
+
+      The fragment refused with VALIDATION_INVALID_FORMAT in the
+      missing-evidence cascade test never has its own status asserted. The
+      cascade tests assert dependency_failed for skipped dependents, a status
+      the fact does not name. Whether a cascaded skip counts as a refusal that
+      the fact maps to rejected is not settled here.
+    remainder: testable
+    remainder_why: >-
+      Each open part is one input against one expected result, and all of
+      them run through directedIngestionService's report:
+      (1) a node proposal whose resolution sends it to review, expecting the
+      node's report status needs-review;
+      (2) an attribute and a link whose handler returns an outcome other than
+      accepted, expecting each report status to equal that outcome;
+      (3) a fragment, node, attribute or link handler refusing with a SYSTEM_*
+      code, expecting that item's report status error, while a VALIDATION_*
+      refusal of the same item kind expects rejected.

@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/health-probe-never-fails
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-ops-tools.spec.ts
+        name: "reports database: 'unreachable' when the DB is down — still an ok MCP call"
+    why: >-
+      The only way the set makes the store fail to answer is a pool whose connect()
+      rejects. On that input the test asserts all three halves of the fact: the call
+      succeeds (env.ok true), the store is reported unreachable (database
+      "unreachable"), and the system is reported not healthy (result.ok false). Two
+      other cases go unexercised. First, a store that accepts the connection and then
+      rejects the ping query. Second, a store that never answers at all. A probe that
+      caught only connection failures, and threw or returned an error envelope once
+      the ping itself failed, would still pass this test. The node does not say
+      whether "does not answer" includes a store that hangs without replying. That
+      part is left as the node states it and not settled here. The sibling test
+      "reports database: 'ok' when the ping succeeds (MCP call ok)" uses a store that
+      answers. It is outside the fact's condition, so it is not cited.
+    remainder: testable
+    remainder_why: >-
+      Use a pool whose connect() succeeds and whose client query rejects on the health
+      ping. Call health. The expected result is a call that does not fail (env.ok
+      true), with result.ok false and database "unreachable". If "does not answer" also
+      covers a store that never replies, the same assertion applies to a ping that
+      never settles, driven past the probe's bound with fake timers.

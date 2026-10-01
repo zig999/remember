@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts a new knowledge_link row and one provenance row when no vigent exists
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts with status='uncertain' when 0.40 <= confidence < 0.75
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes a high-confidence (>= 0.75) to 'active'
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes mid-confidence (0.40 <= c < 0.75) to 'uncertain'
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: the published constants exactly match the spec
+    why: >-
+      Only the knowledge-link half of the fact is exercised where a status is
+      actually recorded. A new link proposed at confidence 0.5 is recorded as
+      uncertain, and that test is dedicated to it. A new link proposed at 0.9 is
+      recorded as active, but that is checked incidentally inside a test whose
+      subject is the accepted-new branch and its provenance row, so nothing marks
+      it as load-bearing. The node-attribute half is not exercised at all. No
+      test in the set reads the status of a recorded node_attribute: "accepted
+      (new) — no vigent row" and the other attribute tests check outcome, row
+      counts and supersedes chains, never status. They would still pass if
+      attributes were recorded active at 0.5 or uncertain at 0.9. The boundaries
+      0.75 and 0.40 are checked only against the pure routeConfidence function in
+      confidence.spec.ts, never against a recorded link or attribute. Those
+      routeConfidence tests prove the classification, not that the recorded
+      assertion gets it, so they would keep passing if a proposal service stopped
+      applying it. "the published constants exactly match the spec" compares
+      exported constants to literals and binds a value, not the recorded status.
+      Non-dispute proposals that record a row through succession or correction
+      are never checked for a confidence-derived status either: those tests use
+      confidence 0.9 and check only the chain and outcome.
+    remainder: testable
+    remainder_why: >-
+      For node attributes, propose a new attribute at confidence 0.75 and expect
+      the recorded node_attribute to be active, then at 0.40 and 0.749999 and
+      expect it to be uncertain. For knowledge links, make the same boundary
+      proposals at 0.75 and 0.40 and check the recorded status. For a succession
+      or correction proposal at a confidence between 0.40 and 0.75, expect the
+      newly recorded row to be uncertain, for links and for attributes.

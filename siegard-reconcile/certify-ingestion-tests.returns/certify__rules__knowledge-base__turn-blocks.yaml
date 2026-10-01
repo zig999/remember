@@ -1,0 +1,26 @@
+certified:
+  - node: rules/knowledge-base/turn-blocks
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`chat`: starts a new chunk on each speaker line"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`transcricao`: treats bracketed timestamp + speaker as a new turn"
+    why: >-
+      In both tests every line of the content is a speaker line, and the first line is one too.
+      The chat test checks that there are three blocks and that each one starts at its speaker
+      line. The transcript test checks only that there are three blocks, so a transcript block
+      boundary that fell somewhere other than the speaker line would still pass. No content in
+      the set has a speaker line that comes after a line that is not a speaker line, such as a
+      turn that runs over several lines or an opening line with no speaker. So whether a speaker
+      line starts a new block when the line before it is ordinary text is never tested, for chats
+      or for transcripts. The transcript test only uses speaker lines that start with a
+      bracketed timestamp. The node does not say whether a transcript line with a speaker but no
+      timestamp counts as a speaker line, so that case is not tested either.
+    remainder: testable
+    remainder_why: >-
+      Use chat content and transcript content where an opening line with no speaker is followed
+      by a multi-line turn and then another speaker line. The expected result is a new block
+      starting exactly at each speaker line after the first line, with each block's text
+      beginning with that speaker line and the continuation lines staying in the block of the
+      turn before them.

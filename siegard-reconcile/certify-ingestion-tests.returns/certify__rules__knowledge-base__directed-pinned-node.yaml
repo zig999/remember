@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/directed-pinned-node
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (valid): bypasses propose_node; resolution=matched_existing"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (invalid): unknown UUID → RESOURCE_NOT_FOUND; dependent items cascade"
+    why: >-
+      The valid-pin test does check one outcome: a directed node carrying a node_id
+      comes back in the report with that id and resolution=matched_existing. Its other
+      assertions only check calls inside the code. One is that verifyNodePin was called
+      with (pool, PIN_NODE_ID). The other is that proposeNode, the entity-resolution
+      handler, was not called. Neither one binds the fact.
+
+      The test also does not reach "whatever node type, name or aliases it states". The
+      node it pins states node_type Person and name Alice, which match the test catalog.
+      No pinned node existing under a different type or a different name is set up, and
+      no aliases are stated. So nothing would fail if the code refused, or re-resolved,
+      a pin whose stated type, name or aliases differ from the existing node's.
+
+      The proviso "provided the node exists and is active" is never decided by the code
+      under test. Both tests replace verifyNodePin with a stub that returns either ok or
+      rejected/not_found. Whether the pinned node really exists, or is active, is never
+      looked up. The invalid-pin test shows only that the orchestrator turns the stub's
+      not_found rejection into RESOURCE_NOT_FOUND. Nothing in the set pins an existing
+      but inactive node (merged or deleted). The test's comment says an inactive pin
+      maps to VALIDATION_INVALID_FORMAT, but no assertion checks that. So the inactive
+      half of the proviso is not tested.
+    remainder: testable
+    remainder_why: >-
+      Run the real pin verifier against stored knowledge-node rows and check three cases.
+      First, pin an active node while stating a node type, name and aliases that differ
+      from the node's own. It should resolve to exactly the pinned id, as
+      matched_existing, without creating or matching any other node. Second, pin a node
+      whose status is not active (merged or deleted). It should be refused. Third, pin an
+      id that has no knowledge_node row. It should be refused.

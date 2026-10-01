@@ -1,0 +1,42 @@
+certified:
+  - node: rules/knowledge-base/succession-signal
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: "detects 'deixou de' / 'passou a' / 'novo' / 'replaced' / 'substituiu'"
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: "is case-insensitive"
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: "closes vigent and inserts a new chained row when functional + different target + textual succession signal"
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: "superseded_previous — different value on a functional key with succession signal"
+    why: >-
+      The node names nine markers. Only some of them are tested on their own.
+      "deixou de", "replaced" and "substituiu" each have a fragment whose only
+      marker is that one, so the tests bind them as signals. "passou a" and
+      "novo" show up only together: "passou a ser o novo líder" in the heuristic
+      test and "novo prazo: passou a 2026-07-15" in the attribute succession
+      test. Either one would still pass both tests if the other stopped being
+      recognised, so neither is bound alone. Nothing in the set submits a
+      fragment containing "nova", "substituido", "substituido por" or
+      "succeeded", so recognising those four is unexercised. Letter-case
+      insensitivity is tested only for upper-case "DEIXOU DE" and title-case
+      "Replaced By"; it is unexercised for the other seven markers. The only
+      negative input is "completely neutral text". The integration tests
+      ("closes vigent ...", the intra-day succession test, the attribute
+      superseded_previous test, and the superseded_previous case of the BR-18
+      provenance loop) check the marker on the way to checking the succession
+      branch. They depend on "deixou de" or the "novo"/"passou a" pair as
+      fixtures, and nothing marks the marker itself as the thing under test.
+      The node spells "substituido" without an accent and does not say whether
+      an accented "substituído" must also signal. No test touches either
+      spelling, so that question stays open.
+    remainder: testable
+    remainder_why: >-
+      Each marker the node lists becomes one input: a fragment whose text
+      contains only "nova", only "substituido", only "substituido por", only
+      "succeeded", only "passou a", or only "novo". Each must signal
+      succession, and must still signal when written in a different letter
+      case such as upper case or mixed case. One fragment with none of the
+      markers must not signal. That table, over the nine markers the node
+      lists, decides the node completely.

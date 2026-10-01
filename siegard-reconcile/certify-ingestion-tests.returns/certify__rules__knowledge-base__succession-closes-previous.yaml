@@ -1,0 +1,54 @@
+certified:
+  - node: rules/knowledge-base/succession-closes-previous
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: recognizes change_hint='succession' as a succession signal even without textual marker
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: superseded_previous — different value on a functional key with succession signal
+    why: >-
+      Only one path is checked in full: a link proposal on a type that allows a
+      single current assertion, with a different target and a fragment that
+      signals succession. For that path the tests check the outcome, that the
+      current assertion is closed with status 'superseded', and that the new row's
+      supersedes_link_id names the closed one.
+
+      The change-hint path is checked only for links, and only weakly. "recognizes
+      change_hint='succession' ..." checks the outcome superseded_previous, one
+      UPDATE and one INSERT. It does not check that the UPDATE closes the row as
+      'superseded'. It does not check superseded_link_id, or that the new row's
+      supersedes_link_id names the previous assertion. So a hint-driven succession
+      that left the new row unlinked to its predecessor would still pass.
+
+      For node attributes, no test sends change_hint 'succession'. Only the
+      fragment-signal path runs, in "superseded_previous — different value ...".
+      That test checks the outcome, superseded_attribute_id, a valid_to close on
+      node_attribute and the chained supersedes_attribute_id. It never checks that
+      the close sets status 'superseded'. So an attribute closed some other way
+      would still pass.
+
+      "TC-011 — succession-signal heuristic" calls the internal
+      __testing__.hasSuccessionSignal directly. That binds the helper's shape, not
+      the fact, so it is not cited. The superseded_previous case of the BR-18
+      provenance loop checks only that a provenance row exists, so it is not cited
+      either.
+    remainder: testable
+    remainder_why: >-
+      Three single-input assertions would close it.
+
+      First, a node_attribute proposal on a key that allows a single current
+      assertion, with a different value, change_hint 'succession' and a neutral
+      fragment. Expected: outcome superseded_previous, the current attribute
+      closed with status 'superseded', and the inserted attribute's
+      supersedes_attribute_id equal to the closed one's id.
+
+      Second, the existing fragment-signal attribute case, also asserting that
+      the close sets status 'superseded'.
+
+      Third, the existing change_hint 'succession' link case, also asserting that
+      the close sets status 'superseded' and that the inserted link's
+      supersedes_link_id equals the previous assertion's id.

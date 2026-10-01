@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/ingestion/mcp/propose-fragment.handler.ts
+    where: >-
+      line 42-46, the ValidationFailure thrown inside the run callback of the
+      Zod-failure branch of buildProposeFragmentHandler
+    evidence: >-
+      throw new ValidationFailure(
+      "VALIDATION_INVALID_FORMAT",
+      "Input failed Zod parse.",
+      { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }
+      );
+    cost: >-
+      The refusal's message wording, "Input failed Zod parse.", is text the system tells the calling LLM,
+      and no node holds it. The propose-fragment refusal in contracts/knowledge-base/ingestion.md
+      fixes only the error code and the listing of each failing field with its path and message.
+      Other contracts (curation, retrieval, compliance-audit) fix the message "Request payload failed
+      validation." for the same code. The wording therefore lives only in this file, and the next
+      reader looks for it in the specification and does not find it. It also differs from the wording
+      other contracts give for the same code.
+    kind: unstated
+    correction: >-
+      The analysis would have to decide whether the propose-fragment malformed-input refusal carries a
+      fixed message, and if so give it a place in contracts/knowledge-base/ingestion.md.
+
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The file only passes the value along as a tool name, `tool_name: "propose_fragment"`, and
+      declares no enumeration of the proposal kinds. The enumeration's shape
+      (propose-fragment, propose-node, propose-link, propose-attribute) is not declared here.
+      The snake_case spelling matches the node's note on the material's spelling.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      the Zod-failure branch (lines 36-49) and the run callback of proposeFragmentHandler
+      (lines 66-95), both executed through runIngestHandler
+    evidence: >-
+      A parse failure throws inside the run callback, so the service is never called:
+      `run: async () => { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", ...` .
+      A defensive error envelope maps to `validation_outcome: "rejected"` with
+      `tool_call_result: envelope`. This file persists nothing itself. Recording only the tool call
+      is done by runIngestHandler in handler-base.ts, which is outside this file set. The file
+      relies on that delegation.
+
+looked_past: >-
+  The defensive `!envelope.ok` branch and the Zod-edge wrapper structure are design matters of the
+  adapter, not domain facts, and I left them alone. The header comments restating the adapter's
+  steps and BR-19/BR-21 are prose, not code facts.
+
+candidates_opened:
+  - contracts/knowledge-base/ingestion

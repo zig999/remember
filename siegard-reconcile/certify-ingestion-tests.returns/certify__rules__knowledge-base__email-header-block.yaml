@@ -1,0 +1,11 @@
+certified:
+  - node: rules/knowledge-base/email-header-block
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`email`: splits at the header/body boundary (first blank line)"
+    why: >-
+      The test asserts only that there are at least two chunks, that the first chunk contains "From: a@example" and "Subject: Olá", and that the last chunk contains "Mensagem do corpo". That would catch a header block cut off before its last header line. It would not catch two other failures. First, the input has only one blank line and none in the body, so nothing separates "the first blank line" from a later one. A header block that ran on to a later blank line would still pass. Second, every assertion is a `toContain` and no offsets or exact text are checked, so the line break of the blank line is never tested. It could end up at the end of the header chunk, at the start of the body chunk, or in both, and the test would still pass. So the half of the fact saying that this line break belongs to no block is not exercised. No other test in the file uses the `email` source type.
+    remainder: testable
+    remainder_why: >-
+      Use one email input with a header block, a first blank line and a body that itself contains a later blank line. Expect the first chunk's text to equal the header lines exactly, with no trailing break, and its offset_end to stop before the blank line's line break. Expect the next chunk's offset_start to come after that line break, so the code point of the break is in neither chunk's [offset_start, offset_end). Expect the body's own blank line not to end the header block.

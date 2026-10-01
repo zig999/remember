@@ -1,0 +1,27 @@
+certified:
+  - node: rules/knowledge-base/validity-start-before-end
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/temporal.spec.ts
+        name: rejects valid_from >= valid_to with BUSINESS_TEMPORAL_INCOHERENT
+    why: >-
+      Only one case is exercised. A proposal that gives the same date as both its
+      validity start and its validity end (2026-06-12 for each) is refused, and
+      that call goes straight to validateTemporal. Nothing in the set submits a
+      start later than its end. A check that refused only equal dates would
+      still pass this test, so the "start before end" half of "strictly before"
+      is not proven. Nothing in the set submits a start strictly before an end
+      with both stated, so the test would also pass a check that refused every
+      period stating both dates. The fact covers three things: a proposal, an
+      adjusted period and a correction. The offered file calls only the
+      ingestion temporal-validation layer, which is how a proposal reaches the
+      check. No adjusted period or correction carrying both dates is submitted
+      anywhere in the set, so the fact goes unexercised for
+      domain/knowledge-base/adjusted-period and
+      domain/knowledge-base/corrected-values.
+    remainder: testable
+    remainder_why: >-
+      For each of a proposal, an adjusted period and a correction, three checks
+      with one input and one expected result each. A start later than the end
+      must be refused. A start equal to the end must be refused. A start one day
+      before the end must be accepted.

@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/exact-alias-resolves
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 1: exact alias match -> matched_existing (no trigram query, no node insert)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "matched_existing (exact) resolution propagates as ok:true with resolution='matched_existing'"
+    why: >-
+      Both tests check the consequence. When the exact-match read returns a node, the
+      resolution is matched_existing, that node is the result, and no knowledge_node is
+      inserted. They do not check the condition that makes a proposal resolve. The stub
+      client answers any SQL that starts with "SELECT na.node_id" and contains "alias_norm =
+      norm(" with a fixed row, and it ignores the parameters and the rest of the WHERE clause.
+      So nothing in the set checks that the proposal's name has to equal the alias. Nothing
+      checks that the aliased node has to be active: no merged, deleted or needs_review node
+      holding an equal alias is ever offered. Nothing checks that the node has to be of the
+      proposal's node type either: no node of another type holding an equal alias is ever
+      offered. Every test also uses a single node type, Person. The tests would still pass if
+      the query stopped filtering on status or node type, or compared something other than
+      the proposal's name. One more point: the branch 1 test also asserts that no trigram
+      query was issued and checks the exact node_alias insert rows. Those are assertions on
+      internal calls and on alias bookkeeping, and the fact does not state them.
+    remainder: testable
+    remainder_why: >-
+      Each part is one input against one expected result, run against a real node_alias and
+      knowledge_node store rather than a stub that matches on the SQL's text. First, a
+      proposal whose name equals an alias of an active node of the same type resolves to that
+      node as matched_existing. Second, the same proposal against an equal alias held only by
+      a node that is not active does not resolve to it as matched_existing. Third, the same
+      proposal against an equal alias held only by an active node of a different node type
+      does not resolve to it as matched_existing.

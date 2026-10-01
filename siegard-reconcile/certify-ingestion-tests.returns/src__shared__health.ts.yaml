@@ -1,0 +1,42 @@
+findings:
+  - file: src/shared/health.ts
+    where: >-
+      the docstring of collectHealth(), lines 18-23
+    evidence: >-
+      Never
+       * throws — a DB failure surfaces as `{ ok: false, database: "unreachable" }`
+       * so callers always get a usable report
+    cost: >-
+      The rule that an unanswering store is reported as unreachable and never makes the probe fail is stated twice in this file: in the try/catch that holds it, and in this prose. When the node moves, the docstring keeps saying the old rule and nothing flags it, because it is not code and `--check` does not reach it.
+    kind: restates
+    correction: >-
+      Remove the sentences that restate the rule from the docstring. The try/catch in collectHealth() already holds the fact, and `rules/knowledge-base/health-probe-never-fails` is bound to this file.
+    node: rules/knowledge-base/health-probe-never-fails
+read:
+  - node: domain/knowledge-base/health-report
+    held_at: >-
+      the HealthReport interface, lines 11-16, and the two report literals returned by collectHealth()
+    evidence: |-
+      export interface HealthReport {
+        ok: boolean;
+        service: "remember-bff";
+        database: "ok" | "unreachable";
+        checked_at: string;
+      }
+  - node: rules/knowledge-base/health-probe-never-fails
+    held_at: >-
+      the try/catch in collectHealth(), lines 26-41. The catch branch returns the unreachable report instead of rethrowing.
+    evidence: |-
+      } catch {
+          return {
+            ok: false,
+            service: "remember-bff",
+            database: "unreachable",
+            checked_at: checkedAt,
+          };
+        }
+looked_past: >-
+  The header comment about avoiding an import cycle with app.ts, and the interface comment naming GET /health and the health MCP tool, describe module structure and the route/tool wiring. Those are code-review matters, not a domain fact this pass judges.
+candidates_opened:
+  - domain/knowledge-base/database-status
+  - contracts/knowledge-base/access

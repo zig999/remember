@@ -1,0 +1,35 @@
+certified:
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: text field is the verbatim slice between offset_start and offset_end
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: counts emoji as one position (Unicode code points, not UTF-16 units)
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: returns one chunk for content of length 1
+    why: >-
+      Only one test compares each chunk's text with the content between its
+      offset_start and offset_end: the verbatim-slice test. It does this for one
+      input, a `pdf` split on form-feed. The emoji test and the length-1 test check
+      the fact only for a single chunk spanning the whole content, and only as a
+      side effect of checking offsets. Several other tests check text or offsets,
+      but none checks both against each other. The pdf form-feed split test and the
+      `ata`/`artigo`/`outro` test check text but not offsets. The `email`, `chat`
+      and `transcricao` tests check text with contains/startsWith and never read the
+      offsets. The BR-07 oversize test checks only offset widths and their sum,
+      never text. So if the email header/body split, the chat or transcript turn
+      splits, or the sentence-level oversize fallback put the wrong content in a
+      chunk for its offsets, every test in the file would still pass. The
+      `reconstruct` helper inside the verbatim-slice test is never called and
+      asserts nothing. All the tests call chunkV1 directly. None checks a raw chunk
+      after it is stored, so the fact for a persisted raw chunk is not exercised by
+      the offered proof.
+    remainder: testable
+    remainder_why: >-
+      For each of these inputs, assert that every emitted chunk's text equals the
+      original content's code-point slice between that chunk's offset_start and
+      offset_end: an `email` with headers and a body, a multi-speaker `chat`, a
+      timestamped `transcricao`, and an `ata` above CHUNK_HARD_MAX that goes through
+      the sentence-level fallback. For a persisted raw chunk, run the same
+      assertion on the raw chunk as stored against its raw information's content.

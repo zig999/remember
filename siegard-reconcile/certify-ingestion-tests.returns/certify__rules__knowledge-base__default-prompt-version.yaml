@@ -1,0 +1,25 @@
+certified:
+  - node: rules/knowledge-base/default-prompt-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: recommends v4 for new runs (DEFAULT_PROMPT_VERSION === 'v4')
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: dispatches 'v4' → v4 module with PROMPT_VERSION === 'v4'
+    why: >-
+      The offered proof checks two things. The registry's exported DEFAULT_PROMPT_VERSION
+      constant equals "v4", and selectPromptModule("v4") returns the v4 module. Neither test
+      starts a document ingestion. Nothing in the file submits an ingestion that names no prompt
+      version and then looks at the version the run used. So the fact as the node states it, that
+      such an ingestion runs under v4, is not exercised. Suppose the ingestion path stopped reading
+      DEFAULT_PROMPT_VERSION when no version is given, for example by falling back to a hardcoded
+      "v3" or by refusing the request. Both tests would still pass. The constant's value is only
+      what the default would be if the ingestion path used it. The tests do not show that the
+      ingestion path uses it. The file's other tests check v4's prompt content, its MAX_TOKENS
+      parity, and that v1, v2 and v3 are still registered. None of them bears on which version an
+      ingestion without a version runs under.
+    remainder: testable
+    remainder_why: >-
+      One input: a document ingestion request that names no prompt version. One expected result:
+      the run it creates (its llm_run.prompt_version) records "v4", and the prompt sent for
+      extraction is the v4 system prompt.

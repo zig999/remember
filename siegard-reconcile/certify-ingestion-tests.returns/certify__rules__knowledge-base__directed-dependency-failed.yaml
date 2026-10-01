@@ -1,0 +1,45 @@
+certified:
+  - node: rules/knowledge-base/directed-dependency-failed
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: checkCascade returns the missing dependency ref or null
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "node_id pin (invalid): unknown UUID → RESOURCE_NOT_FOUND; dependent items cascade"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "cascade on missing fragment evidence_ref: link lands dependency_failed"
+    why: >-
+      The proof exercises each missing reference on its own. Through the
+      orchestrator, an attribute whose node is missing and a link whose source
+      is missing are each reported dependency_failed, name that reference, and
+      are not proposed. A link whose evidence is missing gets the same result.
+      The checkCascade helper covers an attribute with a missing node and an
+      attribute with missing evidence, but only through the __testing__ seam,
+      not through the orchestrator's report. It has no case for links.
+
+      No test in the set has more than one reference missing at once. So the
+      fact's "first missing reference" ordering is never checked: node before
+      evidence for an attribute, and source, then target, then evidence for a
+      link. The comment "Missing node_ref returned FIRST" sits on a case where
+      the evidence is present, so that assertion would still pass if the order
+      were reversed.
+
+      No test has a link whose only missing reference is the target, so that
+      position in the link's order is never exercised at all. No test sends an
+      attribute with missing evidence through the orchestrator and asserts that
+      the report says dependency_failed and that nothing is proposed.
+    remainder: testable
+    remainder_why: >-
+      The open part can be closed with a few inputs, each with one expected
+      result. In each case the item is not proposed and the report shows
+      dependency_failed with the reason given here.
+      (1) An attribute whose node and evidence are both missing gives the node
+      reference as the reason.
+      (2) A link whose source, target and evidence are all missing gives the
+      source reference.
+      (3) A link whose target and evidence are missing, with the source present,
+      gives the target reference.
+      (4) A link whose only missing reference is the target gives the target
+      reference.
+      (5) An attribute whose node is present but whose evidence is missing,
+      sent through the orchestrator, gives the evidence reference.

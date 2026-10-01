@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/directed-full-confidence
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "forced confidence: dispatched propose_* args carry confidence=1.0 even when the caller payload has no confidence field"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "happy path: dispatches fragments → nodes → attributes → links in order; run closes 'completed'"
+    why: >-
+      The fact holds that every fragment, attribute and link a directed ingestion
+      proposes carries confidence 1.0, whatever the caller sends. In every test the
+      caller payload has no confidence field at all. The tests show that 1.0 is what
+      gets proposed when the caller says nothing. They never show that 1.0 is what gets
+      proposed when the caller supplies another value. Suppose an implementation passed
+      on a caller-supplied confidence and fell back to 1.0 only when none was given.
+      Both named tests would still pass, yet that implementation breaks the fact.
+      Coverage of "every" item is also thin. The dedicated forced-confidence test checks
+      only the first dispatched fragment, attribute and link (index 0), with one of each
+      in the input. The happy-path test does check confidence on each of its three
+      fragments. It also checks its one attribute and its one link, but it does so inside
+      its handler stubs, on the way to its real subject, the dispatch order. That makes
+      the check incidental. No test checks a second attribute or a second link.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result. Submit a directed ingestion whose
+      fragment, attribute and link items each carry a confidence other than 1.0 (for
+      example 0.5), with at least two attributes and two links. Expect one of two
+      results: the request is refused, or every dispatched propose_fragment,
+      propose_attribute and propose_link argument carries confidence 1.0, never the
+      value the caller supplied.

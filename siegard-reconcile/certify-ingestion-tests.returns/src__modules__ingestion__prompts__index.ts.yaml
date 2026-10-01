@@ -1,0 +1,52 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the header comment, lines 10-15, and the doc comment of selectPromptModule, lines 83-87
+    evidence: >-
+      "An unknown version is a configuration error, NOT a silent fallback: BR-26
+      step 2 mandates \"load the extraction.${prompt_version} module; fail with 500
+      SYSTEM_INTERNAL_ERROR if the module is missing\"." and
+      "Throws `UnknownPromptVersionError` for an unregistered version (BR-26 step 2 — fail
+      loud, never silently substitute a different prompt than the run declares)."
+    cost: >-
+      The rule that an extraction's prompt version must be one the system holds is said a second
+      time in prose beside the code that enforces it (the `REGISTRY[promptVersion]` lookup and
+      `throw new UnknownPromptVersionError(promptVersion)`). The comment also quotes a status and
+      error code (500 SYSTEM_INTERNAL_ERROR) that this file does not produce. When the node
+      moves, the comment goes stale and a reader may take it for the decision.
+    kind: restates
+    correction: >-
+      Remove the comments. The code in this file already holds the fact, and the node is bound
+      to this file. The comment route lands the removal, then /reconcile over the file.
+    node: rules/knowledge-base/prompt-version-known
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      the REGISTRY table, lines 65-70, which lists the four held versions. The literals "v1" to
+      "v4" are declared in the PROMPT_VERSION constants of the extraction.v1 to extraction.v4
+      files, which this file imports.
+    evidence: >-
+      const REGISTRY: Readonly<Record<string, PromptModule>> = {
+        [v1.PROMPT_VERSION]: V1,
+        [v2.PROMPT_VERSION]: V2,
+        [v3.PROMPT_VERSION]: V3,
+        [v4.PROMPT_VERSION]: V4,
+      };
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the DEFAULT_PROMPT_VERSION export, line 63. It resolves to "v4", per the PROMPT_VERSION
+      declaration in extraction.v4.ts.
+    evidence: >-
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      selectPromptModule, lines 88-94, and UnknownPromptVersionError, lines 73-81.
+    evidence: >-
+      const module = REGISTRY[promptVersion];
+        if (module === undefined) {
+          throw new UnknownPromptVersionError(promptVersion);
+        }
+looked_past: >-
+  The comment on DEFAULT_PROMPT_VERSION ("callers SHOULD send this at intake") and the history
+  paragraph in the header comment ("Until this registry existed...") are prose only, with no code
+  or emitted text carrying them, so they belong to the comment route and not to this judgment.

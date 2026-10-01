@@ -1,0 +1,77 @@
+findings:
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      The doc comment on LinkTypeRuleRow, lines 47-51. The comment on the linkTypeRules field, line 90, repeats it.
+    evidence: >-
+      "A vigent `link_type_rule` row. We snapshot the whole table — the temporal
+      filter (`valid_to IS NULL OR valid_to > current_date`) is applied at
+      lookup time so a rule that expires between reloads is honoured."
+    cost: >-
+      The window in which a rule is in effect is written a second time as prose. It uses
+      `current_date` and omits the `valid_from` bound, while the code that applies the window
+      is `isLinkRuleActive` (`today.getTime() < from.getTime()`, `today.getTime() >= to.getTime()`
+      over UTC-truncated dates). A reader who trusts the comment looks for a database-date
+      filter that does not exist here.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the node and implemented by
+      `isLinkRuleActive` in this file.
+    node: rules/knowledge-base/link-type-rule-in-effect
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      The doc comment on isLinkRuleActive, lines 265-270.
+    evidence: >-
+      "Returns `true` iff at least one rule covers the triple AND its
+      validity window includes today (semi-open `[valid_from, valid_to)`; nulls
+      mean unbounded — §5.1)."
+    cost: >-
+      The in-effect window and the "nulls mean unbounded" reading are stated again in a comment
+      that cites a section of the old v7 document. The running code is `isLinkRuleActive`'s
+      own `from`/`to` comparisons, so the prose becomes a second home once the node moves.
+    kind: restates
+    correction: >-
+      Remove the prose. The code at lines 289-293 holds the fact.
+    node: rules/knowledge-base/link-type-rule-in-effect
+  - file: src/modules/ingestion/catalog/catalog.ts
+    where: >-
+      The doc comment on isLinkRuleActive, lines 265-267, and the header comment, lines 9-11.
+    evidence: >-
+      "Look up an active `link_type_rule` for the given (source, link, target)
+      triple. Returns `true` iff at least one rule covers the triple"
+    cost: >-
+      The permission rule is stated again as prose, with a citation to "BR-15" of the back-spec
+      instead of to the node. The matching code is the triple comparison in `isLinkRuleActive`
+      (`r.link_type_id !== args.link_type_id || r.source_node_type_id !== ...`), so the prose
+      is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The predicate in `isLinkRuleActive` holds the fact.
+    node: rules/knowledge-base/link-permitted-by-type-rule
+read:
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      isLinkRuleActive, lines 271-296, the permission predicate over (source node type, link
+      type, target node type). This file computes whether a rule permits the link and does not
+      refuse the proposal itself.
+    evidence: >-
+      if (
+        r.link_type_id !== args.link_type_id ||
+        r.source_node_type_id !== args.source_node_type_id ||
+        r.target_node_type_id !== args.target_node_type_id
+      ) {
+        continue;
+      }
+      ...
+      return true;
+  - node: rules/knowledge-base/link-type-rule-in-effect
+    held_at: >-
+      isLinkRuleActive, lines 280 and 289-292, with stripTime at lines 298-300 truncating to
+      the UTC calendar date.
+    evidence: >-
+      if (from !== null && today.getTime() < from.getTime()) continue;
+      if (to !== null && today.getTime() >= to.getTime()) continue;
+      ... new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+looked_past: >-
+  The comments about closed value domains (BR-30) and the row interfaces for node types, link types and attribute keys concern nodes outside this set; the code here agrees with them and I did not judge them.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-in-allowed-values

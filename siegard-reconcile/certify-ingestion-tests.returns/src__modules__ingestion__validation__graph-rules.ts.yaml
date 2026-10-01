@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/ingestion/validation/graph-rules.ts
+    where: >-
+      the header comment, lines 1-8, and the docstring above validateGraphRule, lines 19-22
+    evidence: >-
+      "Look up an active `link_type_rule` matching the `(source_node_type,
+      link_type, target_node_type)` triple. ... Any other triple yields
+      `BUSINESS_LINK_RULE_VIOLATION`."
+    cost: >-
+      The comment states in prose the rule that a link must be permitted by an active type rule for its
+      source and target node types. The code holds that rule by calling `isLinkRuleActive` with `today`,
+      imported from "../catalog/catalog.js". If the node moves, a second statement of the rule sits in
+      this file where the next reader may take it as the rule itself.
+    kind: restates
+    correction: >-
+      Remove the header comment and the docstring. The behavior is already held by the `isLinkRuleActive`
+      call, which takes `today`, followed by the `throw new ValidationFailure("BUSINESS_LINK_RULE_VIOLATION", ...)`.
+    node: rules/knowledge-base/link-permitted-by-type-rule
+read:
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      validateGraphRule(), lines 23-46: the `isLinkRuleActive(...)` guard and the `ValidationFailure` thrown when it is false
+    evidence: >-
+      if (!isLinkRuleActive(snapshot, { source_node_type_id: input.source_node_type_id, link_type_id: input.link_type_id, target_node_type_id: input.target_node_type_id, today })) { throw new ValidationFailure("BUSINESS_LINK_RULE_VIOLATION", "No active link_type_rule authorises this (source_node_type, link_type, target_node_type) triple.", {...}) }
+looked_past: >-
+  The header comment says "The 22 seed rules of §15.2 are the v1 authoritative set", a seed-count claim that only a comment states and no code in this file carries. That is prose, not a finding, and its route is removal.

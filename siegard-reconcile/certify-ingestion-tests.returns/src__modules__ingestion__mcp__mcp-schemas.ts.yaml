@@ -1,0 +1,75 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      lines 81-123, `StartAsyncIngestionMcpInputSchema` and its docstring and
+      `content` description
+    evidence: >-
+      "`start_async_ingestion` (BR-32) — shape-identical to `ingest_document` for
+      caller symmetry. The only difference is the new-run return semantics
+      (immediate vs. awaited)" and, in the schema, "the server chunks it, runs
+      structured extraction in the BACKGROUND, and persists the knowledge graph
+      with provenance."
+    cost: >-
+      A tool that ingests a document and starts extraction in the background,
+      returning before the extraction finishes, exists only in this file. The
+      `ingest-document` operation in contracts/knowledge-base/ingestion is
+      described as completing the extraction and returning its run summary, and
+      the contract's description names no background or asynchronous ingestion.
+      The next reader looks for this tool's existence, its immediate-return
+      outcome and its refusals in the specification and finds none.
+    kind: unstated
+    correction: >-
+      An analysis would give the asynchronous-ingestion operation, with its
+      accepted outcome and refusals, a place in the ingestion contract. Until
+      then this schema is the only home of the tool.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      `INGEST_TOOL_NAMES`, lines 63-68, an enumeration of the four proposal kinds
+      in the material's spelling
+    evidence: |-
+      export const INGEST_TOOL_NAMES = [
+        "propose_fragment",
+        "propose_node",
+        "propose_link",
+        "propose_attribute",
+      ] as const;
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares only tool input schemas that carry document fields
+      (`content`, `source_type`, `metadata`), for example `IngestDocumentMcpInputSchema`
+      with `metadata: z.record(z.string(), z.unknown()).optional()`. It does not
+      declare the raw-information element's shape. Its attributes, such as
+      `content_hash`, `status` and `storage_ref`, are absent here.
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      `ListRecentIngestionsMcpInputSchema.limit`, lines 252-260, the `.min(1)`
+      and `.max(50)` bounds
+    evidence: |-
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      `ListRecentIngestionsMcpInputSchema.limit`, line 258, the `.default(10)`
+      call
+    evidence: ".default(10)"
+looked_past: >-
+  Many constraints here (directed reference 1..120, fragment text 1..1000, content 10 MiB,
+  node name 500, attribute value 2000, source label 200, confidence absent, the run summary
+  counters) are held by nodes outside this set, and the prose comments restating BR-xx rules
+  are comment-route matters, so neither is reported.
+candidates_opened:
+  - rules/knowledge-base/directed-defaults
+  - rules/knowledge-base/directed-full-confidence
+  - rules/knowledge-base/directed-pinned-node
+  - rules/knowledge-base/directed-reference-length
+  - rules/knowledge-base/fragment-text-length
+  - domain/knowledge-base/source-type
+  - domain/knowledge-base/run-summary
+  - domain/knowledge-base/llm-run
+  - contracts/knowledge-base/ingestion

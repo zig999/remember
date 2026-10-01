@@ -1,0 +1,41 @@
+certified:
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/propose-attribute-domain.spec.ts
+        name: rejects an out-of-domain value with VALIDATION_INVALID_FORMAT + {value, allowed_values}
+    why: >-
+      One test touches the order, and only at one point. It sends a value outside
+      the key's allowed values and checks that the proposal is refused. It also
+      checks that the query fetching fragments, the anchoring count query and the
+      INSERTs never ran. That ties only one step of the order: the allowed-values
+      check comes before the cited-fragment check and before the anchoring check.
+      The proof watches which SQL strings were sent, not which refusal a proposal
+      gets. So it is tied to how the service is built: a reordering that issues no
+      differently-shaped query would get past it. It shows the node lookup ran,
+      not that a missing node is refused before the attribute key is checked.
+      Nothing in the set submits a proposal for a node that does not exist. None
+      sends an attribute key unknown for its node type. None sends a value that
+      does not parse as the key's type. None cites a fragment that does not exist
+      or belongs to another LLM run. None has bad dates, confidence below the
+      threshold, or fragments that are not anchored. So most of the stated order
+      is never exercised: node before key, key before value, cited fragments
+      before dates, dates before confidence, confidence before anchoring. Stopping
+      at the first failed check is exercised only for the allowed-values refusal.
+      The other two tests in the file are 'accepts an in-domain value (closed
+      domain, value present in set)' and 'is a no-op on an OPEN domain — `title`
+      has zero rows in attribute_valid_value'. Both are proposals that pass every
+      check, so they show nothing about order or about stopping at the first
+      failure.
+    remainder: testable
+    remainder_why: >-
+      The order is a finite chain of eight checks, so a table of seven cases
+      closes it. Each case pairs one check with the check right after it. It
+      submits a proposal that fails both, against one expected result: refused
+      with the earlier check's reason and nothing written. The cases are: missing
+      node with unknown key; unknown key with unparseable value; value of the
+      wrong type or outside the allowed values with a nonexistent or foreign-run
+      fragment; such a fragment with bad dates; bad dates with too-low
+      confidence; too-low confidence with unanchored fragments. Add one proposal
+      for each check that fails only that check and is refused for that check's
+      reason.

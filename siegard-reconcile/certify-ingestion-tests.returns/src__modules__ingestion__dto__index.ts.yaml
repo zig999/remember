@@ -1,0 +1,79 @@
+findings:
+  - file: src/modules/ingestion/dto/index.ts
+    where: >-
+      IngestToolDescriptions.propose_link and IngestToolDescriptions.propose_attribute, lines 129-140
+    evidence: >-
+      "Both nodes must exist first, and you must cite at least one fragment_id as evidence."
+      and "The node must exist; cite at least one fragment_id."
+    cost: >-
+      The tool descriptions tell the model that a link or attribute proposal which cites no fragment
+      is not acceptable. No node holds a minimum of one cited fragment for a link or attribute
+      proposal. The nodes I found cover only the citation checks (the cited fragments must exist,
+      belong to the run and be anchored) and the at-least-one rule for correction evidence. A reader
+      looking in the specification for this refusal will not find it, and the model is being taught
+      a rule that only the code and this text hold.
+    kind: unstated
+    correction: >-
+      Analysis should give the minimum-citation rule for link and attribute proposals a node, most
+      likely a rule constraining the proposal. The description can then keep stating it as
+      behavior that agrees with that node.
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      IngestToolInputJsonSchemas (lines 95-100) and IngestToolJsonSchemaName (line 102), which declare
+      the closed set of four tool names
+    evidence: |-
+      export const IngestToolInputJsonSchemas = {
+        propose_fragment: ProposeFragmentInputJsonSchema,
+        propose_node: ProposeNodeInputJsonSchema,
+        propose_link: ProposeLinkInputJsonSchema,
+        propose_attribute: ProposeAttributeInputJsonSchema,
+      } as const;
+      export type IngestToolJsonSchemaName = keyof typeof IngestToolInputJsonSchemas;
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      Not enforced in this file. The only statement is the ingest_directed description text, which
+      agrees with the node.
+    evidence: >-
+      "the server forces `confidence = 1.0` on every dispatched item."
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      Not enforced in this file. The only statement is the ingest_directed description text, which
+      agrees with the node.
+    evidence: >-
+      "Supply `node_id` on a node to PIN against a known existing node (skips entity resolution)."
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      Not enforced in this file. The only statement is the ingest_document description text, which
+      agrees with the node.
+    evidence: >-
+      "the server stores the raw text, splits it into chunks, and runs structured extraction ... Re-sending the same content is a no-op (returns the existing run)."
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      Not enforced in this file. The only statement is the ingest_document and start_async_ingestion
+      description text, which agrees with the node.
+    evidence: >-
+      "Re-sending the same content is a no-op (returns the existing run)."
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    held_at: >-
+      Not enforced in this file. The only statement is the propose_link description text, which
+      agrees with the node.
+    evidence: >-
+      "link_type must be a catalog LinkType allowed for the two node types."
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      Not enforced in this file. The only statement is the list_recent_ingestions description text,
+      which agrees with the node.
+    evidence: >-
+      "`limit` 1..50 (default 10). Read-only."
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      Not enforced in this file. The only statement is the list_recent_ingestions description text,
+      which agrees with the node.
+    evidence: >-
+      "`limit` 1..50 (default 10). Read-only."
+looked_past: >-
+  The header comment (lines 1-24) and the doc comments (lines 91-94 and 104-117) describe the
+  BR-24 single-source derivation, the consumers and the zod-to-json-schema divergence, and no node
+  fact is stated only there. Those comments are prose for the comment route and not a conformance
+  judgment.

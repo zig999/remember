@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/undivided-sources
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`ata`, `artigo`, `outro`: no hard boundary — single chunk under CHUNK_HARD_MAX"
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: preserves a moderate-size block (below CHUNK_HARD_MAX) as one chunk
+    why: >-
+      I read "any other source" as the source type `outro`, beside `ata` (meeting
+      minutes) and `artigo` (article). The other reading, every source, would
+      contradict the pdf, email, chat and transcricao splitting this node sits
+      beside. The named test checks that a minutes, article or other content
+      comes back as exactly one chunk equal to the content. That content holds
+      only single newlines and none of the markers the other source types split
+      on: no form-feed (U+000C), no blank line, no "Name:" speaker line, no
+      "[00:01] Name:" timestamped turn. So if minutes, articles or other sources
+      started splitting on any of those markers, nothing would fail, and the
+      fact goes unchecked for exactly the content most likely to break it. The
+      moderate-size test and the emoji and accent offset tests also produce one
+      `ata` chunk, but only along the way to their own assertions, from content
+      that carries no markers either. The oversize test splitting an `ata` above
+      CHUNK_HARD_MAX is the size fallback (BR-07), not a source boundary. It
+      bears on the fact only if "one block" means the unit before that fallback,
+      which the node does not say.
+    remainder: testable
+    remainder_why: >-
+      For each of `ata`, `artigo` and `outro`, take content under CHUNK_HARD_MAX
+      that holds a form-feed, a blank line, a "João: ..." speaker line and a
+      "[00:01] Maria: ..." timestamped line. The expected result is exactly one
+      chunk whose text is the whole content, verbatim.

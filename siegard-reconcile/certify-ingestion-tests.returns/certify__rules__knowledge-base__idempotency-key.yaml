@@ -1,0 +1,35 @@
+certified:
+  - node: rules/knowledge-base/idempotency-key
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: matches a reference sha256 of the concatenated UTF-8 inputs
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: is exactly 64 hex chars, lowercase
+      - file: src/__tests__/unit/ingestion/idempotency-key.spec.ts
+        name: operand order matters — swapping model ↔ prompt_version flips the key
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: returns 64 lowercase hex characters
+      - file: src/__tests__/unit/ingestion/hash.spec.ts
+        name: concatenates operands without a separator (spec BR-08)
+    why: >-
+      The SHA-256 digest, the 64 lowercase hexadecimal characters and the joining without a
+      separator are all exercised, but only through composeIdempotencyKey called with operands
+      the test picks itself. Two parts of the fact go unexercised. First, the order is only partly
+      pinned. Every reference-digest test gives the prompt version and the chunking version the
+      same value ("v1"), and the only swap test exchanges the model and the prompt version. An
+      implementation that joined the content hash, the chunking version, the model and the prompt
+      version, in that order, would pass every test in the set. Second, nothing ties the key to an
+      LLM run. No test creates a run and reads back its key, so a run keyed by anything other than
+      the digest of its own raw information's content hash, prompt version, model and chunking
+      version would fail none of these tests. The tests "yields a different key when any single
+      operand changes", "is deterministic across calls", the three "bumping ... changes the key"
+      tests and "is deterministic" only assert that the key differs or repeats, so they would
+      still pass if the formula were wrong.
+    remainder: testable
+    remainder_why: >-
+      Two assertions would close it. The first gives a content hash, a prompt version, a model and
+      a chunking version that are all different from one another, and expects
+      sha256(content_hash + prompt_version + model + chunking_version) as lowercase hex. The
+      second creates an LLM run over a raw information with a known content hash, prompt version,
+      model and chunking version, and expects the run's idempotency key to equal that same digest.

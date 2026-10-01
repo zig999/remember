@@ -1,0 +1,23 @@
+certified:
+  - node: rules/knowledge-base/chunking-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: each emitted chunk declares chunking_version === 'v1' (BR-04)
+    why: >-
+      The test only checks that each chunk chunkV1 emits carries a chunking_version
+      equal to the imported constant CHUNKING_VERSION. It never compares it to the
+      literal 'v1'. If the version stopped being v1, the constant and the chunker
+      would change together and the test would still pass, so the "that version is
+      v1" half of the fact goes unexercised. The test is also weaker than its name
+      says. It never asserts that "conteúdo simples" produces any chunk, so the loop
+      passes on an empty result. It exercises only the chunker's output for one
+      source type, "ata". It never touches a persisted raw chunk, so nothing in the
+      offered proof shows that every raw chunk records the version once stored.
+    remainder: testable
+    remainder_why: >-
+      Two checks would close it, both comparing to the literal 'v1' rather than the
+      constant. First, chunk a non-empty input, assert at least one chunk came back,
+      and assert every chunk's chunking_version is 'v1'. Second, ingest a document
+      and read its stored raw chunks back, asserting each one records
+      chunking_version 'v1'.

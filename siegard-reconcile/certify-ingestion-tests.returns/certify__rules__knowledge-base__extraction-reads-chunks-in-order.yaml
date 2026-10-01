@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: v4.user() (reused from v1) surfaces received_at in the metadata block
+    why: >-
+      Only one part of the fact is exercised: the prompt for a single chunk carries the reception
+      time and a document date. The test checks that the metadata block contains
+      "- received_at: 2026-06-26T12:00:00Z" and "- document_date: (unknown)". That happens on the
+      way to its real purpose, which is to show that the v4 directive has a line to point at.
+      Nothing in the offered proof runs an extraction across a raw information's chunks. So these
+      parts go unexercised: reading the chunks one at a time, reading them in index order, a
+      known document date appearing in the prompt, the source's type appearing in the prompt, and
+      the title appearing in the prompt. The test passes source_type "ata" and title null but
+      never asserts either one in the output. It also passes prevTail as an empty string, so no
+      test checks that the model sees the previous chunk's text, or that only its last 200
+      characters are shown. The other tests in the file check the system-prompt wording and the
+      prompt registry, and none of them bears on this fact.
+    remainder: testable
+    remainder_why: >-
+      Input: a raw information with a known source type, document date, title and reception time.
+      It holds at least three chunks stored out of index order, and the chunk before at least one
+      of them is longer than 200 characters. Run an extraction over it. Expected result: one model
+      call per chunk, in ascending index order. Each call shows that chunk's text with the
+      source's type, document date, title and reception time. Each call after the first also shows
+      exactly the last 200 characters of the previous chunk by index, and nothing earlier than
+      those 200 characters.

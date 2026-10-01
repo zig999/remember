@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes sub-floor (< 0.40) to 'below_floor'
+      - file: src/__tests__/unit/ingestion/confidence.spec.ts
+        name: routes mid-confidence (0.40 <= c < 0.75) to 'uncertain'
+    why: >-
+      The proof covers only the classification. routeConfidence returns kind
+      'below_floor' for 0, 0.39 and 0.399999, and it does not do so at 0.40.
+      Those tests would fail if the floor moved. The node's fact is a different
+      thing: a proposal below 0.40 records no knowledge link or node attribute.
+      Nothing in the set submits a link proposal or an attribute proposal with
+      confidence below 0.40 and then checks that nothing was persisted. A handler
+      could ignore 'below_floor' and still write the knowledge_link or
+      node_attribute row, and every test here would still pass. The link half and
+      the attribute half are both unexercised. The test "the published constants
+      exactly match the spec" compares CONFIDENCE_FLOOR to the literal 0.4. That
+      pins a constant, not the behavior: it would not fail if the routing or the
+      persistence ignored the constant. So it is not cited as bearing on the fact.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, one expected result each. First, a link proposal with
+      confidence 0.39 inside a valid run, with valid provenance: the expected
+      result is that no knowledge_link row is recorded for it. Second, an
+      attribute proposal with confidence 0.39 under the same conditions: the
+      expected result is that no node_attribute row is recorded for it.

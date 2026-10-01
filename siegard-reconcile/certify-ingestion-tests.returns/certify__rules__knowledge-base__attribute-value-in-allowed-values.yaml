@@ -1,0 +1,37 @@
+certified:
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/propose-attribute-domain.spec.ts
+        name: accepts an in-domain value (closed domain, value present in set)
+      - file: src/__tests__/unit/ingestion/propose-attribute-domain.spec.ts
+        name: rejects an out-of-domain value with VALIDATION_INVALID_FORMAT + {value, allowed_values}
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: is silent when value IS in the closed domain (exact match)
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: throws VALIDATION_INVALID_FORMAT with {value, allowed_values} on miss
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: treats case differences as a miss (exact-match, no normalisation)
+      - file: src/__tests__/unit/ingestion/structural.spec.ts
+        name: treats accent differences as a miss (exact-match, no normalisation)
+    why: >-
+      The proposal half is exercised. proposeAttributeService accepts "proposta" for a
+      doc_type key that has allowed values. It refuses "PROPOSAL" with no attribute or
+      provenance written. At the helper level, assertValueInDomain refuses a value that
+      differs only in case ("Proposta") or only in accent ("relatorio"). Together these hold
+      "one of them exactly as written" for a proposal, although the case-only and
+      accent-only misses are shown only on the helper and never through the proposal path.
+      The correction half is not exercised. Nothing in the set submits an attribute
+      correction: no curation correction of an attribute value, and no proposal carrying
+      change_hint "correction". The set therefore never checks that a corrected value for a
+      key with allowed values must be one of them. The open-domain test ("is a no-op on an
+      OPEN domain") bears on keys without allowed values, which the fact does not address.
+      The structural.spec.ts test "sorts allowed_values lexicographically for diagnostic
+      stability" asserts the order of the diagnostic, which the fact does not state.
+    remainder: testable
+    remainder_why: >-
+      One input against one expected result: an attribute correction for a key with
+      allowed values (for example doc_type), carrying a value not in that set or differing
+      from a member only in case or accent. The expected result is a refusal that leaves
+      the attribute's current value unchanged. Paired with it, a correction carrying an
+      allowed value exactly as written is accepted.

@@ -1,0 +1,27 @@
+certified:
+  - node: domain/knowledge-base/health-report
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-ops-tools.spec.ts
+        name: "reports database: 'ok' when the ping succeeds (MCP call ok)"
+      - file: src/__tests__/unit/ingestion/ingest-ops-tools.spec.ts
+        name: "reports database: 'unreachable' when the DB is down — still an ok MCP call"
+    why: >-
+      Both tests check ok and database together. ok is true when the store answered
+      and false when it was unreachable. The other two attributes are only partly
+      checked. checked_at is required and typed as a datetime, but the success-path
+      test only asserts typeof string. An empty or unparseable string would pass,
+      and so would a timestamp unrelated to when the probe ran. The unreachable-path
+      test does not check service or checked_at at all. A report that dropped either
+      field when the store is down would still pass, even though the node requires
+      every attribute on every report. Separately, the success-path test asserts
+      that service equals the literal "remember-bff". The node only says "the
+      service's name" and states no particular value, so this asserts more than the
+      node establishes. It is a finding for a reader to route, not extra coverage.
+    remainder: testable
+    remainder_why: >-
+      Two checks would close it. With the store answering, checked_at must parse as a
+      datetime between the moments just before and just after the probe call. With
+      the store unreachable, the report must still carry a non-empty service string
+      and a checked_at that parses as a datetime, next to ok false and database
+      unreachable.

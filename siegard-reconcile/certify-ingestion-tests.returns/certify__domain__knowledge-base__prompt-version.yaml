@@ -1,0 +1,32 @@
+certified:
+  - node: domain/knowledge-base/prompt-version
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: "dispatches 'v1' → v1 module"
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: "dispatches 'v2' → v2 module"
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v2.spec.ts
+        name: "throws UnknownPromptVersionError for an unregistered version (BR-26 — fail loud, no silent fallback)"
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v3.spec.ts
+        name: "dispatches 'v3' → v3 module"
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: "dispatches 'v4' → v4 module with PROMPT_VERSION === 'v4'"
+      - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+        name: "keeps v1/v2/v3 registered (backward-compatibility — audit-trail honesty)"
+    why: >-
+      The membership half of the enumeration is tested. Each of v1, v2, v3 and v4 is
+      dispatched and resolves to a module carrying that version, so dropping any of the
+      four values would fail a named test. The closed half is only tested against two
+      outside values, "v99" and "extraction.v1", and both are refused. No test reads the
+      whole set of versions an extraction can run under. A fifth version added beside the
+      four would leave every named test passing, so the claim that the versions are exactly
+      v1, v2, v3 and v4 is not tested. One test asserts more than this node states.
+      "recommends v4 for new runs (DEFAULT_PROMPT_VERSION === 'v4')" in
+      extraction-prompt-v4.spec.ts asserts which version is the default. That fact belongs
+      to no value of this enumeration, so it is not counted as coverage here.
+    remainder: testable
+    remainder_why: >-
+      One assertion would close it: read the full set of versions the registry accepts and
+      compare it with exactly {v1, v2, v3, v4}. The test fails if a value is added or one is
+      removed.

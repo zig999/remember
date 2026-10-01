@@ -1,0 +1,116 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 71-80, the guard after the catalog lookup that compares `resolvedKey.node_type_id` with `nodeTypeId`
+    evidence: >-
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+          throw new ValidationFailure(
+            "VALIDATION_INVALID_FORMAT",
+            "attribute_key.node_type_id does not match the node's node_type_id.",
+    cost: >-
+      The attribute-key-for-node-type rule is implemented a second time in this file. This copy refuses with
+      VALIDATION_INVALID_FORMAT. The contract answers the rule with BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key
+      (contracts/knowledge-base/ingestion.md, propose-attribute). If the catalog cache scope ever changes and this
+      branch becomes reachable, the same refusal would carry a code the specification does not give it. A reader
+      looking for the refusal in the specification would not find this code.
+    kind: contradicts
+    correction: >-
+      Remove the second check, or make it refuse with the code the contract gives the rule. The first lookup
+      already refuses with BUSINESS_UNKNOWN_ATTRIBUTE_KEY through `assertKnownType`.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 85-92, the comment block above `const domain = domainOf(deps.catalog, resolvedKey.id);`
+    evidence: >-
+      Exact match (no normalisation) per spec §1 / BR-30 v1 semantics.
+    cost: >-
+      The comment restates the exact-as-written rule for allowed values, which the code holds in
+      `assertValueInDomain(args.value, domain)`. It is a second home outside behavior, and it cites BR-30 and "spec
+      §1" instead of the node that holds the rule. When the node moves, the comment will not follow.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the branch `if (domain !== null) { assertValueInDomain(...) }` and
+      the node is bound to this file.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      lines 131-134, the comment above the `sourceMetaRes` query
+    evidence: >-
+      `received_at`
+        // is the LAST link of the date-justification chain (v7 §6.5 / §13c / A14)
+        // and is consumed by `validateTemporal` as the fallback for
+        // `requires_valid_from = true` rows that carry no stated/document date.
+    cost: >-
+      The comment restates the required-start-available rule: a start that is stated, or taken from the source's
+      document date, or from its reception date. The code holds this in the query selecting `document_date` and
+      `received_at` and in the `validateTemporal(...)` call. The comment names v7 sections that are not the node,
+      so the next reader is pointed at the wrong place.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the node, and the code reads the two dates and forwards them to
+      `validateTemporal`.
+    node: rules/knowledge-base/required-start-available
+read:
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      the sequence of statements in proposeAttributeService, lines 53-183
+    evidence: >-
+      `findNodeTypeIdByNodeId` + `assertFound`, then `attributeKeyByNodeTypeAndKey.get(...)` + `assertKnownType`,
+      then `parseAttributeValue` and `if (domain !== null) { assertValueInDomain(args.value, domain); }`, then
+      the `fragRes` existence and `llm_run_id` ownership checks, then `validateTemporal({...})`, then
+      `routeConfidence(args.confidence)` with `route.kind === "below_floor"`, then
+      `countFragmentsAnchoredToSource(...)`. Each failure throws or returns before the next statement.
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the branch at lines 93-96
+    evidence: >-
+      const domain = domainOf(deps.catalog, resolvedKey.id);
+        if (domain !== null) {
+          assertValueInDomain(args.value, domain);
+        }
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the `below_floor` branch at lines 159-167
+    evidence: >-
+      if (route.kind === "below_floor") {
+          const result: ProposeAttributeResult = {
+            attribute_id: null,
+            outcome: "rejected",
+            reason: "BELOW_CONFIDENCE_FLOOR",
+          };
+          return { ok: true, result };
+        }
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the inputs to another module: `change_hint: args.change_hint,
+      fragment_texts: fragmentTexts,` inside `validateTemporal({...})`. No errata keyword test appears in this
+      file.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      the mapping at lines 186-187. The 0.75 and 0.40 thresholds are not in this file; they come from
+      `routeConfidence`.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" =
+          route.kind === "active" ? "active" : "uncertain";
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      The file selects `document_date` and `received_at` and passes `requires_valid_from:
+      resolvedKey.requires_valid_from, document_date: documentDate, received_at: receivedAt` to
+      `validateTemporal`. It does not itself refuse when no start is available.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `valid_from: args.valid_from ?? null, valid_from_basis: args.valid_from_basis ?? null`
+      to `validateTemporal`. It makes no basis check of its own.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `valid_from: args.valid_from ?? null, valid_to: args.valid_to ?? null` to
+      `validateTemporal`. It makes no start-before-end comparison of its own.
+looked_past: >-
+  The file's header comments and the "Layer" comments describe the layered pipeline and cite BR numbers. I did not
+  file them separately, because the check order they restate is held by the statements themselves.
+candidates_opened:
+  - rules/knowledge-base/attribute-key-for-node-type

@@ -1,0 +1,100 @@
+findings:
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the docstring of IngestDirectedInvocationContext, lines 86-92
+    evidence: >-
+      * The chat agent dispatch supplies `source_excerpt` (the operator's verbatim
+      * turn) here so the orchestrator can persist it as `original_input` on the
+      * `RawInformation` row.
+    cost: >-
+      The prose restates a fact the node already holds, so there are two homes for it. When the
+      node moves, the comment keeps saying the old thing and nothing reads it. The code that
+      records the fact is `original_input: deps.sourceExcerpt ?? null` in
+      src/modules/ingestion/service/directed-ingestion.service.ts, line 366, so the pair
+      conforms and only the prose is owed.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The fact stays in the node and in the service code
+      that records it.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the VALIDATION_INVALID_FORMAT envelope returned on a failed parse, lines 131-143
+    evidence: >-
+      message: "ingest_directed arguments failed validation.",
+      details: {
+        issues: parsed.error.issues.map((i) => ({
+    cost: >-
+      The text a caller is told when ingest_directed arguments are refused lives only in this
+      handler. The ingest-directed operation in the contract states only "error code
+      VALIDATION_INVALID_FORMAT listing each failing field with its path and message" and no
+      message. Other operations state "Request payload failed validation." as their message. A
+      reader looking in the specification cannot tell which wording is decided, and cannot tell
+      that this operation's wording differs from the other validation refusals.
+    kind: unstated
+    correction: >-
+      The analysis must give ingest-directed's validation refusal a stated message, or decide
+      that it shares the shared wording. The handler then follows whichever is decided.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the metadataPointer forwarding, lines 184-193
+    evidence: >-
+      ...(invocationContext?.pointer !== undefined &&
+      typeof invocationContext.pointer.conversation_id === "string" &&
+      typeof invocationContext.pointer.message_id === "string"
+        ? {
+            metadataPointer: {
+              conversation_id: invocationContext.pointer.conversation_id,
+              message_id: invocationContext.pointer.message_id,
+            },
+          }
+        : {}),
+    cost: >-
+      The handler holds a rule that a chat-originated directed ingestion records the
+      conversation and message identities in the raw information's metadata. It also holds a
+      rule that a pointer missing either identity is dropped silently. The service merges these
+      into the metadata as `intakeMetadata.conversation_id` and `intakeMetadata.message_id`. No
+      node states either rule. The raw-information node says only that metadata is "a free-form
+      set of named values". The next reader looking in the specification would not learn that
+      chat provenance keys are written there, or that a partial pointer vanishes without a trace.
+    kind: unstated
+    correction: >-
+      The analysis must decide whether a chat-originated directed ingestion records the
+      conversation and message identities in the raw information's metadata. It must also decide
+      what happens when only one of the two is supplied. Both rules then need a node.
+    node: domain/knowledge-base/directed-ingestion
+  - file: src/modules/ingestion/mcp/directed-ingest.handler.ts
+    where: >-
+      the catch branch of the delegation, lines 211-227
+    evidence: >-
+      code: "SYSTEM_INTERNAL_ERROR",
+      message: "Unexpected error during directed ingestion.",
+    cost: >-
+      The ingest-directed operation lists no refusal for an unexpected failure. The document
+      ingestion operation states SYSTEM_INTERNAL_ERROR with "Unexpected error during document
+      ingestion." and ingest-directed has no counterpart. Both the code and the message text
+      that callers receive are decided only here, so the specification gives no answer to what
+      a directed ingestion tells someone when it fails unexpectedly.
+    kind: unstated
+    correction: >-
+      The analysis must add to the ingest-directed operation the refusal for an unexpected
+      failure, with its code and message. The handler then follows it.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      this file forwards the turn's excerpt to the service in the options object built at lines
+      177-179. The service records it as the raw information's original input
+      (directed-ingestion.service.ts, line 366).
+    evidence: >-
+      ...(invocationContext?.source_excerpt !== undefined
+        ? { sourceExcerpt: invocationContext.source_excerpt }
+        : {}),
+looked_past: >-
+  The McpEnvelopeJson type, the dependency-injection seams and the explicit conditional spreads
+  for exactOptionalPropertyTypes are structural choices that state no domain fact, so they belong
+  to the code review.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - domain/knowledge-base/raw-information

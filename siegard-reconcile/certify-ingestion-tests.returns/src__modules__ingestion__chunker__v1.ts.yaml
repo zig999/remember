@@ -1,0 +1,235 @@
+findings:
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the module header comment, lines 8-10 (step 1), and the splitByHardBoundaries docstring, lines 155-158
+    evidence: >-
+      "For `ata`, `artigo`, `outro`, there are no hard
+      boundaries — the whole content is a single block."
+    cost: >-
+      The source restates, in prose, that these sources are one block. The code holds it at the `case "ata": case "artigo": case "outro": return [{ start: 0, endExclusive: total }];` branch of splitByHardBoundaries. The comment is a second home for the rule that no running system reads. If the node moves, the comment stays and keeps asserting the old rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by the node and by the branch in splitByHardBoundaries.
+    node: rules/knowledge-base/undivided-sources
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the module header comment, lines 11-12 (step 2)
+    evidence: >-
+      "For each block, try to keep it as one chunk if its size is at most
+      `CHUNK_HARD_MAX` code points."
+    cost: >-
+      The prose restates the short-block rule. The code holds it at `if (blockSize <= CHUNK_HARD_MAX)` in chunkV1. A second statement of the rule outside behavior can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The branch in chunkV1 holds the rule.
+    node: rules/knowledge-base/short-block-one-chunk
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the module header comment, lines 12-18 (steps 2-3), and the splitBySentences comments, lines 354-356 and 372-374
+    evidence: >-
+      "fall
+      back to sentence-level split via `Intl.Segmenter('pt', {granularity:
+      'sentence'})` (BR-07)."
+    cost: >-
+      The prose restates the oversize sentence-split rule and its buffer-closing condition. The code holds both: `new Intl.Segmenter("pt", { granularity: "sentence" })` in splitBySentences and `if (tentativeSize > CHUNK_TARGET[1])` in chunkV1. The comment also attributes the rule to BR-07 of a document, not to the node. A reader is sent to that document rather than to the specification.
+    kind: restates
+    correction: >-
+      Remove the prose. The segmenter call and the buffer branch hold the rule.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the RawChunkInput docstring, lines 42-46
+    evidence: >-
+      "Verbatim slice of the
+      original content between `offset_start` and `offset_end` (code points,
+      semi-open)."
+    cost: >-
+      The prose restates the verbatim-excerpt invariant. The code holds it in buildChunk: `text: codePoints.slice(start, endExclusive).join("")` with `offset_start: start` and `offset_end: endExclusive`. The invariant is stated twice and only one copy is read by anything.
+    kind: restates
+    correction: >-
+      Remove the prose. buildChunk holds the rule.
+    node: rules/knowledge-base/chunk-excerpt-is-verbatim
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the RawChunkInput docstring, lines 44-46
+    evidence: >-
+      "`chunk_index` is the 0-based position within the document."
+    cost: >-
+      The prose restates the chunk-index rule. The code holds it as `chunks.length` passed as the index to buildChunk in chunkV1, so indexes follow emission order from 0. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The `chunks.length` argument in chunkV1 holds the rule.
+    node: rules/knowledge-base/chunk-index-follows-content
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the splitByHardBoundaries docstring, lines 146-148
+    evidence: >-
+      "- `pdf`:          form-feed (`\f`, U+000C). PDF extractors typically insert
+                          `\f` between pages."
+    cost: >-
+      The prose restates the pdf boundary rule. The code holds it at `case "pdf": return splitOnCharBoundary(codePoints, "\f");`, and splitOnCharBoundary drops the delimiter and skips empty spans. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The pdf case and splitOnCharBoundary hold the rule.
+    node: rules/knowledge-base/pdf-blocks-at-form-feeds
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the splitByHardBoundaries docstring, lines 148-149, and the splitEmail docstring, lines 213-215
+    evidence: >-
+      "- `email`:        first blank line (header/body separator) plus every
+                          transition into / out of a `>` quotation block."
+    cost: >-
+      The prose restates the email header-block rule. The code holds it at `if (!headersClosed && isBlank)` in splitEmail, where `blockStart = nextLineStart(lines, i)` leaves the blank line's break in no block. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The header branch in splitEmail holds the rule.
+    node: rules/knowledge-base/email-header-block
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the splitByHardBoundaries docstring, lines 148-149, and the splitEmail docstring, lines 213-215
+    evidence: >-
+      "every transition into / out of a `>` quotation block"
+    cost: >-
+      The prose restates the email quotation-block rule. The code holds it at `if (headersClosed && i > 0 && !isBlank && isQuoted !== prevQuoted)` in splitEmail, with `isQuotedLine`. The comment is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The quote-transition branch in splitEmail and isQuotedLine hold the rule.
+    node: rules/knowledge-base/email-quote-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the splitByHardBoundaries docstring, lines 150-154, and the splitTurns docstring, lines 261-265
+    evidence: >-
+      "A line that starts with
+                          `[ \t]*[A-Za-z0-9_]+[ \t]*:[ \t]` (e.g. `João:`,
+                          `[12:00] Maria:`) opens a new block. We never fuse two
+                          consecutive speakers into one chunk."
+    cost: >-
+      The prose restates the turn-block rule. The code holds it as `for (let i = 1; i < lines.length; i++)` with `isSpeakerLine` in splitTurns. The quoted pattern is not the pattern the code runs, which is SPEAKER_LINE_REGEX at line 351. A reader who trusts the comment learns a different speaker-line definition than the one applied.
+    kind: restates
+    correction: >-
+      Remove the prose. The loop in splitTurns holds the rule.
+    node: rules/knowledge-base/turn-blocks
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      the SPEAKER_LINE_REGEX docstring, lines 341-350
+    evidence: >-
+      "- `Name:` followed by white space (Name = ASCII identifier characters
+           plus single embedded spaces — we keep it strict to avoid false
+           positives on prose like "Importante: ...").
+         - Optional bracketed timestamp prefix `[12:00]` or `(12:00)`."
+    cost: >-
+      The prose restates the speaker-line definition, and it describes it differently from both the node and the regex. It says "ASCII identifier characters", while the regex accepts `À-ÿ`. The code holds the definition at SPEAKER_LINE_REGEX, so the pair differs in the code, not in the comment (see the contradicts finding on the regex). The comment is a third statement of the definition.
+    kind: restates
+    correction: >-
+      Remove the prose. SPEAKER_LINE_REGEX holds the definition.
+    node: rules/knowledge-base/speaker-line
+  - file: src/modules/ingestion/chunker/v1.ts
+    where: >-
+      SPEAKER_LINE_REGEX, line 351
+    evidence: >-
+      const SPEAKER_LINE_REGEX = /^\s*(?:[[(]\d{1,2}:\d{2}(?::\d{2})?[\])][\s\t]+)?[A-Za-zÀ-ÿ0-9_]+(?:\s[A-Za-zÀ-ÿ0-9_]+)?:\s/;
+    cost: >-
+      The node names four time stamp forms: [h:mm], [hh:mm], (hh:mm) and (hh:mm:ss). The regex accepts any of `[` or `(` closed by any of `]` or `)`, with optional seconds. It therefore also treats `[12:00:30] Ana: oi` (square brackets with seconds), `(1:05) Ana: oi` (parentheses with one-digit hour) and `[12:00) Ana: oi` (mismatched brackets) as speaker lines, and each of these starts a new block in chat and transcript sources. The node says "letters", while the class `A-Za-zÀ-ÿ` accepts only ASCII and Latin-1 characters, including `×` and `÷`, and refuses letters such as `ł`. Block boundaries, and so chunk offsets, differ from what the specification decided for these lines.
+    kind: contradicts
+    correction: >-
+      Make the pattern accept exactly the four time stamp forms the node lists and "letters" as the node means them. If the wider acceptance is intended, the node is what changes, through analysis, not the regex.
+    node: rules/knowledge-base/speaker-line
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the RawChunkInput interface (lines 47-53), populated by buildChunk (lines 417-430). It declares chunk_index, text, offset_start, offset_end and chunking_version.
+    evidence: >-
+      export interface RawChunkInput {
+        readonly chunk_index: number;
+        readonly text: string;
+        readonly offset_start: number;
+        readonly offset_end: number;
+        readonly chunking_version: typeof CHUNKING_VERSION;
+      }
+  - node: rules/knowledge-base/chunk-excerpt-is-verbatim
+    held_at: >-
+      buildChunk, lines 417-430
+    evidence: >-
+      text: codePoints.slice(start, endExclusive).join(""),
+          offset_start: start,
+          offset_end: endExclusive,
+  - node: rules/knowledge-base/chunk-index-follows-content
+    held_at: >-
+      the buildChunk calls in chunkV1, lines 82-84, 105-107, 115-117 and 127. Each passes `chunks.length` as the index, and blocks and sentences are walked in content order.
+    evidence: >-
+      chunks.push(
+                buildChunk(codePoints, bufferStart, bufferEnd, chunks.length)
+              );
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      buildChunk, line 428, and the RawChunkInput type, line 52. The value `v1` itself is declared in ./config.js, outside this file set and not read.
+    evidence: >-
+      chunking_version: CHUNKING_VERSION,
+  - node: rules/knowledge-base/email-header-block
+    held_at: >-
+      the header branch of splitEmail, lines 233-242
+    evidence: >-
+      if (!headersClosed && isBlank) {
+            if (line.start > blockStart) {
+              ranges.push({ start: blockStart, endExclusive: line.start });
+            }
+            headersClosed = true;
+            seenBlank = true;
+            blockStart = nextLineStart(lines, i);
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      the oversize branch of chunkV1, lines 87-118, and splitBySentences, lines 368-394. The 4000 and 2000 values come from the imported CHUNK_HARD_MAX and CHUNK_TARGET in ./config.js, outside this file set and not read.
+    evidence: >-
+      const segmenter = new Intl.Segmenter("pt", { granularity: "sentence" });
+      ...
+            if (tentativeSize > CHUNK_TARGET[1]) {
+              chunks.push(
+                buildChunk(codePoints, bufferStart, bufferEnd, chunks.length)
+              );
+  - node: rules/knowledge-base/pdf-blocks-at-form-feeds
+    held_at: >-
+      the pdf case of splitByHardBoundaries, lines 172-173, and splitOnCharBoundary, lines 193-211
+    evidence: >-
+      case "pdf":
+            return splitOnCharBoundary(codePoints, "\f");
+      ...
+          if (codePoints[i] === delimiter) {
+            if (i > cursor) {
+              ranges.push({ start: cursor, endExclusive: i });
+            }
+            cursor = i + 1;
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      the whole-block branch of chunkV1, lines 80-86. The 4000 value comes from the imported CHUNK_HARD_MAX in ./config.js, outside this file set and not read.
+    evidence: >-
+      if (blockSize <= CHUNK_HARD_MAX) {
+            // Whole block fits — emit as a single chunk.
+            chunks.push(
+              buildChunk(codePoints, block.start, block.endExclusive, chunks.length)
+            );
+            continue;
+  - node: rules/knowledge-base/turn-blocks
+    held_at: >-
+      splitTurns, lines 267-287; the loop starts at line index 1, so the first line opens no new block
+    evidence: >-
+      for (let i = 1; i < lines.length; i++) {
+          const line = lines[i]!;
+          if (isSpeakerLine(codePoints, line)) {
+            if (line.start > blockStart) {
+              ranges.push({ start: blockStart, endExclusive: line.start });
+            }
+            blockStart = line.start;
+  - node: rules/knowledge-base/undivided-sources
+    held_at: >-
+      the ata, artigo and outro case of splitByHardBoundaries, lines 167-170
+    evidence: >-
+      case "ata":
+          case "artigo":
+          case "outro":
+            return [{ start: 0, endExclusive: total }];
+looked_past: >-
+  The splitBySentences comment (lines 359-363) claims a Markdown fenced-block and table-row carve-out that no code carries, so it is prose-only with no code or emitted text behind it, and I did not report it as a finding.
+candidates_opened:
+  - rules/knowledge-base/email-quote-blocks
+  - rules/knowledge-base/speaker-line
+  - rules/knowledge-base/contentless-blocks-single-chunk

@@ -1,0 +1,66 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      TRIGRAM_CANDIDATE_LIMIT (line 47) and its use in the candidate query's `LIMIT` clause (line 165). The ambiguous branch (lines 186-217) takes its entity_match_review rows from this capped set.
+    evidence: >-
+      const TRIGRAM_CANDIDATE_LIMIT = 10;
+      ...
+      ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+            LIMIT ${TRIGRAM_CANDIDATE_LIMIT}
+    cost: >-
+      The candidate node says the new needs-review node is paired with "each such node" at 0.55 or more. The code can pair it with at most 10, so an eleventh qualifying node would be dropped without trace. The cap of 10 exists only in this file. The next reader looks for it in the specification and does not find it, and the entity-match queue silently lists fewer candidates than the rule promises.
+    kind: contradicts
+    correction: >-
+      Either the specification states the cap on considered candidates, or the query stops limiting the set that feeds the entity match reviews. Which of the two is a decision for the specification's owner.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+read:
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      Step 1 of resolveOrCreateNode, the exact alias_norm query and the early return, lines 130-151.
+    evidence: >-
+      WHERE na.alias_norm = norm($1::text)
+              AND kn.node_type_id = $2
+              AND kn.status = 'active'
+            LIMIT 1
+      ...
+      return { node_id: nodeId, resolution: "matched_existing" };
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      The matched_existing branches (lines 141-151 and 176-184) call attachAliases, which inserts only the proposed aliases. The canonical-name insert lives only in attachCanonicalAndAliases (lines 289-309), used by the new-node branches.
+    evidence: >-
+      await attachAliases(client, {
+            nodeId,
+            aliases: args.aliases,
+            runId: args.llmRunId,
+          });
+          return { node_id: nodeId, resolution: "matched_existing" };
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases (lines 289-309), called from the needs_review and created_new branches, with attachAliases (lines 315-332).
+    evidence: >-
+      VALUES ($1, $2, 'canonical', $3)
+           ON CONFLICT DO NOTHING
+      ...
+      VALUES ($1, $2, 'alias', $3)
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      decideFromCandidates, the `novel` return (lines 269-271), and the created_new branch that inserts the node as active (lines 219-233). MATCH_FLOOR is 0.55 (line 41).
+    evidence: >-
+      if (aboveFloor.length === 0) {
+          return { kind: "novel" };
+        }
+      ...
+      VALUES ($1, $2, 'active')
+      ...
+      return { node_id: nodeId, resolution: "created_new" };
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates, the strong_unique condition (lines 273-276). MATCH_STRONG is 0.85 (line 32) and MATCH_FLOOR is 0.55 (line 41). The matched_existing return is in lines 176-184.
+    evidence: >-
+      if (strong.length === 1 && aboveFloor.length === 1) {
+          return { kind: "strong_unique", nodeId: strong[0]!.node_id };
+        }
+looked_past: >-
+  The pg_advisory_xact_lock over the node type and norm(name) is a concurrency mechanism rather than a domain fact, the explanatory comments restate BR numbers and spec sections as prose, and the dead `catalog` parameter is a code-quality matter, so none of these is this pass's judgment.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review

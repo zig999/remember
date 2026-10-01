@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: canonicalises attribute values to string form
+    why: >-
+      The text form is checked only on the helper reached through `__testing__`. That check
+      covers 42 to "42", -1.5 to "-1.5", true to "true" and false to "false". No test checks
+      that the attribute the orchestrator actually proposes carries that text form. If the
+      orchestrator stopped calling the helper and passed the raw number or boolean to
+      propose_attribute, every test in the file would still pass.
+
+      The test "happy path: dispatches fragments → nodes → attributes → links in order; run
+      closes 'completed'" does send a directed attribute with the number value 30. But it only
+      records that value inside a template literal ("attribute:age=30"), which reads the same
+      whether 30 arrived as a number or as the text "30", so it cannot fail on this fact.
+
+      The test "forced confidence: dispatched propose_* args carry confidence=1.0 even when the
+      caller payload has no confidence field" captures the args passed to propose_attribute,
+      but it never asserts their value.
+
+      No test sends a directed attribute with a boolean value through the orchestrator.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, each with one expected result. A directed attribute with the number value 30
+      should reach propose_attribute with value equal to the text "30", checked as a string
+      (for example with toBe("30") and typeof "string"). A directed attribute with the boolean
+      value true (and one with false) should reach propose_attribute with value equal to the
+      text "true" (and "false").

@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      the docstring above ValidFromBasisSchema, lines 5-15
+    evidence: >-
+      "Only `stated` and `document` are accepted at the API boundary. The third
+       value, `received`, is a backend-only fallback that the temporal validator
+       applies internally when neither `stated` nor `document` can justify the
+       date — it is never sent by an LLM or any external caller, so it MUST NOT
+       appear in this input enum."
+    cost: >-
+      The prohibition on a caller stating `received` is written here in prose, and
+      the same sentence says what the backend does when no basis is given. The
+      invariant and the fallback rule are held by nodes, and the code already holds
+      them: `z.enum(["stated", "document"])` here, and `valid_from_basis: "received"`
+      in src/modules/ingestion/validation/temporal.ts line 164. If either node
+      moves, this paragraph keeps saying the old rule and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The enum and the validator already carry the behavior,
+      and the invariant is held by the node.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      ValidFromBasisSchema, line 16, which declares the enum in part (stated and
+      document), and the optional `valid_from_basis` field of ProposeLinkInputSchema,
+      line 66.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+      The node lists three values (stated, document, received). This file declares
+      the two that a caller may state. Leaving out `received` follows
+      rules/knowledge-base/caller-never-states-received ("A proposal MUST NOT state
+      the basis received."), so it is not a contradiction. The full three-value union
+      is declared in validation/temporal.ts and service/graph-consolidation.service.ts.
+looked_past: >-
+  The describe strings, error messages and outcome types in this file state the
+  confidence bands, the change hint values and the propose-link outcomes truthfully
+  against the other nodes, and the shapes of change-hint and ProposeLinkResult belong
+  to other nodes and judgments.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - domain/knowledge-base/change-hint
+  - rules/knowledge-base/proposal-confidence-range
+  - domain/knowledge-base/ingest-tool
+  - rules/knowledge-base/link-start-has-basis

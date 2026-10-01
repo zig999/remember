@@ -1,0 +1,131 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation (lines 79-80) and the comment at line 102
+    evidence: >-
+      " *   1. Compute `content_hash = sha256(content)`." and
+      "// BR-01 — content hash is the idempotency anchor."
+    cost: >-
+      The rule that a content hash is the SHA-256 of the content is written in prose here as well as
+      in the node. If the node moves, nothing reaches this prose, and the next reader may take the
+      docstring for the decision instead of the node.
+    kind: restates
+    correction: >-
+      Remove the two pieces of prose. The code already holds the fact at
+      `const contentHash = sha256Hex(input.content);`, which uses the digest from ../hash.js.
+    node: rules/knowledge-base/content-hash-is-sha256
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, step 2 (line 81)
+    evidence: >-
+      " *   2. Compute `idempotency_key = sha256(content_hash ∥ prompt_version ∥ model ∥ chunking_version)`."
+    cost: >-
+      The composition and order of the key are written again outside any node. If the node changes
+      the order or an operand, this prose keeps saying the old formula and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the line. The code holds the fact in this file at `composeIdempotencyKey({ content_hash:
+      contentHash, prompt_version: input.prompt_version, model: input.model, chunking_version:
+      CHUNKING_VERSION })`, and in ../hash.js, where the function is imported from.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, "Idempotent no-op path" (lines 87-93), and the docstring of noopExisting (lines 196-200)
+    evidence: >-
+      " * Idempotent no-op path (UC-01 alt 4a):\n *   - Re-read the existing raw_information by content_hash." and
+      " * The no-op idempotent branch (BR-09). Returns the existing identifiers; the\n * chunks array is empty by spec"
+    cost: >-
+      The rule that held content records nothing new is narrated in prose beside the code. The prose
+      cites BR and UC identifiers that are not this node, so a reader may look for the rule in the
+      wrong place.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact at the catch that routes a content_hash unique
+      violation to `noopExisting`, which only runs SELECTs (`findRawInformationByHash`,
+      `findLlmRunByIdempotencyKey` and `countChunks`).
+    node: rules/knowledge-base/held-content-records-nothing
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the docstring above ingestRawInformation, steps 3-5 (lines 82-85), and the comment at line 153
+    evidence: >-
+      " *   4. Chunk via `chunkV1`; bulk INSERT raw_chunk.\n *   5. INSERT llm_run with the precomputed key." and
+      "// Step 5 — open the LLMRun. Insert with DEFAULTs for status/attempts/started_at."
+    cost: >-
+      The sequence raw information, then chunks, then one run is stated in prose as well as in code.
+      The comment also says the run's initial status comes from a database DEFAULT. A reader looking
+      for where status `running` is set will not find it in this file.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file at the calls to `insertRawInformation`,
+      `insertRawChunks` and `insertLlmRun`. The run's initial status is held where `insertLlmRun`'s
+      row is inserted, which is not in this file.
+    node: rules/knowledge-base/ingestion-records-chunks-and-run
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the comment inside the insertRawInformation argument object (lines 122-124)
+    evidence: >-
+      "// TC-01 / BR-34: pass-through of the verbatim user turn from the\n// chat-directed path. `content_hash` is computed above over `content`\n// only — `original_input` never affects idempotency."
+    cost: >-
+      The relation between the chat turn and original_input is written in prose under a BR/TC
+      identifier, not under the node that holds it. If that node changes, the comment becomes a
+      second, stale statement of it.
+    kind: restates
+    correction: >-
+      Remove the comment. The code holds the fact at `original_input: input.original_input ?? null`.
+    node: rules/knowledge-base/directed-turn-is-original-input
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      This file reads the chunk attributes and does not declare their shape:
+      "chunks: chunkRows.map((c) => ({ id: c.id, chunk_index: c.chunk_index, offset_start: c.offset_start, offset_end: c.offset_end }))".
+      The row type comes from ../repository/ingestion.repository.js.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      This file passes raw-information values to `insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null })`
+      and reads `rawInformationRow.id`. It declares no type, schema or table for the element.
+  - node: rules/knowledge-base/content-hash-is-sha256
+    held_at: >-
+      ingestRawInformation, the statement at line 103, which takes the hash over the whole content; the digest itself is implemented in ../hash.js
+    evidence: >-
+      const contentHash = sha256Hex(input.content);
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the argument object of insertRawInformation in ingestRawInformation, line 125. This file stores the turn's excerpt as given. Choosing the excerpt belongs to the directed path in another file.
+    evidence: >-
+      original_input: input.original_input ?? null,
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      the catch of ingestRawInformation (lines 127-131) and noopExisting (lines 201-240), which only reads
+    evidence: >-
+      if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {
+            return await noopExisting(client, contentHash, idempotencyKey);
+          }
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      ingestRawInformation, the composeIdempotencyKey call at lines 104-109; the digest and the join order are implemented in ../hash.js
+    evidence: >-
+      const idempotencyKey = composeIdempotencyKey({
+          content_hash: contentHash,
+          prompt_version: input.prompt_version,
+          model: input.model,
+          chunking_version: CHUNKING_VERSION,
+        });
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      ingestRawInformation, lines 117-175: the raw information insert, then the chunks, then one run. The run's initial status `running` is not set here; it is left to the insert's database DEFAULT in the repository.
+    evidence: >-
+      const chunkRows = await insertRawChunks(
+          client,
+          rawInformationRow.id,
+          chunkInputs
+        );
+      ... llmRunRow = await insertLlmRun(client, {
+            model: input.model,
+            prompt_version: input.prompt_version,
+            input_raw_information_id: rawInformationRow.id,
+            idempotency_key: idempotencyKey,
+          });
+looked_past: >-
+  The first-line comment on compliance_delete being the only writer of raw_information ("BR-02 is enforced by the absence of code"), the 404 message wording of ResourceNotFoundError, and the HTTP 201/200/500 answers are facts of other nodes or of the ingestion contract, outside this node set, so I did not judge them.

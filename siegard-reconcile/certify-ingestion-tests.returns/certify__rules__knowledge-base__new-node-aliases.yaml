@@ -1,0 +1,31 @@
+certified:
+  - node: rules/knowledge-base/new-node-aliases
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 3: ambiguous (one strong + one in [FLOOR, STRONG)) -> needs_review + 2 review rows"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 4: novel (no candidate at or above floor) -> created_new with status='active'"
+    why: >-
+      Both named tests check the aliases only as a side assertion. Each test is mainly about
+      something else: the review rows in branch 3, and the created_new resolution with
+      status='active' in branch 4. Nothing marks the alias assertion as the main point of
+      either test. Each test proposes exactly one alias. So "each of its proposed aliases" is
+      never exercised with more than one: code that stored only the first proposed alias
+      would pass both. The tests also never read back what the new node holds. They record
+      the INSERT INTO node_alias statements sent to an in-memory stub. The stub reads the
+      alias kind from the SQL literal with a regex, and when the regex does not match it
+      falls back to "alias". The stub does not model ON CONFLICT DO NOTHING. As a result the
+      tests break if the SQL is rewritten without any change in behavior. They still pass if
+      a statement in the expected shape leaves the node without the alias it should hold.
+      Two other tests create a new node without checking its aliases: "branch 4: novel with
+      empty candidate set -> created_new (status='active')" and "created_new resolution
+      propagates as ok:true with resolution='created_new'". Neither one asserts that the
+      proposed name is held as the canonical alias.
+    remainder: testable
+    remainder_why: >-
+      Input: propose a name with no matching candidate, plus two or more distinct aliases.
+      Expected result: the newly created node holds exactly the proposed name with kind
+      canonical, and holds every proposed alias with kind alias. Read this back from what the
+      node holds, not from the shape of the emitted SQL, in a test whose own subject is this
+      fact.

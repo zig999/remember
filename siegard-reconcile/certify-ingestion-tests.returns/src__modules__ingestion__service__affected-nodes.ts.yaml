@@ -1,0 +1,71 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      isContributingOutcome(), lines 87-99, applied to propose_link and propose_attribute at line 131
+    evidence: |-
+      case "created_new":
+      case "matched_existing":
+      case "needs_review":
+      case "accepted":
+      case "consolidated":
+      case "superseded_previous":
+      case "disputed":
+        return true;
+      ...
+      if (!isContributingOutcome(outcome)) return [];
+    cost: >-
+      The node limits link and attribute contributions to proposals that were accepted, consolidated, superseded a previous assertion or were disputed. The code applies one shared allow-list to both tools. That list also admits created_new, matched_existing and needs_review, which are node resolutions. A grep of propose*.ts under service/ finds none of the three there. So the wider rule is probably dead today. It would take effect without any change here if a link or attribute proposal ever returned one of them. The next reader would not find the rule in the specification, because the code states a wider rule than the node does.
+    kind: contradicts
+    correction: >-
+      The link and attribute gate would have to admit only accepted, consolidated, superseded_previous and disputed, as the node states. The node-resolution outcomes would be taken only on the propose_node path.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      Comments at lines 27-30 (header), 61-66 and 72-86 (collector and isContributingOutcome), and 147-149 (createAffectedNodeCollector)
+    evidence: |-
+      // `rejected` and `error` validation outcomes do NOT contribute (they did not
+      // touch the graph). De-dup is by `node_id`; first-write-wins on the entry.
+      // Iteration order on the final list is insertion order (deterministic by
+      // per-chunk tool-use order).
+    cost: >-
+      The comments restate which proposals contribute and that each node is listed once in the order first reached. They also cite "BR-33" as the authority. The code in this file already holds both facts (the allow-list switch, and the `seen` Map with its `has` check and insertion order). A second copy in prose can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file holds the fact, and the node holds it in the specification.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      Comments at lines 222-232 (resolveAffectedNodes docblock) and 302-303 (Step 3)
+    evidence: |-
+      *   - Rows whose `knowledge_node.status = 'merged_into'` are resolved
+      *     transparently to the surviving node via `merged_into_node_id`.
+    cost: >-
+      The prose restates that a merged affected node is listed as the node it was merged into, and cites "BR-33" as the authority. The code in this file already holds the fact (the survivor lookup and the one-hop follow in Step 3). A second copy in prose can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact, and the node holds it in the specification.
+    node: rules/knowledge-base/affected-nodes-follow-merges
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: |-
+      This file compares tool names as string literals and does not declare the enumeration's shape:
+      toolName !== "propose_node" &&
+      toolName !== "propose_link" &&
+      toolName !== "propose_attribute"
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      affectedIdsFromEnvelope() (lines 103-143), isContributingOutcome() (lines 77-100) and createAffectedNodeCollector() (lines 146-164). The link/attribute gate is wider than the node, as in the first finding.
+    evidence: |-
+      if (toolName === "propose_node") {
+        const nodeId = (result as { node_id?: unknown }).node_id;
+        return typeof nodeId === "string" && nodeId.length > 0 ? [nodeId] : [];
+      }
+      if (!isContributingOutcome(outcome)) return [];
+      if (toolName === "propose_link") { ... ids.push(source) ... ids.push(target) ... }
+      ...
+      if (!seen.has(id)) { seen.set(id, true); }
+looked_past: >-
+  The process-scoped LRU cache of 256 entries, the derived fallback over tool_call rows, and the silent skipping of ids the lookup does not find are implementation behaviour or a code-quality judgment, not a stated domain fact. Whether the "only when completed" rule (affected-nodes-only-when-completed) is applied is decided outside this file, which only documents it in comments.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-follow-merges

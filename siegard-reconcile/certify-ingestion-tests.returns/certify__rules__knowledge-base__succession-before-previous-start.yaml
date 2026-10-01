@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/succession-before-previous-start
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: intra-day succession closes on the transaction axis only — guards the degenerate [D,D) interval (§5.1 date granularity)
+    why: >-
+      Only the "on" half is exercised, and only for a knowledge link. The test uses a
+      closing date equal to the closed link's validity start and asserts the outcome
+      superseded_previous. That part is behavioural. The other half of the fact is that
+      the closed link is left with no validity end, and the test never checks a stored
+      value for it. It checks that the issued UPDATE text contains "CASE",
+      "valid_from >=", "THEN valid_to", "superseded_at" and "THEN now()", and it checks
+      the bound close date. The mock client runs no SQL, so these checks follow the
+      wording of the statement, not what it does. A rewrite that keeps those words but
+      writes a validity end would pass. A rewrite that drops the words but correctly
+      leaves the end empty would fail. In the same test, nothing checks that the closed
+      link becomes superseded or that the new row's supersedes_link_id points to it.
+      Three cases are not tested at all. Nothing uses a closing date strictly before the
+      closed assertion's validity start, so the "before" half goes unexercised. Nothing
+      runs this succession on a node attribute, which the node also constrains. The
+      attribute "superseded_previous" test uses a closing date after the start.
+    remainder: testable
+    remainder_why: >-
+      Run each case against a store that actually applies the close: a vigent functional
+      link and a vigent functional attribute, each succeeded once with a closing date
+      equal to its validity start and once with a closing date before it. In every case
+      the expected result has three parts. The closed row is superseded. Its valid_to is
+      still null. The new row's supersedes_link_id or supersedes_attribute_id names the
+      closed row.

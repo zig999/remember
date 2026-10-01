@@ -1,0 +1,35 @@
+certified:
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 1: exact alias match -> matched_existing (no trigram query, no node insert)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 2: trigram strong-unique -> matched_existing (no node insert, no review rows)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "matched_existing (exact) resolution propagates as ok:true with resolution='matched_existing'"
+    why: >-
+      Only the exact-alias match exercises the fact. In branch 1 a proposal named "Ada Lovelace"
+      with the single alias "Augusta Ada King" resolves to an existing node. The test then checks
+      that the node_alias writes equal exactly one row, that alias on the matched node. So it
+      would fail if the proposed name were added or if the alias were dropped. Three parts of the
+      fact go unexercised. (1) "Each of its proposed aliases": the only matched case proposes one
+      alias, so an implementation that added only the first alias, or only one of several, still
+      passes. (2) The trigram strong-unique match also resolves to an existing node. Branch 2
+      proposes no aliases and makes no assertion on the node_alias writes, so neither half of the
+      fact is checked there. If that path added the proposed name to the matched node, branch 2
+      would still pass. (3) The proposeNodeService matched_existing test proposes no aliases and
+      makes no assertion on alias writes. It shows only that the match is passed through, not
+      that the matched node gains aliases and never the name. The alias rows are read off a fake
+      pg client that matches on SQL text ("INSERT INTO node_alias") and reads the kind from a
+      literal in that text. The writes it observes are persistence effects, but the test is tied
+      to that SQL shape.
+    remainder: testable
+    remainder_why: >-
+      Two inputs, each against one expected result. First, a proposal with two or more aliases
+      and a name that differs from every alias, resolved by exact alias match to an existing
+      node. Expected: node_alias rows for that node equal exactly the proposed aliases, one row
+      each, with no row for the proposed name. Second, the same proposal resolved by trigram
+      strong-unique match (one candidate at or above MATCH_STRONG, none other at or above
+      MATCH_FLOOR). Expected: the same set of rows on the matched node, and no row for the
+      proposed name.

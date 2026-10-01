@@ -1,0 +1,21 @@
+certified:
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/ingest-ops-tools.spec.ts
+        name: rejects a limit above the max with VALIDATION_INVALID_FORMAT
+    why: >-
+      The only limit the set refuses is 999, which is far above the range. That test
+      would still pass if the upper bound were 100 or 500, so the bound of 50 is not
+      pinned. No test submits 51, and no test submits 50 to show that 50 is accepted.
+      The lower bound is never exercised: nothing submits a limit of 0 or below, and
+      nothing submits 1 to show that 1 is accepted. The test "returns recent items and
+      applies the default limit (10) when omitted" shows only that an omitted limit
+      becomes 10. It touches no edge of the 1 to 50 range, so it does not bear on the
+      bounds.
+    remainder: testable
+    remainder_why: >-
+      Call list_recent_ingestions with a limit of 0 and with a limit of 51, and expect
+      each to be refused with VALIDATION_INVALID_FORMAT. Call it with a limit of 1 and
+      with a limit of 50, and expect each to be accepted, with that same value reaching
+      the raw_information query as its limit parameter.

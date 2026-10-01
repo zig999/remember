@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/held-content-records-nothing
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: never re-inserts raw_information or llm_run on the noop path
+    why: >-
+      The named test ingests content whose hash is already held through ingestRawInformation.
+      It asserts that the counts of raw information, raw chunks and LLM runs are the same
+      afterwards. This applies to one input only: the earlier LLM run has the same model and
+      prompt_version, so its idempotency key matches. The fake client then refuses a duplicate
+      llm_run insert by itself. As a result, the LLM-run part of the assertion would still hold
+      if the service did try to record a run. A service that recorded a new LLM run for held
+      content under a different model, prompt_version or chunking_version would pass this test,
+      because nothing in the file ingests held content under a different idempotency key. The
+      fact covers ingesting held content in general, but the file only reaches it through
+      ingestRawInformation. It does not reach the one-shot ingest_document entry point. It also
+      does not reach the race path, where the content-hash lookup misses and the raw_information
+      insert then hits the unique-key conflict. The file's header comment says that race path is
+      covered. The sibling test "returns status 200 with outcome=noop_existing and an empty
+      chunks array when content_hash already exists" checks only the response (an empty chunks
+      array and the existing chunk_count). It does not check what was recorded, so it does not
+      bear on the fact.
+    remainder: testable
+    remainder_why: >-
+      Ingest content whose hash is already held while using a different model or prompt_version
+      than the earlier run, so the idempotency key differs. Do the same through the
+      ingest_document entry point, and once more where the hash lookup misses and the
+      raw_information insert hits the unique-key conflict. In each case the expected result is
+      that the counts of raw information, raw chunks and LLM runs do not change.

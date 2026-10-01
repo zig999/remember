@@ -1,0 +1,41 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the docstring above assertValueInDomain, lines 88-108, and the inline comment at lines 116-118
+    evidence: >-
+      "exact-match string equality,\n * no normalisation, no case-folding, no trim (v1 semantics, §1 / BR-30)."
+      and "On miss, raises `VALIDATION_INVALID_FORMAT` with deterministic-ordered\n * `allowed_values`"
+      and "`[...domain].sort()` is locale-default lexicographic"
+    cost: >-
+      The docstring restates, in prose, the node's rule that a value must be carried "exactly as written".
+      It also restates the refusal's shape and cites BR-30, BR-26 and TC-03 as authority. The code already
+      holds the rule: `domain.has(value)` is an exact-match test with no normalisation, and the throw
+      carries `allowed_values` sorted. A second statement of the rule outside behavior can drift from the
+      node, and a reader may take the comment, not the node, as where the rule was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring and the inline comment through the comment route. The behavior is correct and
+      the node already holds the fact.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+read:
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain(), lines 109-125: the `domain.has(value)` membership test and the throw on a miss
+    evidence: |-
+      if (domain.has(value)) {
+          return;
+        }
+        const allowed_values = [...domain].sort();
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "attribute value not in closed domain",
+          { value, allowed_values }
+        );
+looked_past: >-
+  parseAttributeValue (date, number and bool parsing), assertFound and assertKnownType state facts that
+  other nodes govern (rules/knowledge-base/attribute-value-parses, the catalog and existence rules), not
+  this set's node, so I did not review them. In particular, `Date.parse(`${v}T00:00:00Z`)` may accept an
+  impossible day such as 2024-02-30, which attribute-value-parses refuses ("naming an existing day").
+  I could not run it to confirm, and whoever judges that node's binding should check it.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses

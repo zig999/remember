@@ -1,0 +1,32 @@
+certified:
+  - node: rules/knowledge-base/directed-source-content
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: synthesises content with the fragments + nonce + timestamp
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: "re-affirmation: two successive identical calls produce two distinct raw contents"
+      - file: src/__tests__/unit/ingestion/directed-ingestion.spec.ts
+        name: produces two distinct contents for two synth calls (nonce uniqueness)
+    why: >-
+      Part of the fact is tested. "synthesises content with the fragments + nonce +
+      timestamp" checks that the content contains each fragment as "[ref] text", a
+      directed_at moment and a nonce. The two distinct-contents tests check that every
+      call gets its own nonce. Three parts of the fact go untested. First, the order:
+      every assertion uses toContain, so content that put the nonce or the moment ahead
+      of the fragments would still pass. Second, the label: no fragment in the set has
+      one, so nothing checks that a label follows a fragment's reference and text when
+      present, or is left out when absent. Third, the chat raw information: nothing
+      checks the source type of the body passed to ingestRaw. The stub ignores it, and
+      the re-affirmation test only compares two captured contents for inequality. The
+      layout checks also run against the __testing__.synthesiseContent helper, not
+      against the content directedIngestionService actually hands to intake. If the
+      service stopped recording the helper's output, these tests would still pass.
+    remainder: testable
+    remainder_why: >-
+      Call directedIngestionService with two fragments, one with a label and one
+      without, and a fixed moment of ingestion. Capture the body passed to ingestRaw.
+      Assert that its source type is chat. Assert that its content is exactly each
+      fragment's reference and text in caller order, then the label line only for the
+      labelled fragment, then the moment of ingestion, then a nonce. Compare the whole
+      content for equality, not by containment.

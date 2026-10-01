@@ -1,0 +1,127 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment, lines 4-5 (semi-open invariant bullet); the line 107-115 branch holds the same rule.
+    evidence: >-
+      // - semi-open invariant: `valid_from < valid_to` when both are provided
+      //     (BR-16 / §13.3 / §5.2).
+    cost: >-
+      The start-before-end rule is written a second time as prose beside the branch that enforces it
+      (`if (input.valid_from >= input.valid_to)`). A reader can take the comment, with its BR-16 and
+      section citations, for the authority. When the node moves, the comment keeps saying the old rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch at lines 107-115 holds the fact, and the node's bind to this file
+      claims it.
+    node: rules/knowledge-base/validity-start-before-end
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment, lines 6-10 (date justification chain bullet); the branch at lines 136-142 holds the same rule.
+    evidence: >-
+      // - date justification chain (A14 / §6.5): when `requires_valid_from = true`
+      //     for the link_type or attribute_key, AND `valid_from` is supplied, the
+      //     caller must declare a non-null `valid_from_basis`.
+    cost: >-
+      The comment restates the basis rule and narrows it to `requires_valid_from = true`. The code at
+      line 136 (`input.valid_from !== null && input.valid_from_basis === null`) does not condition on that
+      flag. A reader of the comment learns a narrower rule than the code applies and than the node states.
+    kind: restates
+    correction: Remove the comment. The branch at lines 136-142 holds the fact.
+    node: rules/knowledge-base/stated-start-requires-basis
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Header comment, lines 11-13, and the doc comment above ERRATA_MARKERS, lines 61-65; the code at lines
+      66 and 117-126 holds the same rule.
+    evidence: >-
+      // - correction signal: `change_hint = 'correction'` requires textual errata
+      //     evidence in at least one cited fragment.
+      ...
+      * errata in at least one cited fragment (case-insensitive substring of any
+      * of the Portuguese/English markers used in the domain glossary).
+    cost: >-
+      The errata rule and its marker vocabulary are described in prose twice. The ERRATA_MARKERS constant
+      and the `hasErrataSignal` branch already hold them, so a change to the node's marker list can leave
+      two comments describing the old list.
+    kind: restates
+    correction: >-
+      Remove both comments. The ERRATA_MARKERS constant and the correction branch at lines 117-126 hold
+      the fact.
+    node: rules/knowledge-base/correction-requires-errata-evidence
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      Comment block at lines 128-135, above the branches at lines 136-173.
+    evidence: >-
+      // the run's source — it is the LAST link and the reason
+      // BUSINESS_DATE_UNJUSTIFIED should fire ONLY when received_at is also absent.
+    cost: >-
+      The comment states that the rejection fires only when `received_at` is also absent. That is not
+      what the code does for the `document_date` branch, and it adds a second, divergent statement of the
+      availability rule beside the branch at lines 143-173.
+    kind: restates
+    correction: Remove the comment. The branch at lines 143-173 holds the fact.
+    node: rules/knowledge-base/required-start-available
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      The `document_date !== null` branch inside `input.requires_valid_from && input.valid_from === null`, lines 144-158.
+    evidence: >-
+      if (input.document_date !== null) {
+        ...
+        return {
+          valid_from: input.valid_from,
+          valid_from_basis: input.valid_from_basis,
+        };
+      }
+      against the node: "takes the document date of its source with basis document or, when the source has
+      none, the date the source was received with basis received".
+    cost: >-
+      A proposal that requires a validity start and states none, from a source with a document date, is
+      accepted with `valid_from` null and no basis. The node says it takes the document date with basis
+      document. The received branch does resolve a date and a basis, so the two links of the chain
+      decide differently on whether a required start may stay empty. The node's log records this exact
+      split as the thing the decision closed. The code's own comment says the null was kept on purpose
+      ("We preserve that"), so the code departs from the node in a way its author knew about.
+    kind: contradicts
+    correction: >-
+      In the `document_date !== null` branch, return `valid_from` as the date portion of the document
+      date and `valid_from_basis` as `'document'`, as the received branch does for `'received'`.
+    node: rules/knowledge-base/required-start-fallback
+read:
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      The inline union types of `valid_from_basis` in `TemporalLayerInput` (line 34) and `TemporalResolved` (line 58).
+    evidence: >-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      The ERRATA_MARKERS constant (line 66), `hasErrataSignal` (lines 68-76), and the correction branch in
+      `validateTemporal` (lines 117-126).
+    evidence: >-
+      const ERRATA_MARKERS = ["errata", "errado", "correção", "corrigir", "correction", "correcao"] as const;
+      ... const lower = f.toLowerCase(); ... if (lower.includes(m)) return true;
+      ... if (input.change_hint === "correction") { if (!hasErrataSignal(input.fragment_texts)) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", ...
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      The `input.requires_valid_from && input.valid_from === null` branch in `validateTemporal`, lines 143-173.
+    evidence: >-
+      if (input.requires_valid_from && input.valid_from === null) { if (input.document_date !== null) { ... }
+      const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { ... }
+      throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", ...
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      The basis check in `validateTemporal`, lines 136-142.
+    evidence: >-
+      if (input.valid_from !== null && input.valid_from_basis === null) {
+        throw new ValidationFailure(
+          "BUSINESS_DATE_UNJUSTIFIED",
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      The semi-open interval check in `validateTemporal`, lines 107-115.
+    evidence: >-
+      if (input.valid_from !== null && input.valid_to !== null) {
+        if (input.valid_from >= input.valid_to) {
+          throw new ValidationFailure(
+            "BUSINESS_TEMPORAL_INCOHERENT",
+looked_past: >-
+  Many other comments (the interface doc comments, the `toIsoDate` doc and the "previous version" remarks) restate no node's fact or only describe implementation, so I left them to the comment route and filed no finding for them.
+candidates_opened:
+  - rules/knowledge-base/required-start-fallback

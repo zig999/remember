@@ -1,0 +1,47 @@
+certified:
+  - node: rules/knowledge-base/link-permitted-by-type-rule
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts a triple authorised by an active rule
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: rejects a triple not in the rule set with BUSINESS_LINK_RULE_VIOLATION
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_to of a rule (expired = not active)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: respects valid_from of a rule (not yet effective)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Event concerns Project (aboutness, not part_of composition)
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Document concerns Project
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: accepts Document delivered_to Person
+      - file: src/__tests__/unit/ingestion/graph-rules.spec.ts
+        name: rejects Document concerns Person with BUSINESS_LINK_RULE_VIOLATION
+      - file: src/__tests__/unit/ingestion/validation-order.spec.ts
+        name: temporal check does NOT run before graph rules pass (BUSINESS_LINK_RULE_VIOLATION)
+    why: >-
+      The tests check that a link is permitted by matching link type, source node type
+      and target node type, and they check refusal through validateGraphRule.
+      Project participates_in Project is refused while only Person->Project is permitted,
+      so the source type is checked. Document concerns Person is refused while concerns
+      has rules to other targets, so the target type is checked. The same Document->Person
+      pair is permitted under delivered_to, so the link type is checked. Every rule given
+      to validateGraphRule has valid_from and valid_to null. The tests never check the
+      "in effect today" part of the fact on a proposal. The expired-rule and
+      not-yet-effective tests assert only the return value of isLinkRuleActive, and none
+      of them shows that validateGraphRule or the proposal handler refuses a link whose
+      only matching rule has expired or has not yet started. If validateGraphRule ignored
+      rule dates, all of these tests would still pass. No test permits a link under a rule
+      whose dated interval contains today. The validation-order test is the only one that
+      reaches a link proposal (proposeLinkHandler), and its refusal is incidental. It
+      asserts that the graph-rule layer fires before the temporal layer, using a catalog
+      with no rules at all. It would change if the layer order changed, and nothing marks
+      the permission check in it as load-bearing.
+    remainder: testable
+    remainder_why: >-
+      Give validateGraphRule (or proposeLinkHandler) a triple whose only matching rule has
+      valid_to at or before today, and expect BUSINESS_LINK_RULE_VIOLATION. Do the same
+      for a rule whose valid_from is after today, with the same expected result. Then give
+      it a rule whose interval [valid_from, valid_to) contains today, and expect the link
+      to be permitted.

@@ -1,0 +1,35 @@
+certified:
+  - node: rules/knowledge-base/chunk-index-follows-content
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/chunker.spec.ts
+        name: "`pdf`: splits on form-feed (U+000C)"
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: returns chunks ordered by chunk_index ascending
+      - file: src/__tests__/unit/ingestion/service.spec.ts
+        name: returned chunks are sorted by chunk_index ascending
+    why: >-
+      The fact is only exercised on pdf input split at form-feed. The chunker test
+      "`pdf`: splits on form-feed (U+000C)" pins chunk_index [0, 1, 2] to the texts
+      "página 1", "página 2" and "página 3" in the order they appear in the content.
+      "returns chunks ordered by chunk_index ascending" pins chunk_index [0, 1, 2, 3]
+      to "A", "B", "C" and "D" as they appear in the content, via the service and its
+      fake client. In the chunker test the chunk_index assertion is incidental: it
+      rides on a test of the BR-06 pdf hard boundary, and nothing marks it as
+      load-bearing. "returned chunks are sorted by chunk_index ascending" asserts
+      only the index sequence [0, 1, 2] and never ties an index to a position in the
+      content, so on its own it does not bind the "order they appear in its content"
+      half. Other inputs also yield more than one chunk: a chat or transcricao input
+      split per speaker turn, an email split at the header/body boundary, and an
+      oversize block split into sentences under BR-07. None of these tests asserts
+      chunk_index on any of them. So the tests do not check that their indices start
+      at 0, run without gaps or repeats, or follow content order. Nor do they check
+      that they keep doing so when a block is split again by the oversize fallback.
+    remainder: testable
+    remainder_why: >-
+      Chunk one chat input with several speaker lines, and one input above
+      CHUNK_HARD_MAX that also crosses a hard boundary, such as a pdf whose page
+      holds an oversize block. For each, assert that the chunk_index sequence is
+      exactly 0..n-1. Also assert that, in chunk_index order, the offset_start values
+      strictly increase, so that each index follows the chunk's position in the
+      content.

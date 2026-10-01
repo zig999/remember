@@ -1,0 +1,28 @@
+certified:
+  - node: rules/knowledge-base/provenance-accepts-proposed-fragment
+    state: uncovered
+    why: >-
+      Only one test in the offered file touches fragment status: "promotes the cited fragment
+      proposed -> accepted when provenance is created (§6.6)". It drives one path, proposeLinkService
+      on a new link with no vigent row. It checks that one UPDATE information_fragment statement
+      was captured and that the SQL text contains the substrings "status = 'accepted'" and "status =
+      'proposed'", bound to [FRAGMENT_ID]. That is a check on the statement the code sends, not on
+      a fragment's resulting status. The mock never stores fragment status and answers the UPDATE
+      with a row count no matter what the statement says. Two things follow. A statement with SET
+      and WHERE swapped ("SET status = 'proposed' WHERE status = 'accepted'") would still pass. A
+      correct promotion written another way (a CTE inside the provenance INSERT, "status IN
+      ('proposed')") would fail. So the test pins the shape of the code, not the fact. No fragment
+      in the set is ever proposed and then read back as accepted. The other half of the fact is
+      never exercised at all: no fragment in any status other than proposed is cited by a recorded
+      provenance and then found unchanged. Several other tests only count provenance inserts: the
+      consolidated, superseded_previous, correction and disputed link branches, every attribute
+      branch, and the BR-18 loop. None of them looks at fragment status, so the promotion is not
+      checked on any recording path except the new-link one.
+    remainder: testable
+    remainder_why: >-
+      Use a store that holds fragment status, a real database or a fake that applies the UPDATE.
+      Case one: record a provenance citing a fragment whose status is proposed, then read the
+      fragment back and expect accepted. Case two: for each other fragment status, record a
+      provenance citing a fragment in that status, then read it back and expect the status it had
+      before. Run both on every path that records a provenance: link and attribute, and each
+      consolidation outcome.

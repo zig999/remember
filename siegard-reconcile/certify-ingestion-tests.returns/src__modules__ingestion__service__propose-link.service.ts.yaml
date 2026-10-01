@@ -1,0 +1,83 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, lines 6-16 (the layered-validation list)
+    evidence: >-
+      // Layered validation (BR-13) in the documented order. Each layer is a
+      // sequential `await`, so layer N+1 only runs when layer N has not thrown:
+      //   1. Structural    — cross-table refs (nodes exist, fragments exist,
+      //                      link_type known).
+      //   2. Graph rules   — active link_type_rule for the triple (BR-15).
+      //   3. Temporal      — semi-open invariant, change_hint signal, date basis.
+      //   4. Confidence    — < 0.40 -> ok:true outcome=rejected (BELOW_CONFIDENCE_FLOOR).
+      //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
+      //                      source (BR-18).
+    cost: >-
+      The check order is written a second time as prose beside the code that runs it. If the node
+      `rules/knowledge-base/link-proposal-check-order` moves and the code is reordered, this list stays
+      behind and states an order nobody decided. The next reader finds a plausible order in the comment
+      and stops looking.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the order, in the sequence Layer 1 (link_type,
+      then source and target nodes, then fragments existing and belonging to the run), then
+      `validateGraphRule`, then `validateTemporal`, then `routeConfidence`, then
+      `countFragmentsAnchoredToSource`.
+    node: rules/knowledge-base/link-proposal-check-order
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      header comment, lines 17-19 (and the "< 0.40" in the Confidence layer line 13)
+    evidence: >-
+      // On confidence < 0.40 the service returns `{ ok: true, result: { outcome:
+      // 'rejected', reason: 'BELOW_CONFIDENCE_FLOOR' } }`. The caller maps this to
+      // `validation_outcome = 'rejected'` on the `tool_call` row (BR-17).
+    cost: >-
+      The 0.40 floor is written as a literal in prose in this file. The number is decided by the node
+      `rules/knowledge-base/below-confidence-floor-records-nothing`, and `routeConfidence` in
+      `src/modules/ingestion/validation/confidence.ts` applies it. If the floor moves, this comment keeps
+      the old figure.
+    kind: restates
+    correction: >-
+      Remove the prose. This file's `if (route.kind === "below_floor")` branch returns without calling
+      `consolidateLink`, and the threshold is applied in `routeConfidence`
+      (`src/modules/ingestion/validation/confidence.ts`).
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the `route.kind === "below_floor"` branch of proposeLinkService (lines 168-178). It returns before
+      `countFragmentsAnchoredToSource` and `consolidateLink`, so no knowledge link is written. The 0.40
+      threshold itself is applied in `routeConfidence`, imported from validation/confidence.js and not
+      part of this file.
+    evidence: >-
+      const route = routeConfidence(args.confidence);
+      if (route.kind === "below_floor") {
+        const result: ProposeLinkResult = {
+          link_id: null,
+          outcome: "rejected",
+          reason: "BELOW_CONFIDENCE_FLOOR",
+        };
+        return { ok: true, result };
+      }
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      the sequence of awaited steps in proposeLinkService (lines 66-194). Each step either throws a
+      ValidationFailure or returns, so the first failing check stops the proposal.
+    evidence: >-
+      deps.catalog.linkTypeByName.get(args.link_type) + assertKnownType; then
+      findNodeTypeIdByNodeId(source) + assertFound, findNodeTypeIdByNodeId(target) + assertFound; then
+      fragRes.rows.length !== args.fragment_ids.length and f.llm_run_id !== runCtx.llmRunId; then
+      validateGraphRule(...); then validateTemporal({...}); then routeConfidence(args.confidence) with
+      the below_floor return; then countFragmentsAnchoredToSource(...) and
+      anchored !== args.fragment_ids.length. This is the order the node states.
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      the statusForNewRow mapping (lines 197-198), passed to consolidateLink as status_for_new_row. The
+      0.75 and 0.40 boundaries are not stated in this file. They sit in `routeConfidence`, which produces
+      route.kind.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" =
+        route.kind === "active" ? "active" : "uncertain";
+looked_past: >-
+  The comments citing back-spec rule numbers (BR-13, BR-15, BR-17, BR-18, BR-25, BR-27, TC-011) and the narrative about the previous INSERT behaviour are prose with no running effect, and they cite back-spec rules, not the specification's nodes.
+candidates_opened: []

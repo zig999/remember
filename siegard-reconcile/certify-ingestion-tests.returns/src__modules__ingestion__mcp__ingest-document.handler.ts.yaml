@@ -1,0 +1,68 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      lines 18-21, the header comment's Idempotency paragraph
+    evidence: >-
+      // Idempotency (BR-08): if the same content was already ingested,
+      // `ingestRawInformation` returns `noop_existing`; we DO NOT re-run extraction
+      // (the existing run is completed, or running, and re-running would either no-op
+      // or 409).
+    cost: >-
+      The comment states, in prose, the rule that held content is not extracted again. The branch
+      `if (outcome === "noop_existing")` at line 158 already holds that rule. A second wording sits
+      beside the code, and the next reader may treat it as the place where the rule was decided.
+      The comment adds an explanation of 409 and no-op behavior that the node does not hold.
+    kind: restates
+    correction: >-
+      Remove the paragraph. The rule is held by the `noop_existing` branch at line 158 and by the
+      node. The route is the comment route, followed by `/reconcile` over this file.
+    node: rules/knowledge-base/document-ingestion-extracts-new-content
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      lines 41-48, the docstring on DEFAULT_INGEST_MODEL, and the fallback at line 119
+    evidence: >-
+      * Hard-coded fallback extraction model used only when the caller omits `model`
+      * AND no `ingestModel` is wired (e.g. a bare test harness). Production threads
+      * `env.INGEST_MODEL` through `deps.ingestModel`.
+    cost: >-
+      The docstring restates the default-model order (configured model, otherwise claude-sonnet-4-6).
+      The code holds the same order in `export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";`
+      and `model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL`. A reader who changes the
+      model has two statements of the fact to keep in step. The docstring also carries cost and
+      validation history ("Cost-optimized to Sonnet 4.6", "Opus 4.8 was the original
+      functional-E2E-validated model") that no node holds.
+    kind: restates
+    correction: >-
+      Remove the docstring. The fact is held by the constant, by the `??` chain at line 119, and by
+      the node. This node is outside the set and is named as a candidate.
+    node: rules/knowledge-base/default-extraction-model
+read:
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      line 120, the fallback in the body built by ingestDocumentHandler. The value v4 is declared
+      in the imported DEFAULT_PROMPT_VERSION (prompts/index.ts), not in this file.
+    evidence: >-
+      prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      lines 129-131 and 158-190, with the extraction call at lines 201-208. A new run is created
+      by ingestRaw, extraction is driven against it, and the noop_existing branch returns before
+      any extraction.
+    evidence: >-
+      ingest = await withTransaction(deps.pool, (client) => ingestRaw(client, body)); ...
+      if (outcome === "noop_existing") { ... outcome: "already_ingested" ... } ...
+      const run = await runExtraction(deps.pool, llm_run_id, deps.logger, deps.catalog, extractionDeps);
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      This file records nothing itself. It forwards to `ingestRaw(client, body)` and only reads
+      `outcome` from the result. The no-new-record rule for held content is carried by the
+      ingestRawInformation service, which is outside this file set.
+looked_past: >-
+  The emitted already_ingested messages, the two SYSTEM_INTERNAL_ERROR messages, the
+  SYSTEM_SERVICE_UNAVAILABLE refusal and the comments naming BR-08, BR-09 and BR-30 all look
+  consistent with contracts/knowledge-base/ingestion, which is outside the node set, and the
+  remaining comments (lines 123-128, 159-163, 220-222, 246) are rationale prose for another
+  judgment.
+candidates_opened:
+  - rules/knowledge-base/default-extraction-model

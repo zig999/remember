@@ -1,0 +1,38 @@
+findings:
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 3-4 (the active and uncertain branches), above CONFIDENCE_FLOOR and routeConfidence
+    evidence: >-
+      //   confidence >= 0.75            -> assertion status = 'active'
+      //   0.40 <= confidence < 0.75     -> assertion status = 'uncertain'
+    cost: >-
+      The comment states the 0.75 and 0.40 status bands a second time, in prose that nothing runs. If the node's thresholds move, the comment goes on asserting the old bands and a reader can take it as the decided rule. The code holds the same fact in this file (CONFIDENCE_UNCERTAIN_UPPER, CONFIDENCE_FLOOR and the first two branches of routeConfidence), so the pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The fact stays held by the constants and by routeConfidence.
+    node: rules/knowledge-base/new-assertion-status-from-confidence
+  - file: src/modules/ingestion/validation/confidence.ts
+    where: >-
+      the header comment, lines 5-7 (the below-floor branch), above CONFIDENCE_FLOOR and routeConfidence
+    evidence: >-
+      //   confidence < 0.40             -> link/attribute NOT created;
+    cost: >-
+      The comment restates the 0.40 floor and the rule that nothing is recorded below it, in prose no running system emits. The code holds the floor in this file (`CONFIDENCE_FLOOR = 0.4` and `return { kind: "below_floor" }`), so the pair conforms. The comment is a second home that can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The fact stays held by CONFIDENCE_FLOOR and the below_floor branch.
+    node: rules/knowledge-base/below-confidence-floor-records-nothing
+read:
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      CONFIDENCE_FLOOR (line 14) and the final branch of routeConfidence (line 27), which classifies a confidence below the floor as below_floor. The file only classifies. The act of recording nothing sits in the caller, outside this file.
+    evidence: >-
+      export const CONFIDENCE_FLOOR = 0.4 as const; ... if (confidence >= CONFIDENCE_FLOOR) return { kind: "uncertain" }; return { kind: "below_floor" };
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      CONFIDENCE_UNCERTAIN_UPPER and CONFIDENCE_FLOOR (lines 14-15), and the first two branches of routeConfidence (lines 25-26), which map confidence to active or uncertain. The exclusion of disputes is not in this file.
+    evidence: >-
+      export const CONFIDENCE_UNCERTAIN_UPPER = 0.75 as const; ... if (confidence >= CONFIDENCE_UNCERTAIN_UPPER) return { kind: "active" }; if (confidence >= CONFIDENCE_FLOOR) return { kind: "uncertain" };
+looked_past: >-
+  The header comment also says that supporting fragments stay `proposed` with a `low_confidence` flag, and that the handler returns `outcome: "rejected"` with reason BELOW_CONFIDENCE_FLOOR. Only a comment in this file states both, so I did not file them. They are prose, and the route that removes prose answers them.
+candidates_opened: []

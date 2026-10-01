@@ -1,0 +1,39 @@
+certified:
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 4: novel (no candidate at or above floor) -> created_new with status='active'"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "branch 4: novel with empty candidate set -> created_new (status='active')"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "returns novel when no candidate is above the floor (including the empty set)"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "created_new resolution propagates as ok:true with resolution='created_new'"
+      - file: src/__tests__/unit/ingestion/entity-resolution.spec.ts
+        name: "exports MATCH_STRONG = 0.85 and MATCH_FLOOR = 0.55"
+    why: >-
+      The tests exercise one part of the fact: when no candidate comes back, or only candidates
+      well below the threshold (0.3, 0.4), the proposal resolves as created_new and the insert is
+      recorded as 'active'. Three stated parts go unexercised.
+      (1) The 0.55 threshold itself. Every below-floor input is 0.4 or less and every
+      above-floor input is 0.6 or more. A comparison at 0.5, or one that treats exactly 0.55 as
+      not reaching, passes every test. The test "exports MATCH_STRONG = 0.85 and MATCH_FLOOR =
+      0.55" checks only the exported constant's value, not where the code uses it, so it cannot
+      fail when the boundary behaves wrongly.
+      (2) "active knowledge node of its node type". The stub routes on SQL text and returns its
+      canned candidates whatever the WHERE clause says. No test supplies a candidate at 0.55 or
+      above that belongs to another node type or is not active, and expects created_new. The
+      code could drop the node-type or active-status filter and every test would still pass.
+      (3) "creates an active knowledge node". The stub reads the status from a literal in the
+      INSERT text and falls back to "active" when it finds none (`statusMatch?.[1] ?? "active"`).
+      If the novel path passed its status as a bind parameter, or left it out, the stub would
+      still report 'active'. So the 'active' half is bound to how the SQL is written rather
+      than to the status the database stores.
+    remainder: testable
+    remainder_why: >-
+      Each part is one input against one result, read back from a real store rather than from
+      SQL text. First, one active node of the proposal's node type at 0.54 gives created_new
+      with the new node stored as active. Second, the same node at exactly 0.55 does not give
+      created_new. Third, a node at 0.55 or above that is either of another node type or not
+      active gives created_new with the new node stored as active.

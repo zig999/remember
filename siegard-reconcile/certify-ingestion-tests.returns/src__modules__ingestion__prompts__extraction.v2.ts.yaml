@@ -1,0 +1,42 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      EVENT_DATING_DIRECTIVE, lines 40-44 (the first bullet of the "Events — always date the occurrence" section), sent to the model through system()
+    evidence: >-
+      "- When you create an `Event` (meeting, go-live, workshop…), ALWAYS propose its",
+      "  `event_date` when the document states the date of the occurrence (and",
+      "  `end_date` when there is a distinct end). Justify it with `valid_from_basis`;",
+      "  NEVER invent a date.",
+    cost: >-
+      The prompt makes it an obligation that extraction proposes event_date, and end_date when the end is distinct, for every Event it creates. It also forbids inventing a date. This is what extraction does and what the model is told, and it lives only in this string. The catalog nodes hold the keys event_date and end_date as attribute keys of Event. The proposal and validity-start nodes hold what a proposal must state. No node says extraction must always date an Event. A reader who looks in the specification for how Events get their dates finds nothing, and changing the obligation means editing this file, which no node reaches.
+    kind: unstated
+    correction: >-
+      An analysis would give the Event-dating obligation of extraction, covering event_date, end_date and the ban on inventing a date, a node of its own. The prompt then states what that node holds.
+
+  - file: src/modules/ingestion/prompts/extraction.v2.ts
+    where: >-
+      EVENT_DATING_DIRECTIVE, lines 45-49 (the "CRUCIAL distinction" bullet), sent to the model through system()
+    evidence: >-
+      "- CRUCIAL distinction: `event_date` is the VALUE — the date the event happens.",
+      "  `valid_from` is when that date started to hold / became known (typically the",
+      "  document date). E.g. a go-live on 2026-08-01 announced in minutes dated",
+      "  2026-06-20 → `event_date`=\"2026-08-01\" (value), `valid_from`=\"2026-06-20\"",
+      "  with `valid_from_basis`=\"document\".",
+    cost: >-
+      The prompt defines what an Event's validity start means, as "when that date started to hold / became known". It also fixes how it is justified in the Event case, as the document date with basis document. The enumeration valid-from-basis only says what justifies a validity start. The rules on a missing validity start only say that the document date is the default. Neither says that for event_date the value and the validity start are separate dates, or what the validity start of an event date means. The model is taught a business meaning that no node holds.
+    kind: unstated
+    correction: >-
+      An analysis would state the meaning of the validity start of an event_date, and how it differs from the date value, in a node. The prompt then follows that node.
+
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      line 27, the declaration of this file's own member of the enumeration. The file declares only the identifier of v2; it does not declare the v1-v4 set.
+    evidence: >-
+      export const PROMPT_VERSION = "v2" as const;
+
+looked_past: >-
+  The header and JSDoc comments restate how the registry in ./index.ts dispatches on prompt_version and that idempotency_key includes prompt_version, and they cite "BR-26"; these are prose and the comment route's judgment, and this pass did not open the files that would hold them.
+
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis

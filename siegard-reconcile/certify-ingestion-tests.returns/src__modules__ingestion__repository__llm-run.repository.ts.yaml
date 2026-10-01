@@ -1,0 +1,39 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      the docstring above aggregateToolCallOutcomes, lines 111-118
+    evidence: >-
+      Returns a fully-formed `LlmRunSummary` — every field
+       * present, missing buckets default to 0 (BR-12).
+    cost: >-
+      The zero-for-an-absent-outcome rule is also written as prose with a BR-12 citation, beside the code that holds it (the initialised `summary` object with `accepted: 0 … error: 0`). If the node moves, the comment keeps asserting the old rule and nothing reads it. The prose adds a second place that claims to decide the rule.
+    kind: restates
+    correction: >-
+      Remove the sentence from the docstring. The fact stays held by the `summary` literal in aggregateToolCallOutcomes and by the node.
+    node: rules/knowledge-base/summary-counts-tool-calls
+read:
+  - node: domain/knowledge-base/raw-chunk
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for a raw chunk. It only reads two columns of the table in SQL: `JOIN raw_chunk rc       ON rc.id = fs.raw_chunk_id ... AND rc.raw_information_id = $2` and `FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`. None of the node's attributes (chunk_index, offset_start, offset_end, text, locator, status) is declared here.
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for raw information. `RecentIngestionRow` is a projection type that reads some columns (`readonly source_type: string; readonly raw_status: string; readonly received_at: Date; readonly content_preview: string;`) from a query on `FROM raw_information ri`. It does not declare the element's attributes.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      insertToolCallStandalone (lines 292-318), which commits the tool_call row in its own short transaction
+    evidence: >-
+      const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            const row = await insertToolCall(client, args);
+            await client.query("COMMIT");
+      This write is independent of the caller's business transaction, so the tool call can be recorded alone. The file does not decide when a proposal is refused. The caller passes in `validation_outcome`.
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      aggregateToolCallOutcomes (lines 119-163), the grouped count and the zero-initialised summary
+    evidence: >-
+      `SELECT validation_outcome, count(*)::text AS n FROM tool_call WHERE llm_run_id = $1 GROUP BY validation_outcome` followed by `const summary: LlmRunSummary = { accepted: 0, consolidated: 0, superseded_previous: 0, needs_review: 0, uncertain: 0, disputed: 0, rejected: 0, error: 0, orphaned_fragments: 0, };` and `summary[row.validation_outcome] = Number.parseInt(row.n, 10);`
+looked_past: >-
+  The file implements facts held by nodes outside this set and agreeing with them (retry-counts-attempts, retry-rejects-orphaned-fragments, orphaned-fragment, summary-counts-orphaned-fragments, llm-run-lifecycle, the recent-ingestions and tool-call-listing rules, cited-fragments-anchored), so I filed no finding for them, and many of its comments and docstrings (BR-10, BR-11, BR-18, BR-19, BR-23 and the 1..50 limit note) restate such facts as prose that belongs to the comment route.

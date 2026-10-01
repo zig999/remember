@@ -1,0 +1,68 @@
+certified:
+  - node: rules/knowledge-base/consolidation-records-provenance
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts a new knowledge_link row and one provenance row when no vigent exists
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: promotes the cited fragment proposed -> accepted when provenance is created (§6.6)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: returns outcome=consolidated and does NOT insert a new row when (source, link_type, target, valid_from) match the vigent row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: calling proposeLinkService twice with identical args returns accepted then consolidated (no dup-guard hit)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: consolidates a multi-current link when second document has a different valid_from (received fallback)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent and inserts a new chained row when functional + different target + textual succession signal
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: flags both old and new row as disputed and surfaces conflicting_link_id
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: closes vigent with status='superseded' (transaction axis only) and inserts a chained new row; outcome=accepted
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: accepted (new) — no vigent row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: consolidated — same (node, key, value, valid_from)
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: branch "accepted (new)" inserts >= 1 provenance row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: branch "consolidated" inserts >= 1 provenance row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: branch "superseded_previous" inserts >= 1 provenance row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: branch "correction (outcome=accepted)" inserts >= 1 provenance row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: branch "disputed" inserts >= 1 provenance row
+    why: >-
+      Every proposal in the file cites exactly one fragment, [FRAGMENT_ID].
+      That means "one provenance for each information fragment it cites" is
+      only ever checked as a count of one. If provenance were recorded only for
+      the first cited fragment, or one row were recorded per proposal no matter
+      how many fragments it cites, every test would still pass. The BR-18
+      invariant loop asserts only ">= 1" provenance row, and no test asserts
+      that a recorded provenance's fragment_id equals the cited fragment.
+
+      "On the assertion it lands on" is asserted only for the link
+      re-affirmation branches, where provenance target_id equals
+      EXISTING_LINK_ID. For a link that is accepted new, superseded_previous,
+      disputed or a correction, the tests count provenance rows but never
+      check that they target the newly inserted row rather than the vigent row
+      that was closed or disputed.
+
+      On the attribute side, the accepted and consolidated tests count one
+      provenance row but never check its target_id. The attribute
+      superseded_previous, disputed and correction tests assert no provenance
+      at all.
+
+      The mock-SQL tests "functional link with different valid_from does NOT
+      auto-consolidate", "does NOT consolidate when change_hint='succession'
+      even on a multi-current link" and the dup-guard race tests are taken
+      proposals too, but they assert nothing about provenance.
+    remainder: testable
+    remainder_why: >-
+      Propose a link, and separately an attribute, citing two distinct
+      fragments in each branch: accepted new, consolidated,
+      superseded_previous, disputed and correction. Assert exactly two
+      provenance rows each time. Their fragment_ids must equal the two cited
+      ids, and their target must be the assertion the outcome names: the
+      existing row's id for consolidated, and the newly inserted row's id for
+      every other branch.

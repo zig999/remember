@@ -1,0 +1,40 @@
+certified:
+  - node: rules/knowledge-base/new-assertion
+    state: partial
+    tests:
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts a new knowledge_link row and one provenance row when no vigent exists
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: accepted (new) — no vigent row
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: inserts with status='uncertain' when 0.40 <= confidence < 0.75
+      - file: src/__tests__/unit/ingestion/graph-consolidation.spec.ts
+        name: calling proposeLinkService twice with identical args returns accepted then consolidated (no dup-guard hit)
+    why: >-
+      The link half is covered. In "inserts a new knowledge_link row and one
+      provenance row when no vigent exists", a link proposal meets no current
+      link and the test checks three things: the outcome is accepted, exactly one
+      knowledge_link row is inserted, and that row's supersedes_link_id is null.
+      That last check is the "supersedes nothing" half.
+      The attribute half is exercised only partly. In "accepted (new) — no vigent
+      row", an attribute proposal meets no current attribute, and the test checks
+      only that the outcome is accepted, that one node_attribute row is inserted
+      and that one provenance row is written. It never reads the inserted row's
+      supersedes_attribute_id. So nothing in the set would fail if an attribute
+      recorded with no current assertion supersedes something.
+      Two tests bear on the link half only incidentally, and neither checks
+      supersedes_link_id. "inserts with status='uncertain' when 0.40 <= confidence
+      < 0.75" is there to assert the status. The first call of "calling
+      proposeLinkService twice with identical args returns accepted then
+      consolidated (no dup-guard hit)" checks the accepted outcome and the single
+      insert on the way to asserting consolidation.
+      "Meets no current assertion" is set up in every one of these tests by a mock
+      PoolClient.query that returns no rows to the SELECT ... FOR UPDATE matched
+      by its SQL text. It is not set up against a real store.
+    remainder: testable
+    remainder_why: >-
+      One input against one result. Propose an attribute (for example key
+      deadline on a Project node) while no current node_attribute exists for that
+      node and key. The test should assert that exactly one node_attribute row is
+      recorded, that its supersedes_attribute_id is null, and that no
+      node_attribute row is updated.

@@ -1,0 +1,62 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 57-62 (the system prompt text sent to the model)
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`.",
+    cost: >-
+      The extraction prompt is what the model is told to do, and it tells the model to state
+      the basis received on its proposals. The node says a proposal must never state that
+      basis. The node leaves received to the system, which applies it when a proposal states
+      no validity start and the source has no document date. Every run under v4 on a source
+      with no document date is told to produce what the node forbids. The prompt is the only
+      place this instruction lives, so the next reader checking the node will not find it.
+    kind: contradicts
+    correction: >-
+      The directive would have to stop instructing the model to state the basis received. As
+      the node stands, a validity start the model states carries stated or document. Whether
+      a relative date may be resolved against the reception time is a decision for the
+      specification, not for this file.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 57-64 (the system prompt text sent to the model)
+    evidence: >-
+      "- When you encounter a relative date in the chunk text (`\"hoje\"`, `\"ontem\"`,",
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "- This supersedes v3's rule of \"omit the date when `document_date` is unknown\":",
+      "  with `received_at` always present, you now HAVE an anchor — use it.",
+    cost: >-
+      The rule that a relative date is resolved against the document date, and that the date
+      part of the reception time is the fallback, changes which validity starts get recorded
+      and which basis they carry. No node holds it. The nearest node, the one on what an
+      extraction shows the model, says only that the document date and reception time are
+      shown. The business behavior therefore lives only in this prompt, and a reader looking
+      in the specification will not find it.
+    kind: unstated
+    correction: >-
+      A node would have to state how an extraction resolves relative dates in chunk text and
+      which anchor it uses. The nearest home is the rules/knowledge-base extraction rules,
+      next to extraction-reads-chunks-in-order. Analysis would decide that, not this file.
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only passes the value along and declares no enumeration of versions: `export
+      const PROMPT_VERSION = "v4" as const;`. The enumeration v1 to v4 is a shape this file
+      does not declare.
+looked_past: >-
+  The header comment and the docstrings cite BR-26 step 5a v1.4.2 and restate the received_at
+  fallback and the reasons for a new version. This is prose, and the fact it describes has
+  no node, so it is not a finding here.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/required-start-available
+  - rules/knowledge-base/stated-start-requires-basis
+  - rules/knowledge-base/extraction-reads-chunks-in-order
+  - domain/knowledge-base/valid-from-basis

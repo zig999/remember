@@ -1,0 +1,71 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the file-header comment, lines 1-14, steps 4 and 5, and the docstring of runIngestHandler, lines 125-131
+    evidence: >-
+      "//   4. On `ValidationFailure`: ROLLBACK the business TX, then open a SEPARATE
+      short TX to write the audit `tool_call` row (BR-23).
+      //   5. On uncaught error: ROLLBACK, write `tool_call` with `error`, surface
+      `SYSTEM_INTERNAL_ERROR` envelope." and "BR-23: even when the business transaction rolls back, the audit row is
+      written via a SEPARATE short transaction (`insertToolCallStandalone`)."
+    cost: >-
+      The rule that a refused or failed proposal leaves only its tool call is stated a second time in prose, next to the code that enforces it (`await client.query("ROLLBACK")` in `runIngestHandler` and `insertToolCallStandalone` in `safeWriteAuditOnRollback`). When the node moves, `--check` will not reach this prose, so a reader can take the comment for the decision. Nothing is wrong with the behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is already held by the node and by the code of this file, which needs no comment.
+    node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring of deriveValidationOutcome, lines 55-65
+    evidence: >-
+      "Rule: when `result.outcome === 'rejected'` (the BELOW_CONFIDENCE_FLOOR
+      branch returns this), the audit row is `'rejected'` per BR-17. Every other
+      `ok:true` envelope is `'accepted'`."
+    cost: >-
+      The mapping from a proposal's result to the tool call's validation outcome is restated in prose. The switch in the same function holds it, and the docstring departs from the switch by saying "Every other `ok:true` envelope is `'accepted'`" where the switch also returns other tags such as `consolidated` and `needs_review`. The comment will not follow the node when it changes, and it already disagrees with the code beside it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code of this file holds the fact, and the candidate node governs it.
+    node: rules/knowledge-base/tool-call-validation-outcome
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the SYSTEM_INTERNAL_ERROR envelope built for an uncaught error in runIngestHandler, line 197
+    evidence: >-
+      error: { code: "SYSTEM_INTERNAL_ERROR", message: "Internal error in MCP handler." },
+    cost: >-
+      What a proposal answers when it fails is wording the owner or the model receives, and it lives only here. No node holds this message or that the answer withholds the cause and carries no details. The specification fixes the analogous answers for other operations (compliance-audit: "Unexpected internal error.", withholding the cause). The next reader looks in the propose-* operations of the specification and finds no failure answer there.
+    kind: unstated
+    correction: >-
+      Analysis should give the propose-* operations a failure refusal: the code SYSTEM_INTERNAL_ERROR, the message, and that the cause is withheld.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the catch block of safeWriteAuditOnRollback, lines 227-238
+    evidence: >-
+      deps.logger.error(
+      {
+        tool_name,
+        llm_run_id: deps.llm_run_id,
+        cause_message: err instanceof Error ? err.message : "unknown",
+      },
+      "tool_call_audit_write_failed"
+      );
+    cost: >-
+      When recording the tool call of a refused or failed proposal itself fails, the code returns the original envelope and keeps no tool call. The proposal then vanishes from its run's account, which is counted from its tool calls. No node says that this outcome is acceptable. The audit rule says every proposal is recorded, so the exception lives only in this catch.
+    kind: unstated
+    correction: >-
+      Analysis should state what a proposal answers, and whether it counts as recorded, when its tool call cannot be written.
+    node: rules/knowledge-base/every-proposal-audited
+read:
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      runIngestHandler: the catch branch that runs ROLLBACK, followed by safeWriteAuditOnRollback, which writes only the tool call through insertToolCallStandalone
+    evidence: >-
+      await client.query("ROLLBACK");
+      await safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "rejected");
+      await insertToolCallStandalone(deps.pool, {
+candidates_opened:
+  - rules/knowledge-base/tool-call-validation-outcome
+  - rules/knowledge-base/every-proposal-audited
+looked_past: >-
+  The BR-xx and TC-xx citations in the comments and the assertRunIsRunning docstring are prose naming a different specification, which belongs to the comment route and not to this judgment.
