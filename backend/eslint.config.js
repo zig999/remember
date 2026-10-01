@@ -9,5 +9,8 @@ export default [
     languageOptions: {
       parser: tseslint.parser,
     },
+    plugins: {
+      '@typescript-eslint': tseslint.plugin,
+    },
   },
 ];
