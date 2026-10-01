@@ -4913,7 +4913,7 @@ None.
 === rules/chat/graph-delta-unreadable-result
 ---
 type: invariant
-statement: A tool result a graph delta cannot read yields a graph delta with no nodes and no links.
+statement: A tool result a graph delta cannot read yields a graph delta with no nodes and no links, except a directed ingestion's, which yields none.
 constrains:
 - domain/chat/graph-delta
 ---
@@ -4929,6 +4929,10 @@ entries:
   unstated: The material answers a tool result the graph delta cannot read with an empty graph delta for the traversal, the node read, the node listing and search, and with no graph delta for directed ingestion.
   decided: An unreadable result yields a graph delta with no nodes and no links, whatever the tool.
   why: One condition gets one answer, and four of the five tools already give it.
+- field: statement
+  unstated: The earlier decision gave every tool the empty graph delta, but the tests show a directed ingestion result that is not a well-formed object yielding no graph delta, while a well-formed empty one still yields an empty graph delta.
+  decided: An unreadable result yields a graph delta with no nodes and no links, except a directed ingestion's, which yields none.
+  why: The tests pass and state the exception, so the earlier unification contradicted what the system does and what its tests protect.
 ---
 
 === rules/chat/graph-view-replaced-on-save
@@ -10380,7 +10384,7 @@ None.
 === rules/knowledge-base/reaffirmation-consolidates
 ---
 type: policy
-statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, when its change hint is not correction and, for a type that does not allow multiple current assertions, its change hint is none and it states the same validity start.
+statement: A proposal that meets a current assertion with the same target or value re-affirms it, adding its provenance and recording no new assertion, only when its change hint is none and, for a type that does not allow multiple current assertions, it states the same validity start.
 constrains:
 - domain/knowledge-base/proposal
 - domain/knowledge-base/knowledge-link
@@ -10404,6 +10408,10 @@ entries:
   unstated: The material does not say how this rule holds across the separate records it changes.
   decided: eventual
   why: Each case of this rule concerns one knowledge link or one node attribute and never both, so no reader depends on the two changing together.
+- field: statement
+  unstated: The earlier decision let a proposal that is not a correction re-affirm in a multi-current type, but a test shows a succession proposal meeting a current assertion with the same target there is not consolidated.
+  decided: A proposal re-affirms only when its change hint is none and, for a type that does not allow multiple current assertions, it states the same validity start.
+  why: The tests pass and state that only a hint of none re-affirms, so the earlier reading let a succession claim be absorbed as a repeat.
 ---
 
 === rules/knowledge-base/recent-ingestion-latest-run
