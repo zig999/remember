@@ -55,4 +55,4 @@ None.
 - retrieval-transports-answer-alike (knowledge-base)
 - unreachable-store-answers-unavailable (system)
 
-125 decision(s) disclosed, 2 location(s) retired in the decision log.
+125 decision(s) disclosed, 2 location(s) retired in the decision logs.
