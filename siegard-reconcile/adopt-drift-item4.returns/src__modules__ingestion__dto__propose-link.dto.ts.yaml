@@ -1,0 +1,52 @@
+findings:
+  - file: src/modules/ingestion/dto/propose-link.dto.ts
+    where: >-
+      line 8, ValidFromBasisSchema; the schema is reused by ProposeLinkInputSchema.valid_from_basis (lines 58-60)
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+      and, in the description of valid_from_basis, "Justification for valid_from: 'stated' (written in the chunk) or 'document' (the document's date). Omit when valid_from is omitted."
+      The file's own caller path, service/extraction.service.ts line 249, runs `ProposeLinkInputSchema.safeParse(rawInput)` on the model's tool input. The v4 extraction prompt, prompts/extraction.v4.ts, tells that model to state the basis: "fall back to the date portion of `received_at` ... use basis `"received"`."
+    cost: >-
+      The node lets an extraction under prompt version v4 state the basis received for a relative date it resolved against the date of reception. This schema has no such value, so the parse refuses a proposal that carries it. The exception the node grants is unreachable through the file that declares the shape. The caller-facing enum also silently drops one of the three values valid-from-basis holds, so a reader of the specification will not find in this file that the exception was cut off.
+    kind: contradicts
+    correction: >-
+      The schema that validates what an extraction may send would have to admit received for the v4 extraction case, while still refusing it from every other proposal. The specification does not say how that distinction is carried, and the file cannot settle it.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      line 12, ChangeHintSchema
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]);
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      lines 20-64, ProposeLinkInputSchema, which declares confidence, valid_from, valid_to, valid_from_basis and change_hint, plus the cited fragment ids (the evidence role), in part. The proposal's kind is not declared here.
+    evidence: >-
+      confidence: z.number().min(0).max(1) ... fragment_ids: z.array(z.string().uuid()).min(1) ... valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() ... valid_from_basis: ValidFromBasisSchema.optional() ... change_hint: ChangeHintSchema.default("none")
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      line 8, ValidFromBasisSchema, in part. It declares two of the node's three values and omits received; see the finding against rules/knowledge-base/caller-never-states-received.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      lines 46-51, the fragment_ids field of ProposeLinkInputSchema
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1)
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      lines 39-45, the confidence field of ProposeLinkInputSchema
+    evidence: >-
+      confidence: z.number().min(0).max(1)
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      The file declares only the link proposal's input schema and result type (ProposeLinkInputSchema, ProposeLinkResult). It has no node-proposal resolution, similarity threshold or review recording.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      z.enum(["stated", "document"]) refuses received outright. The node's rule is that a proposal must not state received except for an extraction under prompt version v4. That exception is not carried here; see the finding.
+looked_past: >-
+  Two header comments (the "(UC-10)" line and "Closed enum ... (§6.5 / A14)") name spec sections that no node holds, but they state no domain fact the code lacks. The emitted field descriptions state the 0.75, 0.40 and half-open interval facts consistently with their nodes (new-assertion-status-from-confidence, below-confidence-floor-records-nothing), and the outcome and reason vocabulary matches the propose-link operation's accepted answer in contracts/knowledge-base/ingestion.
+candidates_opened:
+  - rules/knowledge-base/extraction-relative-date-falls-back-to-reception

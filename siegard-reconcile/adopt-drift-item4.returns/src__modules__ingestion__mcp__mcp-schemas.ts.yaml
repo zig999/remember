@@ -1,0 +1,105 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      LlmRunIdField, lines 28-35, the llm_run_id argument added to the four MCP propose_* schemas
+    evidence: >-
+      llm_run_id: z
+          .string()
+          .min(1)
+          .describe(
+            "Active LLMRun id this proposal belongs to. Required on every MCP call (Option B — arg-based run binding). The handler aborts with RESOURCE_NOT_FOUND when the id is unknown or BUSINESS_RUN_NOT_RUNNING when the row exists but its status is not `running`."
+    cost: >-
+      The contract refuses a malformed LLM run identity with VALIDATION_INVALID_FORMAT on both transports, and its decision log records that MCP proposals used to accept any non-empty text. This schema still accepts any non-empty string, so a value such as "x" passes the Zod parse here. Whether a later check refuses it cannot be seen from this file. The sibling schema in the same file (`get_ingestion_status`) does use `.uuid()`, so the file states the run identity two ways.
+    kind: contradicts
+    correction: >-
+      The run identity on the MCP proposal schemas would have to be refused as a malformed identifier, as it is on the other transport and in `GetIngestionStatusMcpInputSchema`. Or the refusal would have to be shown to happen elsewhere in the tree.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      StartAsyncIngestionMcpInputSchema, lines 81-123, including its description of the BACKGROUND run
+    evidence: >-
+      export const StartAsyncIngestionMcpInputSchema = z.object({ ... "The full plain text of the document to ingest. Paste the raw content; the server chunks it, runs structured extraction in the BACKGROUND, and persists the knowledge graph with provenance. No base64/binary."
+    cost: >-
+      The constraint says the ingest toolset offers no tool that starts an ingestion and returns before it completes. Its decision log says the tool is retired because ingestion is one-shot. This file still declares the input contract of such a tool and the text a client would read when it is advertised. A reader of the specification would believe the tool does not exist, while the code is the place it still lives. Whether it is registered is the toolset registrar's, not this file's.
+    kind: contradicts
+    correction: >-
+      The schema and its type would have to go, or a node would have to decide the tool back into the toolset.
+    node: constraints/ingest-toolset-offers-no-async-ingestion
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      IngestDirectedNodeItemSchema, the description of node_id, line 341
+    evidence: >-
+      Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node.
+    cost: >-
+      This is text a client reads on `tools/list`. The contract reports a pin that names no knowledge node as rejected with RESOURCE_NOT_FOUND, and only a pin naming a node that is not active as rejected with VALIDATION_INVALID_FORMAT. The description gives one code for both cases, so a caller written to it expects the wrong code for an absent node.
+    kind: contradicts
+    correction: >-
+      The description would have to name RESOURCE_NOT_FOUND for an id that names no node and VALIDATION_INVALID_FORMAT for one whose node is not active. This is emitted text, so it is corrected as behavior and never removed.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only the directed ingestion's input item, `IngestDirectedFragmentItemSchema = z.object({ ref: ..., text: z.string().min(1).max(1000) ...})`. That is a request item, not the shape of the stored fragment with confidence, status and created_at.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      INGEST_TOOL_NAMES, lines 63-68
+    evidence: >-
+      export const INGEST_TOOL_NAMES = [
+        "propose_fragment",
+        "propose_node",
+        "propose_link",
+        "propose_attribute",
+      ] as const;
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      GetIngestionStatusOutputSchema, lines 234-246, which declares the run's attributes in part
+    evidence: >-
+      model: z.string(), prompt_version: z.string(), started_at: ..., finished_at: ....nullable(), status: z.enum(["running", "completed", "failed"]), attempts: z.number().int().positive(), input_raw_information_id: z.string().uuid(), idempotency_key: z.string().regex(/^[0-9a-f]{64}$/), summary: GetIngestionStatusSummarySchema
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeFragmentMcpInputSchema, ProposeNodeMcpInputSchema, ProposeLinkMcpInputSchema and ProposeAttributeMcpInputSchema, lines 41-55, which bind each proposal to its LLM run; the directed link and attribute items, lines 357-403, carry valid_from, valid_from_basis and the evidence reference. The remaining attributes (confidence, change_hint) are declared in the dto files.
+    evidence: >-
+      export const ProposeFragmentMcpInputSchema =
+        ProposeFragmentInputSchema.extend(LlmRunIdField);
+  - node: domain/knowledge-base/raw-information
+    held_at: nowhere
+    evidence: >-
+      `IngestDocumentMcpInputSchema` carries `content`, `source_type` and `metadata`, but as the arguments of a request. The file does not declare the stored raw information with its content_hash, status, received_at or original_input, and `source_type` is imported from "../dto/source-type.js".
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the status field of GetIngestionStatusOutputSchema, line 240
+    evidence: >-
+      status: z.enum(["running", "completed", "failed"]),
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      GetIngestionStatusSummarySchema, lines 215-225
+    evidence: >-
+      accepted: z.number().int().nonnegative(), consolidated: ..., superseded_previous: ..., needs_review: ..., uncertain: ..., disputed: ..., rejected: ..., error: ..., orphaned_fragments: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      the text field of IngestDirectedFragmentItemSchema, lines 310-316. It holds the limit for directed fragments only; the propose_fragment limit is in the dto file.
+    evidence: >-
+      text: z
+          .string()
+          .min(1)
+          .max(1000)
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the required evidence_ref of IngestDirectedAttributeItemSchema (line 370) and IngestDirectedLinkItemSchema (line 394). It holds the rule for directed items only.
+    evidence: >-
+      evidence_ref: IngestDirectedRefSchema.describe(
+          "The `ref` of the fragment that evidences this link (must appear in `fragments[]`)."
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      The file only declares input shapes. The 0.55 similarity threshold, the needs-review status and the entity match review do not appear. Only the `node_id` description mentions that entity resolution is skipped when a pin is given.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      IngestDirectedValidFromBasisSchema, line 304, which holds the rule for directed items only
+    evidence: >-
+      const IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"]);
+looked_past: >-
+  Comments in this file state facts as prose, and they are the route that removes prose, not findings. One cites STRUCTURAL_INVALID for a node pin that does not resolve to an active node, although the contract reports VALIDATION_INVALID_FORMAT or RESOURCE_NOT_FOUND. Others restate limits that the code holds in the same file, such as the 120-character ref, and the BR-16 basis restriction. The 10 MiB content limit appears twice, in the start_async and ingest_document schemas. Those schemas also carry values (ref 1..120, label 1..200, attribute text 1..2000, limit 1..50 default 10, ISO date, basis default 'stated') that other nodes outside this file's bindings hold and that conform.
+candidates_opened:
+  - rules/knowledge-base/directed-defaults

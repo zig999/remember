@@ -1,0 +1,114 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      header comment, lines 24-25, and the comment above the attribute loop, lines 591-593
+    evidence: >-
+      "- Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+      when the caller omits it (BR-34 step 4)." and "`confidence = 1.0`; `valid_from_basis` defaults to
+      `'stated'` when omitted by caller (BR-34 Defaults matrix)."
+    cost: >-
+      The default basis is stated a second time in prose, outside any behavior. The code that holds it is
+      `valid_from_basis: item.valid_from_basis ?? "stated"` in this file (lines 628 and 708). When the node
+      moves, the comment keeps asserting the old default and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the two comments. The fact stays in rules/knowledge-base/directed-defaults, and the code at
+      lines 628-629 and 708-709 already holds it.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      refForAttribute, lines 921-923, used as the `ref` of every attribute report entry
+    evidence: >-
+      function refForAttribute(item: DirectedAttributeItem): string {
+        return `${item.node_ref}.${item.key}`;
+      }
+    cost: >-
+      The reference an attribute's report entry carries is built here as node reference, a dot, then key,
+      and appears in the specification nowhere. The specification fixes this format only for links
+      (rules/knowledge-base/directed-link-report-reference, joined by "->"). A reader looking in the
+      specification for what an attribute entry's reference is will not find it, and the link rule's log
+      says a consumer parses the link form.
+    kind: unstated
+    correction: >-
+      Analysis should give the attribute report entry's reference a node, beside
+      rules/knowledge-base/directed-link-report-reference.
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      DirectedAttributeItemSchema and DirectedLinkItemSchema, lines 140 and 153, and the forwarding at lines 627 and 707
+    evidence: >-
+      valid_to: IsoDateSchema.optional(), ... ...(item.valid_to !== undefined ? { valid_to: item.valid_to } : {}),
+    cost: >-
+      The service accepts a validity end on a directed attribute or link and proposes it. The node
+      rules/knowledge-base/directed-validity-start-shape and its log hold that "Only the validity start is
+      stated" and that "a validity end never arrives". No node says the service takes a validity end, so
+      the code is where that behavior lives. A caller reaching the service by another door would set an
+      end date the specification says does not exist.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a directed item may state a validity end and give that decision a
+      node. If it may not, the schema's `valid_to` is a departure from the specification.
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      readClosedRunSafe fallback, lines 1042-1046, and the null `finished_at` branch, lines 1063-1066
+    evidence: >-
+      const fallback = {
+          started_at: new Date(0).toISOString(),
+          finished_at: new Date(0).toISOString(),
+          attempts: 1,
+        }; ... row.finished_at === null
+          ? new Date(0).toISOString()
+    cost: >-
+      When the closed run cannot be read, the response reports the run started and finished at
+      1970-01-01T00:00:00.000Z with one attempt. That is a domain-visible value the specification never
+      states. The ingest-directed contract says only "the completed run, reported completed even where
+      closing it failed". A consumer cannot tell a real epoch timestamp from this placeholder.
+    kind: unstated
+    correction: >-
+      Analysis should state what the run's timestamps and attempts are when the run cannot be read, or
+      that they are absent.
+read:
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      the attribute input at lines 628-629 and the link input at lines 708-709 (the item's own hint or
+      none; the item's own basis or stated)
+    evidence: >-
+      valid_from_basis: item.valid_from_basis ?? "stated",
+      change_hint: item.change_hint ?? "none",
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      the fragment loop (lines 475-477) and the node loop (lines 511 and 561), where a reference is written
+      to the map only on acceptance
+    evidence: >-
+      if (envelope.ok) {
+            refToFragmentId.set(item.ref, envelope.result.fragment_id);
+      and, in the pin path, `if (pinResult.kind === "ok") { refToNodeId.set(item.ref, item.node_id);`. A
+      refused item sets nothing, so the earlier accepted entry stays, and a later accepted one overwrites it.
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      DirectedFragmentItemSchema, line 106
+    evidence: >-
+      text: z.string().min(1).max(1000),
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      DirectedAttributeItemSchema and DirectedLinkItemSchema (required `evidence_ref`, lines 138 and 149),
+      the cascade checks (lines 899-911), and the proposals at lines 625 and 705
+    evidence: >-
+      evidence_ref: DirectedRefSchema, ... if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref; ...
+      fragment_ids: [fragmentId],
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file delegates resolution to `proposeNode(nodeInput, ...)` (line 554) and only maps
+      `envelope.result.resolution === "needs_review"` to a report status. The 0.55 similarity floor, the
+      ten-candidate cap and the entity match review are not stated or applied in this file.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      `valid_from_basis: ValidFromBasisSchema.optional()` (lines 141 and 152) uses a vocabulary imported
+      from ../dto/propose-link.dto.js. The refusal is applied through that import, and the vocabulary is
+      declared in that other file. This file declares no basis vocabulary and states no refusal of
+      received.
+looked_past: >-
+  The header and helper comments restate many further facts that other directed-ingestion nodes outside this set hold (anchor to the first chunk, dispatch order, the dependency cascade, the pin rule, nonce-stamped content and others) while this file's code also holds them, which is the comment route's and those nodes' own judgments.

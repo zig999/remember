@@ -1,0 +1,134 @@
+findings:
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      AdjustedPeriodSchema, line 15 (the valid_from field of an entry in periods[])
+    evidence: >-
+      valid_from: IsoDateSchema.nullable(),
+      and the later branch that treats null as a legitimate value:
+      p.valid_from !== null &&
+    cost: >-
+      The adjusted-period node declares valid_from as required, a date. This
+      shape accepts a null start. A caller can then give a disputed assertion a
+      period with no start, and the specification never decided that. The
+      validity-start-before-end check also skips such a period silently. Whoever
+      reads the node will not look here to learn that a period may have no
+      start. This is a judgment from the node text alone. The adjusted-period
+      node and its log are silent on null, and the contract's refusal for a
+      field that is "null where it may not be" is the only nearby statement.
+    kind: contradicts
+    correction: >-
+      Either the adjusted-period node states that a period's validity start may
+      be absent, or the shape declares valid_from as a required date. Which one
+      the business decided is for a person to say.
+    node: domain/knowledge-base/adjusted-period
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      JSDoc above ResolveDisputeBodySchema, lines 20-27
+    evidence: >-
+      * ResolveDisputeRequest — implements BR-11 / BR-15 / BR-16:
+       *
+       *   - `decision = keep_disputed` -> no winner/periods; reason optional
+    cost: >-
+      The comment restates that a keep-disputed decision uses no winner or
+      periods. It is prose no running system emits. The code holds the fact in
+      this file: the winner_id and periods checks in superRefine run only under
+      `value.decision === "prefer_one"` and `value.decision === "adjust_periods"`.
+      The comment also cites BR-11, BR-15 and BR-16 as the authority for the
+      behavior. Those are back-spec identifiers, not nodes, so it names a
+      second home outside the specification.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the node and by the decision-gated
+      branches in this file.
+    node: rules/knowledge-base/unused-resolution-fields-ignored
+read:
+  - node: domain/knowledge-base/dispute-resolution
+    held_at: >-
+      ResolveDisputeBodySchema (lines 28-36), with AdjustedPeriodSchema (lines
+      13-18) for the periods element
+    evidence: >-
+      item_kind: ItemKindSchema,
+      item_ids: z.array(UuidSchema).min(2),
+      decision: DisputeDecisionSchema,
+      winner_id: UuidSchema.optional().nullable(),
+      periods: z.array(AdjustedPeriodSchema).optional().nullable(),
+      reason: z.string().trim().min(1).optional().nullable(),
+      The node's assertion_kind is spelled item_kind here, which is also the
+      spelling the curation contract uses on the wire. See the finding on
+      valid_from for the adjusted-period element.
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: >-
+      the adjust_periods branch of superRefine, lines 72-122
+    evidence: >-
+      if (value.periods.length !== value.item_ids.length) {
+      if (!value.item_ids.includes(p.item_id)) {
+      if (periodIds.has(p.item_id)) {
+      each raising BUSINESS_DISPUTE_PERIODS_REQUIRED
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      the order of the superRefine branches: reason (lines 47-58), winner
+      (59-69), periods (72-91), then validity start before end (109-120)
+    evidence: >-
+      message: "BUSINESS_REASON_REQUIRED" is added before message:
+      "BUSINESS_DISPUTE_WINNER_REQUIRED", then "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+      then "BUSINESS_TEMPORAL_INCOHERENT". This matches the node's order. The
+      file adds every violation to ctx in one pass. The format issues (the
+      duplicate item_ids issue at line 43, `.min(2)`, `.trim().min(1)`) are
+      emitted ahead of the business ones. Which issue is reported first, and so
+      whether format loses to the business checks, is decided by the consumer of
+      the issue list. That consumer is outside this file and was not read.
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the prefer_one branch of superRefine, lines 59-69
+    evidence: >-
+      value.winner_id === undefined ||
+      value.winner_id === null ||
+      !value.item_ids.includes(value.winner_id)
+      -> message: "BUSINESS_DISPUTE_WINNER_REQUIRED"
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      the decision-gated branches of superRefine (lines 47 and 72) together
+      with the unconditional field types of winner_id and periods
+    evidence: >-
+      if (value.decision === "prefer_one") {
+      if (value.decision === "adjust_periods") {
+      winner_id: UuidSchema.optional().nullable(),
+      periods: z.array(AdjustedPeriodSchema).optional().nullable(),
+      Neither field is inspected by the other decision's branch. Both are still
+      format-typed whatever the decision, so a malformed value is refused.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the period loop of the adjust_periods branch, lines 109-120
+    evidence: >-
+      p.valid_from !== null &&
+      p.valid_to !== null &&
+      p.valid_to !== undefined &&
+      p.valid_from >= p.valid_to
+      -> message: "BUSINESS_TEMPORAL_INCOHERENT"
+      This covers the adjusted-period case only. The proposal and correction
+      cases are not in this file.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      The file carries only the dispute-resolution request schema. It has no
+      node proposal, similarity or entity-match review.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file carries no proposal and no valid-from basis. Its only dates are
+      `valid_from: IsoDateSchema.nullable()` and `valid_to` on an adjusted period.
+looked_past: >-
+  The file's header comment ("DTOs for UC-05/UC-06/UC-07 — POST /api/v1/curation/disputes/resolve.") and the "Cross-field validation done in a single `superRefine`" comment are prose that no code holds as a fact: a route and an implementation rationale. I left them out of the findings. The rules this file applies for the minimum of two distinct items, a prefer-one reason, and the trimmed reason are held by nodes outside the pack (dispute-resolution-distinct-items, curation-reason-required, curation-reason-not-blank), so they are not unstated.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/dispute-resolution-distinct-items
+  - rules/knowledge-base/dispute-resolution-check-order
+  - rules/knowledge-base/dispute-resolution-requires-disputed-items
+  - rules/knowledge-base/curation-reason-required
+  - rules/knowledge-base/curation-reason-not-blank
+  - rules/knowledge-base/curation-request-checked-first
+  - rules/knowledge-base/adjusted-periods-single-open
+  - domain/knowledge-base/adjusted-period
+  - domain/knowledge-base/dispute-decision
+  - contracts/knowledge-base/curation

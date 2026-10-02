@@ -1,0 +1,39 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 25-28, the bullet on resolving a relative date when document_date is unknown
+    evidence: >-
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      ... "`document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`."
+    cost: >-
+      The directive is joined into the system prompt that system() returns and sent to the model. It tells the model to state the basis received on a proposal. The node says no proposal may state that basis, and the log of this node records that the proposal schema refuses it. A run under v4 is therefore asked for something the proposal validation will reject. The reception-date fallback appears to reach the knowledge base only through the separate required-start-fallback rule, not through the model, and the prompt instructs otherwise.
+    kind: contradicts
+    correction: >-
+      The directive would have to stop asking the model to state basis "received". It would keep the instruction to resolve the relative date against the date portion of received_at and leave the basis out, which is what extraction-relative-date-falls-back-to-reception holds after the withdrawal recorded in its log.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      PROMPT_VERSION constant, line 11
+    evidence: >-
+      export const PROMPT_VERSION = "v4" as const;
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file is the v4 prompt delta (RECEIVED_AT_ANCHOR_DIRECTIVE and system()). It carries no entity resolution, similarity threshold of 0.55, needs-review status or entity match review pairing.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file does not hold the invariant. Its directive says the opposite: "  use basis `\"received\"`."
+looked_past: >-
+  The comments at lines 10 and 35 describe the registry use of PROMPT_VERSION and the v3-plus-directive composition of system(), which are implementation notes and not another node's fact, so I left them for the comment route.
+candidates_opened:
+  - domain/knowledge-base/valid-from-basis
+  - domain/knowledge-base/proposal
+  - rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+  - rules/knowledge-base/extraction-relative-date-needs-document-date
+  - rules/knowledge-base/required-start-fallback

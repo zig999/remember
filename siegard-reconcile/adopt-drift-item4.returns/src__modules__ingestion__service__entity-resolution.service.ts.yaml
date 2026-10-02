@@ -1,0 +1,118 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of TRIGRAM_CANDIDATE_LIMIT, lines 24-28
+    evidence: >-
+      "Hard cap on the trigram candidate set the decision considers. Matches the
+      `LIMIT 10` in the candidate query of BR-25 step 2 / §4.2."
+    cost: >-
+      The ten-candidate cap is stated a second time in prose beside the constant and the
+      `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}` query that hold it. When the node moves, the
+      comment still carries the old number and nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in this file holds the fact, so no behavior changes.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the "Ambiguous" bullet of the resolveOrCreateNode docstring, lines 77-80
+    evidence: >-
+      "Ambiguous → INSERT a new node with `status = 'needs_review'`, one
+      `entity_match_review` row per candidate with `sim >= MATCH_FLOOR`,
+      resolution = `needs_review`."
+    cost: >-
+      The needs-review policy is narrated in prose. The `INSERT INTO knowledge_node ... 'needs_review'`
+      branch and the loop over `decision.candidates` already hold it. A second description
+      outside behavior is where the next reader may look instead of the node.
+    kind: restates
+    correction: >-
+      Remove the bullet and the other prose that restates the branch.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the comment inside decideFromCandidates, lines 236-239
+    evidence: >-
+      "// Strong-unique requires exactly one strong AND no second above the floor."
+    cost: >-
+      The strong-candidate rule is restated in a comment above
+      `if (strong.length === 1 && aboveFloor.length === 1)`, which holds it.
+      The node strong-candidate-resolves is outside this file's pack and is not in the
+      candidate index, so a change to it would not reach this prose.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the "Novel" bullet of the resolveOrCreateNode docstring, lines 81-82
+    evidence: >-
+      "Novel → INSERT a new node with `status = 'active'`,
+      resolution = `created_new`."
+    cost: >-
+      The created-new outcome is narrated in prose. The `INSERT INTO knowledge_node ... 'active'`
+      branch and the `"created_new"` return hold it. The comment is a second home with
+      no reader.
+    kind: restates
+    correction: >-
+      Remove the bullet.
+    node: rules/knowledge-base/no-candidate-creates-active-node
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of attachCanonicalAndAliases, lines 247-251
+    evidence: >-
+      "Attach the canonical name as the first alias (`kind = 'canonical'`) plus
+      any LLM-supplied aliases (`kind = 'alias'`) to a newly created node."
+    cost: >-
+      The alias composition of a new node is stated in prose. The two `INSERT INTO node_alias`
+      statements in this file hold it. The comment would go stale silently if the node changed.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/new-node-aliases
+read:
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file only passes the literals `'canonical'` and `'alias'` into
+      `INSERT INTO node_alias (node_id, alias, kind, created_by_run_id) VALUES ($1, $2, 'canonical', $3)`.
+      It declares no enumeration, type or table shape for the kind.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file only writes rows with `INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)`.
+      It declares no shape for the element.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file only inserts with `INSERT INTO knowledge_node (node_type_id, canonical_name, status)`
+      and reads `kn.status = 'active'`. It declares no type, interface or table for the element.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file imports `import type { ProposeNodeResolution } from "../dto/propose-node.dto.js"`
+      and returns the literals `"matched_existing"`, `"needs_review"` and `"created_new"`.
+      The enumeration is declared in the dto file, not here.
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the lock-key query, the exact-match query (step 1) and the trigram candidate query (step 2)
+      of resolveOrCreateNode
+    evidence: >-
+      "WHERE na.alias_norm = norm($1::text)" and "AND na.alias_norm % norm($1::text)".
+      Every name comparison goes through the database `norm()` function. The file does not
+      define the normalization itself; it applies it.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      the candidate query with `LIMIT ${TRIGRAM_CANDIDATE_LIMIT}` ordered by similarity descending,
+      decideFromCandidates, and the "ambiguous" branch of resolveOrCreateNode
+    evidence: >-
+      "const aboveFloor = candidates.filter((c) => c.sim >= MATCH_FLOOR);" with MATCH_FLOOR = 0.55;
+      "return { kind: "ambiguous", candidates: aboveFloor };";
+      "VALUES ($1, $2, 'needs_review')"; and
+      "INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)" per candidate.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file handles node proposals (name, aliases, node type) and never touches
+      valid_from basis or the basis `received`.
+looked_past: >-
+  The file's bound set omits strong-candidate-resolves, which holds the 0.85 threshold in `MATCH_STRONG` and the one-strong-and-no-second-above-0.55 test in decideFromCandidates, and the code agrees with that node; the other facts the file applies (new-node aliases, matched node gaining only aliases, serialization of concurrent proposals) are held by existing nodes outside the pack, so nothing here is unstated.

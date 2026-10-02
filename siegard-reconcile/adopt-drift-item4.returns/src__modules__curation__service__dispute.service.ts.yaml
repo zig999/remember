@@ -1,0 +1,64 @@
+findings:
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      resolveDisputeService, the prefer_one branch, lines 116-121 (the BusinessError thrown when winner_id is absent)
+    evidence: >-
+      throw new BusinessError(
+        "BUSINESS_DISPUTE_WINNER_REQUIRED",
+        "decision=prefer_one requires winner_id"
+      );
+    cost: >-
+      The contract answers this refusal with the message "decision=prefer_one requires winner_id (member of item_ids)". The service emits the same code with a shorter message that omits the membership clause. The request DTO (src/modules/curation/dto/dispute.dto.ts, which issues BUSINESS_DISPUTE_WINNER_REQUIRED when winner_id is not in item_ids) is checked before the service. This branch is probably reachable only by a caller that skips the DTO. A reader who compares this message with the contract finds two wordings of one refusal. The service also never checks that winner_id belongs to item_ids, so the "among its items" half of the rule is held only in the DTO.
+    kind: contradicts
+    correction: >-
+      Where the service emits this message, it should state the wording the contract fixes, or the contract should be changed to the wording the code emits. Which one is right is a decision for the owner.
+    node: contracts/knowledge-base/curation
+  - file: src/modules/curation/service/dispute.service.ts
+    where: >-
+      resolveDisputeService, the adjust_periods branch, lines 199-204 (the BusinessError thrown when periods is absent or empty)
+    evidence: >-
+      throw new BusinessError(
+        "BUSINESS_DISPUTE_PERIODS_REQUIRED",
+        "decision=adjust_periods requires periods[]"
+      );
+    cost: >-
+      The contract answers this refusal with the message "decision=adjust_periods requires periods[] (one entry per item_id)". The service emits the same code with a message that omits the "(one entry per item_id)" clause. The service also checks only that periods is non-empty. The one-period-per-item half of the rule is not checked in this file.
+    kind: contradicts
+    correction: >-
+      Where the service emits this message, it should state the wording the contract fixes, or the contract should be changed to the wording the code emits. The owner decides which.
+    node: contracts/knowledge-base/curation
+read:
+  - node: rules/knowledge-base/dispute-resolution-single-scope
+    held_at: >-
+      assertSameScope(), lines 281-315, called at line 77 after the disputed-status check
+    evidence: >-
+      r.source_node_id !== first.source_node_id ||
+      r.target_node_id !== first.target_node_id ||
+      r.link_type_id !== first.link_type_id
+      ... r.node_id !== first.node_id || r.attribute_key_id !== first.attribute_key_id
+      -> throw new ConflictError("BUSINESS_ITEM_NOT_DISPUTED", "Items do not share the same conflict scope", { scope_mismatch: true })
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the prefer_one branch, lines 114-121. It refuses a missing winner, but it does not check membership in item_ids; that check is in the DTO.
+    evidence: >-
+      const winnerId = body.winner_id;
+      if (!winnerId) {
+        throw new BusinessError(
+          "BUSINESS_DISPUTE_WINNER_REQUIRED",
+          "decision=prefer_one requires winner_id"
+        );
+      }
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file resolves disputes over existing items. It has no node-proposal resolution, no similarity threshold and no entity match review; resolveDisputeService only reads loadItemsForUpdate rows and writes through resolveDisputeWinner, resolveDisputeLosers, adjustItemPeriod and insertCurationAction.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file handles no proposal and no valid-from basis. Its only date fields are the periods' valid_from and valid_to, passed through as `adjustItemPeriod(client, body.item_kind, p.item_id, p.valid_from, p.valid_to ?? null)`.
+looked_past: >-
+  The header comment "// UC-05 / UC-06 / UC-07 — POST /api/v1/curation/disputes/resolve.", "// BR-26: lock every item row." and "// decision === \"adjust_periods\"" are prose that cite back-spec identifiers, which no node in this pack holds, so they belong to the comment route; the rest of the file (the check order, the prefer-one and adjust-periods outcomes, the single-open rule and the curation-action record) matches rules held by nodes outside this pack and was not judged here.
+candidates_opened:
+  - domain/knowledge-base/dispute-resolution

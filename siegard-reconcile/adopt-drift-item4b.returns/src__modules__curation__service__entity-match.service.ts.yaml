@@ -1,0 +1,66 @@
+findings:
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      resolveEntityMatchService, the self-merge guard before withTransaction (lines 45-55)
+    evidence: >-
+      if (body.decision === "merge_into" && body.target_node_id !== null && body.target_node_id === nodeId) { throw new ConflictError("BUSINESS_SELF_MERGE_FORBIDDEN", "merge_into target equals the node being resolved", { node_id: nodeId }); }
+    cost: >-
+      The rule that a node is never merged into itself is implemented here, a second time beside merge.service.ts and entity-match.dto.ts, and the node that holds it is bound to none of the three of them in this batch. When the node moves, --check does not reach this file. Nobody can tell which of the copies is the decided one.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/node-never-merged-into-itself to this file, or leave the refusal to the single place the node is bound to. Code cannot read the specification, so the bind is what closes it.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      keep_separate branch, deleted-node refusal (lines 66-71)
+    evidence: >-
+      if (node.status === "deleted") { throw new NodeDeletedError("KnowledgeNode tombstoned by compliance_delete", { node_id: nodeId }); }
+    cost: >-
+      The refusal to resolve a deleted node is carried here, and the node that holds it is not bound to this file. A change to the node does not reach this branch, and a reader looking for the rule in the specification finds it separated from the code that applies it.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/curation-refuses-deleted-node to this file.
+    node: rules/knowledge-base/curation-refuses-deleted-node
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      keep_separate branch, pending-review check (lines 72-78)
+    evidence: >-
+      if (node.status !== "needs_review") { throw new ConflictError("BUSINESS_REVIEW_NOT_PENDING", "Node is not in `needs_review` state", { node_id: nodeId, current_status: node.status }); }
+    cost: >-
+      The requirement that a resolution act only on a node in needs-review is applied here, and its node is not bound to this file. A change to the node leaves this branch behind without any check noticing.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/entity-match-resolution-requires-pending-review to this file.
+    node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      merge_into branch, defensive target check (lines 121-128)
+    evidence: >-
+      if (targetNodeId === null || targetNodeId === undefined) { throw new BusinessError("BUSINESS_TARGET_NODE_REQUIRED", "decision=merge_into requires target_node_id"); }
+    cost: >-
+      The rule that a merge-into names a target is applied a second time here, after the DTO. Its node is not bound to this file, so a change to the node does not reach this refusal.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/merge-into-requires-target to this file.
+    node: rules/knowledge-base/merge-into-requires-target
+read:
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      the keep_separate branch of resolveEntityMatchService (lines 58-118). It never reads body.target_node_id, and it returns target_node_id null.
+    evidence: >-
+      payload: { decision: "keep_separate" }, ... target_node_id: null, affected: null. The refusal of a malformed value is not in this file, because the file never touches the field on this branch. This file only partly holds the node: its dispute-resolution half sits in dispute.dto.ts.
+  - node: rules/knowledge-base/ambiguous-candidates-need-review
+    held_at: nowhere
+    evidence: >-
+      The file resolves an existing needs_review node and holds no 0.55 similarity threshold, no ten-candidate cap and no creation of a review. It only calls deleteEntityMatchReviewByNode(client, nodeId).
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file handles no proposal and has no valid-from basis. It contains no reference to received or to a basis.
+looked_past: >-
+  Prose comments (the header "UC-02 (resolveEntityMatch) and UC-04 (mergeNodes)" and "DTO superRefine guarantees target_node_id+reason exist") and the file's other facts held by nodes outside the set (the not-found refusal, the survivor and absorbed-status expectations, the curation-action payloads, the logger events) are other judgments' and not reported here.
+candidates_opened:
+  - rules/knowledge-base/node-never-merged-into-itself
+  - rules/knowledge-base/curation-refuses-deleted-node
+  - rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - rules/knowledge-base/merge-into-requires-target
