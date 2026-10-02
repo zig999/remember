@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/ingestion/prompts/index.ts
+    where: >-
+      the JSDoc above selectPromptModule(), lines 74-78
+    evidence: >-
+      Throws
+       * `UnknownPromptVersionError` for an unregistered version (BR-26 step 2 — fail
+       * loud, never silently substitute a different prompt than the run declares).
+    cost: >-
+      The rule that an extraction's prompt version must be one the system holds is stated a
+      second time in prose next to the code that enforces it. The next reader may take the
+      docstring, and the "BR-26" it cites, as where the rule lives. If the node moves, the
+      docstring stays as it was.
+    kind: restates
+    correction: >-
+      Remove the docstring. The throw in selectPromptModule() in this same file holds the fact,
+      and the node binds it.
+    node: rules/knowledge-base/prompt-version-known
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      REGISTRY (lines 57-62) together with the four prompt-module imports (lines 14-17). They
+      are the only table of versions this file declares, and it holds exactly four entries.
+    evidence: >-
+      const REGISTRY: Readonly<Record<string, PromptModule>> = {
+        [v1.PROMPT_VERSION]: V1,
+        [v2.PROMPT_VERSION]: V2,
+        [v3.PROMPT_VERSION]: V3,
+        [v4.PROMPT_VERSION]: V4,
+      };
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the DEFAULT_PROMPT_VERSION export, line 55
+    evidence: >-
+      export const DEFAULT_PROMPT_VERSION: string = v4.PROMPT_VERSION;
+  - node: rules/knowledge-base/prompt-version-known
+    held_at: >-
+      the undefined check and throw in selectPromptModule(), lines 80-84. The refusal is raised
+      by UnknownPromptVersionError, declared at lines 64-72.
+    evidence: >-
+      const module = REGISTRY[promptVersion];
+        if (module === undefined) {
+          throw new UnknownPromptVersionError(promptVersion);
+        }
+looked_past: >-
+  The header comment (lines 1-8) narrates the history of how the registry came to drive
+  behaviour and cites BR-26. It is prose with no node fact of this set that code does not
+  already hold, so it belongs to the comment route and not to this pass. The
+  UnknownPromptVersionError message is emitted text that states the node's fact truly, so it is
+  no finding.
+candidates_opened: []

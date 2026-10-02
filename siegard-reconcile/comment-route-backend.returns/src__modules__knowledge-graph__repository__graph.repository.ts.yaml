@@ -1,0 +1,272 @@
+findings:
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      KnowledgeNodeRow.status, line 28 (the same union is repeated in ListNodesFilter.status, line 57)
+    evidence: >-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+      The node reads: values: active, needs-review, merged, deleted.
+    cost: >-
+      The file declares the node-status shape with the value spelled needs_review. The node
+      holds needs-review. The two spellings are different strings, so a reader who checks this
+      file against the specification cannot tell which one the business decided. The
+      compliance-checked wire value is the one the code emits, and it is not the one the
+      specification names.
+    kind: contradicts
+    correction: >-
+      Either the node-status spelling or the code's spelling has to change. Which of the two is
+      meant is for a person to decide. A boundary mapping is not visible in this file.
+    node: domain/knowledge-base/node-status
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment on ListNodesFilter.status, line 56
+    evidence: >-
+      /** Status filter; defaults to "active" in the service (BR-15). */
+    cost: >-
+      Prose states the node's default of active. No running system emits it. The default is held
+      in code in another file, backend/src/modules/knowledge-graph/service/node.service.ts line
+      62 (`const status: NodeStatus = input.status ?? "active";`). The comment is a second home
+      for the fact outside behavior, and it can drift from the node unseen.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by node-listing-by-status and by the service code.
+    node: rules/knowledge-base/node-listing-by-status
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the comment above the alias join in listNodes(), lines 88-90
+    evidence: >-
+      // We always JOIN node_type for the response. Alias prefix is an optional
+      // INNER JOIN — when present, narrows the candidate set; the DISTINCT keeps
+      // one row per node id.
+    cost: >-
+      Prose states the one-entry-per-node rule. The code holds it in this file
+      (`count(DISTINCT kn.id)` and `SELECT DISTINCT kn.id`). The comment is a second statement of
+      the fact that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/node-listing-one-entry-per-node
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the comment in listAttributesByNodeId(), line 201
+    evidence: >-
+      // BR-21: filter on the storage column `status`, never on the derived flag.
+    cost: >-
+      Prose states the rule that uncertain attributes are left out by their status. The code
+      holds it in this file (`uncertainClause = "AND na.status <> 'uncertain'"`). The comment is
+      a restatement outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/node-read-excludes-uncertain-on-request
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment on TraversalHopFilter.direction, line 362
+    evidence: >-
+      /** "out" = source IN currentIds; "in" = target IN currentIds. */
+    cost: >-
+      Prose states the direction rule. The code holds it in this file (the `sideCol` branch
+      choosing `kl.source_node_id` or `kl.target_node_id`). The comment is a second home for the
+      fact.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/traversal-direction
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment on TraversalHopFilter.linkTypeIds, line 364
+    evidence: >-
+      /** Optional LinkType id filter; undefined means "all link types". */
+    cost: >-
+      Prose states that a named link-type set restricts the expansion. The code holds it in this
+      file (`where.push(`kl.link_type_id = ANY($${params.length}::uuid[])`)`). The comment is a
+      restatement outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/expansion-restricted-to-named-link-types
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the section comment above walkLinkHistory(), lines 411-413
+    evidence: >-
+      // History — recursive CTE walking both up and down the lineage chain
+      // (BR-12 of back spec). The same shape works for links and attributes; we
+    cost: >-
+      Prose states the lineage-history rule that a history walks up and down the supersession
+      chain. The code holds it in this file (the `up` and `down` recursive CTEs in
+      walkLinkHistory and walkAttributeHistory). The comment is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/lineage-history
+  - file: src/modules/knowledge-graph/repository/graph.repository.ts
+    where: >-
+      the doc comment on listAttributeHistoryByNodeKey(), lines 494-499
+    evidence: >-
+      * UC-11 — list every version of `(node_id, attribute_key_id)`, ordered ASC
+      * by `recorded_at`. ... the result is
+      * the FULL evolution of that key on that node (successions, corrections,
+      * disputes, consolidations).
+    cost: >-
+      Prose states the attribute-key-history fact that every attribute of the node and key is
+      held whatever its status. The code holds it in this file (the query filters only on
+      `na.node_id = $1 AND na.attribute_key_id = $2`). The comment is a restatement outside
+      behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/attribute-key-history
+read:
+  - node: domain/knowledge-base/alias-kind
+    held_at: >-
+      NodeAliasRow.kind, line 134
+    evidence: >-
+      readonly kind: "canonical" | "alias";
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      AttributeResolvedRow.status (line 166) and LinkResolvedRow.status (line 244)
+    evidence: >-
+      readonly status: "active" | "uncertain" | "disputed" | "superseded" | "deleted";
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The union is declared with a different spelling than the node's: `readonly status:
+      "active" | "needs_review" | "merged" | "deleted";` against the node's `needs-review`.
+      See the contradicts finding.
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      AttributeResolvedRow.valid_from_source (line 168) and LinkResolvedRow.valid_from_source (line 246)
+    evidence: >-
+      readonly valid_from_source: "stated" | "document" | "received" | null;
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      AttributeResolvedRow.value_type, line 160
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/attribute-key-history
+    held_at: >-
+      listAttributeHistoryByNodeKey(), lines 501-515
+    evidence: >-
+      WHERE na.node_id = $1
+              AND na.attribute_key_id = $2
+      No status or validity predicate.
+  - node: rules/knowledge-base/expansion-restricted-to-named-link-types
+    held_at: >-
+      fetchTraversalHop(), the linkTypeIds branch, lines 390-393
+    evidence: >-
+      if (filter.linkTypeIds !== undefined && filter.linkTypeIds.length > 0) {
+          params.push(filter.linkTypeIds);
+          where.push(`kl.link_type_id = ANY($${params.length}::uuid[])`);
+      The search-query side of the rule is not in this file.
+  - node: rules/knowledge-base/graph-provenance-excerpt-is-chunk-excerpt
+    held_at: >-
+      listProvenanceByTargets(), the excerpt column, lines 312-313
+    evidence: >-
+      substring(rc."text" FROM rc.offset_start + 1
+                                FOR rc.offset_end - rc.offset_start) AS excerpt
+  - node: rules/knowledge-base/graph-provenance-hides-compliance-deleted
+    held_at: >-
+      listProvenanceByTargets(), the joins and WHERE, lines 314-319
+    evidence: >-
+      JOIN raw_information ri    ON ri.id = rc.raw_information_id
+                WHERE ${targetCol} = ANY($1::uuid[])
+      No predicate on the compliance status of raw_information, so every entry is shown.
+  - node: rules/knowledge-base/graph-provenance-one-entry-per-chunk
+    held_at: >-
+      listProvenanceByTargets(), the join through fragment_source to raw_chunk, lines 315-317
+    evidence: >-
+      JOIN information_fragment f ON f.id = p.fragment_id
+                 JOIN fragment_source fs    ON fs.fragment_id = f.id
+                 JOIN raw_chunk rc          ON rc.id = fs.raw_chunk_id
+  - node: rules/knowledge-base/graph-provenance-order
+    held_at: >-
+      listProvenanceByTargets(), the ORDER BY, line 320
+    evidence: >-
+      ORDER BY ${targetCol}, p.created_at ASC, f.id ASC
+  - node: rules/knowledge-base/history-order
+    held_at: >-
+      walkLinkHistory (line 453), walkAttributeHistory (line 488) and listAttributeHistoryByNodeKey (line 511)
+    evidence: >-
+      ORDER BY recorded_at ASC, id ASC
+  - node: rules/knowledge-base/lineage-history
+    held_at: >-
+      walkLinkHistory() and walkAttributeHistory(), the up and down recursive CTEs, lines 431-491
+    evidence: >-
+      JOIN up ON kl.id = up.supersedes_link_id
+      JOIN down ON kl.supersedes_link_id = down.id
+      No status or validity predicate on either walk.
+  - node: rules/knowledge-base/node-listing-by-status
+    held_at: >-
+      listNodes(), the base predicate, lines 80-81
+    evidence: >-
+      const where: string[] = ["kn.status = $1"];
+        params.push(filter.status);
+      The filter is required here. The "active when none is named" default is held in
+      service/node.service.ts line 62, not in this file.
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      listNodes(), the alias join, lines 92-96
+    evidence: >-
+      aliasJoin = `JOIN node_alias na ON na.node_id = kn.id
+                   AND na.alias_norm LIKE $${params.length} || '%'`;
+      The prefix is bound unescaped to LIKE, so % and _ keep their wildcard meaning as the node
+      states.
+  - node: rules/knowledge-base/node-listing-one-entry-per-node
+    held_at: >-
+      listNodes(), the count and data queries, lines 104 and 115
+    evidence: >-
+      SELECT count(DISTINCT kn.id)::int AS total
+      SELECT DISTINCT kn.id, kn.node_type_id, nt.name AS node_type,
+  - node: rules/knowledge-base/node-listing-order
+    held_at: >-
+      listNodes(), the data query ORDER BY, line 119
+    evidence: >-
+      ORDER BY kn.canonical_name ASC, kn.id ASC
+  - node: rules/knowledge-base/node-listing-total-before-pagination
+    held_at: >-
+      listNodes(), the count query run before the limit and offset are bound, lines 104-110
+    evidence: >-
+      const countRes = await client.query<{ total: number }>(countSql, params);
+      ...
+      params.push(filter.limit);
+  - node: rules/knowledge-base/node-read-alias-order
+    held_at: >-
+      listAliasesByNodeId(), the ORDER BY, line 146
+    evidence: >-
+      ORDER BY kind ASC, alias ASC
+      The kind column is the enum `CREATE TYPE alias_kind AS ENUM ('canonical', 'alias')` in
+      migrations/0001_init.sql, so canonical sorts before alias.
+  - node: rules/knowledge-base/node-read-attribute-order
+    held_at: >-
+      listAttributesByNodeId(), the ORDER BY, line 212
+    evidence: >-
+      ORDER BY na.attribute_key ASC, na.recorded_at ASC, na.id ASC
+  - node: rules/knowledge-base/node-read-excludes-uncertain-on-request
+    held_at: >-
+      listAttributesByNodeId(), the uncertainClause, lines 202-205
+    evidence: >-
+      if (!filter.includeUncertain) {
+          uncertainClause = "AND na.status <> 'uncertain'";
+        }
+  - node: rules/knowledge-base/point-reads-answer-any-status
+    held_at: >-
+      findAttributeById() lines 218-229 and findLinkById() lines 258-269
+    evidence: >-
+      WHERE na.id = $1
+      WHERE kl.id = $1
+      No status or validity predicate.
+  - node: rules/knowledge-base/traversal-direction
+    held_at: >-
+      fetchTraversalHop(), the sideCol branch, lines 384-385. It covers out and in only. How
+      both is composed is not visible in this file.
+    evidence: >-
+      const sideCol =
+          filter.direction === "out" ? "kl.source_node_id" : "kl.target_node_id";
+  - node: rules/knowledge-base/traversal-skips-deleted-links
+    held_at: >-
+      fetchTraversalHop(), the SQL, line 405
+    evidence: >-
+      AND kl.status <> 'deleted'
+looked_past: >-
+  Comments citing back-spec rule numbers (BR-07, BR-09, BR-12, BR-13, BR-16), the batching and no-N+1 notes, and the BFS-per-hop rationale are implementation or performance prose that restates no node of this pack, so I left them to the comment route.
+candidates_opened: []

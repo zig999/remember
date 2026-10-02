@@ -1,0 +1,52 @@
+findings:
+  - file: src/modules/compliance-audit/routes/compliance-audit.routes.ts
+    where: >-
+      the comments inside handleZodError, lines 189 and 202-206 ("Priority 1" and "Priority 2")
+    evidence: >-
+      // Priority 1 — explicit semi-open range refinement.
+      // Priority 2 — required-field detection. Zod v4 surfaces a missing or
+      // undefined field as `invalid_type` whose message mentions `received
+      // undefined`
+    cost: >-
+      The refusal order (unordered window, then missing field, then reason out of range, then any other malformed field) is stated a second time in prose, in numbered priorities. A reader could take the comment for where the order was decided, when the node holds it. The code that applies the order is the sequence of `if` branches in this same function, so the pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the comments. The order is held by the node and applied by the branch sequence in handleZodError.
+    node: rules/knowledge-base/audit-filter-checks-order
+read:
+  - node: constraints/compliance-deletion-is-atomic
+    held_at: >-
+      the POST /compliance/deletions handler (UC-01), lines 76-78: the deletion service call is wrapped in `withTransaction`
+    evidence: >-
+      const result = await withTransaction(deps.pool, (client) =>
+        complianceDelete({ logger: deps.logger }, client, body)
+      );
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      the five route registrations (lines 65-175), the 201/200 choice on line 79, and handleZodError / handleAuditError (lines 185-286). The error codes, messages and the 422 status sit in handleZodError, and the not-found and internal failures are forwarded from the service errors.
+    evidence: >-
+      const status = result.outcome === "deleted" ? 201 : 200;
+      code: "VALIDATION_REQUIRED_FIELD",
+      message: `Field '${reqField.path.join(".")}' is required.`,
+      "Field 'reason' must be non-empty after trim and ≤ 1000 characters.",
+      message: "Time range bounds must satisfy `from < to`.",
+      message: "Request payload failed validation.",
+  - node: rules/knowledge-base/audit-filter-checks-order
+    held_at: >-
+      the order of the branches in handleZodError, lines 190-255: unordered window, then required field, then reason out of range, then the generic VALIDATION_INVALID_FORMAT
+    evidence: >-
+      err.issues.some((i) => i.code === "custom" && i.message === "VALIDATION_OUT_OF_RANGE")
+      const reqField = err.issues.find((i) => {
+      (i.code === "too_small" || i.code === "too_big") &&
+        i.path[0] === "reason"
+      code: "VALIDATION_INVALID_FORMAT",
+  - node: rules/knowledge-base/compliance-deletion-check-order
+    held_at: >-
+      only the first step is held here: the POST handler parses the request with ComplianceDeleteRequestSchema and returns the validation refusal before `withTransaction` and `complianceDelete` are reached. The checks for an existing raw information and then an already-deleted one belong to the service, which this file does not hold.
+    evidence: >-
+      body = ComplianceDeleteRequestSchema.parse(request.body ?? {});
+      } catch (err) {
+        return handleZodError(err, reply);
+      }
+looked_past: >-
+  The remaining comments (the header block citing BR-13 and UC-01 to UC-05, and the JSDoc on registerComplianceAuditRoutes and on handleAuditError) describe the route layout and the Auth scope, which none of the four nodes holds, and as prose they belong to the comment route rather than to this judgment.

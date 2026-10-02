@@ -1,0 +1,72 @@
+findings:
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      the docstring above mapZodErrorToEnvelope, lines 48-61
+    evidence: >-
+      " * Zod parse failure -> canonical VALIDATION_* code (P2.1). Mirrors the priority
+       * discrimination the REST route uses ... 1. Explicit `superRefine` `VALIDATION_OUT_OF_RANGE` marker ...
+       *   2. Missing / undefined field -> `VALIDATION_REQUIRED_FIELD`. ...
+       *   4. Everything else -> `VALIDATION_INVALID_FORMAT`."
+    cost: >-
+      The order in which failed form checks are refused is stated in prose here as well as in the
+      node. The comment skips item 3 and numbers the last item 4, so it already differs from the
+      code, which has a third branch for `reason` length. A reader who trusts the comment gets the
+      order wrong, and the node is not bound to it, so a change to the node never reaches it.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in this file (the four ordered branches of
+      mapZodErrorToEnvelope) holds the order, and the node already states it.
+    node: rules/knowledge-base/audit-filter-checks-order
+  - file: src/modules/compliance-audit/mcp/compliance-toolset.ts
+    where: >-
+      the file header comment lines 7-15, and the comment at lines 158-159
+    evidence: >-
+      "// Envelope (CLAUDE.md "Architecture / Backend"):
+      //   success -> { ok: true,  result: { outcome, deletion } }
+      //   failure -> { ok: false, error: { code, message, details? } }" and
+      "// Anything else -> generic 500 (SYSTEM_INTERNAL_ERROR). Never leak
+      // `err.message` to the client (BR-15)."
+    cost: >-
+      The answer shape and the withheld-cause refusal of compliance-delete are written again in
+      comments. The code holds both, in `return { ok: true, result }` and in the
+      "Unexpected internal error." branch. The prose is a second home that no check follows when the
+      contract moves.
+    kind: restates
+    correction: >-
+      Remove the header comment and the BR-15 comment. The contract node holds both facts and the
+      code already implements them.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: constraints/compliance-deletion-is-atomic
+    held_at: >-
+      the handler's call to withTransaction around complianceDelete in the compliance_delete tool
+      (lines 145-147)
+    evidence: >-
+      const result = await withTransaction(deps.pool, (client) =>
+        complianceDelete({ logger: deps.logger }, client, body)
+      );
+  - node: constraints/llm-toolset-omits-audit-reads
+    held_at: >-
+      registerComplianceToolset, lines 126-182. It registers only compliance_delete under the
+      curation toolset and registers no read tool for compliance deletions or curation actions.
+    evidence: >-
+      deps.mcp.registerTool("curation", {
+        name: "compliance_delete",
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      the MCP side of compliance-delete, in mapZodErrorToEnvelope (lines 62-124) and the
+      compliance_delete handler (lines 133-172). The REST operations and the four read operations
+      are not in this file.
+    evidence: >-
+      "VALIDATION_REQUIRED_FIELD", `Field '${reqField.path.join(".")}' is required.`;
+      "VALIDATION_OUT_OF_RANGE", "Field 'reason' must be non-empty after trim and ≤ 1000 characters.";
+      "VALIDATION_INVALID_FORMAT", "Request payload failed validation.";
+      "SYSTEM_INTERNAL_ERROR", "Unexpected internal error."; return { ok: true, result };
+  - node: rules/knowledge-base/audit-filter-checks-order
+    held_at: >-
+      the four ordered branches of mapZodErrorToEnvelope (lines 68-123). The window marker is
+      checked first, then the missing field, then the reason length, then any other malformed field.
+    evidence: >-
+      "// Priority 1 — explicit semi-open range refinement." (VALIDATION_OUT_OF_RANGE, "Time range bounds must satisfy `from < to`."); "// Priority 2 — missing / undefined field." (VALIDATION_REQUIRED_FIELD); "// Priority 3 — `reason` length / trim violation." (VALIDATION_OUT_OF_RANGE); then the VALIDATION_INVALID_FORMAT fallthrough
+looked_past: >-
+  The tool description "Tombstone a RawInformation under LGPD or owner request. Idempotent." is emitted text that agrees with the contract's noop_already_deleted outcome, and the window branch is unreachable for the delete request, so I report neither.

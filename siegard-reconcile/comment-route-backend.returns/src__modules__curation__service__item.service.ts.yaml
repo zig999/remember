@@ -1,0 +1,210 @@
+findings:
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the ItemServiceDeps docstring on `catalog`, lines 36-48
+    evidence: >-
+      "Required by `correctItemService` (UC-10 / BR-23) to resolve the
+      predecessor's `attribute_key` for the type-parse + closed-value-domain
+      legs."
+    cost: >-
+      The comment states the rule that a corrected attribute value must parse
+      as its key's value type, a second home outside behavior. The branch that
+      enforces it is `parseAttributeValue({ value: body.corrected.value,
+      value_type: attrKey.value_type })` in this same file. When the node
+      changes, nothing tells the next reader to update this prose.
+    kind: restates
+    correction: >-
+      Remove the sentences of the docstring that restate the correction's
+      type-parse and closed-domain legs. The code in correctItemService
+      already holds the fact.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the same ItemServiceDeps docstring on `catalog`, lines 36-48
+    evidence: >-
+      "Because it materializes `attributeValidValuesByKeyId` and exposes the
+      `domainOf` helper ... only the ingestion catalog also carries the
+      closed-domain map."
+    cost: >-
+      The comment describes the closed-value-domain check on corrected
+      attribute values, a second home outside behavior. The code that holds it
+      is `const domain = domainOf(deps.catalog, attrKey.id);` followed by
+      `assertValueInDomain(body.corrected.value, domain)`.
+    kind: restates
+    correction: >-
+      Remove the closed-domain description from the docstring.
+    node: rules/knowledge-base/attribute-value-in-allowed-values
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above the supersedePredecessor call, line 289
+    evidence: >-
+      "// 1. Supersede predecessor — `valid_to` UNCHANGED (BR-18)."
+    cost: >-
+      The comment says a correction leaves the superseded item's validity end
+      as it was. Code holds this in another file, `supersedePredecessor` in
+      src/modules/curation/repository/curation.repository.ts, whose UPDATE sets
+      only `status = 'superseded', superseded_at = now()`. The prose is a
+      second home that nothing reads.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/correction-supersedes-item
+  - file: src/modules/curation/service/item.service.ts
+    where: >-
+      the comment above the insertCorrectedRow call, line 303
+    evidence: >-
+      "// 2. Insert new row with COALESCE overrides."
+    cost: >-
+      The comment names how the new item takes the stated values, where the
+      superseded item's value is the fallback. The code holds it in another
+      file, `insertCorrectedRow` in
+      src/modules/curation/repository/curation.repository.ts
+      (`COALESCE($2::text, value)`, `COALESCE($3::date, valid_from)`). The
+      prose is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/corrected-item-values
+read:
+  - node: constraints/curation-is-atomic
+    held_at: >-
+      the `return withTransaction(deps.pool, async (client) => { ... })` body
+      of confirmItemService, rejectItemService and correctItemService
+    evidence: >-
+      "return withTransaction(deps.pool, async (client) => {" in each of the
+      three write operations. Every repository call and insertCurationAction
+      runs on that one `client`.
+  - node: rules/knowledge-base/assertion-review-check-order
+    held_at: >-
+      confirmItemService lines 67-80 and rejectItemService lines 127-140
+    evidence: >-
+      "if (locked.length === 0) { throw new ResourceNotFoundError(\"Item not
+      found\", ..." comes first. It is followed by `if (row.status !==
+      \"uncertain\")` in confirm and `if (row.status === \"deleted\" ||
+      row.status === \"superseded\")` in reject.
+  - node: rules/knowledge-base/assertion-review-records-curation-action
+    held_at: >-
+      the insertCurationAction calls in confirmItemService (lines 91-97) and
+      rejectItemService (lines 151-157)
+    evidence: >-
+      "action: \"confirm_item\", target_kind: body.item_kind, target_id:
+      body.item_id, payload: {}, reason: body.reason ?? null" and "action:
+      \"reject_item\", ... payload: {}, reason: body.reason"
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the closed-domain branch of correctItemService, lines 267-286
+    evidence: >-
+      "const domain = domainOf(deps.catalog, attrKey.id); if (domain !== null)
+      { try { assertValueInDomain(body.corrected.value, domain); } catch ...
+      throw new BusinessError(\"BUSINESS_INVALID_ATTRIBUTE_VALUE\", ...
+      allowed_values: detail.allowed_values ?? []"
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      the parse branch of correctItemService, lines 251-265. The patterns
+      themselves sit in the imported parseAttributeValue in
+      ../../ingestion/validation/structural.js.
+    evidence: >-
+      "parseAttributeValue({ value: body.corrected.value, value_type:
+      attrKey.value_type });" with the catch rethrowing "corrected.value does
+      not parse against attribute_key.value_type"
+  - node: rules/knowledge-base/confirmation-activates
+    held_at: >-
+      the confirmItem call in confirmItemService, line 82, and the returned
+      status. The UPDATE sits in curation.repository.ts.
+    evidence: >-
+      "const updated = await confirmItem(client, body.item_kind,
+      body.item_id);" and "resulting_status: \"active\""
+  - node: rules/knowledge-base/confirmation-requires-uncertain
+    held_at: >-
+      confirmItemService, lines 74-80
+    evidence: >-
+      "if (row.status !== \"uncertain\") { throw new
+      ConflictError(\"BUSINESS_ITEM_NOT_UNCERTAIN\", \"confirm_item requires
+      status=uncertain\", { item_id: body.item_id, current_status: row.status
+      }"
+  - node: rules/knowledge-base/corrected-item-provenance
+    held_at: >-
+      correctItemService, lines 314-326
+    evidence: >-
+      "await copyProvenance(client, body.item_kind, body.item_id, newItemId);"
+      followed by "await appendProvenanceFragment(client, body.item_kind,
+      newItemId, body.corrected.valid_from_fragment_id);" when a fragment is
+      cited
+  - node: rules/knowledge-base/corrected-item-values
+    held_at: >-
+      the insertCorrectedRow call in correctItemService, lines 304-311. The
+      fallback to the superseded item's values, its confidence and the absent
+      run sit in the repository's INSERT ... SELECT.
+    evidence: >-
+      "correctedValue: body.corrected.value ?? null, correctedTargetNodeId:
+      body.corrected.target_node_id ?? null, correctedValidFrom:
+      body.corrected.valid_from ?? null, correctedValidTo:
+      body.corrected.valid_to ?? null, correctedValidFromSource:
+      body.corrected.valid_from_source ?? null"
+  - node: rules/knowledge-base/correction-check-order
+    held_at: >-
+      correctItemService, lines 191-287, in this order: absent item,
+      deleted or superseded item, cited fragment, then attribute value type
+      and allowed values
+    evidence: >-
+      "if (locked.length === 0) { throw new ResourceNotFoundError" then "if
+      (predecessor.status === \"deleted\" || predecessor.status ===
+      \"superseded\")" then "if (!fragment || fragment.status !==
+      \"accepted\")" then parseAttributeValue and then assertValueInDomain
+  - node: rules/knowledge-base/correction-fragment-accepted
+    held_at: >-
+      correctItemService, lines 212-227
+    evidence: >-
+      "if (!fragment || fragment.status !== \"accepted\") { throw new
+      BusinessError(\"BUSINESS_DATE_UNJUSTIFIED\", \"valid_from_fragment_id
+      does not reference an accepted fragment\""
+  - node: rules/knowledge-base/correction-records-curation-action
+    held_at: >-
+      the insertCurationAction call in correctItemService, lines 329-338
+    evidence: >-
+      "action: \"correct_item\", target_kind: body.item_kind, target_id:
+      body.item_id, payload: { corrected: body.corrected, new_item_id:
+      newItemId }, reason: body.reason"
+  - node: rules/knowledge-base/correction-supersedes-item
+    held_at: >-
+      the supersedePredecessor call, line 290, and the insertCorrectedRow call
+      that records the new item with `predecessorId: body.item_id`. The
+      supersede UPDATE leaves valid_to alone and the `supersedes_*` column is
+      set in curation.repository.ts.
+    evidence: >-
+      "const predecessorUpdated = await supersedePredecessor(client,
+      body.item_kind, body.item_id);" and "predecessorId: body.item_id"
+  - node: rules/knowledge-base/refused-curation-records-nothing
+    held_at: >-
+      every refusal throw precedes insertCurationAction, and the throw
+      propagates out of withTransaction, which rolls the transaction back
+    evidence: >-
+      "throw new ConflictError(\"BUSINESS_ITEM_NOT_UNCERTAIN\", ..." comes
+      before "const action = await insertCurationAction(client, {" in all
+      three operations. In correctItemService the supersede and insert steps
+      also come after every validation throw.
+  - node: rules/knowledge-base/rejection-and-correction-require-live-item
+    held_at: >-
+      rejectItemService lines 134-140 and correctItemService lines 201-210
+    evidence: >-
+      "if (row.status === \"deleted\" || row.status === \"superseded\") {
+      throw new ConflictError(\"BUSINESS_ITEM_NOT_DELETABLE\", \"Item is
+      already deleted or superseded\"". This is the complement of active,
+      uncertain and disputed over the five-value assertion-status enumeration.
+  - node: rules/knowledge-base/rejection-deletes
+    held_at: >-
+      the rejectItem call in rejectItemService, line 142, and the returned
+      status. The UPDATE setting status deleted and superseded_at sits in
+      curation.repository.ts.
+    evidence: >-
+      "const updated = await rejectItem(client, body.item_kind,
+      body.item_id);" and "resulting_status: \"deleted\""
+looked_past: >-
+  Comments citing use-case and business-rule identifiers (the line 1 header
+  "UC-08 (confirm_item), UC-09 (reject_item), UC-10 (correct_item)", "BR-18",
+  "BR-23") and the numbered step labels were seen, as were the defensive
+  "Item status changed under lock" refusals, which contract
+  curation.md already holds.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - domain/knowledge-base/assertion-status

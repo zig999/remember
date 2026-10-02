@@ -1,0 +1,39 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/index.ts
+    where: >-
+      the JSDoc above UnknownChatSummaryPromptVersionError (lines 53-58) and the JSDoc above selectChatSummaryPromptModule (lines 70-74)
+    evidence: >-
+      " * Thrown when `CHAT_SUMMARY_PROMPT_VERSION` names no registered module." and
+      " * `UnknownChatSummaryPromptVersionError` for an unregistered version (BR-46
+      * — fail loud, never silently substitute a different prompt)."
+    cost: >-
+      The rule that a summary prompt version must be one the system holds is stated a second time in prose that no running system emits. If the node moves, nothing reaches this comment, and a reader may take it as a decision made here. The check itself is in code, in `selectChatSummaryPromptModule` (`if (module === undefined) { throw new UnknownChatSummaryPromptVersionError(promptVersion); }`), so the pair conforms and only the prose is owed removal.
+    kind: restates
+    correction: >-
+      Remove the two JSDoc blocks that restate the rule. The code already holds it, and the node binds it.
+    node: rules/chat/summary-prompt-version-known
+read:
+  - node: domain/chat/summary-prompt-version
+    held_at: >-
+      the REGISTRY table (lines 48-51), which keys the versions the system holds
+    evidence: >-
+      const REGISTRY: Readonly<Record<string, ChatSummaryPromptModule>> = {
+        [v1.PROMPT_VERSION]: v1.v1Module,
+        [v2.PROMPT_VERSION]: v2.v2Module,
+      };
+      The literal values "v1" and "v2" are declared in v1.ts and v2.ts (`export const PROMPT_VERSION = "v1" as const;` and `"v2" as const`), which this file imports.
+  - node: rules/chat/default-summary-prompt-version
+    held_at: >-
+      the DEFAULT_CHAT_SUMMARY_PROMPT_VERSION constant (line 46)
+    evidence: >-
+      export const DEFAULT_CHAT_SUMMARY_PROMPT_VERSION: string = v2.PROMPT_VERSION;
+  - node: rules/chat/summary-prompt-version-known
+    held_at: >-
+      the guard in selectChatSummaryPromptModule (lines 78-82)
+    evidence: >-
+      const module = REGISTRY[promptVersion];
+        if (module === undefined) {
+          throw new UnknownChatSummaryPromptVersionError(promptVersion);
+        }
+looked_past: >-
+  Prose in this file states facts no node in the pack holds (the INFO log field `chat.summary_refresh_fold { prompt_version }`, the no-`cache_control` caching invariant) and the BR-46 citations, which is comment-route material and not a finding, and the `.default("v2")` in backend/src/config/env.ts is another file's second home for the default and not part of this file's set.

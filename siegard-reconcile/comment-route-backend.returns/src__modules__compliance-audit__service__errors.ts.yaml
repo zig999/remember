@@ -1,0 +1,43 @@
+findings:
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the header comment, lines 1-11
+    evidence: >-
+      // Typed sentinel errors emitted by the compliance-audit services. The route /
+      // MCP layer maps each one to its HTTP status + `error.code` envelope
+      // After P2.1 the `code` field is the SOLE identifier on both transports: REST
+      // echoes `err.code` as-is and MCP renders it through the shared
+      // `renderErrorEnvelope` mapper, producing byte-identical envelopes on both
+      // transports
+      // (500 SYSTEM_INTERNAL_ERROR).
+    cost: >-
+      The header restates the node's error codes and statuses (RESOURCE_NOT_FOUND, SYSTEM_INTERNAL_ERROR, HTTP 500) and the envelope shared by both transports, and it cites a back-spec rule (BR-15 v1.4.0). That is a second home outside behavior. When the node changes, the comment keeps stating the old fact and no check reaches it. A reader who finds it here may take it for the decision.
+    kind: restates
+    correction: >-
+      Remove the header comment. The code in this file already holds the facts it states: the class declarations carry `statusCode = 404`, `statusCode = 500`, `code = "RESOURCE_NOT_FOUND"` and `code = "SYSTEM_INTERNAL_ERROR"`. This is the comment route followed by a `/reconcile` over the file.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/service/errors.ts
+    where: >-
+      the doc comments on ResourceNotFoundError (line 29) and ValidationFailure (line 35)
+    evidence: >-
+      /** 404 — RESOURCE_NOT_FOUND. UC-01 alt 4a / UC-03 / UC-05. */
+      /** 422 — Cross-field validation that escapes the route-level Zod parse. */
+    cost: >-
+      The doc comments restate the node's pairing of HTTP 404 with RESOURCE_NOT_FOUND and of HTTP 422 with the validation refusals. They also cite use-case numbers (UC-01 alt 4a, UC-03, UC-05) from a document that is not a node. The code holds the same pairing, so the comments add a second statement that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove both doc comments. The `statusCode` and `code` fields on the two classes already hold the fact.
+    node: contracts/knowledge-base/compliance-audit
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      the class declarations ResourceNotFoundError (lines 30-33), ValidationFailure (lines 36-47) and InternalFailure (lines 49-57)
+    evidence: >-
+      public readonly statusCode = 404;
+      public readonly code = "RESOURCE_NOT_FOUND" as const;
+      public readonly statusCode = 422;
+      public readonly code = "SYSTEM_INTERNAL_ERROR" as const;
+      super("Unexpected internal error.", details);
+      The file also carries `statusCode = 500` on InternalFailure and an abstract base that holds `details`.
+looked_past: >-
+  ValidationFailure takes its `code` and message from its caller, and the NOT_FOUND message text ("RawInformation <id> not found.") is composed outside this file. Whether those callers match the node's refusal wording belongs to the judgment of the files that build them.

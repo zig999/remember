@@ -1,0 +1,56 @@
+findings:
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      the header comment, lines 1-17
+    evidence: >-
+      // Each tool wraps the SAME service-layer function that the REST handler in
+      // `routes/knowledge-graph.routes.ts` invokes and returns the canonical MCP
+      // envelope:
+    cost: >-
+      Prose repeats the transports-answer-alike fact (the MCP and REST handlers share one service function) outside the node. The next reader may take the comment for where that rule is decided, and it is not.
+    kind: restates
+    correction: >-
+      Remove the prose. The code already holds the fact, since each handler calls the same service function, for example `getNodeByIdService(client, {...}, svcLogger)`.
+    node: constraints/retrieval-transports-answer-alike
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      the doc comment on makeHandler, lines 217-228, step 2
+    evidence: >-
+      *   2. Opens a `withReadOnly` transaction.
+    cost: >-
+      Prose states that every retrieval runs in a read-only transaction, a rule the node already holds. A second statement of it sits beside the code.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in `await withReadOnly(pool, (client) => run(parsed, client))`.
+    node: constraints/retrieval-is-read-only
+  - file: src/modules/knowledge-graph/mcp/query-toolset.ts
+    where: >-
+      the doc comments above QUERY_TOOL_NAMES (line 151) and registerQueryToolset (line 247)
+    evidence: >-
+      /** Closed enumeration of the nine tool names — used by the transport (BR-23
+       *  rule 5: reject `propose_*` / `finalize_run` / `start_run`). */
+    cost: >-
+      Prose states the closed set of nine query tools, which is the tool-surface fact the constraint holds. A reader could take the comment as the place that decides the set, and it is not.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the set in the `QUERY_TOOL_NAMES` array and in the nine `mcp.registerTool` calls.
+    node: constraints/llm-toolset-omits-graph-point-reads
+read:
+  - node: constraints/llm-toolset-omits-graph-point-reads
+    held_at: >-
+      the QUERY_TOOL_NAMES array (lines 153-163) and the nine mcp.registerTool calls in registerQueryToolset
+    evidence: >-
+      "get_node", "traverse", "get_history_link", "get_history_attribute", "get_history_attribute_key", "list_nodes", "list_node_types", "list_link_types", "list_attribute_keys" — no tool reads one link or one attribute by identity.
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      the makeHandler function, line 237
+    evidence: >-
+      const result = await withReadOnly(pool, (client) => run(parsed, client));
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      the MCP side: the strict input schemas (lines 69-102) and the handlers calling the shared service functions
+    evidence: >-
+      export const GetHistoryLinkInputSchema = LinkIdParamSchema.strict(); ... export const ListNodeTypesInputSchema = z.object({}).strict(); ... mapErrorToEnvelope(err)
+looked_past: >-
+  The tool descriptions emitted over tools/list state the depth bound (1..3) and the limit maximum (max 100), which other nodes (rules/knowledge-base/expansion-depth-bounds and rules/knowledge-base/page-limit-bounds) hold, and they agree with those nodes, so they are no finding.
+candidates_opened: []

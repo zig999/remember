@@ -1,0 +1,75 @@
+findings:
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 13, the comment above ConfirmItemBodySchema
+    evidence: >-
+      /** confirm_item — reason optional. */
+    cost: >-
+      The comment says a second time that a confirmation's reason is optional, a fact the assertion-review node holds. The code already holds it at `reason: z.string().trim().min(1).optional().nullable()` in this file. If the node moves, the comment keeps saying the old thing and the bound check never reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route. The fact stays in the assertion-review node and in the schema's `.optional()`.
+    node: domain/knowledge-base/assertion-review
+  - file: src/modules/curation/dto/item.dto.ts
+    where: >-
+      line 30, the `value` field of CorrectedValuesSchema
+    evidence: >-
+      value: z.string().min(1).optional().nullable(),
+    cost: >-
+      A corrected value of the empty string is refused here with a format error, and no node says so. The attribute-value-parses rule says a text-typed value accepts "any text". So the next reader will look in the specification for what an empty corrected value does, find no answer, and find the refusal only in this schema. The same `min(1)` bound is not stated by corrected-values, whose `value` attribute is a bare string.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether a correction's value must be non-empty, and give that decision a node. Candidate homes are corrected-values or attribute-value-parses. Otherwise the bound is a rule the code holds alone.
+    node: domain/knowledge-base/corrected-values
+read:
+  - node: domain/knowledge-base/assertion-correction
+    held_at: >-
+      CorrectItemBodySchema, lines 42-48
+    evidence: >-
+      export const CorrectItemBodySchema = z.object({ item_kind: ItemKindSchema, item_id: UuidSchema, corrected: CorrectedValuesSchema, reason: ReasonRequiredSchema, })
+  - node: domain/knowledge-base/assertion-review
+    held_at: >-
+      ConfirmItemBodySchema, lines 14-18, and RejectItemBodySchema, lines 21-25
+    evidence: >-
+      item_kind: ItemKindSchema, item_id: UuidSchema, reason: z.string().trim().min(1).optional().nullable() (confirm); reason: ReasonRequiredSchema (reject)
+  - node: domain/knowledge-base/corrected-values
+    held_at: >-
+      CorrectedValuesSchema, lines 29-36
+    evidence: >-
+      value: z.string().min(1).optional().nullable(), target_node_id: UuidSchema.optional().nullable(), valid_from: IsoDateSchema.optional().nullable(), valid_to: IsoDateSchema.optional().nullable(), valid_from_source: ValidFromSourceSchema.optional().nullable(), valid_from_fragment_id: UuidSchema.optional().nullable(),
+  - node: rules/knowledge-base/corrected-stated-start-cites-fragment
+    held_at: >-
+      the stated-source fragment check inside CorrectItemBodySchema.superRefine, lines 95-105
+    evidence: >-
+      c.valid_from_source === "stated" && (c.valid_from_fragment_id === undefined || c.valid_from_fragment_id === null) ... message: "BUSINESS_DATE_UNJUSTIFIED"
+  - node: rules/knowledge-base/correction-changes-something
+    held_at: >-
+      the someProvided check in CorrectItemBodySchema.superRefine, lines 52-63
+    evidence: >-
+      const someProvided = (c.value !== undefined && c.value !== null) || (c.target_node_id ...) || (c.valid_from ...) || (c.valid_to ...); if (!someProvided) { ... message: "BUSINESS_CORRECTION_NO_CHANGES"
+  - node: rules/knowledge-base/correction-fits-assertion-kind
+    held_at: >-
+      the link and attribute branches in CorrectItemBodySchema.superRefine, lines 65-82
+    evidence: >-
+      if (body.item_kind === "link" && c.value !== undefined && c.value !== null) { ... path: ["corrected", "value"], message: "VALIDATION_INVALID_FORMAT" }; body.item_kind === "attribute" && c.target_node_id !== undefined ... path: ["corrected", "target_node_id"]
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the `reason` field of RejectItemBodySchema (line 24) and CorrectItemBodySchema (line 47). The required-reason schema itself is declared in enums.dto.js, so this file only applies it.
+    evidence: >-
+      reason: ReasonRequiredSchema,
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the valid_from_source presence check in CorrectItemBodySchema.superRefine, lines 84-94
+    evidence: >-
+      if (c.valid_from !== undefined && c.valid_from !== null) { if (c.valid_from_source === undefined || c.valid_from_source === null) { ... message: "BUSINESS_DATE_UNJUSTIFIED"
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the final check in CorrectItemBodySchema.superRefine, lines 108-120
+    evidence: >-
+      c.valid_from !== undefined && ... c.valid_to !== null && c.valid_from >= c.valid_to ... message: "BUSINESS_TEMPORAL_INCOHERENT"
+looked_past: >-
+  Two more comments sit in the file, the header "DTOs for UC-08 / UC-09 / UC-10" and the "BR-17 cross-field rules" docstring. They cite back-spec identifiers and say no fact of their own, and the code's request field names (item_kind, target_node_id) come from the curation contract, so neither is filed here.
+candidates_opened:
+  - contracts/knowledge-base/curation
+  - rules/knowledge-base/curation-reason-not-blank
+  - rules/knowledge-base/corrected-item-values

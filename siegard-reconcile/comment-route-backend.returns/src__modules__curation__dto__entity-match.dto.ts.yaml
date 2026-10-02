@@ -1,0 +1,47 @@
+findings:
+  - file: src/modules/curation/dto/entity-match.dto.ts
+    where: >-
+      comment above the target_node_id issue inside ResolveEntityMatchBodySchema.superRefine, line 37
+    evidence: >-
+      // Surfaced as BUSINESS_TARGET_NODE_REQUIRED downstream.
+    cost: >-
+      The comment states which error code the missing-target refusal becomes. The curation contract holds that code, and the issue message on the next line already carries it as code. A second statement of it in prose drifts silently when the contract changes the code.
+    kind: restates
+    correction: >-
+      Remove the comment. The contract holds the code, and the code holds it in the issue message on line 38. A comment is removed, never refreshed.
+    node: contracts/knowledge-base/curation
+read:
+  - node: domain/knowledge-base/entity-match-resolution
+    held_at: >-
+      ResolveEntityMatchBodySchema, lines 22-53, which declares decision, target_node_id and reason
+    evidence: >-
+      decision: EntityMatchDecisionSchema, target_node_id: UuidSchema.optional().nullable(), reason: z.string().trim().min(1).optional().nullable()
+  - node: domain/knowledge-base/node-merge
+    held_at: >-
+      MergeNodesBodySchema, lines 59-73, which declares survivor_id, absorbed_id and reason
+    evidence: >-
+      survivor_id: UuidSchema, absorbed_id: UuidSchema, reason: ReasonRequiredSchema
+  - node: rules/knowledge-base/curation-reason-not-blank
+    held_at: >-
+      the reason field of ResolveEntityMatchBodySchema (line 26) and the blank check in superRefine (lines 41-51). The merge body's reason uses ReasonRequiredSchema, which enums.dto.ts declares as z.string().trim().min(1).
+    evidence: >-
+      reason: z.string().trim().min(1).optional().nullable() and value.reason.trim().length === 0
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the merge_into branch of ResolveEntityMatchBodySchema.superRefine (lines 29-51), and the required reason on MergeNodesBodySchema (line 63)
+    evidence: >-
+      if (value.decision === "merge_into") { ... message: "BUSINESS_REASON_REQUIRED" and reason: ReasonRequiredSchema
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      the target_node_id check in the merge_into branch of ResolveEntityMatchBodySchema.superRefine, lines 30-40
+    evidence: >-
+      value.target_node_id === undefined || value.target_node_id === null ... path: ["target_node_id"], message: "BUSINESS_TARGET_NODE_REQUIRED"
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the superRefine of MergeNodesBodySchema, lines 65-73
+    evidence: >-
+      if (value.survivor_id === value.absorbed_id) { ctx.addIssue({ code: "custom", path: ["absorbed_id"], message: "BUSINESS_SELF_MERGE_FORBIDDEN" });
+looked_past: >-
+  The header comment naming UC-02 and UC-04 and the docblock on why a single Zod object is used instead of a discriminated union are design prose and state no domain fact, so I reported neither.
+candidates_opened:
+  - contracts/knowledge-base/curation

@@ -1,0 +1,26 @@
+read:
+  - node: constraints/ingest-toolset-offers-no-async-ingestion
+    held_at: >-
+      The set of mcp.registerTool("ingest", ...) calls in registerIngestToolset (lines 132-363) and the tool_names list in its closing log call (lines 376-381).
+    evidence: >-
+      The registered names are "propose_fragment", "propose_node", "propose_link", "propose_attribute", "ingest_document", "ingest_directed", "health", "get_ingestion_status" and "list_recent_ingestions". The log lists `...INGEST_TOOL_NAMES, "ingest_document", "ingest_directed", ...READ_ONLY_TOOL_NAMES`. No registration starts an ingestion and returns before it completes. ingest_document awaits `ingestDocumentHandler(parsed.data, {...})`. ingest_directed awaits `ingestDirectedHandler(rawInput, {...}, ...)`. The other read tools only read.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The file registers handlers by name, for example `name: "propose_fragment"`. It declares no enumeration of the four kinds. It imports `INGEST_TOOL_NAMES` from "./mcp-schemas.js" and `IngestToolName` from "../dto/llm-run.dto.js", so the shape is declared in those files.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file declares no proposal shape. It parses with `ProposeFragmentMcpInputSchema.safeParse(rawInput)` (imported from "./mcp-schemas.js"), splits `const { llm_run_id, ...input } = parsed.data;` and forwards to `proposeFragmentHandler(input, {...})`. The attributes (kind, confidence, change_hint, validity dates) are declared in the DTO and schema files.
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      Only the first check of the order sits in this file. It is the safeParse failure branch of each propose_* handler (lines 137-146, 162-171, 188-197, 215-224), which ends in runZodFailureAudit and never reaches the run lookup. The checks for an existing run and a running run are delegated to the propose-*.handler.ts files and handler-base.ts.
+    evidence: >-
+      `const parsed = ProposeFragmentMcpInputSchema.safeParse(rawInput); if (!parsed.success) { return (await runZodFailureAudit(pool, logger, rawInput, parsed.error, "propose_fragment")) ...}`. Only after that does `proposeFragmentHandler(input, { pool, logger, llm_run_id })` run.
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      runZodFailureAudit (lines 432-460), which sends a malformed proposal through the shared runIngestHandler shell. The only thing it does is throw a ValidationFailure inside `run`. The tool_call row is written by the shell in handler-base.ts, which is not in this file.
+    evidence: >-
+      `return (await runIngestHandler({ deps: { pool, logger, llm_run_id: llmRunId }, tool_name: toolName, input: rawInput as never, run: async () => { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "MCP tool args failed Zod parse.", {...}); }, }))`. The file itself writes no fragment, node, link or attribute on that path.
+looked_past: >-
+  The JSDoc on IngestToolsetDeps.env.CHAT_INGEST_ENABLED (lines 90-98) says the flag registers `start_async_ingestion` on the ingest toolset. No code in the file reads the flag and the tool is not registered. This is prose about a retired tool and is comment-route material, not a conformance finding.

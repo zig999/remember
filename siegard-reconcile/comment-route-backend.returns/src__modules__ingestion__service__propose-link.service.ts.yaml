@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      the header comment, lines 6-14 (layered validation list)
+    evidence: >-
+      // Layered validation (BR-13) in the documented order. Each layer is a
+      // sequential `await`, so layer N+1 only runs when layer N has not thrown:
+      //   1. Structural    — cross-table refs (nodes exist, fragments exist,
+      //                      link_type known).
+      //   2. Graph rules   — active link_type_rule for the triple (BR-15).
+      //   3. Temporal      — semi-open invariant, change_hint signal, date basis.
+      //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
+    cost: >-
+      The order of checks is stated a second time in prose. The prose also numbers the layers 1, 2, 3 and 5, and the body numbers them 1 to 5 with confidence as Layer 4. A reader who trusts the comment finds an order that differs from both the code and the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by the sequence of checks in proposeLinkService, and the node already binds that sequence.
+    node: rules/knowledge-base/link-proposal-check-order
+  - file: src/modules/ingestion/service/propose-link.service.ts
+    where: >-
+      the header comment, lines 13-14 (item 5, anti-hallucination)
+    evidence: >-
+      //   5. Anti-halluc.  — every cited fragment anchors a chunk of the run's
+      //                      source (BR-18).
+    cost: >-
+      The anchoring rule is restated in prose. The code that holds it is the countFragmentsAnchoredToSource check in this file, backed by the query in llm-run.repository.ts. The comment is a second home that can drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by the anchoring check in this file and by llm-run.repository.ts.
+    node: rules/knowledge-base/cited-fragments-anchored
+
+read:
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      the proposeLinkService function, which is transport-agnostic and returns one McpEnvelope. Both the REST routes and the MCP handler call it.
+    evidence: >-
+      export async function proposeLinkService(client: PoolClient, args: ProposeLinkInput, runCtx: RunContext, deps: ProposeLinkDeps): Promise<McpEnvelope<ProposeLinkResult>>
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the Layer 4 early return, before consolidateLink is reached.
+    evidence: >-
+      if (route.kind === "below_floor") { const result: ProposeLinkResult = { link_id: null, outcome: "rejected", reason: "BELOW_CONFIDENCE_FLOOR", }; return { ok: true, result }; }
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      the Layer 5 anchoring check.
+    evidence: >-
+      const anchored = await countFragmentsAnchoredToSource(client, { fragment_ids: args.fragment_ids, expected_raw_information_id: runCtx.rawInformationId, }); if (anchored !== args.fragment_ids.length) { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more fragments are not anchored to the run's source chunks.", ...
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      the Layer 1(c) fragment lookup and its count comparison.
+    evidence: >-
+      if (fragRes.rows.length !== args.fragment_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more fragment_ids do not resolve to a fragment row.", { fragment_ids: args.fragment_ids }); }
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      the Layer 1(c) loop over the fetched fragments.
+    evidence: >-
+      if (f.llm_run_id !== runCtx.llmRunId) { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "fragment_id does not belong to this run.", { fragment_id: f.id, llm_run_id: runCtx.llmRunId }); }
+  - node: rules/knowledge-base/link-proposal-check-order
+    held_at: >-
+      the sequence of awaits and throws in proposeLinkService. The order is link type, nodes, fragments existing and in run, graph rule, temporal, confidence, then anchoring.
+    evidence: >-
+      assertKnownType({ kind: "link_type", ... }); ... assertFound({ entity: "knowledge_node", ... }); ... fragRes.rows.length !== args.fragment_ids.length ... validateGraphRule(...); ... validateTemporal({...}); ... routeConfidence(args.confidence); ... countFragmentsAnchoredToSource(...)
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      the statusForNewRow mapping from the confidence route. The 0.75 and 0.40 thresholds themselves are computed in validation/confidence.ts (routeConfidence), outside this file.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" = route.kind === "active" ? "active" : "uncertain";
+
+looked_past: >-
+  The header comment's account of the consolidator (consolidateLink outcomes and the replaced INSERT path) is prose about behavior held in graph-consolidation.service.ts and belongs to that file's judgment.
+
+candidates_opened:
+  - contracts/knowledge-base/ingestion

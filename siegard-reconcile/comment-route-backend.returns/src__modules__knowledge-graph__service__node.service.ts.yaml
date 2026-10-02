@@ -1,0 +1,129 @@
+findings:
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the file header comment, lines 1-8, the clause on defaulting of the status filter
+    evidence: >-
+      // catalog validation (BR-03), defaulting of the status filter (BR-15),
+    cost: >-
+      The status-defaulting rule is stated a second time in prose beside the code that applies it, `input.status ?? "active"`. When the node moves, the prose does not, and a reader cannot tell which of the two was decided.
+    kind: restates
+    correction: >-
+      Remove the clause from the header comment. The code at `const status: NodeStatus = input.status ?? "active";` holds the fact, and the node binds it.
+    node: rules/knowledge-base/node-listing-by-status
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the file header comment, lines 1-8, the clause on normalisation of name_prefix
+    evidence: >-
+      // normalisation of the name_prefix (norm()), the merged / deleted policy
+    cost: >-
+      The normalisation policy is restated in prose in a file that only calls `norm`. The function is declared in `service/norm.ts`, so a reader may take this comment for the place where the policy lives.
+    kind: restates
+    correction: >-
+      Remove the clause. The code in `src/modules/knowledge-graph/service/norm.ts` (`export function norm(input: string): string`) holds the fact.
+    node: rules/knowledge-base/name-normalization
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the file header comment, lines 1-8, the clause on the merged / deleted policy
+    evidence: >-
+      // normalisation of the name_prefix (norm()), the merged / deleted policy
+      // (BR-11), and the inclusion of attribute rows via the resolved view
+    cost: >-
+      The deleted-node refusal is restated in prose as "policy (BR-11)". The refusal is already carried by the `NodeDeletedError` throw, so the prose is a second home for a fact the node holds.
+    kind: restates
+    correction: >-
+      Remove the clause. `if (node.status === "deleted") { throw new NodeDeletedError(input.nodeId); }` holds the fact.
+    node: rules/knowledge-base/deleted-node-read-refused
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment inside listNodesService, line 52
+    evidence: >-
+      // BR-03 — resolve node_type name to id via cache.
+    cost: >-
+      The catalog-refusal rule is cited in prose by a business-rule number outside the specification. The refusal itself is already in the `UnknownNodeTypeError` throw below it.
+    kind: restates
+    correction: >-
+      Remove the comment. `if (row === undefined) { throw new UnknownNodeTypeError(input.node_type); }` holds the fact.
+    node: rules/knowledge-base/node-type-filter-in-catalog
+  - file: src/modules/knowledge-graph/service/node.service.ts
+    where: >-
+      the comment inside getNodeByIdService, line 102
+    evidence: >-
+      // Merged nodes return 200 with the merged_into pointer; caller follows.
+    cost: >-
+      The rule that a merged node is read as itself is stated in prose, with a status code and a pointer-following behaviour added. The code holds the rule only by having no merged branch, so a reader who trusts the comment looks here instead of in the node.
+    kind: restates
+    correction: >-
+      Remove the comment. After the deleted check, the code returns `node: toNodeSummary(node)` without following any merge pointer, and that holds the fact.
+    node: rules/knowledge-base/merged-node-read-as-itself
+read:
+  - node: domain/knowledge-base/node-filter
+    held_at: >-
+      the `ListNodesInput` interface, lines 39-45
+    evidence: >-
+      export interface ListNodesInput {
+        readonly node_type?: string;
+        readonly name_prefix?: string;
+        readonly status?: NodeStatus;
+        readonly limit: number;
+        readonly offset: number;
+      }
+  - node: domain/knowledge-base/node-view
+    held_at: >-
+      the `GetNodeByIdInput` interface, lines 83-88
+    evidence: >-
+      export interface GetNodeByIdInput {
+        readonly nodeId: string;
+        readonly asOf?: string;
+        readonly inEffectOnly: boolean;
+        readonly includeUncertain: boolean;
+      }
+  - node: rules/knowledge-base/deleted-node-read-refused
+    held_at: >-
+      the deleted-status branch of getNodeByIdService, lines 99-101
+    evidence: >-
+      if (node.status === "deleted") {
+          throw new NodeDeletedError(input.nodeId);
+        }
+  - node: rules/knowledge-base/graph-read-shows-empty-provenance
+    held_at: >-
+      the attributes mapping in the return of getNodeByIdService, lines 131-133
+    evidence: >-
+      attributes: attributeRows.map((r) =>
+            toAttributeDetail(r, provenanceByAttrId.get(r.id) ?? [])
+          ),
+  - node: rules/knowledge-base/merged-node-read-as-itself
+    held_at: >-
+      getNodeByIdService, lines 95-101 and 128-129. The only status check is for deleted, and the node is returned as itself.
+    evidence: >-
+      const node = await findNodeById(client, input.nodeId);
+        ...
+        return {
+          node: toNodeSummary(node),
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      nowhere. This file only calls `norm`, which is imported from ./norm.js, and does not declare the normalisation.
+    evidence: >-
+      input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
+  - node: rules/knowledge-base/node-listing-by-status
+    held_at: >-
+      the status default in listNodesService, line 62
+    evidence: >-
+      const status: NodeStatus = input.status ?? "active";
+  - node: rules/knowledge-base/node-listing-name-prefix
+    held_at: >-
+      nowhere. This file only normalises the prefix and hands it to the repository filter. The alias match with the trailing any-text wildcard is not in this file.
+    evidence: >-
+      const name_prefix_norm =
+          input.name_prefix !== undefined ? norm(input.name_prefix) : undefined;
+      ...
+        name_prefix_norm,
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      the node-type lookup in listNodesService, lines 54-60
+    evidence: >-
+      const row = catalog.nodeTypeByName.get(input.node_type);
+          if (row === undefined) {
+            throw new UnknownNodeTypeError(input.node_type);
+          }
+looked_past: >-
+  The `logger.warn(..., "knowledge_graph_empty_provenance")` emission in `warnIfEmptyProvenance` (it skips deleted attributes) is an operational log line that no node holds. I judged it observability rather than a domain fact and did not report it, and a person may weigh it differently.

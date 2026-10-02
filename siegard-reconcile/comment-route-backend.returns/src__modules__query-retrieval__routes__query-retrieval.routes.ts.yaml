@@ -1,0 +1,33 @@
+read:
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      every handler in registerQueryRetrievalRoutes (/search, the three /provenance routes and /fragments/accepted) runs its service call inside withReadOnly, which opens the transaction with BEGIN READ ONLY (src/shared/pg-transaction.ts, line 65).
+    evidence: >-
+      return await withReadOnly(deps.pool, async (client) => {
+        const body = await searchKnowledgeService(
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      the REST half only. Each handler returns the shared service's body unchanged as `reply.status(200).send({ ok: true, result: body })`, and refusals leave through handleSearchError and handleProvenanceError via the shared mapErrorToHttpResponse. The matching MCP half is in another file, so this file alone does not hold the equivalence.
+    evidence: >-
+      return reply.status(200).send({ ok: true, result: body });
+      ...
+      const { statusCode, envelope } = mapErrorToHttpResponse(err);
+      return reply.status(statusCode).send(envelope);
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      nowhere. The shape is declared in SearchQuerySchema in dto/search.dto.ts, which this file imports. The file only reads that shape's fields and maps them onto the service input.
+    evidence: >-
+      const query = SearchQuerySchema.parse(request.query ?? {});
+      ... expand: query.expand,
+      expandDepth: query.expand_depth,
+      expandLinkTypes: query.expand_link_types,
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      the refusal's transport rendering in isMappableSearchError and handleSearchError. UnknownLinkTypeError is mapped to a refusal response on the search route, and the check that raises it is in the service, not in this file.
+    evidence: >-
+      err instanceof InvalidSearchQueryError ||
+      err instanceof InvalidSearchLayerError ||
+      err instanceof UnknownLinkTypeError
+looked_past: >-
+  The header comments and the "Tombstoned sources are silently omitted" comment are prose, not behavior in this file, so they are no finding here. The REST parameter name expand_link_types, read from the dto, differs from the node's attribute name link_types, but that name is declared in dto/search.dto.ts, which is another file's judgment.
+candidates_opened: []

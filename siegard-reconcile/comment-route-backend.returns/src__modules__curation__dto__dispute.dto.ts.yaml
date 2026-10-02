@@ -1,0 +1,118 @@
+findings:
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      AdjustedPeriodSchema, lines 12-18, together with the docstring on line 12
+    evidence: >-
+      /** A single (item_id, valid_from, valid_to) entry inside `periods[]`. */
+      export const AdjustedPeriodSchema = z.object({
+        item_id: UuidSchema,
+        valid_from: IsoDateSchema.nullable(),
+        valid_to: IsoDateSchema.nullable().optional(),
+      });
+    cost: >-
+      The shape of an adjusted period (item_id, a required but nullable valid_from, an optional valid_to) is declared in this file. The node that holds that shape, domain/knowledge-base/adjusted-period, is not bound to it. The shape the node decided (log: "The validity start is required and may be empty; the validity end stays optional") therefore has a declaration that a change to the node does not reach, and `--check` will not flag it. The values agree today. If the node moves, nothing ties this declaration to it.
+    kind: contradicts
+    correction: >-
+      Bind domain/knowledge-base/adjusted-period to this file, because the file declares the shape the node holds. The code cannot read the specification, so the bind is what closes it.
+    node: domain/knowledge-base/adjusted-period
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      The docstring of ResolveDisputeBodySchema, lines 20-27, and the file header on line 1
+    evidence: >-
+      /**
+       * ResolveDisputeRequest — implements BR-11 / BR-15 / BR-16:
+       *
+       *   - `decision = keep_disputed` -> no winner/periods; reason optional
+    cost: >-
+      This is prose that no running system emits. It states that keep_disputed takes no winner or periods and that its reason is optional, which is a second home for the fact in rules/knowledge-base/unused-resolution-fields-ignored. It also cites back-spec rule numbers (BR-11, BR-15, BR-16) that are not specification nodes. A reader may take the comment for the decision, and it will go stale when the node moves.
+    kind: restates
+    correction: >-
+      Remove the docstring on lines 20-27 and the header comment on line 1 by the comment route. Code in this file holds the fact, because no check fires on winner_id or periods under keep_disputed.
+    node: rules/knowledge-base/unused-resolution-fields-ignored
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the `item_kind` field of ResolveDisputeBodySchema, line 30
+    evidence: >-
+      item_kind: ItemKindSchema,
+    cost: >-
+      The node domain/knowledge-base/dispute-resolution names this attribute `assertion_kind` (type assertion-kind). The file declares the same element as `item_kind`. The contract contracts/knowledge-base/curation spells `item_kind` on its answers, and no node or log decides that the request field's name differs from the node's attribute. A reader going from the node to the code will not find the attribute under its name, and the two namings can drift apart unnoticed.
+    kind: contradicts
+    correction: >-
+      Decide which spelling is the business's. The node (`assertion_kind`) and the contract and code (`item_kind`) disagree, and that choice belongs to the analysis. Then make the pair agree.
+    node: domain/knowledge-base/dispute-resolution
+  - file: src/modules/curation/dto/dispute.dto.ts
+    where: >-
+      the `winner_id` and `periods` fields of ResolveDisputeBodySchema, lines 33-34
+    evidence: >-
+      winner_id: UuidSchema.optional().nullable(),
+      periods: z.array(AdjustedPeriodSchema).optional().nullable(),
+    cost: >-
+      The node says a dispute resolution "ignores a winner or periods its decision does not use". Both fields are format-validated whatever the decision is. A keep_disputed or adjust_periods request carrying a malformed winner_id, or a prefer_one or keep_disputed request carrying malformed periods, is refused for format instead of the field being ignored. A caller who relies on the node would see a refusal the specification does not describe.
+    kind: contradicts
+    correction: >-
+      Either validate winner_id and periods only under the decision that uses them, or have the analysis state that unused fields are still format-checked.
+    node: rules/knowledge-base/unused-resolution-fields-ignored
+read:
+  - node: domain/knowledge-base/dispute-resolution
+    held_at: >-
+      the ResolveDisputeBodySchema object shape, lines 28-36
+    evidence: >-
+      item_kind: ItemKindSchema,
+      item_ids: z.array(UuidSchema).min(2),
+      decision: DisputeDecisionSchema,
+      winner_id: UuidSchema.optional().nullable(),
+      periods: z.array(AdjustedPeriodSchema).optional().nullable(),
+      reason: z.string().trim().min(1).optional().nullable(),
+      The item_ids, decision, winner_id, periods and reason attributes match the node. The kind attribute is spelled item_kind where the node says assertion_kind (see the finding).
+  - node: rules/knowledge-base/adjust-periods-one-per-item
+    held_at: >-
+      the adjust_periods branch of the superRefine, lines 72-108
+    evidence: >-
+      if (value.periods.length !== value.item_ids.length) {
+      if (!value.item_ids.includes(p.item_id)) {
+      if (periodIds.has(p.item_id)) {
+      Each of these issues is added with message "BUSINESS_DISPUTE_PERIODS_REQUIRED", and a missing or empty periods list adds the same message.
+  - node: rules/knowledge-base/curation-reason-required
+    held_at: >-
+      the prefer_one branch of the superRefine, lines 47-58
+    evidence: >-
+      if (value.decision === "prefer_one") {
+        if (value.reason === undefined || value.reason === null || value.reason.trim().length === 0) {
+          ctx.addIssue({ code: "custom", path: ["reason"], message: "BUSINESS_REASON_REQUIRED" });
+  - node: rules/knowledge-base/curation-request-check-order
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file only emits the custom issues, in this order: item_ids duplicate (VALIDATION_INVALID_FORMAT), reason, winner, periods, temporal. It does not choose among them. The choice is made by ZOD_CUSTOM_CODE_PRIORITY in src/modules/curation/mcp/error-envelope.ts, which this file does not hold. The file's own order carries no weight, and no priority list or ordering statement is declared here.
+  - node: rules/knowledge-base/dispute-resolution-distinct-items
+    held_at: >-
+      item_ids on line 31 and the duplicate check on lines 38-45
+    evidence: >-
+      item_ids: z.array(UuidSchema).min(2),
+      const uniqueIds = new Set(value.item_ids);
+      if (uniqueIds.size !== value.item_ids.length) {
+  - node: rules/knowledge-base/prefer-one-requires-winner
+    held_at: >-
+      the winner check inside the prefer_one branch, lines 59-69
+    evidence: >-
+      if (value.winner_id === undefined || value.winner_id === null || !value.item_ids.includes(value.winner_id)) {
+        ctx.addIssue({ code: "custom", path: ["winner_id"], message: "BUSINESS_DISPUTE_WINNER_REQUIRED" });
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      nowhere
+    evidence: >-
+      The superRefine gates its winner and periods checks on `value.decision === "prefer_one"` and `value.decision === "adjust_periods"`. winner_id and periods are still format-validated for every decision by `winner_id: UuidSchema.optional().nullable()` and `periods: z.array(AdjustedPeriodSchema).optional().nullable()`, so an unused malformed field is refused, not ignored (see the finding). The only statement that unused fields are ignored is the docstring.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the per-period comparison in the adjust_periods branch, lines 109-120
+    evidence: >-
+      p.valid_from !== null && p.valid_to !== null && p.valid_to !== undefined && p.valid_from >= p.valid_to
+      The code adds an issue with message "BUSINESS_TEMPORAL_INCOHERENT" when both dates are stated and the start is not strictly before the end.
+looked_past: >-
+  The error code strings used as issue messages (BUSINESS_REASON_REQUIRED, BUSINESS_DISPUTE_WINNER_REQUIRED, BUSINESS_DISPUTE_PERIODS_REQUIRED, BUSINESS_TEMPORAL_INCOHERENT, VALIDATION_INVALID_FORMAT) match the codes in contracts/knowledge-base/curation, so I filed nothing against them.
+candidates_opened:
+  - domain/knowledge-base/adjusted-period
+  - rules/knowledge-base/adjusted-periods-single-open
+  - rules/knowledge-base/curation-reason-not-blank
+  - domain/knowledge-base/assertion-kind
+  - contracts/knowledge-base/curation

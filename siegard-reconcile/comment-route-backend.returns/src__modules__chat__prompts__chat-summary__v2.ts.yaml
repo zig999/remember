@@ -1,0 +1,41 @@
+findings:
+  - file: src/modules/chat/prompts/chat-summary/v2.ts
+    where: >-
+      renderContentBlocks, lines 139-167 (block-type branches and the skip), with
+      renderMessageLine, line 172
+    evidence: >-
+      `parts.push(`${name}: ${summariseToolUseArgs(b.input)}`);` and
+      `parts.push(`tool_result(${useId}): ${serialiseToolResultContent(b.content)}`);` and
+      `return `[${role}] ${body}`;` and, for other block types, `// Other block types (thinking, image, etc.) are skipped`
+    cost: >-
+      This decides what part of a conversation the stored rolling summary is built
+      from. Thinking and image blocks never reach the summariser. Tool results go in
+      whole, labelled by tool-use id, and each line carries a "[role]" prefix. None
+      of this is in a node, so the next reader looks for it in the specification and
+      finds only the 200-character cut on tool arguments. The sibling facts, the
+      "(nenhuma)" text and that cut, did get nodes, and this one is the same kind of
+      fact.
+    kind: unstated
+    correction: >-
+      An analysis would give the rendering of a refold's input messages a node,
+      covering the "[role]" line form, which block types are shown or skipped, and
+      how a tool result is labelled. It would sit beside rules/chat/summary-prompt-v2-tool-arguments-bounded
+      and constrain domain/chat/summary-prompt-version.
+read:
+  - node: rules/chat/summary-prompt-v2-empty-previous
+    held_at: >-
+      renderPrev, line 176, called from buildUserTurn at line 200
+    evidence: >-
+      `if (summary_prev === null) return "(vazio)";`
+  - node: rules/chat/summary-prompt-v2-persona
+    held_at: >-
+      the exported `system` array, lines 40-44 and 54-57, and the closing task line of buildUserTurn, line 207
+    evidence: >-
+      `"Voce e o Sintetizador da conversa do Remember. Receba o RESUMO ANTERIOR",` and
+      `"2. Maximo ~8 frases (soft cap; o BFF rejeita saidas > 2000 caracteres).",`
+looked_past: >-
+  The file also carries "(nenhuma)", the "pendente: ..." marker and the 200-character "...<truncated>" cut, which nodes rules/chat/summary-prompt-v2-empty-slice, rules/chat/summary-prompt-v2-marks-open-points and rules/chat/summary-prompt-v2-tool-arguments-bounded already hold with matching values. Those nodes are outside this pack and the index does not bind them to this file, so the missing bind is another judgment's, and I do not report it here.
+candidates_opened:
+  - rules/chat/rolling-summary-length
+  - rules/chat/rolling-summary-overlap
+  - domain/chat/summary-prompt-version

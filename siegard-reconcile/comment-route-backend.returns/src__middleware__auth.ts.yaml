@@ -1,0 +1,45 @@
+findings:
+  - file: src/middleware/auth.ts
+    where: >-
+      the header comment, lines 1-15, in particular lines 3-8
+    evidence: >-
+      // Implements BR-01 of knowledge-graph.back.md and the corresponding ingestion
+      // requirement: every request that reaches a protected route must carry
+      // `Authorization: Bearer <jwt>`. We verify the signature against Neon Auth's
+      // JWKS, cache the JWKS in process for the configured TTL (default 10 min, per
+      // knowledge-graph.back.md §1), and refuse to dispatch the route on any failure.
+    cost: >-
+      The comment restates, in prose no running system emits, what the constraint holds. That constraint is that every operation authenticates the owner by a signed, unexpired bearer token. It also cites a back-spec as the authority for the rule and for the 10-minute JWKS cache default. A reader may take the comment as a second home for the rule, and it will drift when the node moves. The code that holds the rule is in this file, in the `extractBearer` and `jwtVerify` calls.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then run /reconcile over this file. The behavior is correct and the node already holds the fact.
+    node: constraints/every-operation-requires-owner-authentication
+  - file: src/middleware/auth.ts
+    where: >-
+      the docstring of extractBearer, lines 156-160
+    evidence: >-
+      * header is absent / malformed. Spec compliance: the scheme MUST be `Bearer`
+      * (case-insensitive) and a single non-empty token MUST follow.
+    cost: >-
+      The docstring states the bearer-token requirement a second time as prose, and the regex `/^Bearer\s+(\S+)\s*$/i` already holds it. The prose can disagree with the node later without anything flagging it.
+    kind: restates
+    correction: >-
+      Remove the docstring through the comment route, then run /reconcile over this file.
+    node: constraints/every-operation-requires-owner-authentication
+read:
+  - node: constraints/every-operation-requires-owner-authentication
+    held_at: >-
+      the preHandler returned by buildNeonAuth (lines 113-152), with extractBearer (lines 161-166) and mapJoseError (lines 182-199)
+    evidence: >-
+      const token = extractBearer(header); if (token === null) { throw new AuthError("AUTH_UNAUTHORIZED", ...) } ... const verified = await jwtVerify(token, jwks); ... if (typeof sub !== "string" || sub.length === 0) { throw new AuthError("AUTH_TOKEN_INVALID", "JWT missing required `sub` claim.") } ... request.user = user;. An expired token maps to AUTH_TOKEN_EXPIRED and every other verification failure to AUTH_TOKEN_INVALID. These refusals and their messages match contracts/knowledge-base/access, authenticate-owner.
+  - node: constraints/local-operator-token-development-only
+    held_at: >-
+      the localOperatorToken derivation (lines 105-110), the constantTimeEqual branch in preHandler (lines 123-129) and constantTimeEqual (lines 168-173)
+    evidence: >-
+      env.NODE_ENV === "development" && typeof env.LOCAL_OPERATOR_TOKEN === "string" && env.LOCAL_OPERATOR_TOKEN.length > 0 ? env.LOCAL_OPERATOR_TOKEN : null; if (localOperatorToken !== null && constantTimeEqual(token, localOperatorToken)) { request.user = { id: "local-operator", ... }; return; }; constantTimeEqual uses timingSafeEqual(ab, bb)
+looked_past: >-
+  The comments on AuthErrorCode, AuthError, NeonAuth, buildJwksUrl, buildNeonAuth and mapJoseError, and the closing comment on the Fastify typing, are prose about the file's own code and not about any node's fact, so I left them out. The JWKS cooldown literal `30_000` and the `cacheMaxAge` from `NEON_AUTH_JWKS_TTL_S` are configuration of a library, not a domain fact, and belong to another judgment.
+candidates_opened:
+  - constraints/local-operator-token-minimum-length
+  - constraints/local-operator-token-needs-explicit-development
+  - contracts/knowledge-base/access

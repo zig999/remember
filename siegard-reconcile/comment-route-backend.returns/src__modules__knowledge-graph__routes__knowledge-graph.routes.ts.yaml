@@ -1,0 +1,40 @@
+read:
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      Every route handler in registerKnowledgeGraphRoutes: each opens its database work through
+      withReadOnly(deps.pool, ...), from lines 62-63 (/node-types) to the (node, key) history route
+      at lines 297-303. withReadOnly in shared/pg-transaction.ts issues BEGIN READ ONLY.
+    evidence: |-
+      withReadOnly(deps.pool, async (client) => {
+        const body = await listNodeTypesService(client);
+      ...
+      return await withReadOnly(deps.pool, async (client) => {
+        const body = await traverseNodeService(
+      (shared/pg-transaction.ts) await client.query("BEGIN READ ONLY");
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      The REST half only: every route calls the same service function and maps refusals through the
+      shared mapErrorToHttpResponse imported from ../mcp/error-envelope.js, which is the mapper the
+      MCP toolset also uses. The parity itself is a property across this file and
+      mcp/query-toolset.ts, so this file carries only the REST side of it.
+    evidence: |-
+      import { mapErrorToHttpResponse } from "../mcp/error-envelope.js";
+      ...
+      const { statusCode, envelope } = mapErrorToHttpResponse(err, details);
+      return reply.status(statusCode).send(envelope);
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      Not the refusal itself. The throw sits in the services, at node.service.ts:57 and
+      catalog.service.ts:102. This file carries only the REST surfacing of it: the catch blocks of
+      GET /attribute-keys (line 96) and GET /nodes (line 131) turn UnknownNodeTypeError into the
+      HTTP response.
+    evidence: |-
+      } catch (err) {
+        if (err instanceof UnknownNodeTypeError) {
+          const { statusCode, envelope } = mapErrorToHttpResponse(err);
+          return reply.status(statusCode).send(envelope);
+        }
+        throw err;
+      }
+looked_past: >-
+  The log-line event names, such as knowledge_graph_list_nodes_ok, and the header and section comments carry no domain fact of any node, so I did not report them.

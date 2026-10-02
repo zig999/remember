@@ -1,0 +1,100 @@
+findings:
+  - file: src/modules/chat/service/context-builder.ts
+    where: >-
+      the file header comment (lines 1-28) and the doc comment on
+      SUMMARY_ROLLING_PREFIX (lines 46-51), against the summary_rolling branch of
+      buildModelContext (lines 153-167)
+    evidence: >-
+      "messages: optional synthetic `summary_rolling` block prepended to the
+      recent window. The synthetic block uses role `user` with a leading header so
+      the model treats the recap as a recap, not as an instruction (BR-31 step 3)."
+      and "The opening header tells the model \"this block is a recap, not a user
+      instruction\""
+    cost: >-
+      The rule that a rolling summary reaches the assistant, marked as synthesized
+      earlier conversation and placed before the recent window, is also written as
+      prose in this file under a back-spec rule number. A later edit to
+      rules/chat/model-context-rolling-summary will not reach the prose, so a
+      reader of the file can come away with a different statement of the rule than
+      the node holds.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code in this file already holds
+      the fact (`if (input.conversation.summary_rolling !== null)` followed by
+      `messages.push({ role: "user", ... text: SUMMARY_ROLLING_PREFIX +
+      input.conversation.summary_rolling ...` ahead of the sanitized window).
+    node: rules/chat/model-context-rolling-summary
+  - file: src/modules/chat/service/context-builder.ts
+    where: >-
+      the header comment (lines 14-17), the BuildModelContextInput.now doc
+      (lines 75-80) and the comment at lines 128-132
+    evidence: >-
+      "BlockB carries the rendered current datetime in `OWNER_TZ`" and
+      "BlockB is byte-stable per turn (`input.now` is captured ONCE by the caller
+      — BR-47 step 6)."
+    cost: >-
+      The rule that the assistant receives the owner's current date and time on
+      every turn is restated in comments beside the code that does it. The prose
+      can drift from the node, and it names a zone constant, `OWNER_TZ`, that this
+      file does not use; the file takes `input.ownerTz`.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code holds the fact: `text:
+      renderDatetimeBlockB(input.now, input.ownerTz)` in every call to
+      buildModelContext.
+    node: rules/chat/model-context-owner-time
+  - file: src/modules/chat/service/context-builder.ts
+    where: >-
+      the header comment (lines 23-24) and the doc comment on
+      BuildModelContextInput.pool (line 56)
+    evidence: >-
+      "What this module is NOT:\n//   - Not a writer. Runs under `withReadOnly`."
+      and "BFF process pool — wrapped in `withReadOnly` by this module."
+    cost: >-
+      The requirement that a model-context build reads inside one read-only
+      transaction is restated in prose. The prose stays in place if the node
+      changes, so it can claim a transaction policy the constraint no longer holds.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code holds the fact: `await
+      withReadOnly(input.pool, (client) => repo.listRecentRealTurns(client,
+      input.conversation.id, input.recentLimit))`. `withReadOnly` is in
+      src/shared/pg-transaction.ts, re-exported by
+      src/modules/curation/service/transaction.ts, and runs `BEGIN READ ONLY`
+      then `ROLLBACK`.
+    node: constraints/chat-reads-are-consistent
+read:
+  - node: constraints/chat-reads-are-consistent
+    held_at: >-
+      the `withReadOnly(input.pool, (client) => repo.listRecentRealTurns(...))`
+      call in buildModelContext, line 147
+    evidence: >-
+      const recent: MessageRow[] = await withReadOnly(input.pool, (client) =>
+      repo.listRecentRealTurns(client, input.conversation.id, input.recentLimit) );
+      — the history read is the single query inside one `BEGIN READ ONLY`
+      transaction (src/shared/pg-transaction.ts). The conversation row comes from
+      the caller, which loaded it before this call.
+  - node: rules/chat/model-context-owner-time
+    held_at: >-
+      the blockB construction in buildModelContext, lines 138-141, which is part
+      of the `system` array returned on every call
+    evidence: >-
+      const blockB: Anthropic.Messages.TextBlockParam = { type: "text", text:
+      renderDatetimeBlockB(input.now, input.ownerTz), };
+      The ISO-8601 time with offset and the zone identifier in parentheses are
+      rendered by renderDatetimeBlockB in ./datetime-block.js, not in this file.
+  - node: rules/chat/model-context-rolling-summary
+    held_at: >-
+      the summary_rolling branch of buildModelContext, lines 153-167, followed by
+      the window push at line 188
+    evidence: >-
+      if (input.conversation.summary_rolling !== null) { messages.push({ role:
+      "user", content: [{ type: "text", text: SUMMARY_ROLLING_PREFIX +
+      input.conversation.summary_rolling }] }); } and SUMMARY_ROLLING_PREFIX =
+      "[contexto da conversa anterior, sintetizado]\n\n"
+looked_past: >-
+  The two-element `system` array, `cache_control: { type: "ephemeral" }` on the first
+  block, and the window-boundary trimming by sanitizeAnthropicSequence are provider
+  request mechanics rather than domain facts, and the trimming's logic lives in
+  another file; I did not report them as findings.
+candidates_opened: []

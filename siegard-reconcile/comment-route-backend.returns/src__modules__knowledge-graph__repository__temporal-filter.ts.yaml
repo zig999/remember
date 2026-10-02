@@ -1,0 +1,41 @@
+read:
+  - node: rules/knowledge-base/current-assertion
+    held_at: >-
+      The current-view branch of applyTemporalFilter(), which builds the `lines` array (lines 62-65).
+    evidence: >-
+      const lines = [
+        `AND ${alias}.valid_to IS NULL`,
+        `AND ${alias}.superseded_at IS NULL`,
+      ];
+  - node: rules/knowledge-base/graph-read-as-of-view
+    held_at: >-
+      The `opts.asOf !== undefined` branch of applyTemporalFilter() (lines 50-59).
+    evidence: >-
+      `AND ${alias}.superseded_at IS NULL`,
+      `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= $${p})`,
+      `AND (${alias}.valid_to   IS NULL OR ${alias}.valid_to   >  $${p})`,
+  - node: rules/knowledge-base/graph-read-current-view
+    held_at: >-
+      The fall-through after the `asOf` branch of applyTemporalFilter(), lines 61-65. It applies when no as-of date is named, and the same `lines` array holds it.
+    evidence: >-
+      // Query (a) — current view.
+      const lines = [
+        `AND ${alias}.valid_to IS NULL`,
+        `AND ${alias}.superseded_at IS NULL`,
+      ];
+  - node: rules/knowledge-base/graph-read-in-effect-only
+    held_at: >-
+      The `if (opts.inEffectOnly)` block in the no-as-of path of applyTemporalFilter() (lines 66-70). Because the `asOf` branch returns first, the flag only takes effect when no as-of date is named.
+    evidence: >-
+      if (opts.inEffectOnly) {
+        lines.push(
+          `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= current_date)`
+        );
+      }
+  - node: rules/knowledge-base/in-effect-assertion
+    held_at: >-
+      The `inEffectOnly` clause in applyTemporalFilter() (lines 66-70). It is added to the current-view clauses `valid_to IS NULL` and `superseded_at IS NULL`.
+    evidence: >-
+      `AND (${alias}.valid_from IS NULL OR ${alias}.valid_from <= current_date)`
+looked_past: >-
+  The header comments cite BR-07 / BR-08 of `knowledge-graph.back.md`, a document outside the specification root, and the `asOf` doc comment says "ISO YYYY-MM-DD". Neither is a domain fact that code here states and no node holds, so I did not report them.

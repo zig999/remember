@@ -1,0 +1,80 @@
+findings:
+  - file: src/shared/error-mapping.ts
+    where: >-
+      codeToHttpStatus, the Resource group, line 85
+    evidence: >-
+      RESOURCE_ALREADY_EXISTS: 409,
+    cost: >-
+      The registry gives the code RESOURCE_ALREADY_EXISTS a 409 status. No node in the specification
+      names that code or its status, and no source under backend/src emits it. The only other
+      mention is the unit test that asserts the 409. The next reader who wants the refusal
+      vocabulary reads the contracts and does not find this code. This file is the only place it
+      is stated, so it reads as a business decision.
+    kind: unstated
+    correction: >-
+      Either a node gives RESOURCE_ALREADY_EXISTS a refusal that answers it, or the entry leaves
+      the registry. The analysis decides which. The source cannot settle it.
+  - file: src/shared/error-mapping.ts
+    where: >-
+      codeToHttpStatus, the Business Chat group, line 128
+    evidence: >-
+      BUSINESS_CHAT_INGEST_DISABLED: 503,
+    cost: >-
+      The registry fixes a 503 for BUSINESS_CHAT_INGEST_DISABLED. The specification holds no
+      refusal under that code. The contracts/chat/conversations refusals list BUSINESS_CHAT_DISABLED
+      and BUSINESS_CHAT_PROVIDER_UNAVAILABLE but not this one. constraints/chat-toolset speaks
+      only of directed ingestion being available "only where chat ingestion is enabled". No source
+      under backend/src emits the code, and only the unit test asserts it. The status of a refusal
+      the specification never stated is written only here, where the next reader will not look for it.
+    kind: unstated
+    correction: >-
+      A chat node would have to state the refusal with its code and status, or the entry would
+      leave the registry. The analysis decides which.
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      renderErrorEnvelope and toMcpToolResult, lines 163-173 and 209-214. This file holds only the
+      shared code-to-envelope rendering both transports use. Which operations the transports expose,
+      and what each answers, is decided in the per-domain mappers and routes, not here.
+    evidence: >-
+      const statusCode = codeToHttpStatus[code] ?? 500; ... { ok: false, error } and
+      content: [{ type: "text", text: JSON.stringify(envelope.error) }]
+  - node: constraints/failures-answer-one-envelope
+    held_at: >-
+      the ErrorEnvelope interface, line 15, and renderErrorEnvelope, line 163
+    evidence: >-
+      readonly ok: false; readonly error: { readonly code: string; readonly message: string;
+      readonly details?: unknown; } and details === undefined ? { code, message } : { code, message, details }
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      renderErrorEnvelope and toMcpToolResult, lines 163-173 and 209-214. This is the shared
+      rendering only, and the transport parity of ingestion operations is not decided in this file.
+    evidence: >-
+      export function toMcpToolResult(envelope: ErrorEnvelope): McpToolErrorResult { return { content:
+      [{ type: "text", text: JSON.stringify(envelope.error) }], isError: true }; }
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      internalError(), line 183
+    evidence: >-
+      return renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.");
+  - node: constraints/mcp-failure-is-tool-error
+    held_at: >-
+      toMcpToolResult() and the McpToolErrorResult interface, lines 196-214
+    evidence: >-
+      content: [{ type: "text", text: JSON.stringify(envelope.error) }], isError: true,
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      renderErrorEnvelope and toMcpToolResult, lines 163-173 and 209-214. This is the shared
+      rendering only. The MCP-only refusal of undefined parameters is not in this file.
+    evidence: >-
+      export function renderErrorEnvelope(code: string, message: string, details?: unknown): MappedError
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      isPgUnavailable(), line 55, with its SQLSTATE and errno sets, and serviceUnavailableError(), line 176
+    evidence: >-
+      "57014", // query_canceled (statement timeout) ... "ECONNREFUSED", ... and
+      renderErrorEnvelope("SYSTEM_SERVICE_UNAVAILABLE", "A backing service is temporarily unavailable.")
+looked_past: >-
+  The header comment and the docs on MappedError, codeToHttpStatus, mapped, renderErrorEnvelope and toMcpToolResult are prose. They name other files and "BR-28", claim the MCP transports speak "JSON-RPC over HTTP 200", and say a registry document is the source for codes. They are not behavior, so the comment route owns them.
+candidates_opened:
+  - contracts/chat/conversations

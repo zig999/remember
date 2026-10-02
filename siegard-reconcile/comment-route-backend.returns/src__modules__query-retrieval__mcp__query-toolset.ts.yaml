@@ -1,0 +1,80 @@
+findings:
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      header comment lines 5-8, and the comments at lines 160-163 and 170-173
+    evidence: >-
+      "opens its own short
+      `BEGIN READ ONLY` transaction (mirrors the REST handler)" and
+      "The read-only transaction wrapper is imported from
+      `shared/pg-transaction.ts` (single source for every module)." and
+      "2. Opens a `withReadOnly` transaction."
+    cost: >-
+      Prose that no running system emits says a second time that every retrieval runs in a read-only
+      transaction. The behavior is held by `withReadOnly`, so a reader can mistake the comment for a
+      second home of the constraint.
+    kind: restates
+    correction: >-
+      Remove the comment prose. The code holds the fact: `withReadOnly(pool, (client) => run(parsed, client))`
+      in makeHandler, which runs `client.query("BEGIN READ ONLY")` in `src/shared/pg-transaction.ts`.
+    node: constraints/retrieval-is-read-only
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      header comment lines 5-14 and the comment block at lines 52-60
+    evidence: >-
+      "Each tool wraps the SAME service-layer function that the REST handler in
+      `routes/query-retrieval.routes.ts` invokes" and "The MCP tool input schema for each tool is the
+      SAME Zod schema as the REST DTO (`dto/search.dto.ts`)" and "so REST and MCP stay in lockstep
+      (BR-25 single-source guarantee)"
+    cost: >-
+      Prose states that REST and MCP answer alike, a fact the code already holds by importing the same
+      schemas and calling the same service functions. A second statement outside behavior could drift
+      from it unnoticed. Line 9 also ends mid-sentence ("and returns the").
+    kind: restates
+    correction: >-
+      Remove the comment prose. The code holds the fact in this file: `export const SearchInputSchema = SearchQuerySchema;`
+      and `searchKnowledgeService(client, catalog, {...}, svcLogger)`. It also holds it in
+      `routes/query-retrieval.routes.ts`, which calls the same service.
+    node: constraints/retrieval-transports-answer-alike
+  - file: src/modules/query-retrieval/mcp/query-toolset.ts
+    where: >-
+      the `search` entry of QueryRetrievalToolDescriptions (line 129), and the field reads in the
+      `search` handler (lines 220-229)
+    evidence: >-
+      "`expand`, `expand_depth` (1..3), `expand_link_types[]`. Pagination via `limit` (max 100) and `offset`."
+      and "query: input.query," ... "expandLinkTypes: input.expand_link_types," ... "limit: input.limit,
+      offset: input.offset,"
+    cost: >-
+      The search-query node names the choices `text`, `link_types` and a nested `page`. The tool
+      description sent to the model, and the fields this file reads, use `query`, `expand_link_types`
+      and flat `limit`/`offset`. A reader who looks for `link_types` in the code, or `expand_link_types`
+      in the specification, finds nothing. The decision log beside the node records no decision on the
+      differing names.
+    kind: contradicts
+    correction: >-
+      Either the node records the wire names (`query`, `expand_link_types`, flat `limit`/`offset`) as
+      the decided vocabulary, or the DTO and the description are brought to the node's names.
+    node: domain/knowledge-base/search-query
+read:
+  - node: constraints/retrieval-is-read-only
+    held_at: >-
+      makeHandler, line 182, through the `withReadOnly` call. The transaction is opened in `src/shared/pg-transaction.ts`.
+    evidence: >-
+      "const result = await withReadOnly(pool, (client) => run(parsed, client));"
+  - node: constraints/retrieval-transports-answer-alike
+    held_at: >-
+      the MCP side of the pairing: the tool input schemas and handlers in registerQueryRetrievalToolset (lines 62-80, 201-274)
+    evidence: >-
+      "export const SearchInputSchema = SearchQuerySchema;" and
+      "getProvenanceByLinkService(client, input.link_id, svcLogger)" and
+      "return mapErrorToEnvelope(err);"
+  - node: domain/knowledge-base/page
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `limit: input.limit, offset: input.offset,`. The shape is declared in `dto/search.dto.ts`, not here.
+  - node: domain/knowledge-base/search-query
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape. It aliases `export const SearchInputSchema = SearchQuerySchema;` and reads fields such as `input.query` and `input.expand_link_types`.
+looked_past: >-
+  The descriptions in QueryRetrievalToolDescriptions state limit max 100, depth 1..3, the accepted-only fragment provenance and the 410 refusal. These agree with nodes outside this set and I report no finding on them, and the 404 wording and the `fragment|node|chunk` layer names were not opened against their nodes.
+candidates_opened: []

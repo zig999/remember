@@ -1,0 +1,59 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      the header comment, lines 1-16 (Layer 1 description of the propose_attribute value check and the chunk and node cross-table checks)
+    evidence: >-
+      //       * `propose_attribute`: value parseable as key.value_type;
+    cost: >-
+      The header says in prose that an attribute value must parse as its key's value type. A node holds that fact (rules/knowledge-base/attribute-value-parses), and this file's parseAttributeValue already enforces it. A reader gets a second statement of the rule beside the code. If the node moves, this prose stays behind unchanged.
+    kind: restates
+    correction: >-
+      Remove the header comment by the comment route. The fact is already held by the node and implemented in parseAttributeValue in this file. The node is currently bound only to src/modules/curation/service/item.service.ts, so it should also be bound to this file.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, case "date", lines 37-45 (calendar validity check)
+    evidence: >-
+      // Validate it's a real calendar date by parsing.
+            const ts = Date.parse(`${v}T00:00:00Z`);
+            if (Number.isNaN(ts)) {
+    cost: >-
+      The node requires a date value to name an existing day, and scenarios/knowledge-base/impossible-calendar-date-refused says the proposal 2024-02-30 is refused. The code leaves that decision to the runtime's Date.parse. As I recall, V8 accepts any day from 1 to 31 for any month and rolls Feb 30 over to Mar 1, so 2024-02-30 would pass this check. I could not run code in this pass, so that behavior is not observed here. If it holds, an impossible date is recorded as an attribute value, and the refusal the node promises depends on the engine rather than on an explicit check.
+    kind: contradicts
+    correction: >-
+      Check that the parsed date round-trips to the same year, month and day, for example by comparing new Date(ts).toISOString().slice(0, 10) with v, so that only an existing day is accepted.
+    node: rules/knowledge-base/attribute-value-parses
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, the date, number and bool refusals at lines 40-44, 58-62 and 68-72 (details without value_type)
+    evidence: >-
+      "value is not a calendar-valid date.",
+          { value: v }
+      ...
+      "value is not a finite number.",
+          { value: v }
+      ...
+      "value does not parse as a bool (expected 'true' or 'false').",
+          { value: v }
+    cost: >-
+      The contract answer for a value that does not parse is "error code VALIDATION_INVALID_FORMAT naming the value and its value type". Three of the five refusal paths carry only `value` in details. The other two, the date format and number format refusals, carry `value_type` as well. A caller gets a different shape of refusal depending on which check failed.
+    kind: contradicts
+    correction: >-
+      Carry value_type in the details of every refusal of parseAttributeValue, as the date format and number format refusals already do.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain, lines 79-92
+    evidence: >-
+      if (domain.has(value)) { return; } const allowed_values = [...domain].sort(); throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "attribute value not in closed domain", { value, allowed_values });
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      assertKnownType, the node_type branch, lines 113-131
+    evidence: >-
+      args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : ... throw new ValidationFailure(code, `${args.kind} '${args.name}' is not in the seeded catalog.`, { kind: args.kind, name: args.name });
+looked_past: >-
+  The comment "Empty already rejected by Zod min(1)" and the header claims about chunk and node cross-table checks describe code in other files; I did not review them because they are not facts this file's own code holds.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses
+  - contracts/knowledge-base/ingestion

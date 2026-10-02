@@ -1,0 +1,33 @@
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the `LlmRunRow` interface (lines 66-76), with `insertLlmRun` and `findLlmRunByIdempotencyKey` reading and writing its columns
+    evidence: >-
+      `readonly model: string; readonly prompt_version: string; readonly started_at: Date; readonly finished_at: Date | null; readonly status: "running" | "completed" | "failed"; readonly attempts: number; readonly input_raw_information_id: string; readonly idempotency_key: string;`
+      The interface declares part of the node's shape, and `input_raw_information_id` carries the reference to raw-information.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      the `RawChunkRow` interface (lines 54-63), with `insertRawChunks` and `findChunksByRawInformationId`
+    evidence: >-
+      `readonly chunk_index: number; readonly text: string; readonly offset_start: number; readonly offset_end: number; readonly locator: ChunkLocator; readonly chunking_version: string;`
+      The interface declares part of the node's shape. It does not declare `status` or `superseded_at`.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      the `RawInformationRow` interface (lines 36-51), with `insertRawInformation`, `findRawInformationByHash` and `findRawInformationById`
+    evidence: >-
+      `readonly source_type: SourceType; readonly content: string; readonly storage_ref: string | null; readonly content_hash: string; readonly received_at: Date; readonly metadata: Record<string, unknown>; readonly original_input: string | null;`
+      The interface declares part of the node's shape. It does not declare `title`, `document_date`, `status` or `superseded_at`.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the inline union on `LlmRunRow.status`, line 72
+    evidence: >-
+      `readonly status: "running" | "completed" | "failed";`
+      The three values match the enumeration's values exactly.
+  - node: rules/knowledge-base/chunk-listing-order
+    held_at: >-
+      the `ORDER BY chunk_index ASC` in `findChunksByRawInformationId`, line 187. The `.sort((a, b) => a.chunk_index - b.chunk_index)` in `insertRawChunks`, line 175, orders the same way.
+    evidence: >-
+      `WHERE raw_information_id = $1
+      ORDER BY chunk_index ASC`
+looked_past: >-
+  Comments state facts no node holds and no code in this file enforces, so by the comment route they are not findings. One is that `original_input` "NEVER participates in `content_hash`" and is covered by compliance_delete. The other is the default `status = 'running'`, `attempts = 1`, `finished_at = NULL` on `llm_run`; the grep of the full-text projection found no node stating the first.

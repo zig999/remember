@@ -1,0 +1,34 @@
+findings:
+  - file: src/modules/knowledge-graph/service/formatters.ts
+    where: >-
+      the SOURCE_TYPE set (lines 43-51), used by toSourceType() at line 92 and by toProvenanceEntry()
+    evidence: >-
+      const SOURCE_TYPE: ReadonlySet<SourceType> = new Set([ "pdf", "email", "ata", "chat", "artigo", "transcricao", "outro", ]);
+    cost: >-
+      The source-type vocabulary is declared again as a runtime set in a file that the source-type node is not bound to. If the node's values change, trace --check never reaches this file. toSourceType() would then throw InvariantError("Unexpected source_type from DB: ...") on a value the specification now allows, or keep accepting one it has dropped. It is also unclear which declaration was the decision. The node names `meeting-minutes`, `article`, `transcript` and `other` as canonical values and lists `ata`, `artigo`, `transcricao` and `outro` only as the material's own words for them. The set here holds the material's spellings.
+    kind: contradicts
+    correction: >-
+      Either bind domain/knowledge-base/source-type to this file, so that the declaration is held where the node claims it, or stop restating the vocabulary here and take the validation from the file that declares SourceType (dto/enums.dto.ts). The vocabulary should keep one home that the specification can reach.
+    node: domain/knowledge-base/source-type
+read:
+  - node: domain/knowledge-base/assertion-status
+    held_at: >-
+      the ASSERTION_STATUS set (lines 26-32) and toAssertionStatus() (lines 78-83)
+    evidence: >-
+      const ASSERTION_STATUS: ReadonlySet<AssertionStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", ]);
+  - node: domain/knowledge-base/effective-status
+    held_at: >-
+      the EFFECTIVE_STATUS set (lines 34-41) and toEffectiveStatus() (lines 85-90)
+    evidence: >-
+      const EFFECTIVE_STATUS: ReadonlySet<EffectiveStatus> = new Set([ "active", "uncertain", "disputed", "superseded", "deleted", "inactive", ]);
+  - node: domain/knowledge-base/node-alias
+    held_at: nowhere
+    evidence: >-
+      toNodeAlias() only maps the row to the response: `alias: row.alias, kind: row.kind, created_at: formatTimestamptz(row.created_at) ?? new Date(0).toISOString()`. The shape of the NodeAlias element is declared in the DTO and repository files, not here.
+  - node: rules/knowledge-base/graph-item-flags
+    held_at: >-
+      deriveFlags(), lines 99-104
+    evidence: >-
+      if (status === "uncertain") flags.push("uncertain"); if (status === "disputed") flags.push("disputed"); — no branch ever pushes a low-confidence flag.
+looked_past: >-
+  The header comment (lines 1-2) and the doc comments on the helpers say what the mappers are for and where they are tested, and state no node's fact, so the comment route has nothing to remove for any node here.

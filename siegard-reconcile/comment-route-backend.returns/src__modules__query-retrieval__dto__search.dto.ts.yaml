@@ -1,0 +1,107 @@
+findings:
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the doc comment above LayersArray, lines 20-25
+    evidence: >-
+      non-enum elements raise
+       * a ZodError that the service translates to BUSINESS_INVALID_SEARCH_LAYER.
+    cost: >-
+      The comment states, outside any behavior, that a layer outside the closed set is refused. The node holds that
+      refusal, and code holds it too, in resolveLayers in search.service.ts (the check against ALLOWED_LAYERS).
+      The next reader finds a second statement of the rule beside a schema that does not enforce it, and the
+      comment does not move when the node does.
+    kind: restates
+    correction: >-
+      Remove the comment. The refusal is held by code in
+      src/modules/query-retrieval/service/search.service.ts and by the node.
+    node: rules/knowledge-base/search-layer-outside-set-refused
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      the doc comment above QueryString, lines 37-42
+    evidence: >-
+      Empty-after-btrim raises a Zod custom issue with message
+       * `BUSINESS_INVALID_SEARCH_QUERY` so the route can branch on it
+    cost: >-
+      The comment restates the not-blank rule, which this file's .transform((s) => s.trim()).refine((s) => s.length > 0, ...)
+      already enforces. It also claims an error code that the code beside it does not emit. The refine message is
+      "query is empty after trim". A reader trusting the comment looks for a code the schema never produces.
+    kind: restates
+    correction: >-
+      Remove the comment. The rule is held by the refine in this file and by the node.
+    node: rules/knowledge-base/search-query-not-blank
+  - file: src/modules/query-retrieval/dto/search.dto.ts
+    where: >-
+      QueryString, the .max(1000) call, line 46
+    evidence: >-
+      .max(1000, { message: "query exceeds 1000 characters" })
+    cost: >-
+      The 1000-character ceiling on a search query's text is a fact a node holds, in a node the file is not bound
+      to. Code states it here as its own authority. When the node's number moves, `--check` never reaches this
+      file, and nobody knows which value was decided.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/search-query-length to this file. Code does not read the specification, so the
+      bind is what closes the declaration, not a change to the code.
+    node: rules/knowledge-base/search-query-length
+read:
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the limit and offset fields of SearchQuerySchema, lines 64-67
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100)).optional().default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: domain/knowledge-base/search-layer
+    held_at: >-
+      ALLOWED_LAYERS, line 96, and the SearchLayer type, line 97
+    evidence: >-
+      export const ALLOWED_LAYERS = ["fragment", "node", "chunk"] as const;
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      SearchQuerySchema, lines 52-69, with the SearchQuery type on line 71
+    evidence: >-
+      query: QueryString, layers: LayersArray.optional(), as_of: IsoDateOnly.optional(), in_effect_only, include_uncertain, expand, expand_depth, expand_link_types: ExpandLinkTypesArray.optional(), limit, offset
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      the expand_depth field of SearchQuerySchema, lines 60-62
+    evidence: >-
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      the limit and offset defaults of SearchQuerySchema, lines 64-67
+    evidence: >-
+      .optional()
+      .default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the limit field of SearchQuerySchema, lines 64-66
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the offset field of SearchQuerySchema, line 67
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/search-option-defaults
+    held_at: >-
+      the in_effect_only, include_uncertain, expand and expand_depth defaults of SearchQuerySchema, lines 57-62. The every-layer default is not in this file. layers has no default here, and resolveLayers in search.service.ts supplies it.
+    evidence: >-
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+      expand: BooleanQuery.optional().default(true),
+      expand_depth: IntegerQuery.pipe(z.number().int().min(1).max(3))
+        .optional()
+        .default(1),
+  - node: rules/knowledge-base/search-query-not-blank
+    held_at: >-
+      QueryString, lines 43-50
+    evidence: >-
+      .transform((s) => s.trim())
+          .refine((s) => s.length > 0, {
+            message: "query is empty after trim",
+          });
+looked_past: >-
+  The header comment (lines 1-5) and the comment on the closed-set section (line 93) cite BR-04, BR-05 and error codes in prose. Prose that no code or emitted text carries is the comment route's to remove, not a domain finding.
+candidates_opened:
+  - rules/knowledge-base/search-query-length
+  - rules/knowledge-base/search-layer-outside-set-refused

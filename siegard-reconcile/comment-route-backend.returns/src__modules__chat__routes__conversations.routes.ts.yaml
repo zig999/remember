@@ -1,0 +1,408 @@
+findings:
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      header comment, lines 17-22 ("This file owns ONLY the wire concerns")
+    evidence: |-
+      //   - Kill-switch short-circuit on every endpoint (BR-14).
+      //   - Conversation lookup + archived check on every conversation-scoped path (BR-22 / BR-25).
+    cost: >-
+      The header states a second time the order the handlers apply, with a disabled chat first and the lookup after it. Code holds that order in every handler. The header also says the archived check runs on every conversation-scoped path, but the code applies it only to send and cancel. A reader who trusts the header gets a different rule from the node's.
+    kind: restates
+    correction: >-
+      Remove the comment. The order is held by the handlers' own sequence (killSwitchTripped, then the parse, then the lookup).
+    node: rules/chat/conversation-request-check-order
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      ChatRouteDeps.catalog docblock, lines 141-147
+    evidence: |-
+      * Optional catalog snapshot (TC-be-002). Required for the `graph_delta` SSE
+      * projection — every link in a `graph_delta` carries `is_temporal` which the
+    cost: >-
+      The comment states that a graph delta needs the catalog snapshot. Code holds this at `evt.type === "tool_result" && evt.ok && deps.catalog !== undefined`. The prose is a second home for the fact outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The branch at line 962 holds the fact.
+    node: rules/chat/graph-delta-requires-catalog-snapshot
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      getChatAgentLazy, the catalog-unresolved log line, lines 237-244
+    evidence: |-
+      "chat tool catalog is not fully resolved — sendMessage returns 503"
+    cost: >-
+      The log line tells an operator that sendMessage answers 503. The code answers HTTP 404 RESOURCE_NOT_FOUND "chat surface is not available on this deployment", and the contract states 404. Someone triaging from the log looks for a 503 that is never emitted.
+    kind: contradicts
+    correction: >-
+      The emitted message must state the status the contract holds, 404, or stop naming one. The wording is emitted text, so the change is to its content and not a prose removal.
+    node: contracts/chat/conversations
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      getChatAgentLazy, logger.error for chat.catalog_unresolved, lines 237-244
+    evidence: |-
+      deps.logger.error(
+        {
+          event: "chat.catalog_unresolved",
+    cost: >-
+      The refusal of a turn because the toolset is unavailable is a business refusal by rules/chat/chat-toolset-requires-every-query-tool. The constraint allows error level only for a model-provider build failure, and this refusal is logged at error. Whether the constraint reaches this deployment-condition refusal is the owner's reading, and the log level is code behavior that nothing in the pack's nodes holds.
+    kind: contradicts
+    correction: >-
+      Either the log level changes to a non-error level, or the constraint names the unresolved catalog as a second exception. Which of the two is the owner's decision.
+    node: constraints/expected-refusals-not-logged-as-errors
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      PATCH /:id handler, comment at line 379
+    evidence: |-
+      // BR-36 step 1: empty body -> 422 VALIDATION_REQUIRED_FIELD.
+    cost: >-
+      The comment restates the empty-body refusal that the branch below it already enforces with the same code and message. The restatement cites a retired back-spec number as its authority.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/conversation-update-names-a-field
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      GET /:id/messages handler, comment at line 450
+    evidence: |-
+      // BR-39: next_before = oldest item's created_at when hasMore.
+    cost: >-
+      The comment restates how the next page is anchored, which `page.hasMore && oldest !== undefined ? oldest.created_at : null` already does. If the node moves, nothing binds the comment to it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/message-listing-pages-backwards
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      POST /:id/messages handler, comment of step (1), lines 583-586
+    evidence: |-
+      // ---- (1) Idempotency-Key header — checked FIRST per spec (BR-26 has
+      //          precedence over conversation lookup). Missing -> 422
+      //          VALIDATION_REQUIRED_FIELD; non-UUID -> 422
+      //          VALIDATION_INVALID_FORMAT.
+    cost: >-
+      The comment states the order of the send-message checks and the two key refusals. Code holds both in the handler's sequence and in the two 422 branches. The prose is a second home that would not follow a change to the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The numbered step comments (1) to (9) do the same.
+    node: rules/chat/send-message-check-order
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      sendMessage, comment at lines 673-674, and the docblock of handleIdempotentReplay, lines 1109-1115
+    evidence: |-
+      // UC-07: REPLAY path. Emit llm_start + text_delta + done; no
+      // Anthropic call; no new rows.
+    cost: >-
+      Both comments state that a replay streams the recorded answer with no model call and no new rows. Code holds that in handleIdempotentReplay, which calls neither the model nor any insert. The prose is a second home for the node's fact.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/chat/idempotent-replay
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      sendMessage, comment at lines 692-694
+    evidence: |-
+      // Recovery path — the original turn died before persisting the
+      // assistant row. Reuse the existing user row, skip insert (would
+      // collide on UNIQUE PARTIAL), and run the loop.
+    cost: >-
+      The comment states the recovery rule. Code holds it at `if (existingUserRow === null)` guarding the insert and `userMessageId = existingUserRow?.id`. The comment also names a storage mechanism, UNIQUE PARTIAL, that the node does not hold.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/idempotent-recovery
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      sendMessage drain loop, comments at lines 872-877 and 919
+    evidence: |-
+      // the (assistant `[text?, tool_use]`, synthetic user `[tool_result]`)
+      // pair as TWO atomic chat_message rows so the next turn's replay is a
+      // valid Anthropic sequence, and attach this iteration's tool_call
+      // audit rows to the assistant row.
+    cost: >-
+      The comment restates that each tool result is recorded as a tool call attached to the assistant message of its model call. Code holds that in insertToolCall and attachToolCallsToMessage. The prose is a second home.
+    kind: restates
+    correction: >-
+      Remove the comments at lines 872-877 and 919.
+    node: rules/chat/tool-call-recorded
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      iteration_end catch block, comment at lines 901-903
+    evidence: |-
+      // Non-fatal: a failed pair-insert degrades future context replay
+      // but must NOT abort the live stream (the SSE frames already
+      // reached the client). Surfaced loud in the structured log.
+    cost: >-
+      The comment states that a recording failure leaves the stream unchanged. The catch blocks around insertIterationPair and insertToolCall hold this by logging and continuing. The prose is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/recording-failure-keeps-stream
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitChatBootLog, the chat.boot record, lines 1246-1253, with the chat.recent_window_resolved record at 1258-1264 and the chat.owner_tz_resolved record at 1290-1296
+    evidence: |-
+      event: "chat.boot",
+      chat_ingest_enabled: ingestFlagOn,
+      tool_count: toolCount,
+    cost: >-
+      The system emits boot diagnostic records with named events and fields. These include the count of tools the assistant will advertise, computed as zero when the query toolset is incomplete. No node holds the records. Anyone who relies on grepping `event=chat.boot` is relying on a contract that lives only in this function.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the boot diagnostics are a fact of the business. If they are, it gives them a node, probably a constraint of system scope.
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitChatBootLog, the chat.deprecated_env record, lines 1278-1286
+    evidence: |-
+      if (process.env.CHAT_SUMMARY_AFTER_TURNS !== undefined) {
+        deps.logger.info(
+          {
+            event: "chat.deprecated_env",
+            name: "CHAT_SUMMARY_AFTER_TURNS",
+            reason: "retired_as_gate_v2_9",
+    cost: >-
+      The code treats CHAT_SUMMARY_AFTER_TURNS as a retired setting whose presence is reported and whose value is ignored. No node says the setting is retired or that its presence is reported. A reader looking for the rolling-summary trigger in the specification finds nothing about it.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the retired setting and its notice are a fact of the business, and give it a node if so.
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      writeSseHeaders, comment at lines 1300-1304
+    evidence: |-
+      // @fastify/cors sets Access-Control-Allow-Origin (and Vary) on the reply in
+      // its onRequest hook, but reply.hijack() + reply.raw.writeHead() bypasses the
+      // onSend phase that would normally flush them
+    cost: >-
+      The comment is the rationale for copying the allowed origin into the stream's headers. Code holds the behavior in `...(acao !== undefined ? { "Access-Control-Allow-Origin": String(acao) } : {})`. The rationale belongs in the decision log, not in source.
+    kind: restates
+    correction: >-
+      Remove the comment. The rationale goes to the decision log of the node.
+    node: constraints/answers-carry-allowed-origin
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      projectGraphDelta docblock, lines 1364-1376
+    evidence: |-
+      *   - a defensive try/catch that logs + swallows normalization errors. A
+      *     failure here MUST NOT abort the SSE stream — the tool_result has
+      *     already been emitted; missing graph_delta is degraded UX, not a turn
+      *     failure.
+    cost: >-
+      The comment states that a graph-delta failure leaves the stream and the turn unchanged. Code holds it in the catch block that logs and returns null. The prose is a second home, and the node that holds the fact is not bound to this file.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/graph-delta-failure-keeps-stream
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      userRowMatches docblock, lines 1449-1454
+    evidence: |-
+      * Compare an existing user row against the incoming `(content, model)` pair.
+      * Comparison rules (BR-27 — "(content, model) comparison" paragraph):
+    cost: >-
+      The comment restates that a resend matches only when text and model are equal. Code holds this in `storedText !== incomingContent` and `storedModel === incomingModel`. The prose is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/idempotency-match
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      resolveAssistantStopReason docblock, lines 1501-1506
+    evidence: |-
+      *   - `error` -> the synthetic marker (`provider_error` / `internal_error`).
+      *   - Defensive `none` -> `internal_error` (the iterable closed without a frame).
+    cost: >-
+      The comment restates that a turn ending without a done or error event is an internal error. Code holds this in the `return "internal_error"` branches. The prose is a second home.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/chat/turn-failure-stop-reason
+  - file: src/modules/chat/routes/conversations.routes.ts
+    where: >-
+      emitTurnLog, lines 1558-1585
+    evidence: |-
+      const aborted =
+        args.stopReason === "cancelled" || args.stopReason === "turn_timeout";
+      ...
+      event: "chat.turn",
+      actor: "owner" as const,
+      counter: {
+        name: "chat_turn_total",
+    cost: >-
+      Every live turn and every replay emits a record with a fixed set of fields. These include `aborted`, defined as a stop reason of cancelled or turn_timeout, and a counter named chat_turn_total labeled by stop reason. No node holds the record or the definition of aborted. Dashboards or alerts built on them depend on a contract that exists only in this function.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether the per-turn record is a fact of the business and give it a node, probably a constraint of system scope.
+read:
+  - node: constraints/answers-carry-allowed-origin
+    held_at: >-
+      writeSseHeaders, which copies the allowed origin onto the hijacked SSE answer
+    evidence: |-
+      ...(acao !== undefined ? { "Access-Control-Allow-Origin": String(acao) } : {}),
+      ...(vary !== undefined ? { Vary: String(vary) } : {}),
+  - node: rules/chat/archived-conversation-takes-no-turn
+    held_at: >-
+      the archived branches of POST /:id/cancel and POST /:id/messages
+    evidence: |-
+      if (conversation.archived_at !== null) {
+        const { statusCode, envelope } = mapChatError(
+          new ConversationArchivedError()
+  - node: rules/chat/assistant-answer-recorded
+    held_at: >-
+      step (16) of sendMessage, the insertAssistantMessage call after the stream closes
+    evidence: |-
+      content: [...assistantContent],
+      stop_reason: stopReasonForRow,
+      model: finalModel,
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      latency_ms: latencyMs,
+  - node: rules/chat/cancel-requires-turn-in-flight
+    held_at: >-
+      POST /:id/cancel, the turnRegistry lookup that refuses when no turn is registered
+    evidence: |-
+      const controller = turnRegistry.get(id);
+      if (controller === undefined) {
+        return reply.code(404).send({
+  - node: rules/chat/chat-toolset-requires-every-query-tool
+    held_at: >-
+      getChatAgentLazy and step (8) of sendMessage, which refuse the turn when the catalog is unresolved
+    evidence: |-
+      if (chatService === undefined && catalogState === "missing") {
+        return reply.code(404).send({
+  - node: rules/chat/conversation-archived
+    held_at: >-
+      the archived test in the cancel and send handlers
+    evidence: |-
+      if (conversation.archived_at !== null) {
+  - node: rules/chat/conversation-request-check-order
+    held_at: >-
+      the handler order of the conversation operations: killSwitchTripped, then params and query or body parse, then the lookup that answers not found
+    evidence: |-
+      if (killSwitchTripped(deps.env)) {
+        return sendKillSwitch(reply);
+      }
+      const { id } = ConversationIdParam.parse(request.params ?? {});
+      const query = ListMessagesQuery.parse(request.query ?? {});
+      // BR-22 before query.
+      const exists = await withReadOnly(deps.pool, (client) =>
+  - node: rules/chat/conversation-update-names-a-field
+    held_at: >-
+      the empty-body branch of PATCH /:id, in part. A body that names neither field but is not empty is left to UpdateConversationRequest, which this file does not declare.
+    evidence: |-
+      request.body === undefined ||
+      request.body === null ||
+      (typeof request.body === "object" &&
+        Object.keys(request.body).length === 0)
+  - node: rules/chat/distillation-follows-live-turn
+    held_at: >-
+      step (18) of sendMessage calls scheduleDistillation after the live turn. handleIdempotentReplay never calls it.
+    evidence: |-
+      scheduleDistillation({
+        pool: deps.pool,
+        conversationId: id,
+  - node: rules/chat/graph-delta-requires-catalog-snapshot
+    held_at: >-
+      the drain loop, where the delta is built only when the catalog is held
+    evidence: |-
+      if (evt.type === "tool_result" && evt.ok && deps.catalog !== undefined) {
+  - node: rules/chat/idempotency-match
+    held_at: >-
+      userRowMatches, used before the stream and again after a unique violation
+    evidence: |-
+      if (storedText !== incomingContent) return false;
+      const storedModel = row.model;
+      return storedModel === incomingModel;
+  - node: rules/chat/idempotent-recovery
+    held_at: >-
+      step (7) falls through when no successor is found and no turn is in flight, and step (9) skips the insert for an existing row
+    evidence: |-
+      let userMessageId: string | null = existingUserRow?.id ?? null;
+      if (existingUserRow === null) {
+  - node: rules/chat/idempotent-replay
+    held_at: >-
+      handleIdempotentReplay, which streams the stored text and the stored done with no model call and no insert
+    evidence: |-
+      tryWrite(reply, frameJson("llm_start", { iteration: 1 }), deps.logger);
+      const storedText = extractTextFromContent(assistantRow.content);
+  - node: rules/chat/message-listing-pages-backwards
+    held_at: >-
+      the GET /:id/messages handler gives the cursor, and the page selection itself is delegated to chatRepo.listMessagesPaginated, outside this file
+    evidence: |-
+      const nextBefore =
+        page.hasMore && oldest !== undefined ? oldest.created_at : null;
+  - node: rules/chat/one-turn-in-flight
+    held_at: >-
+      step (6) refuses on a registered turn, and step (11) registers the controller
+    evidence: |-
+      if (turnRegistry.get(id) !== undefined) {
+        const { statusCode, envelope } = mapChatError(new TurnInProgressError());
+  - node: rules/chat/owner-message-recorded-first
+    held_at: >-
+      step (9) inserts the owner's message before the model context is built and the turn runs. Nothing deletes it afterward when the provider is unavailable.
+    evidence: |-
+      chatRepo.insertUserMessage(client, {
+        conversation_id: id,
+        content: [...persistedContentBlock],
+        idempotency_key: idempotencyKey,
+        model: resolvedModel,
+  - node: rules/chat/recording-failure-keeps-stream
+    held_at: >-
+      the catch blocks around insertIterationPair, insertToolCall and the assistant-row insert, which log and continue
+    evidence: |-
+      "chat tool_call row persist failed"
+  - node: rules/chat/replay-reports-failure
+    held_at: >-
+      mapStoredStopReason, which maps a stored provider or internal error to end_turn for the replayed done event
+    evidence: |-
+      case "provider_error":
+      case "internal_error":
+      default:
+        return "end_turn";
+  - node: rules/chat/send-message-check-order
+    held_at: >-
+      the numbered sequence in the sendMessage handler, steps (1) to (8)
+    evidence: |-
+      if (killSwitchTripped(deps.env)) {
+        return sendKillSwitch(reply);
+      }
+
+      // ---- (4) Load conversation (BR-22).
+  - node: rules/chat/tool-call-recorded
+    held_at: >-
+      insertToolCall on each tool_result event, and attachToolCallsToMessage on iteration_end
+    evidence: |-
+      await chatRepo.attachToolCallsToMessage(
+        client,
+        [...pendingToolCallIds],
+        assistant.id
+      );
+  - node: rules/chat/turn-cancel
+    held_at: >-
+      the abort calls in POST /:id/cancel and in the socket-close listener. The stop reason cancelled is set by the chat-agent service, outside this file.
+    evidence: |-
+      controller.abort("cancelled");
+      ...
+      if (!abortController.signal.aborted) {
+        abortController.abort();
+  - node: rules/chat/turn-failure-stop-reason
+    held_at: >-
+      resolveAssistantStopReason, whose error branch and defensive none branch end as internal_error
+    evidence: |-
+      return args.errorSyntheticStop ?? "internal_error";
+      }
+      return "internal_error";
+  - node: rules/chat/turn-model-default
+    held_at: >-
+      resolvedModel in sendMessage chooses the configured chat model when the body names none. The default value claude-opus-4-8 is not in this file.
+    evidence: |-
+      body.model !== undefined && body.model.length > 0
+        ? body.model
+        : deps.env.CHAT_MODEL;
+  - node: rules/chat/turn-model-stop-reason
+    held_at: >-
+      resolveAssistantStopReason passes the done event's stop reason through and falls back to end_turn. The mapping of the model's own reasons is made upstream, outside this file.
+    evidence: |-
+      return args.doneStopReason ?? "end_turn";
+looked_past: >-
+  The catalog miss is sticky for the process lifetime ("Lazy catalog cache — sticky on miss"), a code-behavior and boot-ordering matter I did not file, and several comments cite retired back-spec numbers (BR-xx, TC-xx) while contradicting each other on the tool count (13 or 15, against 13 or 14).
+candidates_opened:
+  - contracts/chat/conversations
+  - constraints/expected-refusals-not-logged-as-errors
+  - rules/chat/graph-delta-failure-keeps-stream

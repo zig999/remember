@@ -1,0 +1,63 @@
+findings:
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the doc comment on `received_at` in `TemporalLayerInput` (lines 19-25) and the block comment inside the `document_date !== null` branch of `validateTemporal` (lines 103-111)
+    evidence: >-
+      "When `requires_valid_from = true` and the upstream `stated`/`document` links are absent, the layer falls back to the date portion (YYYY-MM-DD) of this value as `valid_from`." and "validation passes, but we DO NOT resolve `valid_from`/`valid_from_basis` to the document_date here."
+    cost: >-
+      The fallback rule (no start and no basis when the source has a document date, otherwise the reception date with basis received) is written out a second time in prose beside the code that holds it. If the rule changes, the comment can keep stating the old one with no check to catch it. The trace also binds this file to rules/knowledge-base/required-start-available but not to rules/knowledge-base/required-start-fallback, which is the node that holds this behavior.
+    kind: restates
+    correction: >-
+      Remove both comments (the comment route, followed by /reconcile over this file). Bind the file to rules/knowledge-base/required-start-fallback. The code at lines 112-123 holds the fact and conforms to that node.
+    node: rules/knowledge-base/required-start-fallback
+  - file: src/modules/ingestion/validation/temporal.ts
+    where: >-
+      the doc comment on `validateTemporal` (lines 63-72)
+    evidence: >-
+      "Throws `ValidationFailure` on the first issue."
+    cost: >-
+      The refuse-at-the-first-failing-check ordering is stated again in prose, while the sequence of `if` blocks in the function already holds it. The prose can drift from the order the node decides.
+    kind: restates
+    correction: >-
+      Remove the sentence by the comment route. The code holds the ordering at lines 74-129.
+    node: rules/knowledge-base/date-check-order
+read:
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      the `change_hint` field of `TemporalLayerInput` (line 16), and the `change_hint === "correction"` branch (line 84)
+    evidence: >-
+      readonly change_hint: "none" | "succession" | "correction";
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      the `valid_from_basis` field of `TemporalLayerInput` (line 14) and of `TemporalResolved` (line 31)
+    evidence: >-
+      readonly valid_from_basis: "stated" | "document" | "received" | null;
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: >-
+      `ERRATA_MARKERS`, `hasErrataSignal` and the `change_hint === "correction"` guard in `validateTemporal` (lines 34-44, 84-92)
+    evidence: >-
+      const ERRATA_MARKERS = ["errata", "errado", "correção", "corrigir", "correction", "correcao"] as const; ... if (!hasErrataSignal(input.fragment_texts)) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", ...
+  - node: rules/knowledge-base/date-check-order
+    held_at: >-
+      the order of the guards in `validateTemporal`, lines 74-129: start before end, then correction evidence, then basis for a stated start, then the required start
+    evidence: >-
+      if (input.valid_from >= input.valid_to) { throw ... } ... if (input.change_hint === "correction") { ... } ... if (input.valid_from !== null && input.valid_from_basis === null) { throw ... } if (input.requires_valid_from && input.valid_from === null) {
+  - node: rules/knowledge-base/required-start-available
+    held_at: >-
+      the `requires_valid_from && valid_from === null` branch of `validateTemporal` (lines 101-129)
+    evidence: >-
+      if (input.document_date !== null) { return {...}; } const receivedDate = toIsoDate(input.received_at); if (receivedDate !== null) { return { valid_from: receivedDate, valid_from_basis: "received" }; } throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", ...
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: >-
+      the `valid_from !== null && valid_from_basis === null` guard in `validateTemporal` (lines 94-100)
+    evidence: >-
+      if (input.valid_from !== null && input.valid_from_basis === null) { throw new ValidationFailure("BUSINESS_DATE_UNJUSTIFIED", "valid_from supplied without a valid_from_basis (stated | document | received).", { valid_from: input.valid_from }
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: >-
+      the first guard of `validateTemporal` (lines 74-82)
+    evidence: >-
+      if (input.valid_from !== null && input.valid_to !== null) { if (input.valid_from >= input.valid_to) { throw new ValidationFailure("BUSINESS_TEMPORAL_INCOHERENT", ...
+looked_past: >-
+  The file header comment (lines 1-6, with an empty "Validates:" list) and the `toIsoDate` doc comment (lines 46-54) say nothing a node holds, so they are prose for the comment route and not findings here.
+candidates_opened:
+  - rules/knowledge-base/required-start-fallback

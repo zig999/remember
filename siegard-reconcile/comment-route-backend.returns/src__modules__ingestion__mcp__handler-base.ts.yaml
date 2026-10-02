@@ -1,0 +1,69 @@
+findings:
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the docstring above assertRunIsRunning, lines 79-90
+    evidence: >-
+      "- id does not match any LLMRun row -> `RESOURCE_NOT_FOUND`
+       - id matches a row whose `status !== 'running'` -> `BUSINESS_RUN_NOT_RUNNING`"
+    cost: >-
+      The docstring states a second time the rule that a proposal is taken only within a running run,
+      and its order of checks. The code below it already holds both: `if (row === null)` throws
+      RESOURCE_NOT_FOUND and `if (row.status !== "running")` throws BUSINESS_RUN_NOT_RUNNING. A reader
+      can take the prose for where the rule lives, and when the node moves the prose stays behind
+      saying the old thing.
+    kind: restates
+    correction: >-
+      Remove the docstring's restatement of the two refusals. The code in assertRunIsRunning stays,
+      since it is where the node's fact is held.
+    node: rules/knowledge-base/proposal-requires-running-run
+  - file: src/modules/ingestion/mcp/handler-base.ts
+    where: >-
+      the comment inside deriveValidationOutcome's default branch, lines 73-75
+    evidence: >-
+      "// `accepted`, `matched_existing`, `created_new`, `proposed`, missing
+       // tag — all collapse to `accepted` per the current contract."
+    cost: >-
+      The comment restates the mapping from a proposal's result tag to a tool call's validation
+      outcome. Candidate node rules/knowledge-base/tool-call-validation-outcome holds that mapping
+      and the `switch` in this file implements it. The comment is a second home outside behavior, and
+      this file is not bound to that node, so a change to the node does not reach this file through
+      `--check`.
+    kind: restates
+    correction: >-
+      Remove the comment. Binding the file to rules/knowledge-base/tool-call-validation-outcome would
+      claim the switch as the place where that node's fact is held.
+    node: rules/knowledge-base/tool-call-validation-outcome
+read:
+  - node: domain/knowledge-base/tool-call
+    held_at: nowhere
+    evidence: >-
+      The file declares no shape for the tool call. It imports `IngestToolName` and `ValidationOutcome`
+      from "../dto/llm-run.dto.js" and passes `{ llm_run_id, tool_name, arguments, result,
+      validation_outcome }` to `insertToolCall`. The shape of the element is declared in another file.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: assertRunIsRunning, lines 91-111
+    evidence: >-
+      `if (row.status !== "running") { throw new ValidationFailure("BUSINESS_RUN_NOT_RUNNING", ...`
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      assertRunIsRunning, lines 95-109, for the existing-run check followed by the running check. The
+      well-formed-request check happens before this function and is not carried in this file.
+    evidence: >-
+      `const row = await findLlmRunById(client, llmRunId); if (row === null) { throw new
+      ValidationFailure("RESOURCE_NOT_FOUND", ...` followed by `if (row.status !== "running") {
+      throw ... "BUSINESS_RUN_NOT_RUNNING"`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: runIngestHandler, catch and rollback branch and the audit writes, lines 141-186 and 197-224
+    evidence: >-
+      `await client.query("ROLLBACK");` discards the business writes, then
+      `await safeWriteAuditOnRollback(args.deps, args.tool_name, args.input, errEnv, "rejected");` and
+      `... errEnv, "error");` write only the tool call through `insertToolCallStandalone`.
+looked_past: >-
+  The file header and several docstrings cite BR-numbers and say the ambient run id is "bound at MCP
+  session start by the transport", prose that no code in this file carries and that is a comment-route
+  matter rather than a conformance one.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - domain/knowledge-base/validation-outcome
+  - rules/knowledge-base/tool-call-validation-outcome
+  - rules/knowledge-base/every-proposal-audited

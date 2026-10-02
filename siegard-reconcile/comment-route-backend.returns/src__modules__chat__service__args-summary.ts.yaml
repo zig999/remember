@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the doc comment above SEARCH_QUERY_MAX_CHARS, line 3
+    evidence: >-
+      /** Per the BR-09 format, only the first 60 chars of a search query are shown. */
+    cost: >-
+      The 60-character limit is written a second time in prose that cites a back-spec rule number. A
+      reader who finds the comment treats it as where the limit is decided, and the comment will not
+      move when the node does.
+    kind: restates
+    correction: >-
+      Remove the comment. The limit is already held by `const SEARCH_QUERY_MAX_CHARS = 60;` and by the
+      `truncateCodepoints(query, SEARCH_QUERY_MAX_CHARS)` call in the "search" case of this same file.
+    node: rules/chat/tool-start-search-summary
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the doc comment of buildArgsSummary, lines 11-13
+    evidence: >-
+      falls back to `<n keys>` on any mismatch.
+       * @returns A redacted summary, never longer than `ARGS_SUMMARY_MAX_CHARS` Unicode code points.
+    cost: >-
+      The doc comment restates the 200-character bound and the fallback shape. Its spelling of the
+      fallback, `<n keys>`, differs from the node's "<n> keys" and from what fallbackSummary emits
+      (`${...length} keys`). A reader who trusts the comment looks for a shape the code never produces.
+    kind: restates
+    correction: >-
+      Remove the prose. The bound is held by `ARGS_SUMMARY_MAX_CHARS = 200` and `clampToMax` in this
+      file. The fallback is held by `fallbackSummary` in this file.
+    node: rules/chat/tool-start-summary-bounded
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the "start_async_ingestion" and "get_ingestion_status" cases of formatByTool, lines 99-116
+    evidence: >-
+      return `source_type=${sourceType} content_len=${contentLen}`;
+      ...
+      return `llm_run_id=${llmRunId}`;
+    cost: >-
+      This text goes out as the args_summary of a tool-start event. Its format is a business fact: what an
+      ingestion start and an ingestion status check show, and that the length of the content is shown in
+      place of the content. No node holds it. The only related node, tool-start-summary-bounded, says
+      just that the content is never carried. The next reader will look for these two summaries in the
+      specification and will not find them.
+    kind: unstated
+    correction: >-
+      Analysis should give these two summary formats a node beside the other rules/chat/tool-start-*
+      nodes. The fallback node's "lacking an argument its tool requires" clause would then also apply to
+      the required source_type, content and llm_run_id arguments.
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the comment in the default case of formatByTool, lines 119-120
+    evidence: >-
+      // Unknown tool name — BR-10 says the dispatcher should already have
+      // caught this, but the summariser is independently resilient.
+    cost: >-
+      The comment restates, with a back-spec rule number, the node's rule that an unknown tool gets the
+      key-count fallback. It also adds a claim about the dispatcher that no node in this set holds.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is held by `return fallbackSummary(obj);` in the default case of this
+      file.
+    node: rules/chat/tool-start-summary-fallback
+  - file: src/modules/chat/service/args-summary.ts
+    where: >-
+      the doc comment of clampToMax, lines 162-166
+    evidence: >-
+      * Final clamp: if a perfectly-formatted summary still exceeds the hard cap
+         * (e.g. an unusually long UUID list in a future tool), trim to the maximum.
+    cost: >-
+      The doc comment restates the node's bound on the summary length, with an example about a "future
+      tool". The example looks like a second statement of the rule, and it will not follow the node if
+      the limit changes.
+    kind: restates
+    correction: >-
+      Remove the comment. The bound is held by `ARGS_SUMMARY_MAX_CHARS = 200` and by the
+      `codepoints.slice(0, ARGS_SUMMARY_MAX_CHARS)` clamp in this file.
+    node: rules/chat/tool-start-summary-bounded
+read:
+  - node: rules/chat/tool-start-attribute-history-summary
+    held_at: >-
+      the "get_history_attribute_key" case of formatByTool, lines 72-77
+    evidence: >-
+      return `node_id=${nodeId} key=${key}`;
+  - node: rules/chat/tool-start-listing-summary
+    held_at: >-
+      the "list_nodes" case and the "list_node_types" / "list_link_types" / "list_attribute_keys" case of
+      formatByTool, lines 79-89
+    evidence: >-
+      return `node_type=${nodeType} limit=${limit}`;
+      ...
+      case "list_attribute_keys":
+            return "";
+  - node: rules/chat/tool-start-read-summary
+    held_at: >-
+      the "get_node", "get_history_link" / "get_history_attribute" and "get_provenance_*" cases of
+      formatByTool, lines 49-53, 65-70 and 91-97
+    evidence: >-
+      case "get_provenance_fragment": {
+            const id = readString(obj, "id");
+            if (id === undefined) return fallbackSummary(obj);
+            return `id=${id}`;
+  - node: rules/chat/tool-start-search-summary
+    held_at: >-
+      the "search" case of formatByTool, lines 34-47, with SEARCH_QUERY_MAX_CHARS and truncateCodepoints
+    evidence: >-
+      const parts: string[] = [`query="${truncateCodepoints(query, SEARCH_QUERY_MAX_CHARS)}"`];
+      ... if (layers !== undefined && layers.length > 0) {
+      ... if (expandDepth !== undefined) {
+  - node: rules/chat/tool-start-summary-bounded
+    held_at: >-
+      ARGS_SUMMARY_MAX_CHARS, buildArgsSummary and clampToMax, lines 1, 15-18 and 167-171. The ingestion
+      case builds `content_len` from the content and never emits the content itself.
+    evidence: >-
+      export const ARGS_SUMMARY_MAX_CHARS = 200;
+      ... return clampToMax(summary);
+      ... if (codepoints.length <= ARGS_SUMMARY_MAX_CHARS) return s;
+  - node: rules/chat/tool-start-summary-fallback
+    held_at: >-
+      fallbackSummary and its callers, lines 125-130. The callers are the unknown-tool default case and
+      each case missing a required argument.
+    evidence: >-
+      return `${Object.keys(input as Record<string, unknown>).length} keys`;
+      ... default:
+            return fallbackSummary(obj);
+  - node: rules/chat/tool-start-traversal-summary
+    held_at: >-
+      the "traverse" case of formatByTool, lines 55-63
+    evidence: >-
+      if (depth !== undefined) {
+              return `id=${id} depth=${depth}`;
+            }
+            return `id=${id}`;
+looked_past: >-
+  A non-object input is collapsed to "0 keys" before the switch, so a catalog-listing call with a null or
+  array input would not give the empty summary. Whether the dispatcher can ever pass such an input is the
+  dispatcher's judgment, not this file's, so I did not report it.
+candidates_opened: []

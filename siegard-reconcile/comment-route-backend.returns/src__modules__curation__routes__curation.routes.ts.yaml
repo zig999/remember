@@ -1,0 +1,36 @@
+findings:
+  - file: src/modules/curation/routes/curation.routes.ts
+    where: >-
+      header comment, lines 16-20 ("Error mapping: ...")
+    evidence: >-
+      // Error mapping: thrown service / Zod errors flow through the shared
+      // `mapErrorToHttpResponse` mapper in `curation/mcp/error-envelope.ts`
+      // (BR-30). The mapper is the single source of truth for both REST and the
+      // (future) MCP curation transport; this file no longer carries inline
+      // `handleZodError` / `handleCurationError` cascades.
+    cost: >-
+      The comment says in prose what the node holds: both transports answer alike. It also calls the MCP transport "(future)", although a curation MCP transport exists. A reader who trusts it gets a wrong picture of where the same-answer rule lives. The code already holds the fact, because every handler's catch calls `sendError`, which calls `mapErrorToHttpResponse` from `../mcp/error-envelope.js`.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The shared mapper import in `../mcp/error-envelope.js`, and the error mapping in `src/shared/error-mapping.ts`, hold the behavior.
+    node: constraints/curation-transports-answer-alike
+
+read:
+  - node: constraints/curation-transports-answer-alike
+    held_at: >-
+      `sendError` and its calls in the catch blocks of every POST handler. They route every thrown error through the shared `mapErrorToHttpResponse` imported from `../mcp/error-envelope.js`, so the REST answer comes from the mapper the node ties to the MCP side. The mapper itself sits in another file. Zod failures in `/queue` and in the path parse flow to the app-level error handler, which maps `ZodError` to `VALIDATION_INVALID_FORMAT`.
+    evidence: >-
+      const { statusCode, envelope, logLevel } = mapErrorToHttpResponse(err); ... return reply.status(statusCode).send(envelope);
+  - node: constraints/curation-write-failure-logged
+    held_at: >-
+      `sendError`, lines 76-95. It logs at error level with `curation_request_failed`, `error_code` and the cause, when the mapper's `logLevel` is "error".
+    evidence: >-
+      if (logLevel === "error") { logger.error({ route: ..., method: ..., error_code: envelope.error.code, cause_message: err instanceof Error ? err.message : String(err), cause_name: ... }, "curation_request_failed"); }
+  - node: rules/knowledge-base/curation-request-checked-first
+    held_at: >-
+      Each curation handler parses its request before calling the service that touches nodes, links, attributes or fragments. In the entity-match handler the order is `NodeIdPathSchema.parse`, then `ResolveEntityMatchBodySchema.parse`, then `resolveEntityMatchService`. The merge, dispute, confirm, reject and correct handlers do the same with their body schemas.
+    evidence: >-
+      body = ResolveEntityMatchBodySchema.parse(request.body ?? {}); ... const result = await resolveEntityMatchService({ pool: deps.pool, logger: deps.logger }, params.node_id, body);
+
+looked_past: >-
+  The `/metrics` handler turns a mapper status of 500 into 503 with `SYSTEM_SERVICE_UNAVAILABLE` and "A backing service is temporarily unavailable." This is held by the node contracts/knowledge-base/curation, which is outside this set, so it is no finding. I also left the other comments (UC/BR ids, the `ingestionCatalog` rationale, the `handlers do NOT re-check the token` note) alone. They restate no fact of these three nodes.

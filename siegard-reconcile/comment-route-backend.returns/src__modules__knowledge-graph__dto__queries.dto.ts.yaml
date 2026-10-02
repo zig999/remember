@@ -1,0 +1,88 @@
+findings:
+  - file: src/modules/knowledge-graph/dto/queries.dto.ts
+    where: >-
+      ListNodesQuerySchema, the `limit` field, lines 59-61
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+    cost: >-
+      The node listing enforces the 1 to 100 limit bound here. The node that holds it,
+      rules/knowledge-base/page-limit-bounds, is bound in the candidate index to
+      compliance-delete.dto.ts, curation-action.dto.ts and search.dto.ts, but not to this file.
+      If the node changes, `--check` never reaches this schema. The next reader looks in the
+      specification for where the node listing's limit is decided and finds a node that does not
+      answer for the file that enforces it.
+    kind: contradicts
+    correction: >-
+      The node already states the fact and the code already implements it. Bind
+      rules/knowledge-base/page-limit-bounds to this file. The code never reads the
+      specification, so what closes this is the bind and not a code change.
+    node: rules/knowledge-base/page-limit-bounds
+read:
+  - node: domain/knowledge-base/node-filter
+    held_at: >-
+      ListNodesQuerySchema, lines 54-64. It declares node_type, name_prefix, status (NodeStatusSchema, imported) and the page fields limit and offset.
+    evidence: >-
+      node_type: z.string().min(1).max(200).optional(),
+      name_prefix: z.string().min(1).max(200).optional(),
+      status: NodeStatusSchema.optional(),
+  - node: domain/knowledge-base/node-view
+    held_at: >-
+      GetNodeByIdQuerySchema, lines 75-81. It declares as_of, in_effect_only and include_uncertain.
+    evidence: >-
+      as_of: IsoDateOnly.optional(),
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+  - node: domain/knowledge-base/traversal-direction
+    held_at: >-
+      TraverseDirectionSchema, line 107, the enumeration of the three directions.
+    evidence: >-
+      export const TraverseDirectionSchema = z.enum(["out", "in", "both"]);
+  - node: domain/knowledge-base/traversal-request
+    held_at: >-
+      TraverseQuerySchema, lines 134-142. It declares direction, link_types, depth, as_of and in_effect_only. The starting node arrives through NodeIdParamSchema.
+    evidence: >-
+      direction: TraverseDirectionSchema.optional().default("both"),
+      link_types: LinkTypesArray.optional(),
+      depth: TraverseDepthCoercer.optional().default(TRAVERSAL_DEPTH_DEFAULT),
+      as_of: IsoDateOnly.optional(),
+      in_effect_only: BooleanQuery.optional().default(false),
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      ListLinkTypesQuerySchema, line 21. The rules are off unless the request sets include_rules.
+    evidence: >-
+      include_rules: BooleanQuery.optional().default(false),
+  - node: rules/knowledge-base/node-view-defaults
+    held_at: >-
+      GetNodeByIdQuerySchema, lines 77-79. as_of is optional with no default, in_effect_only defaults to false and include_uncertain defaults to true.
+    evidence: >-
+      as_of: IsoDateOnly.optional(),
+      in_effect_only: BooleanQuery.optional().default(false),
+      include_uncertain: BooleanQuery.optional().default(true),
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      ListNodesQuerySchema, lines 59-62. limit defaults to 20 and offset defaults to 0.
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+        .optional()
+        .default(20),
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      ListNodesQuerySchema, the `offset` field, line 62.
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0),
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: >-
+      TraverseQuerySchema, lines 135-141. direction defaults to "both", depth defaults to TRAVERSAL_DEPTH_DEFAULT (imported, 1 in traversal/config.ts), as_of has no default, in_effect_only defaults to false and link_types has no default, so every link type is followed.
+    evidence: >-
+      direction: TraverseDirectionSchema.optional().default("both"),
+      link_types: LinkTypesArray.optional(),
+      depth: TraverseDepthCoercer.optional().default(TRAVERSAL_DEPTH_DEFAULT),
+      in_effect_only: BooleanQuery.optional().default(false),
+looked_past: >-
+  The file's format checks (names of 1 to 200 characters, YYYY-MM-DD dates, "true"/"false" switches, integers) and the depth range check delegated to traversal.service.ts all agree with contracts/knowledge-base/retrieval, but whether that contract is bound to this file is another judgment's.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds
+  - domain/knowledge-base/page
+  - rules/knowledge-base/expansion-depth-bounds
+  - contracts/knowledge-base/retrieval

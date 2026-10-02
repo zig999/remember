@@ -1,0 +1,106 @@
+findings:
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      file header comment, lines 8-19 (the "CRITICAL CONTRACT" block), and the comments at lines 176-179 and 306-308
+    evidence: >-
+      "Both functions return `Promise<void>` and NEVER throw. ... Any error inside is caught and logged WARN" ; "`summary_prev` (whatever it was at refresh start) stays
+      unchanged on every failure path — the next overflow trigger will retry."
+    cost: >-
+      The rule that a failed distillation changes nothing is stated a second time in prose outside the running system. When the node moves, `--check` does not reach these comments. A reader may take them for the place the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the prose. The `catch (err)` blocks of maybeRefreshSummary and maybeDistillTitle hold the behavior and the node binds it.
+    node: rules/chat/distillation-failure-changes-nothing
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      docstring of maybeRefreshSummary (lines 143-180) and the comments at lines 191-197 and 229
+    evidence: >-
+      "refresh `chat_conversation.summary_rolling` via INCREMENTAL FOLD when at least one real turn has fallen out of the recent window." ; "If the count is 0 (no overflow), return."
+    cost: >-
+      The refresh policy (enabled flag, overflow gate, fold from the previous summary) is written out again as prose, with version-numbered steps ("BR-33 v2.9"). It can drift from the node without anyone noticing. The same docstring already disagrees with the code on one value (`max_tokens: 512` in the docstring, `SUMMARY_MAX_TOKENS = 600` in the code).
+    kind: restates
+    correction: >-
+      Remove the prose. `if (!env.CHAT_SUMMARY_ENABLED) return;`, the `overflowCount === 0` gate and the `mod.buildUserTurn(summary_prev, newMessages)` call hold the behavior.
+    node: rules/chat/rolling-summary-refresh
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      comments at lines 109-113, 154-159 and 207-212, and the DistillationEnv field docstring for CHAT_SUMMARY_OVERLAP_M
+    evidence: >-
+      "hard cap on the number of `chat_message` rows the fold pulls into the `bounded_overlap_slice` per refresh. Cut on REAL-turn boundaries by the repository slicer ... Default 40 in `env.ts`."
+    cost: >-
+      The overlap cap, its default of 40 and the anchor rule are restated as prose in a file that only forwards the value. The code that holds them is in `config/env.ts` and the repository slicer. If the node changes, this prose keeps the old number.
+    kind: restates
+    correction: >-
+      Remove the prose. `.default(40)` in backend/src/config/env.ts line 182 holds the default, and `repo.listOlderMessagesForSummaryBounded` holds the slice.
+    node: rules/chat/rolling-summary-overlap
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      comment at lines 269-271 and the comment at lines 132-134
+    evidence: >-
+      "Step 4 — oversize refusal. `summary_prev` stays unchanged; the next overflow trigger re-runs the fold ... NO write here."
+    cost: >-
+      The 2000-character cap and the refusal to write are restated in comments next to the code that enforces them (`SUMMARY_MAX_CHARS`). A second place states the limit, so a change to the node can leave the comment with the old figure.
+    kind: restates
+    correction: >-
+      Remove the comments. `if (summary_new.length > SUMMARY_MAX_CHARS) { ... return; }` and the empty check `if (summary_new === "") return;` hold the rule.
+    node: rules/chat/rolling-summary-length
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      docstring of maybeDistillTitle (lines 327-346) and the comment at lines 132-134
+    evidence: >-
+      "1. `repository.getConversationById(conversation_id)` under `withReadOnly`; if `title IS NOT NULL` OR row absent: return." ; "6. `repository.setTitleIfNull(conversation_id, title)` under `withTransaction` — the `IF NULL` guard makes the operation idempotent."
+    cost: >-
+      The rules that a title is distilled only for an untitled conversation and written only while it has none are restated in prose. The prose follows the repository's guard, so it can drift from the node unseen.
+    kind: restates
+    correction: >-
+      Remove the prose. `if (conversation.title !== null) return;` and `repo.setTitleIfNull(...)` hold the behavior.
+    node: rules/chat/distilled-title-never-overwrites
+  - file: src/modules/chat/service/distillation.service.ts
+    where: >-
+      docstring of maybeDistillTitle (lines 327-346) and the comment at lines 367-370
+    evidence: >-
+      "3. `repository.getFirstUserAndAssistant(conversation_id)` under `withReadOnly`; if either side is null: return (the conversation doesn't yet have a completed turn)." ; "`getFirstUserAndAssistant` already returns the first REAL user turn and the first TERMINAL assistant answer"
+    cost: >-
+      The title-distillation policy (enabled flag, first owner-written message and first turn-ending answer) is restated as prose, which can disagree with the node once one of them changes.
+    kind: restates
+    correction: >-
+      Remove the prose. `if (!env.CHAT_TITLE_ENABLED) return;` and the `pair.user === null || pair.assistant === null` guard hold the behavior. The repository's `getFirstUserAndAssistant` holds the first-message and terminal-answer selection.
+    node: rules/chat/title-distillation
+read:
+  - node: rules/chat/distillation-failure-changes-nothing
+    held_at: >-
+      the `catch (err)` blocks of maybeRefreshSummary (lines 305-320) and maybeDistillTitle (lines 408-420), plus the early `return`s before any write
+    evidence: >-
+      `logger.warn({ event: "chat.summary_refresh_failure", ... }, "chat summary refresh failed");` and `logger.warn({ event: "chat.title_distillation_failure", ... }, "chat title distillation failed");` with no write or rethrow in either catch; `if (summary_new.length > SUMMARY_MAX_CHARS) { ... return; }` and `if (candidate === "" || candidate.length > TITLE_MAX_LENGTH) return;` precede the writes
+  - node: rules/chat/distilled-title-length
+    held_at: >-
+      maybeDistillTitle, line 392-393
+    evidence: >-
+      `const candidate = extractText(response).trim(); if (candidate === "" || candidate.length > TITLE_MAX_LENGTH) return;` with `const TITLE_MAX_LENGTH = 80;`
+  - node: rules/chat/distilled-title-never-overwrites
+    held_at: >-
+      maybeDistillTitle, lines 359-360 and 395-397
+    evidence: >-
+      `if (conversation.title !== null) return;` and `repo.setTitleIfNull(client, conversationId, candidate)`
+  - node: rules/chat/rolling-summary-length
+    held_at: >-
+      maybeRefreshSummary, lines 266-282
+    evidence: >-
+      `const summary_new = extractText(response).trim(); if (summary_new === "") return;` and `if (summary_new.length > SUMMARY_MAX_CHARS) {` with `const SUMMARY_MAX_CHARS = 2000;`
+  - node: rules/chat/rolling-summary-overlap
+    held_at: >-
+      nowhere
+    evidence: >-
+      This file only forwards the value: `repo.listOlderMessagesForSummaryBounded(client, conversationId, env.CHAT_RECENT_WINDOW, env.CHAT_SUMMARY_OVERLAP_M)`. The default of 40 sits in backend/src/config/env.ts (`z.coerce.number().int().min(1).default(40)`) and the cut at an owner-written message sits in the repository slicer. Neither is in this file.
+  - node: rules/chat/rolling-summary-refresh
+    held_at: >-
+      maybeRefreshSummary, lines 192-264
+    evidence: >-
+      `if (!env.CHAT_SUMMARY_ENABLED) return;` ... `if (overflowCount === 0) return;` ... `const summary_prev: string | null = conversation?.summary_rolling ?? null;` ... `mod.buildUserTurn(summary_prev, newMessages)` ... `repo.updateSummaryRolling(client, conversationId, summary_new)`
+  - node: rules/chat/title-distillation
+    held_at: >-
+      maybeDistillTitle, lines 354-390
+    evidence: >-
+      `if (!env.CHAT_TITLE_ENABLED) return;` ... `if (conversation.title !== null) return;` ... `repo.getFirstUserAndAssistant(client, conversationId)` ... `if (pair.user === null || pair.assistant === null) return;` ... `anthropic.messages.create({ model: env.CHAT_UTILITY_MODEL, system: selectTitlePromptModule(), ...`
+looked_past: >-
+  Prose-only statements with no code or emitted text behind them (the docstring's `max_tokens: 512` against the `SUMMARY_MAX_TOKENS = 600` constant, the "8 sentences / 80 chars" prompt remark, the "CHAT_SUMMARY_AFTER_TURNS ... IGNORED" deprecation note) and the utility-call ceilings `SUMMARY_MAX_TOKENS` and `TITLE_MAX_TOKENS` are implementation parameters of another judgment, not claims on any node of this pack.

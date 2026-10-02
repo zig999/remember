@@ -1,0 +1,70 @@
+findings:
+  - file: src/modules/ingestion/routes/ingestion.routes.ts
+    where: >-
+      the POST_INGEST_BODY_LIMIT constant (line 82) and its use as the bodyLimit
+      option of the POST /raw-information route (line 100)
+    evidence: >-
+      const POST_INGEST_BODY_LIMIT = 11 * 1024 * 1024;
+      ...
+      { bodyLimit: POST_INGEST_BODY_LIMIT },
+      The node constraints/request-body-ceiling states: "The system refuses a
+      request body larger than 11 MiB before any operation answers it."
+      backend/src/app.ts line 92 declares the same figure again:
+      const BODY_LIMIT_BYTES = 11 * 1024 * 1024;
+    cost: >-
+      The 11 MiB ceiling is a system-wide fact held by a node, and it is declared
+      a second time in this route file, next to the declaration in app.ts. If the
+      node's figure changes, nothing ties this per-route override to it. The
+      route would keep applying the old limit while app.ts or the node moved. The
+      next reader could not tell which of the two figures was decided. This file
+      is not bound to constraints/request-body-ceiling, so `--check` would not
+      reach it when the node moves.
+    kind: contradicts
+    correction: >-
+      The figure should have one home in code. Either this route drops its own
+      limit and inherits the one in app.ts, or the constant is read from a single
+      shared declaration that the node's bind claims. Code cannot read the
+      specification. What closes the gap is binding the file that holds the
+      figure to constraints/request-body-ceiling.
+    node: constraints/request-body-ceiling
+read:
+  - node: constraints/ingestion-transports-answer-alike
+    held_at: >-
+      handleProposeMirror (lines 421-496) and the four propose-* route handlers
+      (lines 366-412). They return the validation-failure envelope verbatim, with
+      the code the service raised, and map a missing run to
+      RESOURCE_NOT_FOUND (404) and a non-running run to BUSINESS_RUN_NOT_RUNNING (409).
+    evidence: >-
+      if (isValidationFailure(err)) { throw new ProposeMirrorEnvelopeReject({ ok: false, error: { code: err.code, message: err.message, details: err.details } }); }
+      ... if (err instanceof RunNotRunningError) { return reply.status(409).send({ ok: false, error: { code: err.code, ...
+      The MCP side in src/modules/ingestion/mcp/handler-base.ts raises the same
+      two codes, RESOURCE_NOT_FOUND and BUSINESS_RUN_NOT_RUNNING, so the two
+      transports agree here.
+  - node: rules/knowledge-base/proposal-requires-running-run
+    held_at: >-
+      handleProposeMirror, lines 441-443, inside the transaction and before the
+      proposal service is called.
+    evidence: >-
+      if (run.status !== "running") {
+        throw new RunNotRunningError(llmRunId, run.status);
+      }
+  - node: rules/knowledge-base/proposal-run-checks-first
+    held_at: >-
+      Each propose-* route handler parses the params and the body, and
+      handleProposeMirror then checks that the run exists and that it is running,
+      all before call(...) reaches the service's own checks (lines 369-373 and
+      437-448).
+    evidence: >-
+      const params = LlmRunIdParamSchema.parse(request.params);
+      const input = ProposeFragmentInputSchema.parse(request.body);
+      ...
+      if (run === null) { throw new ResourceNotFoundError("llm_run", llmRunId); }
+      if (run.status !== "running") { throw new RunNotRunningError(llmRunId, run.status); }
+      return await call(client, { llmRunId, rawInformationId: run.input_raw_information_id });
+looked_past: >-
+  The HTTP status numbers hard-coded per error class (404, 409, 502, 500), the
+  logger event names, and the JSDoc and line comments citing BR-21, TC-12, TC-13
+  and UC numbers belong to other judgments. They are either prose or
+  transport-mapping matters, and no node of this pack holds them.
+candidates_opened:
+  - constraints/request-body-ceiling

@@ -1,0 +1,63 @@
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      ComplianceDeleteRequestSchema, ComplianceDeleteResponseSchema, ComplianceDeletionSchema, ListComplianceDeletionsQuerySchema, ComplianceDeletionListSchema and ComplianceDeletionIdParamSchema (lines 15-106). They declare the request, response, list and id-parameter shapes of compliance-delete, list-compliance-deletions and read-compliance-deletion. The refusal messages and HTTP statuses are not in this file. The file only carries the "VALIDATION_OUT_OF_RANGE" marker, which the route and toolset files map to the contract's code.
+    evidence: >-
+      export const ComplianceDeleteResponseSchema = z.object({ outcome: ComplianceDeleteOutcomeSchema, deletion: ComplianceDeletionSchema, }); and export const ComplianceDeletionListSchema = z.object({ total: z.number().int().min(0), limit: z.number().int().min(1), offset: z.number().int().min(0), items: z.array(ComplianceDeletionSchema), });
+  - node: domain/knowledge-base/affected-counts
+    held_at: >-
+      ComplianceDeletionAffectedSchema, lines 33-38
+    evidence: >-
+      z.object({ chunks: z.number().int().min(0), fragments: z.number().int().min(0), links: z.number().int().min(0), attributes: z.number().int().min(0), })
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      ComplianceDeletionSchema, lines 44-50. It holds the deletion's identity, raw information, reason, executed_at and affected.
+    evidence: >-
+      export const ComplianceDeletionSchema = z.object({ id: UuidSchema, raw_information_id: UuidSchema, reason: ReasonSchema, executed_at: z.string(), affected: ComplianceDeletionAffectedSchema, });
+  - node: domain/knowledge-base/compliance-deletion-filter
+    held_at: >-
+      ListComplianceDeletionsQuerySchema, lines 69-87. It holds the raw information, the executed_from and executed_to window, and the page fields limit and offset.
+    evidence: >-
+      raw_information_id: UuidSchema.optional(), executed_from: z.string().datetime({ offset: true }).optional(), executed_to: z.string().datetime({ offset: true }).optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: domain/knowledge-base/compliance-deletion-outcome
+    held_at: >-
+      ComplianceDeleteOutcomeSchema, lines 24-27
+    evidence: >-
+      z.enum([ "deleted", "noop_already_deleted", ])
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      executed_from and executed_to in ListComplianceDeletionsQuerySchema. Both are optional, and the ordering check runs only when both are present.
+    evidence: >-
+      executed_from: z.string().datetime({ offset: true }).optional(), executed_to: z.string().datetime({ offset: true }).optional(), ... if (value.executed_from && value.executed_to) {
+  - node: rules/knowledge-base/audit-page-defaults
+    held_at: >-
+      limit and offset defaults in ListComplianceDeletionsQuerySchema, lines 74-75. The curation-action half of the rule is in another file.
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/audit-window-ordered
+    held_at: >-
+      the superRefine in ListComplianceDeletionsQuerySchema, lines 77-87. The curation-action filter half of the rule is in another file.
+    evidence: >-
+      if (Date.parse(value.executed_from) >= Date.parse(value.executed_to)) { ctx.addIssue({ code: "custom", path: ["executed_to"], message: "VALIDATION_OUT_OF_RANGE", }); }
+  - node: rules/knowledge-base/compliance-deletion-reason-length
+    held_at: >-
+      ReasonSchema, line 12. It is used by the request and by the deletion record.
+    evidence: >-
+      export const ReasonSchema = z.string().trim().min(1).max(1000);
+  - node: rules/knowledge-base/compliance-deletion-reason-trimmed
+    held_at: >-
+      the .trim() in ReasonSchema, line 12. Zod's parse output is the trimmed value.
+    evidence: >-
+      export const ReasonSchema = z.string().trim().min(1).max(1000);
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the limit field of ListComplianceDeletionsQuerySchema, line 74
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the offset field of ListComplianceDeletionsQuerySchema, line 75
+    evidence: >-
+      offset: z.coerce.number().int().min(0).default(0),
+looked_past: >-
+  The file's header comment and its per-schema doc comments (BR-01 and BR-14 citations, "Mirrors the openapi.yaml schema definitions verbatim", "single source of truth") are prose that is not emitted and states no domain fact beyond what the code holds, so I named them here and filed no finding.

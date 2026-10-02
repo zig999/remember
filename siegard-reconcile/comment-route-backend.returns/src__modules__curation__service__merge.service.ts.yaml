@@ -1,0 +1,149 @@
+findings:
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the first guard of performMerge(), lines 43-44
+    evidence: >-
+      // Defence in depth (BR-23). Route layer rejects but the service must not
+      // trust upstream.
+    cost: >-
+      The comment restates, and cites a back-spec rule number for, the fact that a node is never merged into itself. The guard below it already holds that fact, so the pair conforms. The comment is a second home for the rule and gives the next reader a back-spec identifier to chase instead of the node.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route. The behavior is correct and the node already holds the fact, and the guard `args.survivorId === args.absorbedId` carries it in this file.
+    node: rules/knowledge-base/node-never-merged-into-itself
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the docstring on PerformMergeArgs.absorbedExpectedStatus, lines 28-29
+    evidence: >-
+      /** "active" -> the canonical case (UC-04). */
+      /** "needs_review" -> UC-02: the absorbed is in `needs_review`. */
+    cost: >-
+      The docstring restates which status the absorbed node must have in an entity-match resolution, and cites use-case numbers. The union type and the `absorbed.status !== args.absorbedExpectedStatus` branch hold the fact, so the prose is a second home outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring lines through the comment route. The fact stays held by the type `"active" | "needs_review"` and the guard in performMerge().
+    node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the absorbed-status guard, line 90
+    evidence: >-
+      // Absorbed must be in expected status.
+    cost: >-
+      The comment restates the check order's rule that an absorbed node outside the status its operation expects is refused. The code beneath it holds that rule too.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route.
+    node: rules/knowledge-base/merge-check-order
+  - file: src/modules/curation/service/merge.service.ts
+    where: >-
+      the comment above the node-type guard, line 106
+    evidence: >-
+      // BR-06: matching node_type.
+    cost: >-
+      The comment restates, and cites a back-spec rule number for, the same-node-type rule. The guard `survivor.node_type_id !== absorbed.node_type_id` holds the fact in this file.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route.
+    node: rules/knowledge-base/merge-requires-same-node-type
+read:
+  - node: domain/knowledge-base/merge-counts
+    held_at: >-
+      the exported interface MergeAffectedCounts, lines 20-25
+    evidence: >-
+      export interface MergeAffectedCounts {
+        readonly links_repointed: number;
+        readonly attributes_repointed: number;
+        readonly aliases_copied: number;
+        readonly path_compressed_nodes: number;
+      }
+  - node: rules/knowledge-base/curation-refuses-deleted-node
+    held_at: >-
+      the two deleted-status guards in performMerge(), lines 69-80
+    evidence: >-
+      if (survivor.status === "deleted") {
+        throw new NodeDeletedError(
+      ...
+      if (absorbed.status === "deleted") {
+        throw new NodeDeletedError(
+  - node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+    held_at: >-
+      the absorbed-status guard in performMerge(), lines 91-98, where the expected status is needs_review
+    evidence: >-
+      if (absorbed.status !== args.absorbedExpectedStatus) {
+        if (args.absorbedExpectedStatus === "needs_review") {
+          throw new ConflictError(
+            "BUSINESS_REVIEW_NOT_PENDING",
+  - node: rules/knowledge-base/merge-check-order
+    held_at: >-
+      the sequence of guards in performMerge(), lines 45-113
+    evidence: >-
+      The guards run in this order. Self-merge (`args.survivorId === args.absorbedId`), then absent survivor (`if (!survivor)`), absent absorbed (`if (!absorbed)`), deleted survivor, deleted absorbed, `survivor.status !== "active"`, `absorbed.status !== args.absorbedExpectedStatus`, and `survivor.node_type_id !== absorbed.node_type_id`. Each guard throws, so the first failing check refuses.
+  - node: rules/knowledge-base/merge-compresses-paths
+    held_at: >-
+      the pathCompressMergedInto call, lines 133-137
+    evidence: >-
+      const pathCompressedCount = await pathCompressMergedInto(
+        client,
+        args.absorbedId,
+        args.survivorId
+      );
+  - node: rules/knowledge-base/merge-counts-what-it-changed
+    held_at: >-
+      the return statement of performMerge(), lines 154-159
+    evidence: >-
+      return {
+        links_repointed: linksRepointed,
+        attributes_repointed: attributesRepointed,
+        aliases_copied: aliasesCopied,
+        path_compressed_nodes: pathCompressedCount,
+      };
+  - node: rules/knowledge-base/merge-marks-absorbed-merged
+    held_at: >-
+      the updateNodeMerged call, lines 117-121
+    evidence: >-
+      const mergedCount = await updateNodeMerged(
+        client,
+        args.absorbedId,
+        args.survivorId
+      );
+  - node: rules/knowledge-base/merge-requires-same-node-type
+    held_at: >-
+      the node-type guard, lines 107-113
+    evidence: >-
+      if (survivor.node_type_id !== absorbed.node_type_id) {
+        throw new BusinessError(
+          "BUSINESS_INVALID_TARGET_NODE",
+          "survivor and absorbed nodes must share node_type_id",
+          { reason: "node_type mismatch" }
+        );
+  - node: rules/knowledge-base/merge-survivor-active
+    held_at: >-
+      the survivor-status guard, lines 82-88
+    evidence: >-
+      if (survivor.status !== "active") {
+        throw new BusinessError(
+          "BUSINESS_INVALID_TARGET_NODE",
+          "Survivor must have status=active",
+  - node: rules/knowledge-base/node-merge-absorbs-active-node
+    held_at: >-
+      the absorbed-status guard, lines 91-104, whose non-needs_review branch refuses a non-active absorbed node
+    evidence: >-
+      throw new BusinessError(
+        "BUSINESS_INVALID_TARGET_NODE",
+        "Both nodes must have status=active",
+        { absorbed_id: absorbed.id, absorbed_status: absorbed.status }
+      );
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the first guard of performMerge(), lines 45-50
+    evidence: >-
+      if (args.survivorId === args.absorbedId) {
+        throw new ConflictError(
+          "BUSINESS_SELF_MERGE_FORBIDDEN",
+          "survivor_id equals absorbed_id"
+        );
+      }
+looked_past: >-
+  The comments on the mutation order ("Order matters: status flip first...") and on the defensive `mergedCount !== 1` conflict describe how the code works and carry no node's fact. Whether the error classes in errors.ts map to the spec's HTTP statuses and to BUSINESS_NODE_DELETED belongs to another file's judgment.
+candidates_opened:
+  - contracts/knowledge-base/curation

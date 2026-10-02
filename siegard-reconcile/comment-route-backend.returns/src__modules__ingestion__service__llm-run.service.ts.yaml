@@ -1,0 +1,89 @@
+findings:
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the header comment "Errors:" (lines 6-12) and the doc comment above RunNotRunningError (lines 58-69)
+    evidence: >-
+      "//   - `RunNotRetryableError` -> 409 BUSINESS_RUN_NOT_RETRYABLE." and
+      "//   - `RunNotRunningError`   -> 409 BUSINESS_RUN_NOT_RUNNING (TC-13 propose-*" and
+      "* 409 sentinel for the TC-13 propose-* REST mirrors. Raised by the route
+      * layer's pre-check when the addressed `llmRunId` exists but its `status` is
+      * not `'running'`"
+    cost: >-
+      The two refusal codes and their 409 status are restated in prose beside the classes that carry them
+      (`public readonly code = "BUSINESS_RUN_NOT_RETRYABLE" as const;` and
+      `public readonly code = "BUSINESS_RUN_NOT_RUNNING" as const;`). The ingestion contract node holds them.
+      When the node moves, nothing reaches the comment, so a reader finds a second, possibly stale, statement
+      of the refusal.
+    kind: restates
+    correction: >-
+      Remove the comments. The code in this file holds the codes and the contract node holds the fact.
+    node: contracts/knowledge-base/ingestion
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the doc comment above retryLlmRun (lines 185-191)
+    evidence: >-
+      "* 2. Atomic `UPDATE ... WHERE status = 'failed'`; rowCount === 0 means the
+      *      pre-read showed `failed` but a concurrent transition raced us -> 409."
+    cost: >-
+      The comment restates the lifecycle rule that only a failed run may be retried. The code holds it at
+      `if (existing.status !== "failed") { throw new RunNotRetryableError(llmRunId, existing.status); }`.
+      The prose is a second home for the transition outside behavior.
+    kind: restates
+    correction: >-
+      Remove the comment. The retry guard in this file and the state-machine node already hold the fact.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/service/llm-run.service.ts
+    where: >-
+      the comment inside toLlmRunResponse (lines 252-254)
+    evidence: >-
+      "// BR-33 — never emit the key when undefined (serializers must omit it; we
+      // enforce by not assigning at all). Empty array is a valid completed-run
+      // payload and is preserved verbatim."
+    cost: >-
+      The rule that affected nodes appear only when the run is completed and they can be derived is restated
+      in prose. The code holds it in `if (affectedNodes !== undefined) { return { ...base, affected_nodes: [...affectedNodes] }; }`.
+      The prose cites a back-spec rule number rather than the node, so a reader is pointed away from the
+      specification.
+    kind: restates
+    correction: >-
+      Remove the comment. The read-llm-run operation in the ingestion contract node holds the fact.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no LLMRun shape. It imports `LlmRunResponse` and `LlmRunRow` and only maps one onto the other:
+      `const base: LlmRunResponse = { id: row.id, model: row.model, prompt_version: row.prompt_version, ...`.
+      Only `RecentIngestionItem` is declared here, and that is not the LLMRun aggregate.
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The enumeration is imported as `LlmRunStatus` from "../dto/llm-run.dto.js". This file declares no values for it
+      and only reads and compares them, as in `existing.status !== "failed"`.
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The shape is declared elsewhere (`ToolCallResponse` from the dto, `ToolCallRow` from the repository). This file only
+      maps it: `toToolCallResponse(row)` returns `{ id: row.id, llm_run_id: row.llm_run_id, tool_name: row.tool_name, ... }`.
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      retryLlmRun (lines 192-217) holds the retry transitions. closeLlmRun (lines 223-233) only delegates to the repository's closeLlmRunRow.
+    evidence: >-
+      "if (existing.status !== "failed") { throw new RunNotRetryableError(llmRunId, existing.status); }" followed by
+      "const updated = await retryLlmRunRow(client, llmRunId);". The rejected retry from running is covered. The guards
+      for complete and fail from failed are not in this file.
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      listToolCallsByLlmRun (lines 167-183)
+    evidence: >-
+      "const total = await countToolCalls(client, args.llm_run_id);
+      const rows = await findToolCallsByRun(client, args);" and "return { total, limit: args.limit, offset: args.offset, items: rows.map(toToolCallResponse) };".
+      The total comes from a count over the run, and limit and offset go only to the page query.
+looked_past: >-
+  The retryLlmRun race branch reports `new RunNotRetryableError(llmRunId, "running")` when the re-read status is still failed, and the best-effort cache and swallow in getLlmRunById are implementation choices; neither is a domain fact this pass judges.
+candidates_opened:
+  - contracts/knowledge-base/ingestion
+  - rules/knowledge-base/affected-nodes-omit-absent

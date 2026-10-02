@@ -1,0 +1,106 @@
+findings:
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the header comment, lines 25-27, and the comment above the happy-path close, line 510
+    evidence: >-
+      // All four close the run as `failed` in a fresh short transaction (BR-26
+      // step 7) BEFORE the exception is thrown out. Successful completion closes
+      // the run as `completed` (BR-26 step 6).
+    cost: >-
+      Prose restates the rule that an extraction completes its run after reading every chunk and fails it on an error. The code that holds it is closeRunSafe(pool, llmRunId, "failed") and closeRunSafe(pool, llmRunId, "completed") in this file. A second statement of the rule sits outside the node, so a change to the node leaves this comment saying the old rule and the trace never reaches it.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the closeRunSafe calls and by the node.
+    node: rules/knowledge-base/extraction-closes-its-run
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment on FATAL_ERROR_BURST, line 373, and the comment inside the ok:false branch of runChunkLoop, lines 703-709
+    evidence: >-
+      /** Maximum consecutive `error` validation_outcome rows allowed within a chunk. */
+      // ok:false envelopes from layered validation (`VALIDATION_*`,
+      // `BUSINESS_*`, `RESOURCE_NOT_FOUND`) are 'rejected' on the audit row
+      // — NOT 'error'. Only system-level failures (`SYSTEM_*` — e.g.
+    cost: >-
+      Prose restates the rule that three proposals in a row within one chunk failing with a system error fail the run. The code holds it in FATAL_ERROR_BURST = 3, in `envelope.error.code.startsWith("SYSTEM_")` and in `if (consecutiveErrors >= FATAL_ERROR_BURST)`. The comments describe the threshold and which codes count in their own words, so they can drift from the node unnoticed.
+    kind: restates
+    correction: >-
+      Remove the comments. The fact stays held by the code named in the evidence and by the node.
+    node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment on PREV_TAIL_CHARS, line 376
+    evidence: >-
+      /** `prev_tail` window — last N characters of the previous chunk's text. */
+    cost: >-
+      Prose restates the rule that the model is shown the last 200 characters of the chunk before the one being read. The code holds it in `PREV_TAIL_CHARS = 200` and in `chunk.text.slice(-PREV_TAIL_CHARS)`. This is a second statement of the window outside the node.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/extraction-reads-chunks-in-order
+  - file: src/modules/ingestion/service/extraction.service.ts
+    where: >-
+      the comment in dispatchToolUse, case "propose_fragment", lines 221-225
+    evidence: >-
+      // Option (b): the orchestrator is authoritative about which chunk is
+      // being processed, so it injects the current `chunk_id` instead of
+      // asking the LLM for an opaque uuid it cannot know
+    cost: >-
+      Prose restates the rule that a proposed fragment is anchored to the chunk being read whatever chunks the model names. The code holds it in `chunk_ids: [chunkId]` and in `stripProperty(schema, "chunk_ids")`. The rule is stated a second time outside the node.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/extraction-anchors-to-read-chunk
+read:
+  - node: constraints/extraction-acts-only-through-proposals
+    held_at: >-
+      buildTools() offers only the four propose_* tools. The default branch of dispatchToolUse refuses any other tool name.
+    evidence: >-
+      buildTool("propose_fragment", IngestToolDescriptions.propose_fragment), buildTool("propose_node", ...), buildTool("propose_link", ...), buildTool("propose_attribute", ...); default: return { ok: false, error: { code: "VALIDATION_INVALID_FORMAT", message: `Unknown tool '${toolName}'.`
+  - node: constraints/extraction-model-call-bounded
+    held_at: >-
+      ANTHROPIC_REQUEST_TIMEOUT_MS and ANTHROPIC_MAX_RETRIES, passed to the client in defaultAnthropicFactory
+    evidence: >-
+      const ANTHROPIC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; const ANTHROPIC_MAX_RETRIES = 2; new AnthropicClient({ apiKey, timeout: ANTHROPIC_REQUEST_TIMEOUT_MS, maxRetries: ANTHROPIC_MAX_RETRIES })
+  - node: domain/knowledge-base/ingest-tool
+    held_at: nowhere
+    evidence: >-
+      The file only consumes the four tool names, in `case "propose_fragment":` and the other switch cases. The names are typed as `keyof typeof IngestToolInputJsonSchemas`, so the enumeration's shape is declared in dto/index.ts and not here.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      the LoadedRunContext.run interface, a partial declaration of the run's attributes (status, model, prompt_version). Closing the run is done by closeRunSafe.
+    evidence: >-
+      readonly run: { readonly id: string; readonly status: "running" | "completed" | "failed"; readonly model: string; readonly prompt_version: string; readonly input_raw_information_id: string; }
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the literal union "running" | "completed" | "failed", declared in RunNotRunnableError.currentStatus and in LoadedRunContext.run.status
+    evidence: >-
+      public readonly currentStatus: "running" | "completed" | "failed";
+  - node: rules/knowledge-base/extraction-anchors-to-read-chunk
+    held_at: >-
+      the propose_fragment case of dispatchToolUse, and stripProperty for the model-facing tool schema
+    evidence: >-
+      const withChunk = { ...(rawInput as Record<string, unknown>), chunk_ids: [chunkId], };
+  - node: rules/knowledge-base/extraction-closes-its-run
+    held_at: >-
+      runLlmExtraction. It fails the run on a fatal burst, a provider error or an uncaught exception, and completes it after the chunk loop.
+    evidence: >-
+      await closeRunSafe(pool, llmRunId, "failed"); ... // after the chunk loop: await closeRunSafe(pool, llmRunId, "completed");
+  - node: rules/knowledge-base/extraction-fails-on-repeated-system-errors
+    held_at: >-
+      FATAL_ERROR_BURST and the consecutiveErrors counter in runChunkLoop. The counter is local to one chunk, counts ok:false envelopes whose code starts with SYSTEM_, and a fatal_burst outcome fails the run.
+    evidence: >-
+      export const FATAL_ERROR_BURST = 3 as const; if (envelope.error.code.startsWith("SYSTEM_")) { consecutiveErrors += 1; } ... if (consecutiveErrors >= FATAL_ERROR_BURST) { return { kind: "fatal_burst" }; }
+  - node: rules/knowledge-base/extraction-reads-chunks-in-order
+    held_at: >-
+      the `for (const chunk of chunks)` loop in runLlmExtraction. The chunks are loaded by loadRunContext, ordered by `ORDER BY chunk_index ASC` in ingestion.repository.ts. The metadata is built in loadRunContext, and prevTail is built from PREV_TAIL_CHARS.
+    evidence: >-
+      const metadata: DocumentMetadata = { source_type: rawInfo.source_type, document_date: ..., title: ..., received_at: rawInfo.received_at.toISOString(), }; prevTail = chunk.text.length <= PREV_TAIL_CHARS ? chunk.text : chunk.text.slice(-PREV_TAIL_CHARS);
+looked_past: >-
+  The 64-turn chunk cap, the refusal skip, the pause_turn resume, the turn without proposals, the unknown-tool and malformed-arguments refusals and the 409 and 502 error codes are all held by nodes outside this file's set and not bound to it (rules/knowledge-base/extraction-chunk-turn-limit, extraction-turn-without-proposals-ends-chunk, model-refusal-skips-chunk, extraction-unknown-tool-refused, extraction-malformed-arguments-refused, extraction-requires-running-run), so they are misattributions of binding and not unstated facts.
+candidates_opened:
+  - rules/knowledge-base/extraction-chunk-turn-limit
+  - rules/knowledge-base/extraction-turn-without-proposals-ends-chunk
+  - rules/knowledge-base/extraction-unknown-tool-refused
+  - rules/knowledge-base/extraction-malformed-arguments-refused
+  - rules/knowledge-base/model-refusal-skips-chunk
+  - rules/knowledge-base/extraction-requires-running-run

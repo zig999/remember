@@ -1,0 +1,40 @@
+findings:
+  - file: src/modules/ingestion/prompts/extraction.v4.ts
+    where: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, the bullet beginning "When you encounter a relative date in the chunk text", lines 23-28
+    evidence: >-
+      "  `\"amanhã\"`, `\"semana que vem\"`, `\"esta semana\"`, similar pt-BR temporal",
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      "  use basis `\"received\"`.",
+    cost: >-
+      The directive is sent to the model at run time. It tells the model to give the basis received to a proposal's valid_from, and rules/knowledge-base/caller-never-states-received says "A proposal MUST NOT state the basis received." The prompt and the rule give opposite instructions. A reader of the specification will not see that the v4 prompt asks for the very basis the rule forbids. The decision log beside extraction-relative-date-falls-back-to-reception records the conflict and says the owner has not asked for it to be settled. The conflict is therefore only visible in this prompt text, where the prompt states the basis the rule forbids.
+    kind: contradicts
+    correction: >-
+      The owner has to settle which of the two holds. Either the rule is amended to allow the received basis in this case, or the directive stops telling the model to state it. This is decided in the specification, not by editing the prompt on its own.
+    node: rules/knowledge-base/caller-never-states-received
+read:
+  - node: domain/knowledge-base/prompt-version
+    held_at: >-
+      the PROMPT_VERSION constant, line 11. It carries the v4 member of the enumeration. The enumeration's full shape (v1 to v4) is not declared in this file.
+    evidence: >-
+      export const PROMPT_VERSION = "v4" as const;
+  - node: rules/knowledge-base/extraction-never-invents-a-date
+    held_at: >-
+      the last bullet of RECEIVED_AT_ANCHOR_DIRECTIVE, lines 31-32. It is emitted text, and it agrees with the node. The node is also inherited through systemV3, which this file imports and does not itself state.
+    evidence: >-
+      "- The rule applies ONLY to relative dates. Absolute dates stated in the chunk",
+      "  text remain `\"stated\"`; never invent a date.",
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      RECEIVED_AT_ANCHOR_DIRECTIVE, lines 23-28, appended to the v3 system prompt by system(), line 37.
+    evidence: >-
+      "  deictics), resolve it AGAINST `document_date` if it is present (basis",
+      "  `\"document\"`). If `document_date` is `(unknown)`, fall back to the date",
+      "  portion of `received_at` (the `YYYY-MM-DD` prefix of the ISO-8601 string) —",
+      and `return `${systemV3(catalog)}\n${RECEIVED_AT_ANCHOR_DIRECTIVE}`;`
+looked_past: >-
+  The prompt mentions the "document" and "stated" bases and says it supersedes v3's rule. Both agree with nodes outside this pass's set and were not judged further. The two JSDoc comments restate nothing a node holds as a domain fact.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received

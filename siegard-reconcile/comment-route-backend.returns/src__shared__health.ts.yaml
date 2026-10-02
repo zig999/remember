@@ -1,0 +1,25 @@
+read:
+  - node: domain/knowledge-base/database-status
+    held_at: >-
+      the `database` member of the `HealthReport` interface (line 14), whose type is the closed union of the two values the enumeration declares. The two return branches of collectHealth() set each of them.
+    evidence: >-
+      database: "ok" | "unreachable";
+  - node: domain/knowledge-base/health-report
+    held_at: >-
+      the exported `HealthReport` interface, lines 11-16. It declares the four attributes ok, service, database and checked_at, all required.
+    evidence: >-
+      export interface HealthReport { ok: boolean; service: "remember-bff"; database: "ok" | "unreachable"; checked_at: string; }
+  - node: rules/knowledge-base/health-checked-at-probe-start
+    held_at: >-
+      collectHealth(), line 19. The timestamp is taken before pingDatabase is awaited, and both return branches reuse it.
+    evidence: >-
+      const checkedAt = new Date().toISOString(); try { await pingDatabase(pool);
+  - node: rules/knowledge-base/health-probe-never-fails
+    held_at: >-
+      the try/catch in collectHealth(), lines 20-35. A failed ping is caught and returned as a report with ok false and database "unreachable", so the function never rejects.
+    evidence: >-
+      } catch { return { ok: false, service: "remember-bff", database: "unreachable", checked_at: checkedAt, }; }
+looked_past: >-
+  The file's header comment and the docstring on HealthReport describe where the probe is used (GET /health and the health MCP tool) and the shape of its result; this is prose, and the code holds the facts, so it belongs to the comment route and is not a conformance finding.
+candidates_opened:
+  - contracts/knowledge-base/access

@@ -1,0 +1,85 @@
+findings:
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      the doc comments on the UpdateConversationInput fields (lines 133-138) and
+      on updateConversation (lines 197-203)
+    evidence: >-
+      "/** `undefined` = do not change; `null` = clear; string = set. (BR-36) */"
+      and "/** `undefined` = do not change; `null` = un-archive; ISO ts = archive. (BR-36) */"
+      and "the repository interprets `undefined` as \"do not change\"."
+    cost: >-
+      Prose states the partial-update rule a second time beside the code that
+      holds it. When the node moves, the comment keeps saying the old rule and
+      nothing flags it, so a reader can take the comment for the decision.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the rule in
+      src/modules/chat/repository/chat.repository.ts, which updates only the
+      named fields (`Object.prototype.hasOwnProperty.call(patch, "archived_at")`
+      then `params.push(patch.archived_at ?? null)`). This file declares the
+      shape with optional, nullable fields.
+    node: rules/chat/conversation-update-partial
+  - file: src/modules/chat/service/conversation.service.ts
+    where: >-
+      the comment above nextCursor in listConversations (lines 172-173)
+    evidence: >-
+      "// The cursor encodes the LAST row of the page when more exist — the
+      // composite key `(created_at, id)` continues the DESC scan from there."
+    cost: >-
+      Prose states the newest-first order and the continue-after-the-last-row
+      rule a second time. The code holds both, so the comment is a second home
+      for the rule outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the fact in this file, where nextCursor
+      is built from the last row via `encodeCursor(last.created_at, last.id)`.
+      It also holds it in src/modules/chat/repository/chat.repository.ts, with
+      `ORDER BY created_at DESC, id DESC` and
+      `(created_at, id) < ($n::timestamptz, $m::uuid)`.
+    node: rules/chat/conversation-listing-order
+read:
+  - node: constraints/chat-reads-are-consistent
+    held_at: >-
+      getConversationUsage (lines 242-251): the existence read and the usage
+      aggregation both run inside one withReadOnly callback
+    evidence: >-
+      return withReadOnly(pool, async (client) => { const exists = await
+      repo.getConversationById(client, id); if (exists === null) throw new
+      ConversationNotFoundError(id); return repo.getConversationUsage(client,
+      id); });
+  - node: domain/chat/conversation-listing
+    held_at: >-
+      the ListConversationsInput interface (lines 119-125), which declares
+      limit, cursor and includeArchived
+    evidence: >-
+      export interface ListConversationsInput { readonly limit: number;
+      readonly cursor: string | null; readonly includeArchived: boolean; }
+  - node: rules/chat/conversation-listing-order
+    held_at: >-
+      listConversations (lines 174-178), which builds nextCursor from the last
+      item's (created_at, id) so the next page continues after it. The ordering
+      itself is in the repository.
+    evidence: >-
+      const last = page.items[page.items.length - 1]; const nextCursor =
+      page.hasMore && last !== undefined ? encodeCursor(last.created_at,
+      last.id) : null;
+  - node: rules/chat/conversation-request-check-order
+    held_at: nowhere
+    evidence: >-
+      No disabled-chat check is in this file. Format and existence never apply
+      to one operation here: listConversations only runs
+      `decodeCursor(input.cursor)` before the read, and getConversationUsage
+      only runs `if (exists === null) throw new ConversationNotFoundError(id)`.
+      The ordering of the three checks is not stated in this file.
+  - node: rules/chat/conversation-update-partial
+    held_at: >-
+      the UpdateConversationInput interface (lines 133-138), with optional,
+      nullable title and archived_at, and updateConversation, which forwards
+      the patch unchanged. The per-field application is in the repository.
+    evidence: >-
+      readonly title?: string | null; readonly archived_at?: string | null;
+      ... repo.updateConversation(client, id, patch)
+looked_past: >-
+  The comment on getConversationUsage (lines 237-240) says "The two reads share no transaction boundary", but the code runs both reads in one withReadOnly callback; it is prose only, with no code or emitted text carrying it, so it is a comment-route removal and not a finding here.
+candidates_opened:
+  - contracts/chat/conversations

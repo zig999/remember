@@ -1,0 +1,44 @@
+read:
+  - node: domain/knowledge-base/value-type
+    held_at: >-
+      the `value_type` member of the `AttributeKeyJoined` interface, line 105
+    evidence: >-
+      readonly value_type: "date" | "number" | "text" | "bool";
+  - node: rules/knowledge-base/allowed-values-in-string-order
+    held_at: >-
+      the ORDER BY of both queries in listAttributeValidValues, lines 171 and 180
+    evidence: >-
+      ORDER BY avv.attribute_key_id, avv.value ASC
+  - node: rules/knowledge-base/attribute-key-listing-by-node-type
+    held_at: >-
+      the filtered branch of listAttributeKeys, line 129
+    evidence: >-
+      WHERE ak.node_type_id = $1
+  - node: rules/knowledge-base/attribute-key-listing-order
+    held_at: >-
+      the ORDER BY clauses of listAttributeKeys, lines 130 and 142. The filtered branch orders by key alone, which gives node-type name then key because it holds a single node type.
+    evidence: >-
+      ORDER BY nt.name ASC, ak.key ASC
+  - node: rules/knowledge-base/link-type-listing-order
+    held_at: >-
+      the ORDER BY of listLinkTypes, line 43, and of listLinkTypeRules, line 75
+    evidence: >-
+      ORDER BY name ASC
+      ORDER BY r.link_type_id, src.name, tgt.name
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      listLinkTypeRules, lines 62-78, a separate query from listLinkTypes. It selects every rule row with no restriction on valid_from or valid_to, so the window never filters a rule. Deciding when to call it, which is the "only when the request asks" part, cannot sit in this file and is not here.
+    evidence: >-
+      FROM link_type_rule r
+            JOIN node_type src ON src.id = r.source_node_type_id
+            JOIN node_type tgt ON tgt.id = r.target_node_type_id
+            ORDER BY r.link_type_id, src.name, tgt.name
+  - node: rules/knowledge-base/node-type-listing-order
+    held_at: >-
+      the ORDER BY of listNodeTypes, line 26
+    evidence: >-
+      FROM node_type
+             ORDER BY name ASC
+looked_past: >-
+  The header comment about bypassing the in-memory cache, the BR-03 and BR-30 mentions, and the "kept for cache parity" and "placate downstream unused-import checks" comments are prose that states no fact of the nodes in this pack, so I left them to the comment route and did not report them.
+candidates_opened: []

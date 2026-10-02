@@ -1,0 +1,53 @@
+findings:
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      header comment, lines 7-10 (layer 1 "Structural")
+    evidence: >-
+      // 1. Structural — Zod has already enforced text length / confidence range /
+      //    non-empty chunk_ids at the boundary; here we cross-check that every
+      //    chunk_id exists and belongs to the run's `input_raw_information_id`.
+    cost: >-
+      The existence rule is also written as prose in a file whose code already holds it. When the
+      node changes, this comment keeps saying the old rule and nothing flags it, so a reader can
+      take it as the decision.
+    kind: restates
+    correction: >-
+      Remove the prose. The existence check is held by code in this same file: the `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[])` query and the `RESOURCE_NOT_FOUND` throw. The comment route removes it.
+    node: rules/knowledge-base/fragment-chunks-exist
+  - file: src/modules/ingestion/service/propose-fragment.service.ts
+    where: >-
+      header comment, lines 7-10, and the comment at lines 44 and 50-52
+    evidence: >-
+      // here we cross-check that every
+      //    chunk_id exists and belongs to the run's `input_raw_information_id`.
+      // Layer 1 — structural cross-checks against the run row + chunks.
+    cost: >-
+      The in-run-source rule is written as prose here as well as in code. A change to the node
+      would leave these comments stating the old rule.
+    kind: restates
+    correction: >-
+      Remove the prose. Code holds the fact in `countChunksInSource(client, { chunk_ids, expected_raw_information_id: runCtx.rawInformationId })` in this file, with the count itself done in `llm-run.repository.ts`. The comment route removes it.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no type, schema or table for the fragment. It only passes values to `insertFragmentWithSources(client, { llm_run_id, text, confidence, chunk_ids })` and returns `{ fragment_id: fragment.id, status: "proposed" }` typed as `ProposeFragmentResult` from the DTO file.
+  - node: rules/knowledge-base/fragment-chunks-exist
+    held_at: >-
+      the failure branch of proposeFragmentService, lines 53-64
+    evidence: >-
+      `if (exists !== args.chunk_ids.length) { throw new ValidationFailure("RESOURCE_NOT_FOUND", "One or more chunk_ids do not resolve to an existing raw_chunk row.", { chunk_ids: args.chunk_ids }); }`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      the source-membership count at lines 45-49 and the throw at lines 65-72
+    evidence: >-
+      `countChunksInSource(client, { chunk_ids: args.chunk_ids, expected_raw_information_id: runCtx.rawInformationId })`, then `throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "One or more chunk_ids are not part of this run's source.", { chunk_ids: ..., expected_raw_information_id: runCtx.rawInformationId })`
+  - node: rules/knowledge-base/fragment-missing-chunk-first
+    held_at: >-
+      the order of the checks inside the `matched !== args.chunk_ids.length` branch, lines 49-72
+    evidence: >-
+      The existence check and its `RESOURCE_NOT_FOUND` throw (lines 58-64) come before the `VALIDATION_INVALID_FORMAT` throw for chunks outside the run's source (lines 65-72). A missing chunk is therefore reported before a wrong-source chunk.
+looked_past: >-
+  The comments citing BR-13, BR-19 and BR-23, the Task Contract and the layer list (graph, temporal, confidence and anti-hallucination marked "N/A") are prose about facts held elsewhere. The comment route covers them, and they are not reported here.

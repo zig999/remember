@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      `DEFAULT_INGEST_MODEL` (line 35) and the `model` entry of `body` (line 103)
+    evidence: >-
+      export const DEFAULT_INGEST_MODEL = "claude-sonnet-4-6";
+      ...
+      model: input.model ?? deps.ingestModel ?? DEFAULT_INGEST_MODEL,
+    cost: >-
+      The node holds the default-model order: the configured ingestion model, otherwise
+      claude-sonnet-4-6. This file implements that order and the literal, but the node is not
+      bound to it. If the node moves, `--check` never reaches this file, and nobody can tell
+      whether the literal here or the node was the decision.
+    kind: contradicts
+    correction: >-
+      Bind rules/knowledge-base/default-extraction-model to this file. The declaration is
+      where the fact is held. A bind closes it, and the code does not need to read the
+      specification.
+    node: rules/knowledge-base/default-extraction-model
+  - file: src/modules/ingestion/mcp/ingest-document.handler.ts
+    where: >-
+      the comment above the `noop_existing` branch, line 141
+    evidence: >-
+      // Step 2 — idempotent short-circuit: already ingested, do not re-extract.
+    cost: >-
+      The node holds that held content is not extracted again. This comment says it again in
+      prose. The code already holds it at `if (outcome === "noop_existing")`, which returns
+      `outcome: "already_ingested"` before `runExtraction` is reached. When the rule moves,
+      the comment keeps the old account.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact stays held by the `noop_existing` branch in this file.
+    node: rules/knowledge-base/document-ingestion-extracts-new-content
+read:
+  - node: rules/knowledge-base/default-prompt-version
+    held_at: >-
+      the `prompt_version` entry of `body`, line 104. The value v4 is held by
+      `DEFAULT_PROMPT_VERSION` in prompts/index.ts, which this file imports.
+    evidence: >-
+      prompt_version: input.prompt_version ?? DEFAULT_PROMPT_VERSION,
+  - node: rules/knowledge-base/document-ingestion-extracts-new-content
+    held_at: >-
+      `ingestDocumentHandler`. It persists through `ingestRaw` (a new `running` run), then calls
+      `runExtraction` for that run. It returns early on `noop_existing`, before any extraction.
+    evidence: >-
+      ingest = await withTransaction(deps.pool, (client) => ingestRaw(client, body));
+      ... if (outcome === "noop_existing") {
+      ... outcome: "already_ingested",
+      ... const run = await runExtraction(deps.pool, llm_run_id, deps.logger, deps.catalog, extractionDeps);
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: nowhere
+    evidence: >-
+      This file records nothing itself. It only branches on `outcome === "noop_existing"`
+      from `ingestRaw` and returns the existing ids. The hash check and the no-new-rows
+      guarantee live in `ingestRawInformation` (ingestion.service.ts), which the index also
+      binds to this node.
+looked_past: >-
+  The header comment and the docstrings, plus the comments citing TC-MCI-002 and BR-19, describe the tool and its seams. They are prose and no node fact of this set is stated only there. The emitted error and already_ingested messages agree with contracts/knowledge-base/ingestion.
+candidates_opened:
+  - rules/knowledge-base/default-extraction-model
+  - contracts/knowledge-base/ingestion

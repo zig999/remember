@@ -1,0 +1,212 @@
+findings:
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      docstring above RecentIngestionRow, lines 38-42
+    evidence: >-
+      "its MOST RECENT `llm_run` (via LATERAL, so a raw with no run still appears
+      with null run fields)."
+    cost: >-
+      The most-recent-run fact is written a second time in prose beside the code that holds it
+      (the LATERAL subquery with `ORDER BY started_at DESC LIMIT 1` in findRecentIngestions, same
+      file). When the node moves, the comment stays as a second statement of it, and a reader
+      cannot tell which one was decided.
+    kind: restates
+    correction: >-
+      Remove the docstring. The code in findRecentIngestions already holds the fact, and
+      the node binds to it.
+    node: rules/knowledge-base/recent-ingestion-latest-run
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      docstring above findRecentIngestions, lines 57-60
+    evidence: >-
+      "Most recent ingestions, newest first. Read-only; the caller wraps this in a
+      `BEGIN READ ONLY` transaction."
+    cost: >-
+      The ordering rule is stated in prose while `ORDER BY ri.received_at DESC` in the same file
+      holds it. A change to the node leaves the comment still claiming the old order.
+    kind: restates
+    correction: >-
+      Remove the docstring. The ORDER BY in the same file already holds the fact.
+    node: rules/knowledge-base/recent-ingestions-order
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      docstring above retryLlmRunRow, lines 155-159
+    evidence: >-
+      "Atomic retry transition. Implements BR-10 / BR-11:
+       - UPDATE ... WHERE status = 'failed' RETURNING the new row. If no row is
+         affected, the caller surfaces 409 BUSINESS_RUN_NOT_RETRYABLE."
+    cost: >-
+      The failed-to-running transition and its refusal are restated in prose and cite BR numbers
+      from a back-spec, not a node. The code holds the rule through `WHERE id = $1 AND status = 'failed'`
+      in the same file. A reader may take the comment, or the BR citation, for the authority.
+    kind: restates
+    correction: >-
+      Remove the docstring. The UPDATE in retryLlmRunRow holds the transition, and the node binds
+      to it.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      docstring above closeLlmRunRow, lines 190-194
+    evidence: >-
+      "Close a run — UC-07. Service action (no public REST endpoint); exposed here
+       so future internal callers can drive `running -> completed | failed` via the
+       same transactional path the rest of the module uses."
+    cost: >-
+      The completed and failed transitions out of running are stated in prose. The code holds them
+      through `WHERE id = $1 AND status = 'running'` in the same file. The comment gives a second
+      home to the lifecycle outside behavior.
+    kind: restates
+    correction: >-
+      Remove the docstring. The guarded UPDATE in closeLlmRunRow holds the fact.
+    node: rules/knowledge-base/llm-run-lifecycle
+  - file: src/modules/ingestion/repository/llm-run.repository.ts
+    where: >-
+      docstring above countChunksInSource, lines 330-334
+    evidence: >-
+      "Verify every chunk in `chunk_ids` exists AND belongs to
+       `expected_raw_information_id`."
+    cost: >-
+      The rule that cited chunks belong to the run's raw information is written in prose beside
+      the query that enforces it (`AND raw_information_id = $2`, same file). The comment would
+      outlive a change to the node.
+    kind: restates
+    correction: >-
+      Remove the docstring. The query in countChunksInSource already holds the fact.
+    node: rules/knowledge-base/fragment-chunks-in-run-source
+read:
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the args type of insertFragmentWithSources, which names llm_run_id, text and confidence, and
+      its INSERT INTO information_fragment
+    evidence: >-
+      args: { llm_run_id: string; text: string; confidence: number; chunk_ids: readonly string[]; }
+      with `INSERT INTO information_fragment (llm_run_id, "text", confidence)`
+  - node: domain/knowledge-base/knowledge-node
+    held_at: >-
+      nowhere
+    evidence: >-
+      findNodeTypeIdByNodeId only reads one field, `SELECT node_type_id FROM knowledge_node WHERE id = $1 LIMIT 1`.
+      The shape of knowledge-node is not declared in this file.
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      retryLlmRunRow and closeLlmRunRow (the retry and close operations), and the run fields of
+      RecentIngestionRow. The full LlmRunRow shape is declared in ingestion.repository.ts and only re-exported here.
+    evidence: >-
+      `UPDATE llm_run SET status = 'running', attempts = attempts + 1, finished_at = NULL WHERE id = $1 AND status = 'failed'`
+      and `export type { LlmRunRow };`
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file only counts chunks, `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`.
+      It declares no raw-chunk shape.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      RecentIngestionRow, which names source_type, status, received_at and the raw information id in part
+    evidence: >-
+      readonly raw_information_id: string; readonly source_type: string; readonly raw_status: string;
+      readonly received_at: Date;
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      nowhere
+    evidence: >-
+      The LlmRunStatus enumeration is declared in dto/llm-run.dto.ts. This file only imports it
+      (`LlmRunStatus,` in the import list) and uses the literals 'running', 'failed' and 'completed' in SQL.
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      nowhere
+    evidence: >-
+      The LlmRunSummary shape is declared in dto/llm-run.dto.ts and only imported here. This file builds a
+      value of it in aggregateToolCallOutcomes with `const summary: LlmRunSummary = { accepted: 0, ... orphaned_fragments: 0, };`
+  - node: domain/knowledge-base/tool-call
+    held_at: >-
+      the ToolCallRow interface
+    evidence: >-
+      export interface ToolCallRow { readonly id: string; readonly llm_run_id: string; readonly tool_name: IngestToolName;
+      readonly arguments: Record<string, unknown>; readonly result: Record<string, unknown> | null;
+      readonly validation_outcome: ValidationOutcome; readonly created_at: Date; }
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The ValidationOutcome type is declared in dto/llm-run.dto.ts. This file only imports it and uses it
+      to type validation_outcome (`validation_outcome: ValidationOutcome;`).
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      countFragmentsAnchoredToSource
+    evidence: >-
+      `FROM information_fragment f JOIN fragment_source fs ON fs.fragment_id = f.id JOIN raw_chunk rc ON rc.id = fs.raw_chunk_id
+      WHERE f.id = ANY($1::uuid[]) AND rc.raw_information_id = $2`
+  - node: rules/knowledge-base/closing-stamps-finish-time
+    held_at: >-
+      the UPDATE in closeLlmRunRow
+    evidence: >-
+      `UPDATE llm_run SET status = $2::llm_run_status, finished_at = now() WHERE id = $1 AND status = 'running'`
+  - node: rules/knowledge-base/fragment-chunks-in-run-source
+    held_at: >-
+      countChunksInSource
+    evidence: >-
+      `SELECT count(*)::text AS n FROM raw_chunk WHERE id = ANY($1::uuid[]) AND raw_information_id = $2`
+  - node: rules/knowledge-base/llm-run-lifecycle
+    held_at: >-
+      the status guards in retryLlmRunRow (`status = 'failed'` to 'running') and closeLlmRunRow (`status = 'running'` to completed or failed)
+    evidence: >-
+      `WHERE id = $1 AND status = 'failed'` in the retry UPDATE, and `WHERE id = $1 AND status = 'running'` in the close UPDATE
+  - node: rules/knowledge-base/orphaned-fragment
+    held_at: >-
+      the orphan count query in aggregateToolCallOutcomes, and the rejecting UPDATE in retryLlmRunRow
+    evidence: >-
+      `status = 'proposed' AND id NOT IN (SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL)`
+  - node: rules/knowledge-base/recent-ingestion-latest-run
+    held_at: >-
+      the LATERAL subquery in findRecentIngestions
+    evidence: >-
+      `LEFT JOIN LATERAL ( SELECT id, status, started_at, finished_at, prompt_version, model FROM llm_run
+      WHERE input_raw_information_id = ri.id ORDER BY started_at DESC LIMIT 1 ) lr ON true`
+  - node: rules/knowledge-base/recent-ingestions-order
+    held_at: >-
+      the ORDER BY of findRecentIngestions
+    evidence: >-
+      `ORDER BY ri.received_at DESC LIMIT $1`
+  - node: rules/knowledge-base/refused-proposal-records-only-its-tool-call
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file holds insertToolCallStandalone, which writes the tool_call row on its own transaction.
+      Nothing in it decides what a refused proposal does not record. That is decided by the callers.
+  - node: rules/knowledge-base/retry-counts-attempts
+    held_at: >-
+      the UPDATE in retryLlmRunRow
+    evidence: >-
+      `SET status = 'running', attempts = attempts + 1, finished_at = NULL` (started_at is not touched)
+  - node: rules/knowledge-base/retry-rejects-orphaned-fragments
+    held_at: >-
+      the second UPDATE in retryLlmRunRow
+    evidence: >-
+      `UPDATE information_fragment SET status = 'rejected' WHERE llm_run_id = $1 AND status = 'proposed'
+      AND id NOT IN (SELECT fragment_id FROM provenance WHERE fragment_id IS NOT NULL)`
+  - node: rules/knowledge-base/summary-counts-orphaned-fragments
+    held_at: >-
+      the orphan query in aggregateToolCallOutcomes
+    evidence: >-
+      `summary.orphaned_fragments = orphan.rows[0]?.n ?? 0;`
+  - node: rules/knowledge-base/summary-counts-tool-calls
+    held_at: >-
+      aggregateToolCallOutcomes
+    evidence: >-
+      `SELECT validation_outcome, count(*)::text AS n FROM tool_call WHERE llm_run_id = $1 GROUP BY validation_outcome`,
+      with the summary starting from `accepted: 0, consolidated: 0, ...` so outcomes with no call count zero
+  - node: rules/knowledge-base/tool-call-listing-order
+    held_at: >-
+      findToolCallsByRun
+    evidence: >-
+      `ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3`
+  - node: rules/knowledge-base/tool-call-total-before-pagination
+    held_at: >-
+      countToolCalls
+    evidence: >-
+      `SELECT count(*)::text AS n FROM tool_call WHERE llm_run_id = $1`, with no limit or offset
+looked_past: >-
+  The file header and a few smaller comments cite back-spec numbers (BR-19, BR-23) and describe transaction ownership, and they restate no node's fact, so they are for the comment route and not this judgment.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

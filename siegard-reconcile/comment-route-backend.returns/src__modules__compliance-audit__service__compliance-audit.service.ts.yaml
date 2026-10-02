@@ -1,0 +1,86 @@
+findings:
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      lines 41-47, the exported constant REDACTED_LITERAL and its docstring
+    evidence: >-
+      export const REDACTED_LITERAL = "[REDACTED]" as const;   (docstring: "The literal `[REDACTED]` is hardcoded by spec (constraint #4 of TC-08 ... Exposed as a NAMED constant so the unit test can import and pin it.")
+    cost: >-
+      The literal that a compliance deletion writes over content and original input is declared a second time here, as a constant of its own. The write that holds it sits in `compliance-audit.repository.ts` as `SET content = '[REDACTED]'`, and nothing in this service reads the constant. It is only re-exported by `compliance-audit/index.ts`. If the node's literal changes, the repository, this constant and its pinning test can disagree, and nobody can tell which one was decided. This file is not bound to the redaction node, so `--check` does not reach it when that node moves. The docstring's "hardcoded by spec" cites a task constraint (TC-08), not a node.
+    kind: contradicts
+    correction: >-
+      The literal should have one home, in the file that executes the redaction. This file's constant is a second declaration that no node claims. Its removal, or the repository reading it, is for the implementation route, and no comment can close it.
+    node: rules/knowledge-base/compliance-deletion-redacts-content
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      lines 57-66 (docstring of complianceDelete) and lines 109-110 (comment before the orphan-tombstone branch)
+    evidence: >-
+      "Throws: - ResourceNotFoundError on UC-01 alt 4a (raw_information_id resolves to no row). - InternalFailure('legacy_orphan_tombstone') on UC-01 alt 4c (BR-17)." and "// UC-01 alt 4c — legacy orphan tombstone (BR-17). Operational alarm and 500."
+    cost: >-
+      The prose restates the contract's refusals for a missing raw information and for a deleted one with no deletion on record (HTTP 404 and 500). The code holds both, in the `ResourceNotFoundError` and `InternalFailure` throws. The prose is a second home for the fact, outside behavior, and it cites back-spec ids (UC-01, BR-17) rather than nodes.
+    kind: restates
+    correction: >-
+      Remove the docstring's Throws list and the alt 4c comment. The throws in the code already hold the fact.
+    node: contracts/knowledge-base/compliance-audit
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      line 86, comment before the `raw.status === "deleted"` branch
+    evidence: >-
+      // UC-01 alt 4b — already tombstoned: idempotent no-op (BR-03).
+    cost: >-
+      The comment restates that a deletion requested for an already deleted raw information records nothing and ends in noop_already_deleted. The branch below it holds that. The prose repeats the rule under a back-spec id (BR-03) that a reader will not find among the nodes.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/deleted-source-deletion-records-nothing
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      line 138, comment before the cascade calls
+    evidence: >-
+      // BR-06 / BR-07 cascade. RETURNING counts feed `affected.*` (BR-16).
+    cost: >-
+      The comment states that the affected counts come from the rows marked, which is the rule that the counts are what the deletion marked deleted. The code holds it: `const affected = { chunks, fragments, links, attributes };` takes the return of each tombstone call. The comment is prose under back-spec ids.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+  - file: src/modules/compliance-audit/service/compliance-audit.service.ts
+    where: >-
+      lines 159-160, comment before insertCurationAction
+    evidence: >-
+      // BR-08 — write CurationAction row (action='compliance_delete', target_kind='raw_information', target_id=<the raw>).
+    cost: >-
+      The comment restates the kind, target kind and target identity of the curation action the deletion records. The `insertCurationAction` call below it holds all three, plus the payload and reason. The values are written twice, once in prose and once in code.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/compliance-deletion-records-curation-action
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      complianceDelete (lines 67-185), getComplianceDeletionById (215-232), getCurationActionById (264-281), the list functions (191-262) and the row-to-DTO converters (287-322)
+    evidence: >-
+      `new ResourceNotFoundError(\`RawInformation ${body.raw_information_id} not found.\`, { entity: "raw_information", id: ... })`; `return { outcome: "noop_already_deleted", deletion: rowToDto(existing) }`; `throw new InternalFailure("legacy_orphan_tombstone", ...)`; `throw new InternalFailure("raw_tombstone_mismatch", { raw_information_id, rows_updated: rawTombstoned })`; `\`ComplianceDeletion ${id} not found.\``; `\`CurationAction ${id} not found.\``; `payload: (row.payload ?? {})`; `executed_at: toIso(row.executed_at)`.
+  - node: rules/knowledge-base/compliance-deletion-check-order
+    held_at: >-
+      complianceDelete, lines 73-122: the lookup `loadRawInformationForUpdate` then the missing check, then the `raw.status === "deleted"` check, both before any `tombstone*` call. Well-formedness is checked before the service is called.
+    evidence: >-
+      `const raw = await loadRawInformationForUpdate(client, body.raw_information_id); if (!raw) { throw new ResourceNotFoundError(...) } if (raw.status === "deleted") { ... }` followed afterwards by `await tombstoneRawInformation(client, body.raw_information_id)`
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      complianceDelete, lines 139-157
+    evidence: >-
+      `const chunks = await tombstoneRawChunksOfRaw(...); const fragments = await tombstoneCascadedFragments(...); const links = await tombstoneCascadedLinks(...); const attributes = await tombstoneCascadedAttributes(...); const affected = { chunks, fragments, links, attributes };` passed to `insertComplianceDeletion`
+  - node: rules/knowledge-base/compliance-deletion-records-curation-action
+    held_at: >-
+      complianceDelete, lines 161-167
+    evidence: >-
+      `await insertCurationAction(client, { action: "compliance_delete", target_kind: "raw_information", target_id: body.raw_information_id, payload: { reason: body.reason, affected }, reason: body.reason, });`
+  - node: rules/knowledge-base/deleted-source-deletion-records-nothing
+    held_at: >-
+      complianceDelete, lines 87-107: the already-deleted branch returns before any insert
+    evidence: >-
+      `if (raw.status === "deleted") { const existing = await findComplianceDeletionByRawId(...); if (existing) { ... return { outcome: "noop_already_deleted", deletion: rowToDto(existing), }; }`
+looked_past: >-
+  The remaining prose (the header comment citing BR-14, the section banners, the "defensive" comments on the converters), the log events, and the defensive count coercion in `coerceNonNegativeInt` are not reported here: the prose states no fact held by this file's nodes, and the log events and coercion are not domain facts.
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-redacts-content

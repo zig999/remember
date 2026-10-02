@@ -1,0 +1,29 @@
+findings:
+  - file: src/modules/ingestion/hash.ts
+    where: >-
+      the header comment, lines 1-6
+    evidence: >-
+      // BR-01 (`content_hash`) and BR-08 (`idempotency_key`) of
+      // `ingestion.back.md`. Both produce a 64-char lowercase hex string. UTF-8
+      // encoding is explicit on every `.update()` so the result is portable across
+    cost: >-
+      The comment states the idempotency key's output form (64 lowercase hex characters) a second time, outside behavior, and cites a back-spec rule (BR-08) as its authority. The code in composeIdempotencyKey already holds this fact. A later reader can take the comment, or the BR citation, for where the rule was decided. The node would then move and the prose would stay behind.
+    kind: restates
+    correction: >-
+      Remove the comment. The code in this file holds the fact (`createHash("sha256")` ... `h.digest("hex")`), and the node binds it.
+    node: rules/knowledge-base/idempotency-key
+read:
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      composeIdempotencyKey, lines 14-26
+    evidence: >-
+      const h = createHash("sha256");
+      h.update(args.content_hash, "utf8");
+      h.update(args.prompt_version, "utf8");
+      h.update(args.model, "utf8");
+      h.update(args.chunking_version, "utf8");
+      return h.digest("hex");
+looked_past: >-
+  sha256Hex (SHA-256 of UTF-8 content as lowercase hex) implements rules/knowledge-base/content-hash-is-sha256, a node outside this file's pack and, per the candidate index, not bound to this file; I name it here and make no finding, since the code conforms to it.
+candidates_opened:
+  - rules/knowledge-base/content-hash-is-sha256

@@ -1,0 +1,146 @@
+findings:
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, directive 1 (lines 93-95)
+    evidence: >-
+      "1. Chame `get_ingestion_status` UMA UNICA VEZ para confirmar que a",
+      "   ingestao alcancou `status: \"completed\"`. Se ainda estiver em",
+      "   `running`, informe e PARE — nao tente descrever o que foi ingerido.",
+    cost: >-
+      The v3 prompt tells the assistant to check the status once and to stop and report when the run
+      is still running. That is behavior the assistant acts on. No node holds it for v3. The only
+      neighbouring node, rules/chat/chat-prompt-v2-no-status-polling, is scoped to the v2 prompt and
+      says nothing about stopping while running. Someone looking for the v3 rule in the specification
+      finds no node for it, and the prompt text becomes the only place the rule lives.
+    kind: unstated
+    correction: >-
+      Analysis would need to give the fact a node. It would be a v3 counterpart of the v2 status
+      rule, plus the stop-while-running directive.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, directive 3 (lines 110-112)
+    evidence: >-
+      "3. Cite a fonte: o campo `raw_information_id` retornado por",
+      "   `get_ingestion_status` identifica o documento ingerido — mencione-o",
+      "   ao dono.",
+    cost: >-
+      The v3 prompt tells the assistant to name the ingested document's raw information identity to
+      the owner. The only node that holds this is rules/chat/chat-prompt-v4-cites-ingested-document,
+      which is scoped to the v4 prompt and to a directed ingestion. The v3 rule therefore has no node,
+      and the next reader looking in the specification will not find it.
+    kind: unstated
+    correction: >-
+      Analysis would need to give the v3 behavior a node, or widen the v4 node to the versions that
+      carry it.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, directive 4, last sentence (lines 115-116)
+    evidence: >-
+      "   um documento completamente nao relacionado. Em caso de duvida,",
+      "   recuse a resposta e replaneje pelos passos 2.a / 2.b.",
+    cost: >-
+      The prompt tells the assistant to refuse its answer and replan when in doubt. This is a
+      behavioral rule for the assistant that no node holds. The sibling node
+      chat-prompt-unfiltered-listing-is-not-ingested only forbids presenting the unfiltered rows.
+      The refuse-and-replan instruction lives only in the prompt text.
+    kind: unstated
+    node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    correction: >-
+      Analysis would need to either state the refuse-and-replan instruction in a node or drop it from
+      the prompt.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      header comment (lines 6-9) and the docstring of system() (lines 193-198)
+    evidence: >-
+      "Block 4A ONTOLOGY — a compact catalog dump (NodeType / LinkType /
+      AttributeKey canonical names + descriptions + LinkType rule pairs)
+      rendered DETERMINISTICALLY from the catalog argument."
+    cost: >-
+      The comments say again what the catalog block presents. Code holds it in renderOntologyBlock
+      (`parts.push("", "LinkTypes (tipos de relacao):")` and the `[dominio fechado: ...sort().join(" | ")]`
+      suffix). The prose is a second home outside behavior and can drift from the node.
+    kind: restates
+    node: rules/chat/chat-prompt-presents-catalog
+    correction: >-
+      Remove the comment or docstring prose through the comment route. The behavior is already
+      correct.
+  - file: src/modules/chat/prompts/v3.ts
+    where: >-
+      header comment (lines 18-20) and the docstring above the re-export (lines 49-54)
+    evidence: >-
+      "Marker token is REUSED VERBATIM from v1 (BR-20 stable across versions —
+      `output-guard.ts` scrubs against the single canary regardless of which
+      prompt module the env selected)."
+    cost: >-
+      The comment states that the marker is stable across prompt versions, which is the fact
+      rules/chat/chat-prompt-carries-marker holds. The marker text itself is held in v1.ts, where
+      the candidate index binds that node. This file only re-exports the name, so the comment is a
+      second home for the fact.
+    kind: restates
+    node: rules/chat/chat-prompt-carries-marker
+    correction: >-
+      Remove the comment prose through the comment route. The v1.ts declaration is where the fact is
+      held.
+read:
+  - node: rules/chat/chat-prompt-affected-nodes-first
+    held_at: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, directives 2 and 2.a (lines 96-102)
+    evidence: >-
+      "leia o campo `result.affected_nodes`" ... "use os ids",
+      "diretamente em `get_node(id)` e/ou `traverse(start_node_id=id,",
+      "depth=2)`. Descreva APENAS o que essas chamadas retornaram."
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: nowhere
+    evidence: >-
+      This file carries no marker text. It only has `export { CHAT_PROMPT_MARKER_V1 } from "./v1.js";`
+      and builds the body from `v2System(catalog)`. The marker's value sits in v1.ts, and the comment
+      claiming it is stable is prose.
+  - node: rules/chat/chat-prompt-discovery-listings
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 3 (lines 79-83)
+    evidence: >-
+      "use `list_node_types`, `list_link_types`",
+      "   e `list_attribute_keys` como primitivas de descoberta."
+  - node: rules/chat/chat-prompt-fallback-lists-by-node-type
+    held_at: >-
+      BLOCK_4C_POST_INGESTION_PLAYBOOK, directive 2.b (lines 103-109)
+    evidence: >-
+      "Quando `affected_nodes` estiver ausente ou vazio", "`list_nodes(node_type=<tipo plausivel>)`",
+      "NUNCA uma busca multi-nome concatenada (bloco 4B"
+  - node: rules/chat/chat-prompt-list-by-node-type
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 2 (lines 74-76)
+    evidence: >-
+      "2. `list_nodes` DEVE ser chamada COM um filtro `node_type` quando voce",
+      "   precisa enumerar uma categoria"
+  - node: rules/chat/chat-prompt-presents-catalog
+    held_at: >-
+      renderOntologyBlock() (lines 141-187). The ascending order is the `.sort()` on the closed values,
+      per the node's decision log, which says the statement adds that the values are in ascending order.
+    evidence: >-
+      "`- ${linkType.name}: ${linkType.description}${pairSuffix}`" and
+      "` [dominio fechado: ${[...domain].sort().join(\" | \")}]`"
+  - node: rules/chat/chat-prompt-search-is-lexical-and
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 1 (line 69)
+    evidence: >-
+      "1. A ferramenta `search` e LEXICA E TEM SEMANTICA `AND` sobre o texto"
+  - node: rules/chat/chat-prompt-search-one-name
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE, directive 1 (lines 70-73)
+    evidence: >-
+      "Buscar UM NOME ESPECIFICO POR CHAMADA.",
+      "NUNCA concatene varios nomes proprios numa unica chamada `search`"
+  - node: rules/chat/chat-prompt-unfiltered-listing-is-not-ingested
+    held_at: >-
+      BLOCK_4B_SEARCH_DISCIPLINE directive 2 (lines 75-78) and BLOCK_4C directive 4 (lines 113-114)
+    evidence: >-
+      "NUNCA use `list_nodes` SEM `node_type` para responder \"o que foi ingerido\""
+      and "4. NUNCA apresente a primeira linha de um `list_nodes` sem filtro como"
+looked_past: >-
+  The header comment (lines 22-31) states that the catalog is iterated in insertion order, and the file's
+  comments cite BR-18 and chat.back.md sections. That is prose describing the code, and it is another
+  judgment's to remove.
+candidates_opened:
+  - rules/chat/chat-prompt-v4-cites-ingested-document
+  - rules/chat/chat-prompt-v2-no-status-polling

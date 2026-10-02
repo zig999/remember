@@ -1,0 +1,173 @@
+findings:
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of resolveOrCreateNode, line 69, and the file header, lines 7-8
+    evidence: >-
+      " *   1. Acquires `pg_advisory_xact_lock(hashtextextended(nt || '\\x1F' || norm(name), 0))`
+       *      BEFORE any read on `node_alias` (BR-20)."
+    cost: >-
+      The serialisation of concurrent proposals is described a second time in prose. If the node
+      moves, this docstring keeps saying the old rule, and `--check` does not reach it. The code
+      in this file already takes the lock (`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`).
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the lock query in this file and by the node.
+    node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of resolveOrCreateNode, line 71
+    evidence: >-
+      " *   2. Tries exact `alias_norm = norm(name)` match against active nodes of
+       *      `nodeTypeId`. Hit → reuse; resolution = `matched_existing`."
+    cost: >-
+      The exact-alias rule is stated a second time in a docstring. A change to the node would
+      leave this text stale without any check noticing.
+    kind: restates
+    correction: >-
+      Remove the prose. The exact-match SELECT (`WHERE na.alias_norm = norm($1::text) AND kn.node_type_id = $2 AND kn.status = 'active'`)
+      holds the fact in this file.
+    node: rules/knowledge-base/exact-alias-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      comment inside the exact-match branch, lines 126-127
+    evidence: >-
+      "// Canonical name not re-inserted on match (already present by virtue of
+       // alias_norm hit). LLM-supplied aliases still attempt insert."
+    cost: >-
+      The rule that a matched node gains only the proposed aliases is repeated as prose beside
+      code that already enforces it, because `attachAliases` is called with `aliases: args.aliases`
+      and no canonical name.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/matched-node-gains-only-aliases
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the trigram candidate query (lines 137-148) and the constant TRIGRAM_CANDIDATE_LIMIT, line 28
+    evidence: >-
+      "const TRIGRAM_CANDIDATE_LIMIT = 10;" and "ORDER BY MAX(similarity(na.alias_norm, norm($1::text))) DESC
+      LIMIT ${TRIGRAM_CANDIDATE_LIMIT}", after which `decision.candidates` (the above-floor subset of that
+      list) is the only set that gets an `entity_match_review` row.
+    cost: >-
+      The node says the review pairs the new node with each active node at 0.55 or more. The code
+      pairs it only with the ten most similar. If an eleventh node reaches the floor, the owner never
+      sees it in the curation queue. The cap of ten is a business value that lives only in this file.
+    kind: contradicts
+    correction: >-
+      Either the candidate set is not capped before the floor filter, or the node states the cap.
+      Which of the two applies is for the analysis to decide.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      comment in decideFromCandidates, line 236
+    evidence: >-
+      "// Strong-unique requires exactly one strong AND no second above the floor."
+    cost: >-
+      The strong-candidate rule is stated a second time in prose, next to the condition that already
+      implements it (`strong.length === 1 && aboveFloor.length === 1`). A change to the node would
+      leave the comment stale.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/strong-candidate-resolves
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      comment in decideFromCandidates, lines 241-243
+    evidence: >-
+      "// Everything else with at least one above-floor candidate is ambiguous:
+       //  - any candidate in [MATCH_FLOOR, MATCH_STRONG), OR
+       //  - two-or-more candidates >= MATCH_STRONG."
+    cost: >-
+      The routing of ambiguous proposals to review is restated in prose. The code that holds it is
+      `return { kind: "ambiguous", candidates: aboveFloor }` and the `needs_review` INSERTs. The
+      comment will not follow the node if it moves.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/ambiguous-candidates-need-review
+  - file: src/modules/ingestion/service/entity-resolution.service.ts
+    where: >-
+      the docstring of attachCanonicalAndAliases, lines 247-250
+    evidence: >-
+      "Attach the canonical name as the first alias (`kind = 'canonical'`) plus
+       any LLM-supplied aliases (`kind = 'alias'`) to a newly created node."
+    cost: >-
+      The alias composition of a new node is described a second time in a docstring. The two INSERT
+      statements in this file already hold it, so a change to the node would leave the docstring stale.
+    kind: restates
+    correction: >-
+      Remove the docstring.
+    node: rules/knowledge-base/new-node-aliases
+read:
+  - node: domain/knowledge-base/alias-kind
+    held_at: nowhere
+    evidence: >-
+      The file only passes the values as literals: "VALUES ($1, $2, 'canonical', $3)" and
+      "VALUES ($1, $2, 'alias', $3)". It declares no enumeration of the alias kind.
+  - node: domain/knowledge-base/entity-match-review
+    held_at: nowhere
+    evidence: >-
+      The file only writes a row: "INSERT INTO entity_match_review (node_id, candidate_node_id, similarity)".
+      The shape is declared elsewhere.
+  - node: domain/knowledge-base/knowledge-node
+    held_at: nowhere
+    evidence: >-
+      The file inserts rows with "INSERT INTO knowledge_node (node_type_id, canonical_name, status)"
+      but declares no type, interface or table for the element.
+  - node: domain/knowledge-base/node-resolution
+    held_at: nowhere
+    evidence: >-
+      The file imports the type: "import type { ProposeNodeResolution } from "../dto/propose-node.dto.js";"
+      and returns the literals "matched_existing", "needs_review" and "created_new". It does not declare
+      the enumeration.
+  - node: rules/knowledge-base/candidate-similarity
+    held_at: >-
+      the trigram candidate query in resolveOrCreateNode, lines 137-148
+    evidence: >-
+      "SELECT na.node_id, MAX(similarity(na.alias_norm, norm($1::text)))::text AS sim ... GROUP BY na.node_id"
+  - node: rules/knowledge-base/concurrent-proposals-resolve-in-turn
+    held_at: >-
+      the advisory lock at the start of resolveOrCreateNode, lines 100-109, taken before the first node_alias read
+    evidence: >-
+      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))" with the key built from
+      "(CAST($1::text AS text) || E'\\x1F' || norm($2::text))"
+  - node: rules/knowledge-base/exact-alias-resolves
+    held_at: >-
+      the exact-match query and branch of resolveOrCreateNode, lines 112-132
+    evidence: >-
+      "WHERE na.alias_norm = norm($1::text) AND kn.node_type_id = $2 AND kn.status = 'active'" followed by
+      "return { node_id: nodeId, resolution: "matched_existing" };"
+  - node: rules/knowledge-base/matched-node-gains-only-aliases
+    held_at: >-
+      the matched_existing branches (lines 124-131 and 159-164) and attachAliases, lines 278-295
+    evidence: >-
+      "await attachAliases(client, { nodeId, aliases: args.aliases, runId: args.llmRunId });" with no
+      canonical name passed. attachAliases inserts only "VALUES ($1, $2, 'alias', $3)".
+  - node: rules/knowledge-base/name-normalization
+    held_at: >-
+      the norm() calls in the lock key, exact match and trigram queries, lines 101-145
+    evidence: >-
+      "WHERE na.alias_norm = norm($1::text)" and "na.alias_norm % norm($1::text)". Names are compared
+      through the database function norm, and the file does not reimplement the normalization.
+  - node: rules/knowledge-base/new-node-aliases
+    held_at: >-
+      attachCanonicalAndAliases, lines 252-272, called by the needs_review and created_new branches
+    evidence: >-
+      "VALUES ($1, $2, 'canonical', $3)" for the proposed name, then attachAliases inserts each proposed
+      alias with "'alias'"
+  - node: rules/knowledge-base/no-candidate-creates-active-node
+    held_at: >-
+      decideFromCandidates, line 232, and the novel branch of resolveOrCreateNode, lines 196-210
+    evidence: >-
+      "if (aboveFloor.length === 0) { return { kind: "novel" }; }" with "export const MATCH_FLOOR = 0.55;",
+      then "VALUES ($1, $2, 'active')" and "resolution: "created_new""
+  - node: rules/knowledge-base/strong-candidate-resolves
+    held_at: >-
+      decideFromCandidates, lines 229-239, and the strong_unique branch, lines 157-165
+    evidence: >-
+      "export const MATCH_STRONG = 0.85;" and "if (strong.length === 1 && aboveFloor.length === 1) {
+      return { kind: "strong_unique", nodeId: strong[0]!.node_id }; }"
+looked_past: >-
+  Comments that cite BR numbers and back-spec sections, and the comment on why the thresholds are constants, state rationale or provenance with no domain fact of their own and belong to the comment route.
+candidates_opened:
+  - rules/knowledge-base/ambiguous-candidates-need-review

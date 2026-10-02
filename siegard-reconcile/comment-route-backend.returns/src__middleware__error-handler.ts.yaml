@@ -1,0 +1,44 @@
+findings:
+  - file: src/middleware/error-handler.ts
+    where: >-
+      the comment above the final return of classify(), line 134
+    evidence: >-
+      // 6. Anything else — generic 500. We do NOT leak the underlying message.
+    cost: >-
+      The rule that an unexpected failure answers a fixed message and never the cause is stated a second time in prose. The prose emits nothing, so it can drift from the node unseen, and a reader may take it for the place the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The code already holds the fact in this file's 5xx branch, `message: isServerError ? "Internal server error." : err.message`, and in `internalError()` in src/shared/error-mapping.ts, `renderErrorEnvelope("SYSTEM_INTERNAL_ERROR", "Internal server error.")`.
+    node: constraints/internal-failure-withholds-cause
+  - file: src/middleware/error-handler.ts
+    where: >-
+      the header comment, lines 1-9
+    evidence: >-
+      // Envelope (CLAUDE.md "Architecture / Backend"):
+      //   {
+      //     "ok": false,
+      //     "error": { "code": "<ERROR_CODE>", "message": "<human-readable>",
+      //                "details": <optional structured payload> }
+      //   }
+    cost: >-
+      The shape of every failure answer is restated as prose, and the prose names a project instruction file as its authority instead of the node. It can drift from the node without anything noticing.
+    kind: restates
+    correction: >-
+      Remove the comment. The envelope is held by code in this file (`envelope: { ok: false, error: { code: err.code, message: err.message } }`) and by the `ErrorEnvelope` type and `renderErrorEnvelope` in src/shared/error-mapping.ts.
+    node: constraints/failures-answer-one-envelope
+read:
+  - node: constraints/internal-failure-withholds-cause
+    held_at: >-
+      the 5xx branch of classify() (step 5) and its final `return internalError();`. The fixed text itself is declared in `internalError()` in src/shared/error-mapping.ts.
+    evidence: >-
+      `message: isServerError ? "Internal server error." : err.message,` and `return internalError();`. The cause goes only to the server-side log, as `cause_message: err.message`, and never into the reply envelope.
+  - node: constraints/unreachable-store-answers-unavailable
+    held_at: >-
+      the `isPgUnavailable(err)` branch of classify(), which returns before the generic HTTP-error and fallback branches
+    evidence: >-
+      `if (isPgUnavailable(err)) { return serviceUnavailableError(); }`. The predicate and the "A backing service is temporarily unavailable." message are declared in src/shared/error-mapping.ts.
+looked_past: >-
+  The status and code mapping in classify() and codeFromHttpStatus (401 for AuthError, 422 for validation failures, the 401/403/404/409/422/503 codes) is held by the candidate contracts/knowledge-base/access, which is not bound to this file. The code agrees with it, so I made no finding and left the question of binding to the caller.
+candidates_opened:
+  - contracts/knowledge-base/access
+  - constraints/failures-answer-one-envelope

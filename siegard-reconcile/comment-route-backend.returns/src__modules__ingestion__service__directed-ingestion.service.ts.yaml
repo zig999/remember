@@ -1,0 +1,421 @@
+findings:
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      file header comment, lines 8-10 ("dispatches the items in dependency order")
+    evidence: >-
+      // dispatches
+      // the items in dependency order (fragments → nodes → attributes → links)
+    cost: >-
+      The dispatch order is stated a second time in prose. When the node moves, this comment goes on
+      claiming the old order, and nothing reads it.
+    kind: restates
+    correction: >-
+      Remove the comment. The loops 3a to 3d hold the order, and the node binds them.
+    node: rules/knowledge-base/directed-dispatch-order
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      file header comment, line 24 ("Forces `confidence = 1.0`")
+    evidence: >-
+      //   - Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+    cost: >-
+      The confidence value is restated in prose beside the code that sets it (`confidence: 1.0` at the
+      three dispatch sites), so a reader can mistake the comment for where the rule lives.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-full-confidence
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      file header comment, lines 24-25, and the comment above the attribute loop, lines 591-593 ("`valid_from_basis` defaults to `'stated'`")
+    evidence: >-
+      //   - Forces `confidence = 1.0` and defaults `valid_from_basis = 'stated'`
+      //     when the caller omits it (BR-34 step 4).
+    cost: >-
+      The default basis is stated in prose twice. The code holds it at `item.valid_from_basis ?? "stated"`.
+    kind: restates
+    correction: >-
+      Remove both comments.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      file header comment, lines 26-29 (cascade rule)
+    evidence: >-
+      //   - Cascade rule: when a ref dependency is missing (the referenced
+      //     fragment/node was rejected at its own step), the dependent item is
+      //     skipped with a synthetic `dependency_failed` report entry
+    cost: >-
+      The dependency-failed rule is restated in prose, while `checkCascade` and `checkLinkCascade` hold it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-dependency-failed
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the doc comments on DIRECTED_MODEL and DIRECTED_PROMPT_VERSION, lines 81 and 84
+    evidence: >-
+      /** Sentinel `model` for every directed run — NEVER an Anthropic model id. */
+      /** Sentinel `prompt_version` for every directed run — never resolved by `selectPromptModule`. */
+    cost: >-
+      The fact that a directed run carries model directed and prompt version directed-v1 and calls no
+      model is restated in prose. The constants themselves hold the values.
+    kind: restates
+    correction: >-
+      Remove the doc comments.
+    node: rules/knowledge-base/directed-ingestion-run
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      IsoDateSchema, lines 97-100, applied to `valid_to` at lines 140 and 150
+    evidence: >-
+      const IsoDateSchema = z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+      ...
+        valid_to: IsoDateSchema.optional(),
+    cost: >-
+      The service accepts and shape-checks a validity end on a directed attribute or link. The
+      specification holds only the validity start, and its decision log says the validity end never
+      arrives. The validity-end format lives only in this code, so a reader of the specification will
+      not find it.
+    kind: unstated
+    correction: >-
+      Either give the directed validity end a node, or remove it from the service. Which of the two is
+      for the analysis to decide.
+    node: rules/knowledge-base/directed-validity-start-shape
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      comment above DirectedAttributeValueSchema, lines 117-122
+    evidence: >-
+      * Attribute value: accepted as `string | number | boolean`. The orchestrator
+      * canonicalises to the string form `propose_attribute` expects:
+      *   - boolean → `"true"` / `"false"`
+    cost: >-
+      The text-form rule is restated in prose. `canonicaliseAttributeValue` holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-attribute-value-as-text
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      comment at the start of Step 2, lines 331-335
+    evidence: >-
+      // Content is the concatenation of fragments[].text (one per line, prefixed
+      // with `[ref]`) + a trailing line carrying timestamp + nonce.
+    cost: >-
+      The source content layout is restated in prose. `synthesiseContent` holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-source-content
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      comment above the metadata pointer merge, lines 343-345
+    evidence: >-
+      // TC-02 / BR-34 — chat-row pointer (non-PII; the verbatim text lives in
+      // `original_input`, not here). Merged in only when the chat dispatch
+      // supplied it
+    cost: >-
+      The metadata rule is restated in prose. The `if (deps.metadataPointer !== undefined)` block holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-source-metadata
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      comment inside the ingestRaw call, lines 360-363
+    evidence: >-
+      // TC-01 / BR-34 — verbatim user turn from the chat dispatch's
+      // `invocation_context.source_excerpt`; `null` for REST / MCP direct
+      // callers.
+    cost: >-
+      The original-input rule is restated in prose. `original_input: deps.sourceExcerpt ?? null` holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the reference maps, lines 459-460, filled only on success at lines 476, 511 and 561
+    evidence: >-
+      const refToFragmentId = new Map<string, string>();
+        const refToNodeId = new Map<string, string>();
+      ...
+          refToFragmentId.set(item.ref, envelope.result.fragment_id);
+    cost: >-
+      When two items of one kind share a reference and the later one is refused, the map is never
+      updated. A dependent attribute or link then resolves to the earlier item's id instead of being
+      reported dependency-failed. The node says the reference names the later one. Two ingestions that
+      differ only in whether the later item is refused attach the same evidence to different fragments.
+    kind: contradicts
+    correction: >-
+      A later item that shares a reference with an earlier one must displace the earlier entry even
+      when the later one is refused, so that the reference then names nothing resolvable. As written,
+      the code does not carry the fact the node holds.
+    node: rules/knowledge-base/directed-later-reference-wins
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the comment at 3a, line 463 ("confidence forced to 1.0, anchored to the first chunk")
+    evidence: >-
+      // 3a. Fragments — confidence forced to 1.0, anchored to the first chunk.
+    cost: >-
+      The anchoring rule is restated in prose. `chunk_ids: [anchorChunkId]` holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the comment at 3b and the pin comments, lines 503-504 and 507-508
+    evidence: >-
+      // 3b. Nodes — `node_id` pin bypasses BR-25 fuzzy resolution; otherwise
+      //     delegate to `propose_node` (advisory lock + resolution).
+    cost: >-
+      The pinned-node rule is restated in prose. The `if (item.node_id !== undefined)` branch with
+      `verifyPin` holds it.
+    kind: restates
+    correction: >-
+      Remove the comments.
+    node: rules/knowledge-base/directed-pinned-node
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the attribute and link proposals, lines 629 and 709, with the schemas that accept the field at lines 142 and 153
+    evidence: >-
+      change_hint: item.change_hint ?? "none",
+      ...
+        change_hint: ChangeHintSchema.optional(),
+    cost: >-
+      The node says a directed attribute or link is proposed with change hint none. The service lets
+      the caller supply any change hint and proposes that one. The specification's decision log says
+      the directed tool carries none, so the service states a freedom the specification does not
+      grant. If a caller reaches the service by another path, a directed item can be proposed as a
+      correction or a change.
+    kind: contradicts
+    correction: >-
+      Propose change hint none unconditionally and drop `change_hint` from the directed item schemas.
+      The alternative is for the analysis to give the supplied hint a node.
+    node: rules/knowledge-base/directed-defaults
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the comment above Step 4, line 755 ("always 'completed' on this path")
+    evidence: >-
+      // ---- Step 4 — close the run (always 'completed' on this path) ----
+    cost: >-
+      The rule is restated in prose. `closeLlmRunRow(client, { llm_run_id: llmRunId, outcome: "completed" })` holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-run-completes
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      refForAttribute, lines 915-923
+    evidence: >-
+      function refForAttribute(item: DirectedAttributeItem): string {
+        return `${item.node_ref}.${item.key}`;
+      }
+    cost: >-
+      The reference an attribute's report entry carries (its node reference and key joined by ".") is
+      emitted to callers. No node states it. The specification holds this only for links, as source,
+      link type and target joined by "->". A caller or the chat layer that reads attribute reports has
+      to find the format here.
+    kind: unstated
+    correction: >-
+      The analysis should give the attribute report reference a node beside directed-link-report-reference.
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the doc comment on classifyEnvelopeFailureStatus, lines 952-962
+    evidence: >-
+      *   - System-level failures (`SYSTEM_*` — e.g. `SYSTEM_INTERNAL_ERROR`,
+      *     `SYSTEM_SERVICE_UNAVAILABLE`) collapse to `'error'` (SDK / catch-all
+      *     bucket).
+    cost: >-
+      The error versus rejected rule is restated in prose. The `startsWith("SYSTEM_")` branch holds it.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/directed-item-status
+  - file: src/modules/ingestion/service/directed-ingestion.service.ts
+    where: >-
+      the fallback in readClosedRunSafe, lines 1042-1046
+    evidence: >-
+      const fallback = {
+          started_at: new Date(0).toISOString(),
+          finished_at: new Date(0).toISOString(),
+          attempts: 1,
+        };
+    cost: >-
+      When the closed run cannot be read, the response reports the 1970 epoch as the run's start and
+      finish times, with one attempt. The contract's ingest-directed answer holds the completed run
+      and the empty affected-nodes case. It states no placeholder times or attempts, so a caller sees
+      invented values.
+    kind: unstated
+    correction: >-
+      The analysis should state what the response carries when the run cannot be read, or the service
+      should stop inventing values.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      DirectedIngestionInputSchema, lines 156-162 (`source_label` and the four item arrays), with the orchestrator directedIngestionService
+    evidence: >-
+      export const DirectedIngestionInputSchema = z.object({
+        fragments: z.array(DirectedFragmentItemSchema).min(1),
+        nodes: z.array(DirectedNodeItemSchema).min(1),
+        attributes: z.array(DirectedAttributeItemSchema).optional(),
+        links: z.array(DirectedLinkItemSchema).optional(),
+        source_label: z.string().min(1).max(200).optional(),
+      });
+  - node: domain/knowledge-base/directed-item-kind
+    held_at: >-
+      the DirectedItemKind type, line 175
+    evidence: >-
+      export type DirectedItemKind = "fragment" | "node" | "attribute" | "link";
+  - node: domain/knowledge-base/directed-item-status
+    held_at: >-
+      the DirectedItemStatus type, lines 183-192
+    evidence: >-
+      export type DirectedItemStatus =
+        | "accepted"
+        | "consolidated"
+        | "superseded_previous"
+        | "needs_review"
+        | "uncertain"
+        | "disputed"
+        | "rejected"
+        | "error"
+        | "dependency_failed";
+  - node: rules/knowledge-base/directed-attribute-value-as-text
+    held_at: >-
+      canonicaliseAttributeValue, lines 933-937, used at line 623
+    evidence: >-
+      if (typeof v === "boolean") return v ? "true" : "false";
+        return String(v);
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      DirectedAttributeValueSchema, lines 128-132
+    evidence: >-
+      z.string().min(1).max(2000),
+        z.number().finite(),
+        z.boolean(),
+  - node: rules/knowledge-base/directed-chat-pointer-whole
+    held_at: >-
+      the metadataPointer type with both fields required, lines 289-292, merged together at lines 346-349
+    evidence: >-
+      readonly metadataPointer?: {
+          readonly conversation_id: string;
+          readonly message_id: string;
+        };
+  - node: rules/knowledge-base/directed-defaults
+    held_at: >-
+      lines 628-629 and 708-709. The basis default holds. The change hint is held as a default that a caller-supplied value overrides, which the finding on this file records as a departure from the node.
+    evidence: >-
+      valid_from_basis: item.valid_from_basis ?? "stated",
+      change_hint: item.change_hint ?? "none",
+  - node: rules/knowledge-base/directed-dependency-failed
+    held_at: >-
+      checkCascade and checkLinkCascade, lines 894-913, used at the `dependency_failed` push in the attribute and link loops
+    evidence: >-
+      if (!refToNodeId.has(item.node_ref)) return item.node_ref;
+        if (!refToFragmentId.has(item.evidence_ref)) return item.evidence_ref;
+  - node: rules/knowledge-base/directed-dispatch-order
+    held_at: >-
+      the loops 3a to 3d in directedIngestionService, lines 464, 505, 595 and 674
+    evidence: >-
+      for (const item of payload.fragments) {
+      for (const item of payload.nodes) {
+      for (const item of attributeItems) {
+      for (const item of linkItems) {
+  - node: rules/knowledge-base/directed-fragments-anchor-first-chunk
+    held_at: >-
+      line 447 and the fragment loop, line 468
+    evidence: >-
+      const anchorChunkId = chunks[0]!.id;
+      ...
+      chunk_ids: [anchorChunkId],
+  - node: rules/knowledge-base/directed-full-confidence
+    held_at: >-
+      lines 467, 624 and 704
+    evidence: >-
+      confidence: 1.0,
+  - node: rules/knowledge-base/directed-ingestion-run
+    held_at: >-
+      the constants at lines 82 and 85, passed to ingestRaw at lines 358-359
+    evidence: >-
+      model: DIRECTED_MODEL,
+        prompt_version: DIRECTED_PROMPT_VERSION,
+  - node: rules/knowledge-base/directed-item-status
+    held_at: >-
+      the report pushes in the fragment, node, attribute and link loops, with mapAttributeOutcomeToStatus, mapLinkOutcomeToStatus and classifyEnvelopeFailureStatus
+    evidence: >-
+      return envelope.error.code.startsWith("SYSTEM_") ? "error" : "rejected";
+  - node: rules/knowledge-base/directed-later-reference-wins
+    held_at: >-
+      nowhere. The maps are overwritten by a later success only, so a later refused item does not take over the reference. The finding on this file quotes it.
+    evidence: >-
+      refToFragmentId.set(item.ref, envelope.result.fragment_id);
+  - node: rules/knowledge-base/directed-pinned-node
+    held_at: >-
+      the pin branch of the node loop, lines 506-546, and verifyNodePin, lines 851-888
+    evidence: >-
+      const pinResult = await verifyPin(deps.pool, item.node_id);
+      ...
+      if (row.status !== "active") {
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      DirectedRefSchema, line 102
+    evidence: >-
+      const DirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-run-completes
+    held_at: >-
+      closeRunCompletedSafe, lines 998-1026, called at line 756
+    evidence: >-
+      await closeLlmRunRow(client, { llm_run_id: llmRunId, outcome: "completed" });
+  - node: rules/knowledge-base/directed-source-content
+    held_at: >-
+      synthesiseContent, lines 831-844, with `source_type: "chat"` at line 355
+    evidence: >-
+      lines.push(`-- directed_at=${at.toISOString()} nonce=${nonce}`);
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      line 161
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional(),
+  - node: rules/knowledge-base/directed-source-metadata
+    held_at: >-
+      intakeMetadata, lines 337-349
+    evidence: >-
+      const intakeMetadata: Record<string, unknown> = {
+          directed: true,
+        };
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the ingestRaw call, line 364
+    evidence: >-
+      original_input: deps.sourceExcerpt ?? null,
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IsoDateSchema on `valid_from`, lines 98-100, 139 and 150
+    evidence: >-
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from / valid_to must be ISO YYYY-MM-DD");
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      DirectedFragmentItemSchema, line 106
+    evidence: >-
+      text: z.string().min(1).max(1000),
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the required `evidence_ref` on the attribute and link schemas and `fragment_ids: [fragmentId]` at lines 625 and 705
+    evidence: >-
+      fragment_ids: [fragmentId],
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      DirectedNodeItemSchema, lines 112 and 114
+    evidence: >-
+      name: z.string().min(1).max(500),
+        node_id: z.string().uuid().optional(),
+        aliases: z.array(z.string().min(1).max(500)).optional(),
+looked_past: >-
+  Facts this file holds that nodes outside the set also hold and that agree with them (at least one fragment and one node, the link report reference joined by "->", and the pin-failure and intake-failure texts of contracts/knowledge-base/ingestion) were not filed, because the code agrees with them and those nodes are not bound to this file; the status values are spelled with underscores here against the hyphens of the enumeration nodes, as the rest of the codebase does.
+candidates_opened:
+  - rules/knowledge-base/directed-requires-fragment-and-node
+  - domain/knowledge-base/directed-item
+  - rules/knowledge-base/directed-link-report-reference
+  - contracts/knowledge-base/ingestion

@@ -1,0 +1,61 @@
+findings:
+  - file: src/modules/query-retrieval/dto/fragment.dto.ts
+    where: >-
+      ListAcceptedFragmentsQuerySchema, the `limit` field, line 26
+    evidence: >-
+      limit: IntegerQuery.pipe(z.number().int().min(1).max(100))
+    cost: >-
+      The page-limit bound of 1 to 100 is enforced here, but the file is not bound to the node that states it.
+      The index lists page-limit-bounds against other files and not against this one.
+      If that node changes, `--check` never reaches this schema, and the bound here goes on silently
+      disagreeing. The file's own offset and default rules are bound, so a reader would expect the limit
+      bound to be bound too.
+    kind: contradicts
+    correction: >-
+      Bind this file to rules/knowledge-base/page-limit-bounds, which holds the bound this schema
+      implements. The code does not read the specification, so the bind is what closes this.
+    node: rules/knowledge-base/page-limit-bounds
+read:
+  - node: domain/knowledge-base/accepted-fragment-filter
+    held_at: >-
+      ListAcceptedFragmentsQuerySchema, lines 22-38
+    evidence: >-
+      llm_run_id: z.string().uuid().optional(), raw_information_id: z.string().uuid().optional(),
+      limit: ..., offset: ... — the filter's shape, an LLM run, a raw information and a page, is declared in this schema
+  - node: domain/knowledge-base/information-fragment
+    held_at: >-
+      the AcceptedFragmentItem interface, lines 56-63, which declares the fragment's attributes in part
+    evidence: >-
+      readonly text: string; readonly confidence: number; readonly llm_run_id: string; readonly created_at: string; // ISO-8601
+      — status and superseded_at are not declared here
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of ListAcceptedFragmentsQuerySchema, lines 26-29,
+      and the `limit` and `offset` members of AcceptedFragmentList, lines 67-68
+    evidence: >-
+      limit: IntegerQuery.pipe(...) ... offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0)
+  - node: rules/knowledge-base/accepted-fragment-listing-refuses-unknown-parameter
+    held_at: >-
+      the `.strict()` call on the query schema, line 31
+    evidence: >-
+      .strict()
+  - node: rules/knowledge-base/listing-requires-a-filter
+    held_at: >-
+      the `.refine(...)` on the query schema, lines 32-38
+    evidence: >-
+      (v) => v.llm_run_id !== undefined || v.raw_information_id !== undefined
+  - node: rules/knowledge-base/page-defaults
+    held_at: >-
+      the `.default(20)` on `limit` and the `.default(0)` on `offset`, lines 28-29
+    evidence: >-
+      .optional()
+            .default(20) ... .optional().default(0)
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the `offset` field, line 29
+    evidence: >-
+      offset: IntegerQuery.pipe(z.number().int().min(0)).optional().default(0)
+looked_past: >-
+  The header and docblock comments (the openapi v1.3.0 reference, "UUID syntax is enforced at parse time; bad UUID → 422", the 422 `VALIDATION_INVALID_FORMAT` note) are prose beyond this judgment's nodes, so the comment route owns them.
+candidates_opened:
+  - rules/knowledge-base/page-limit-bounds

@@ -1,0 +1,74 @@
+findings:
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the file header comment, lines 3-6, and the collector comment, lines 129-131
+    evidence: >-
+      "// Surfaces, on the LLMRun read path, the deduplicated list of KnowledgeNode
+      // ids the run touched via `propose_node` / `propose_link` / `propose_attribute`"
+      and "// what BR-33 ("Iteration order on the final list is the insertion order")
+      // requires."
+    cost: >-
+      The rule that a run's affected nodes are listed once each, in the order first reached, is
+      stated in prose here beside the code that holds it (the `Map` in `createAffectedNodeCollector`
+      and the allow-list in `isContributingOutcome`). A reader can take the comment, or the cited
+      BR-33, for where the rule lives instead of the node, and the next change to the node will not
+      reach the comment.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code in this file already holds the fact.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+  - file: src/modules/ingestion/service/affected-nodes.ts
+    where: >-
+      the comment inside the loop of deriveAffectedNodes, lines 336-340
+    evidence: >-
+      "// Only `validation_outcome IN (accepted, consolidated, superseded_previous,
+      // disputed)` rows can contribute"
+    cost: >-
+      The comment lists four outcomes. The node and `isContributingOutcome` list seven: it also
+      includes created, matched an existing node and needs review. A reader trusting the comment
+      would take the set of contributing outcomes to be smaller than the one the system applies.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The code in this file holds the outcome set.
+    node: rules/knowledge-base/affected-nodes-of-a-run
+read:
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the enumeration. It only compares tool names passed in:
+      `toolName !== "propose_node" && toolName !== "propose_link" && toolName !== "propose_attribute"`.
+      The enumeration is declared in other files.
+  - node: domain/knowledge-base/node-resolution
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no resolution enumeration. `propose_node` is read only through
+      `(result as { node_id?: unknown }).node_id` and `resolution` is never inspected. It appears
+      only in a comment, "it carries `resolution`".
+  - node: domain/knowledge-base/validation-outcome
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no outcome enumeration. It only switches on outcome strings in
+      `isContributingOutcome` (`case "accepted": case "consolidated": ... default: return false;`).
+      That is a use of the values, not a declaration of their shape.
+  - node: rules/knowledge-base/affected-nodes-of-a-run
+    held_at: >-
+      `affectedIdsFromEnvelope` and `isContributingOutcome` for the outcome gate, and
+      `createAffectedNodeCollector` for once-each in first-reached order
+    evidence: >-
+      `case "created_new": case "matched_existing": case "needs_review": case "accepted": case "consolidated": case "superseded_previous": case "disputed": return true;`
+      and `if (!seen.has(id)) { seen.set(id, true); }` with `return Array.from(seen.keys());`.
+      `propose_link` contributes `source_node_id` and `target_node_id`, and `propose_node` and
+      `propose_attribute` contribute `node_id`.
+  - node: rules/knowledge-base/affected-nodes-omit-absent
+    held_at: >-
+      the output loop of `resolveAffectedNodes`, lines 281-296
+    evidence: >-
+      `let row = byId.get(id); if (row === undefined) continue;` and, for a merged node whose
+      survivor is not found, `if (survivor === undefined) continue;`
+looked_past: >-
+  The one-hop following of `merged_into_node_id` in `resolveAffectedNodes` is held by the node rules/knowledge-base/affected-nodes-follow-merges, which is outside this file's set and implemented correctly here, and the only-when-completed gate and the 256-entry LRU cache are not domain facts of this file's nodes.
+candidates_opened:
+  - rules/knowledge-base/affected-nodes-follow-merges

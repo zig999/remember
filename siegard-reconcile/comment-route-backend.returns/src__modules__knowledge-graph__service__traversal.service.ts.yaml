@@ -1,0 +1,135 @@
+findings:
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      doc comment of traverseNodeService, line 63
+    evidence: >-
+      * - InvalidTraverseDepthError (BR-05) — depth outside [1, 3].
+    cost: >-
+      The doc comment states the 1-to-3 depth bound as prose. The bound is held in code in ../traversal/config.ts (TRAVERSAL_DEPTH_MIN = 1, TRAVERSAL_DEPTH_MAX = 3), enforced by assertDepth in this file, and held by the node. If the bound moves, this comment is not reached and goes stale.
+    kind: restates
+    correction: >-
+      Remove the "depth outside [1, 3]" wording from the comment through the comment route. The behavior is correct and the code holds the fact.
+    node: rules/knowledge-base/expansion-depth-bounds
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      comment above the directional fetches in traverseNodes, lines 166-169
+    evidence: >-
+      // Compose the directional fetch(es). `both` runs two independent halves
+      // (BR-22); the union is deduped by `link.id` because a given row CAN
+    cost: >-
+      The comment restates what direction `both` means, as prose. The `if (input.direction === "out" || input.direction === "both")` and `"in" || "both"` branches in this file already hold that rule, so the comment is a second home for it outside behavior.
+    kind: restates
+    correction: >-
+      Remove the prose through the comment route.
+    node: rules/knowledge-base/traversal-direction
+  - file: src/modules/knowledge-graph/service/traversal.service.ts
+    where: >-
+      doc comment on TraverseNodesResult.nodes, line 137
+    evidence: >-
+      /** All distinct nodes reached, INCLUDING the starting ids. Order is BFS. */
+    cost: >-
+      The comment states the listing order (starting node first, then order of first reach) as prose. The code holds it through the `visitedNodeIds` insertion order, which seeds with `startingNodeIds` and then adds nodes as reached. The comment can drift from the node without anything reaching it.
+    kind: restates
+    correction: >-
+      Remove the prose through the comment route.
+    node: rules/knowledge-base/traversal-order
+read:
+  - node: domain/knowledge-base/traversal-direction
+    held_at: >-
+      the inline union types `direction: "out" | "in" | "both"` in TraverseInput (line 50) and TraverseNodesInput (line 128). The `"out"` and `"in"` literals passed to fetchTraversalHop declare the same values.
+    evidence: >-
+      readonly direction: "out" | "in" | "both";
+  - node: rules/knowledge-base/expansion-depth-bounds
+    held_at: >-
+      assertDepth (lines 299-307) enforces whole numbers within TRAVERSAL_DEPTH_MIN..TRAVERSAL_DEPTH_MAX. The values 1 and 3 are held in ../traversal/config.ts, not in this file.
+    evidence: >-
+      !Number.isInteger(depth) ||
+          depth < TRAVERSAL_DEPTH_MIN ||
+          depth > TRAVERSAL_DEPTH_MAX
+  - node: rules/knowledge-base/traversal-check-order
+    held_at: >-
+      the sequence of statements in traverseNodeService, lines 74-85
+    evidence: >-
+      assertDepth(input.depth);
+
+        const linkTypeIds = resolveLinkTypeIds(catalog, input.linkTypeNames);
+        ...
+        if (starting === null) {
+          throw new ResourceNotFoundError("KnowledgeNode", input.startingNodeId);
+        }
+        if (starting.status === "deleted") {
+          throw new NodeDeletedError(input.startingNodeId);
+  - node: rules/knowledge-base/traversal-defaults
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file applies no defaults. TraverseInput and TraverseNodesInput declare `readonly direction: "out" | "in" | "both";`, `readonly depth: number;` and `readonly inEffectOnly: boolean;` as required fields, with `asOf?` and `linkTypeNames?` optional and passed through. The only link-type fallback is `if (names === undefined || names.length === 0) return undefined;`, which means follow every link type. Direction, depth and in-effect-only defaults are not applied here.
+  - node: rules/knowledge-base/traversal-direction
+    held_at: >-
+      the two directional fetch branches in traverseNodes, lines 171-190
+    evidence: >-
+      if (input.direction === "out" || input.direction === "both") {
+            const out = await fetchTraversalHop(client, {
+              currentIds: frontier,
+              direction: "out",
+      ...
+          if (input.direction === "in" || input.direction === "both") {
+  - node: rules/knowledge-base/traversal-drops-merge-self-loops
+    held_at: >-
+      the skip in the link aggregation loop of traverseNodes, lines 226-228
+    evidence: >-
+      const isSubstitutionInducedSelfLoop =
+              sourceId === targetId && row.source_node_id !== row.target_node_id;
+            if (isSubstitutionInducedSelfLoop) continue;
+  - node: rules/knowledge-base/traversal-expands-live-nodes
+    held_at: >-
+      the next-frontier construction in traverseNodes, lines 248-258
+    evidence: >-
+      if (row.status === "deleted") continue;
+            if (row.status === "merged") continue;
+            nextFrontier.push(substituted);
+  - node: rules/knowledge-base/traversal-link-once
+    held_at: >-
+      the first-sight guard in the link aggregation loop, lines 230-245. A link is recorded under the hop that first reached it.
+    evidence: >-
+      if (linksById.has(row.id)) continue;
+  - node: rules/knowledge-base/traversal-link-score
+    held_at: >-
+      the score computed per hop at line 221 and attached to each new link. The 0.5 value is held in ../traversal/config.ts as TRAVERSAL_DECAY.
+    evidence: >-
+      const score = Math.pow(TRAVERSAL_DECAY, hop);
+  - node: rules/knowledge-base/traversal-lists-reached-nodes
+    held_at: >-
+      the finalNodes assembly in traverseNodes, lines 284-290. Deleted nodes are kept and merged ones are left out.
+    evidence: >-
+      for (const id of visitedNodeIds) {
+          const row = nodesById.get(id);
+          if (row === undefined) continue;
+          if (row.status === "merged") continue;
+          finalNodes.push(row);
+  - node: rules/knowledge-base/traversal-merged-start
+    held_at: >-
+      the survivor resolution in traverseNodeService, lines 87-96
+    evidence: >-
+      if (
+          starting.status === "merged" &&
+          starting.merged_into_node_id !== null
+        ) {
+          const survivor = await findNodeById(client, starting.merged_into_node_id);
+          if (survivor !== null && survivor.status !== "deleted") {
+            startingResolved = survivor;
+  - node: rules/knowledge-base/traversal-order
+    held_at: >-
+      the insertion order of visitedNodeIds, which is seeded with the starting ids and then extended in the order nodes are reached (lines 152 and 248-258). Links go into linksById in hop order, with the `out` fetch pushed into hopLinks before the `in` fetch (lines 171-190).
+    evidence: >-
+      const visitedNodeIds = new Set<string>(input.startingNodeIds);
+  - node: rules/knowledge-base/traversal-substitutes-merged-ends
+    held_at: >-
+      buildMergedSubstitution (lines 334-362) and its application to each hop link, lines 223-236
+    evidence: >-
+      const sourceId = substitution.get(row.source_node_id) ?? row.source_node_id;
+            const targetId = substitution.get(row.target_node_id) ?? row.target_node_id;
+looked_past: >-
+  The logger.warn call "knowledge_graph_empty_provenance" for non-deleted links with no provenance is an observability alarm, not a domain fact, so it is another judgment's. The empty provenance list itself, `provenanceByLinkId.get(linkId) ?? []`, matches the candidate rule graph-read-shows-empty-provenance. I also left the BR-xx citations in the comments unreported, since they are prose naming a back spec and not a node's fact.
+candidates_opened:
+  - rules/knowledge-base/graph-read-shows-empty-provenance

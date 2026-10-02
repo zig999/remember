@@ -1,0 +1,129 @@
+findings:
+  - file: src/modules/curation/service/entity-match.service.ts
+    where: >-
+      the comment at line 120, above the `targetNodeId` guard in the merge_into branch of resolveEntityMatchService
+    evidence: >-
+      // merge_into branch — DTO superRefine guarantees target_node_id+reason exist.
+      ...
+      // Defensive — should have been caught upstream.
+    cost: >-
+      The comment states, in prose, that a merge-into decision requires a target, and it gives a reason (the
+      DTO) for why the check below it exists. The rule is already held by code, here as the
+      BUSINESS_TARGET_NODE_REQUIRED throw and in the DTO file the node is bound to. If the rule moves, the
+      comment still claims the old guarantee, and a reader may take it as a second home for the rule.
+    kind: restates
+    correction: >-
+      Remove the comment. The throw at lines 122-128 and the DTO's refinement already hold the fact, and the
+      node is bound to this file.
+    node: rules/knowledge-base/merge-into-requires-target
+read:
+  - node: constraints/curation-is-atomic
+    held_at: >-
+      the two withTransaction wrappers, in resolveEntityMatchService (line 57) and in mergeNodesService (line 182)
+    evidence: >-
+      return withTransaction(deps.pool, async (client) => {
+  - node: domain/knowledge-base/entity-match-decision
+    held_at: >-
+      the literal union on `decision` in the ResolveEntityMatchResult interface, line 33
+    evidence: >-
+      readonly decision: "merge_into" | "keep_separate";
+  - node: rules/knowledge-base/curation-refuses-deleted-node
+    held_at: >-
+      the keep_separate branch, lines 66-71, which throws NodeDeletedError. The merge_into branch delegates to
+      performMerge in merge.service.ts, which this file does not hold.
+    evidence: >-
+      if (node.status === "deleted") {
+        throw new NodeDeletedError(
+          "KnowledgeNode tombstoned by compliance_delete",
+  - node: rules/knowledge-base/entity-match-resolution-check-order
+    held_at: >-
+      lines 45-78. The merge_into self-merge check runs first and outside the transaction. The keep_separate
+      checks follow in order: absent node, deleted node, then not in needs_review. Each check throws at the
+      first failure.
+    evidence: >-
+      body.decision === "merge_into" &&
+          body.target_node_id !== null &&
+          body.target_node_id === nodeId
+      ...
+      if (!node) {
+      ...
+      if (node.status === "deleted") {
+      ...
+      if (node.status !== "needs_review") {
+  - node: rules/knowledge-base/entity-match-resolution-clears-reviews
+    held_at: >-
+      the calls to deleteEntityMatchReviewByNode, at line 88 (keep_separate) and line 135 (merge_into)
+    evidence: >-
+      await deleteEntityMatchReviewByNode(client, nodeId);
+  - node: rules/knowledge-base/entity-match-resolution-records-curation-action
+    held_at: >-
+      the insertCurationAction calls at line 90 (keep_separate) and line 137 (merge_into)
+    evidence: >-
+      action: "resolve_entity_match",
+        target_kind: "node",
+        target_id: nodeId,
+        payload: { decision: "merge_into", target_node_id: targetNodeId },
+        reason: body.reason ?? null,
+  - node: rules/knowledge-base/entity-match-resolution-requires-pending-review
+    held_at: >-
+      the keep_separate branch, lines 72-78. In the merge_into branch the same requirement is passed to
+      performMerge as the expected status.
+    evidence: >-
+      if (node.status !== "needs_review") {
+        throw new ConflictError(
+          "BUSINESS_REVIEW_NOT_PENDING",
+      ...
+      absorbedExpectedStatus: "needs_review",
+  - node: rules/knowledge-base/keep-separate-activates-node
+    held_at: >-
+      the updateNodeStatusKeepSeparate call at line 80, with `resulting_status: "active"` in the returned value (line 113)
+    evidence: >-
+      const updated = await updateNodeStatusKeepSeparate(client, nodeId);
+  - node: rules/knowledge-base/merge-into-requires-target
+    held_at: >-
+      the null/undefined guard on targetNodeId in the merge_into branch, lines 121-128
+    evidence: >-
+      if (targetNodeId === null || targetNodeId === undefined) {
+        // Defensive — should have been caught upstream.
+        throw new BusinessError(
+          "BUSINESS_TARGET_NODE_REQUIRED",
+  - node: rules/knowledge-base/node-merge-absorbs-active-node
+    held_at: >-
+      the performMerge call in mergeNodesService, line 183, which passes the expected status of the absorbed
+      node. The check itself runs in merge.service.ts.
+    evidence: >-
+      absorbedExpectedStatus: "active",
+  - node: rules/knowledge-base/node-merge-records-curation-action
+    held_at: >-
+      the insertCurationAction call in mergeNodesService, lines 189-195
+    evidence: >-
+      action: "merge_nodes",
+        target_kind: "node",
+        target_id: absorbedId,
+        payload: { survivor_id: survivorId },
+        reason,
+  - node: rules/knowledge-base/node-never-merged-into-itself
+    held_at: >-
+      the guard at the start of resolveEntityMatchService, lines 45-55. mergeNodesService has no such check
+      in this file.
+    evidence: >-
+      throw new ConflictError(
+        "BUSINESS_SELF_MERGE_FORBIDDEN",
+        "merge_into target equals the node being resolved",
+  - node: rules/knowledge-base/refused-curation-records-nothing
+    held_at: >-
+      every refusal throws inside the withTransaction callback, or before it opens, and comes before the
+      insertCurationAction call. A throw therefore rolls back the work and records no action.
+    evidence: >-
+      throw new ConflictError(
+          "BUSINESS_REVIEW_NOT_PENDING",
+      ...
+      const action = await insertCurationAction(client, {
+  - node: rules/knowledge-base/unused-resolution-fields-ignored
+    held_at: >-
+      the keep_separate branch, lines 58-118, which never reads body.target_node_id and returns it as null
+    evidence: >-
+      target_node_id: null,
+        affected: null,
+looked_past: >-
+  The header comment at lines 1-5 (use-case labels and a note that both endpoints share merge mechanics) and the structured log lines such as "curation_resolve_entity_match_ok" were left alone: the comment describes structure rather than stating a node's fact, and the logging is another judgment's.

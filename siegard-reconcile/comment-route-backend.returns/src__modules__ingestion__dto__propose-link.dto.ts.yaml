@@ -1,0 +1,33 @@
+read:
+  - node: domain/knowledge-base/change-hint
+    held_at: >-
+      ChangeHintSchema, line 12, and its use in ProposeLinkInputSchema.change_hint, line 61
+    evidence: >-
+      export const ChangeHintSchema = z.enum(["none", "succession", "correction"]);
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      ProposeLinkInputSchema, lines 20-64. It declares the proposal's confidence, change_hint, valid_from, valid_to and valid_from_basis, and the cited fragment ids. The kind attribute is not in this file. The 0..*
+      evidence association is held as fragment_ids.
+    evidence: >-
+      export const ProposeLinkInputSchema = z.object({ ... confidence: z.number().min(0).max(1) ... fragment_ids: z.array(z.string().uuid()).min(1) ... valid_from: IsoDateSchema.optional() ... valid_to: IsoDateSchema.optional() ... valid_from_basis: ValidFromBasisSchema.optional() ... change_hint: ChangeHintSchema.default("none")
+  - node: domain/knowledge-base/valid-from-basis
+    held_at: >-
+      ValidFromBasisSchema, line 8. The enum is narrowed to the two values a caller may state. The third value, received, is left out as the candidate rule rules/knowledge-base/caller-never-states-received requires, so the narrowing conforms.
+    evidence: >-
+      export const ValidFromBasisSchema = z.enum(["stated", "document"]);
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the fragment_ids field of ProposeLinkInputSchema, lines 46-51
+    evidence: >-
+      fragment_ids: z.array(z.string().uuid()).min(1)
+  - node: rules/knowledge-base/proposal-confidence-range
+    held_at: >-
+      the confidence field of ProposeLinkInputSchema, lines 39-45
+    evidence: >-
+      confidence: z.number().min(0).max(1)
+looked_past: >-
+  The header comment and the JSDoc comments ("Closed enum for the caller-supplied `valid_from_basis` (§6.5 / A14)", "Closed enum for the optional `change_hint`", "ISO date `YYYY-MM-DD`") are prose, and the comment route answers prose. The ISO date regex and the `.describe()` strings carry no domain fact beyond what the nodes and candidates hold, and the thresholds they emit match the candidate policies.
+candidates_opened:
+  - rules/knowledge-base/caller-never-states-received
+  - rules/knowledge-base/new-assertion-status-from-confidence
+  - rules/knowledge-base/below-confidence-floor-records-nothing

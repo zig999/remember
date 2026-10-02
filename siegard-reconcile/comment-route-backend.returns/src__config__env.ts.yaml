@@ -1,0 +1,149 @@
+findings:
+  - file: src/config/env.ts
+    where: >-
+      the docstring above envSchema, lines 15-21
+    evidence: >-
+      We never
+       * fall back silently on a required secret — missing one is a fatal config
+       * error and the process must refuse to start.
+    cost: >-
+      The refusal to start without the provider key is held a second time in prose. The
+      node holds it and so does the code in this file (ANTHROPIC_API_KEY with
+      .min(1, ...) and loadEnv throwing EnvValidationError). The next reader meets the
+      rule in a comment as well as in the node, and a change to the node leaves the
+      comment saying the old thing.
+    kind: restates
+    correction: >-
+      Remove the prose. The code in this file already holds the fact, and the bind
+      claims it.
+    node: constraints/anthropic-key-required
+  - file: src/config/env.ts
+    where: >-
+      the CORS_ORIGINS default, lines 35-43
+    evidence: >-
+      .default("http://localhost:5173,http://127.0.0.1:5173")
+    cost: >-
+      This list decides which browser origins the system answers as allowed when nothing
+      is configured. No node names any allowed origin: the allowed-origin nodes state only
+      that an answer to an allowed origin carries it. A reader looking for who may call the
+      BFF finds the answer here and not in the specification. app.ts line 113 declares a
+      second fallback list for the same fact.
+    kind: unstated
+    correction: >-
+      Analysis should give the default allowed origins a node, for instance beside
+      constraints/answers-carry-allowed-origin.
+    node: constraints/answers-carry-allowed-origin
+  - file: src/config/env.ts
+    where: >-
+      PG_STATEMENT_TIMEOUT_MS, line 55
+    evidence: >-
+      PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(10_000),
+    cost: >-
+      This value decides when a statement counts as timed out, which the specification
+      answers as a backing service being unavailable. The 10 s threshold lives only here,
+      so a reader of the unavailable-store node cannot learn when the timeout fires.
+    kind: unstated
+    correction: >-
+      Analysis should give the statement time limit and its default a node, or state it
+      in the node that already answers a timed-out statement.
+    node: constraints/unreachable-store-answers-unavailable
+  - file: src/config/env.ts
+    where: >-
+      NEON_AUTH_JWKS_TTL_S, line 65
+    evidence: >-
+      NEON_AUTH_JWKS_TTL_S: z.coerce.number().int().min(60).default(600),
+    cost: >-
+      How long the auth provider's key set is trusted, with a 600 s default and a 60 s
+      floor, changes when a revoked or rotated key stops being honored. No node holds
+      either number, so the next reader looks for them in the specification and does not
+      find them.
+    kind: unstated
+    correction: >-
+      Analysis should give the key-set cache lifetime and its minimum a node, near
+      contracts/knowledge-base/access.
+    node: contracts/knowledge-base/access
+  - file: src/config/env.ts
+    where: >-
+      the comment above LOCAL_OPERATOR_TOKEN, lines 67-72, and the comment above the guard
+      in loadEnv, lines 226-227
+    evidence: >-
+      DEV-ONLY local operator token — convenience auth for local MCP clients ... When set
+      AND `NODE_ENV=development`, a request carrying ... is accepted as the single owner
+      WITHOUT JWKS verification
+      // Fail-closed guard for the DEV-only auth bypass (see LOCAL_OPERATOR_TOKEN /
+      // middleware/auth.ts).
+    cost: >-
+      The development-only condition for the token is restated in prose. The guard
+      `source.NODE_ENV !== "development"` in this file holds the refusal to start, and
+      middleware/auth.ts holds the acceptance. A second copy in comments can drift from
+      the node without anything reading it.
+    kind: restates
+    correction: >-
+      Remove both comments. The code here already holds the fact, and the bind claims it.
+    node: constraints/local-operator-token-needs-explicit-development
+  - file: src/config/env.ts
+    where: >-
+      the docstring on InvalidOwnerTimezoneError, lines 252-258
+    evidence: >-
+      Boot-time error for an unknown / unsupported IANA timezone in `OWNER_TZ`. Thrown by
+      `loadEnv` per chat.back.md BR-47 step 4 — the BFF refuses to start with a bad zone
+      rather than blowing up on the first chat turn.
+    cost: >-
+      The refusal to start on an unknown zone is stated again in a docstring that cites an
+      older back-spec instead of the node. The code holds it in this file
+      (`new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ })` inside try,
+      throwing InvalidOwnerTimezoneError). The citation sends the reader to a document that
+      is not the authority.
+    kind: restates
+    correction: >-
+      Remove the docstring prose. The throwing code stays.
+    node: constraints/owner-time-zone-must-be-known
+read:
+  - node: constraints/anthropic-key-required
+    held_at: >-
+      the ANTHROPIC_API_KEY field of envSchema, lines 80-82, with the throw in loadEnv,
+      lines 221-224
+    evidence: >-
+      ANTHROPIC_API_KEY: z
+          .string()
+          .min(1, "ANTHROPIC_API_KEY is required (Anthropic SDK secret; BR-29).")
+      if (!parsed.success) {
+          throw new EnvValidationError(parsed.error);
+        }
+  - node: constraints/local-operator-token-minimum-length
+    held_at: >-
+      the LOCAL_OPERATOR_TOKEN field of envSchema, lines 73-76
+    evidence: >-
+      LOCAL_OPERATOR_TOKEN: z
+          .string()
+          .min(16, "LOCAL_OPERATOR_TOKEN must be at least 16 characters.")
+          .optional(),
+  - node: constraints/local-operator-token-needs-explicit-development
+    held_at: >-
+      the guard in loadEnv, lines 228-241
+    evidence: >-
+      if (
+          parsed.data.LOCAL_OPERATOR_TOKEN !== undefined &&
+          source.NODE_ENV !== "development"
+        ) {
+          throw new EnvValidationError([
+  - node: constraints/owner-time-zone-must-be-known
+    held_at: >-
+      the try/catch in loadEnv, lines 243-247
+    evidence: >-
+      try {
+          new Intl.DateTimeFormat(undefined, { timeZone: parsed.data.OWNER_TZ });
+        } catch (err) {
+          throw new InvalidOwnerTimezoneError(parsed.data.OWNER_TZ, err);
+        }
+looked_past: >-
+  The defaults for the chat and ingestion models, the turn, tool and result limits, the
+  recent window, the summary overlap, the owner zone, the prompt versions and the chat
+  switches are held by nodes outside this pack (for example rules/chat/tool-result-truncated
+  and rules/chat/turn-model-default, which bind to other files), so their declaration here
+  is a bind matter and not a finding. The prose comments restating those chat facts, the
+  PORT, LOG_LEVEL and pool-size defaults, and the unused MAX_HISTORY_MESSAGES field belong
+  to the comment route or to another judgment.
+candidates_opened:
+  - rules/chat/tool-result-truncated
+  - rules/chat/turn-model-default

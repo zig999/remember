@@ -1,0 +1,29 @@
+read:
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for a proposal. It exports `routeConfidence(confidence: number): ConfidenceRoute`,
+      which takes the confidence as a bare number and does not declare the proposal's attributes (kind, confidence,
+      change_hint, valid_from, valid_to, valid_from_basis).
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      Line 1 (the `CONFIDENCE_FLOOR` constant) and lines 12-13 of `routeConfidence`, which classify a confidence below
+      the floor as `below_floor`. The file only classifies. It records no link or attribute and does not itself refuse
+      to record, so the "records nothing" consequence is in the callers.
+    evidence: >-
+      export const CONFIDENCE_FLOOR = 0.4 as const;
+      ... if (confidence >= CONFIDENCE_FLOOR) return { kind: "uncertain" };
+      return { kind: "below_floor" };
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      Lines 1-2 (the two threshold constants) and lines 10-14 (`routeConfidence`), which map confidence to the active
+      or uncertain status.
+    evidence: >-
+      export const CONFIDENCE_UNCERTAIN_UPPER = 0.75 as const;
+      ... if (confidence >= CONFIDENCE_UNCERTAIN_UPPER) return { kind: "active" };
+      if (confidence >= CONFIDENCE_FLOOR) return { kind: "uncertain" };
+looked_past: >-
+  The docstring "Status to write on the created assertion (link or attribute)." above `ConfidenceRoute` is prose about
+  where the route is used. It states no threshold or other value, so it is another judgment's (the comment route) and
+  not a finding here.

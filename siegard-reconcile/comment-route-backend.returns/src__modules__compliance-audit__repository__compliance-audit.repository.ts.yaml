@@ -1,0 +1,139 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the doc comment above tombstoneRawInformation, lines 45-49
+    evidence: >-
+      * BR-04 + BR-05 + BR-18 — single UPDATE redacts content, the v1.3.0
+      * `original_input` column (chat verbatim capture), sets the compliance flag in
+      * metadata (shallow JSON merge), and transitions status + superseded_at.
+    cost: >-
+      The comment states, outside any running behavior, the rule that the flag is added and the other
+      metadata keys are kept. The UPDATE below it already holds that rule, as
+      `metadata       = metadata || jsonb_build_object('compliance_deleted', true)`. A second copy
+      of the rule sits in prose, and a reader may take it for the place the rule is decided.
+    kind: restates
+    correction: >-
+      Remove the comment. The UPDATE statement in this file already holds the fact, and the node
+      binds it.
+    node: rules/knowledge-base/compliance-deletion-flags-metadata
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the doc comments above tombstoneRawChunksOfRaw, tombstoneCascadedFragments, tombstoneCascadedLinks and
+      tombstoneCascadedAttributes, lines 72-75, 93-94, 124-125 and 156-157
+    evidence: >-
+      * Tombstone every raw_chunk anchored to the deleted raw. RETURNING.id count
+      * feeds `affected.chunks` (BR-16).
+      and: `* RETURNING.id count feeds `affected.fragments` (BR-16).`
+    cost: >-
+      The comments restate that the affected counts are the numbers of rows each cascade marked
+      deleted. Code holds the fact: `return res.rowCount ?? 0;` in each function and the
+      `jsonb_build_object('chunks', $3::int, ...)` in insertComplianceDeletion. The prose is a
+      second home for the counting rule, and nothing keeps it in step with the node.
+    kind: restates
+    correction: >-
+      Remove the comments. The row-count returns and the insert in this file hold the fact.
+    node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      the doc comment above tombstoneCascadedFragments, lines 92-95
+    evidence: >-
+      * RETURNING.id count feeds `affected.fragments` (BR-16). Spec UC-01 step 6
+      * cascades BOTH `status = 'deleted'` and `superseded_at = now()`.
+    cost: >-
+      The comment restates that a compliance deletion marks fragments deleted and stamps the moment of
+      the deletion as their supersession time. That rule belongs to a node outside this file's set,
+      and the UPDATE below already holds it as `SET status = 'deleted', superseded_at = now()`. The
+      comment cites a use-case step of a back-spec as its authority, so a reader looks there instead
+      of at the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The UPDATE statements in this file hold the fact. The candidate node
+      rules/knowledge-base/compliance-deletion-tombstones is not bound to this file, so the bind that
+      claims the declaration is the bind to add.
+    node: rules/knowledge-base/compliance-deletion-tombstones
+read:
+  - node: domain/knowledge-base/compliance-deletion
+    held_at: >-
+      the ComplianceDeletionRow interface (lines 191-197), written by insertComplianceDeletion
+    evidence: >-
+      export interface ComplianceDeletionRow { readonly id: string; readonly raw_information_id: string; readonly reason: string; readonly executed_at: Date; readonly affected: ComplianceDeletionAffected; }
+  - node: domain/knowledge-base/compliance-deletion-filter
+    held_at: >-
+      the ListComplianceDeletionsFilters interface (lines 271-277)
+    evidence: >-
+      export interface ListComplianceDeletionsFilters { readonly raw_information_id?: string; readonly executed_from?: string; readonly executed_to?: string; readonly limit: number; readonly offset: number; }
+  - node: domain/knowledge-base/curation-action
+    held_at: >-
+      the CurationActionRow interface (lines 334-342), written by insertCurationAction
+    evidence: >-
+      export interface CurationActionRow { readonly id: string; readonly action: string; readonly target_kind: string; readonly target_id: string | null; readonly payload: Record<string, unknown>; readonly reason: string | null; readonly created_at: Date; }
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      the ListCurationActionsFilters interface (lines 381-389)
+    evidence: >-
+      export interface ListCurationActionsFilters { readonly action?: string; readonly target_kind?: string; readonly target_id?: string; readonly created_from?: string; readonly created_to?: string; readonly limit: number; readonly offset: number; }
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      the status union of RawInformationLockedRow (lines 21-24)
+    evidence: >-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/knowledge-base/audit-filters-match-exactly
+    held_at: >-
+      the equality predicates built in listComplianceDeletions and listCurationActions
+    evidence: >-
+      where.push(`raw_information_id = $${i++}`); where.push(`action = $${i++}`); where.push(`target_kind = $${i++}`); where.push(`target_id = $${i++}`);
+  - node: rules/knowledge-base/audit-listing-accepts-open-window
+    held_at: >-
+      the two independent window branches in listComplianceDeletions (lines 295-302)
+    evidence: >-
+      if (f.executed_from) { where.push(`executed_at >= $${i++}`); ... } if (f.executed_to) { where.push(`executed_at < $${i++}`); ... }
+  - node: rules/knowledge-base/audit-listing-order
+    held_at: >-
+      the ORDER BY clauses of the two listing queries (lines 309 and 429)
+    evidence: >-
+      ORDER BY executed_at DESC / ORDER BY created_at DESC
+  - node: rules/knowledge-base/audit-listing-total-before-pagination
+    held_at: >-
+      the countSql statements, which reuse whereClause with no LIMIT or OFFSET (lines 313-317 and 433-437)
+    evidence: >-
+      const countSql = `SELECT count(*)::int AS total FROM compliance_deletion ${whereClause}`;
+  - node: rules/knowledge-base/audit-listing-window-half-open
+    held_at: >-
+      the window predicates in listComplianceDeletions (lines 296 and 300) and in listCurationActions (lines 416 and 420)
+    evidence: >-
+      `executed_at >= $${i++}` ... `executed_at < $${i++}` and `created_at >= $${i++}` ... `created_at < $${i++}`
+  - node: rules/knowledge-base/compliance-deletion-counts-what-it-marked
+    held_at: >-
+      the row-count returns of the four tombstone functions, and the insert of the counts in insertComplianceDeletion
+    evidence: >-
+      return res.rowCount ?? 0; and `jsonb_build_object('chunks', $3::int, 'fragments', $4::int, 'links', $5::int, 'attributes', $6::int)`
+  - node: rules/knowledge-base/compliance-deletion-flags-metadata
+    held_at: >-
+      the SET list of the UPDATE in tombstoneRawInformation (line 58)
+    evidence: >-
+      metadata       = metadata || jsonb_build_object('compliance_deleted', true),
+  - node: rules/knowledge-base/compliance-deletion-keeps-content-hash
+    held_at: >-
+      the SET list of the UPDATE in tombstoneRawInformation, which names content, original_input, metadata, status and superseded_at and never content_hash (lines 56-60)
+    evidence: >-
+      SET content        = '[REDACTED]', original_input = CASE WHEN original_input IS NULL THEN NULL ELSE '[REDACTED]' END, metadata       = metadata || ..., status         = 'deleted', superseded_at  = now()
+  - node: rules/knowledge-base/compliance-deletion-propagates
+    held_at: >-
+      the EXISTS / NOT EXISTS predicates of tombstoneCascadedFragments, tombstoneCascadedLinks and tombstoneCascadedAttributes
+    evidence: >-
+      AND ri.id <> $1 AND ri.status <> 'deleted')  AND f.status <> 'deleted' (and the same with kl.status and na.status)
+  - node: rules/knowledge-base/curation-action-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The insert names no time column, `INSERT INTO curation_action (action, target_kind, target_id, payload, reason)`, and only reads `created_at` back in RETURNING. The moment is not set by any statement in this file.
+  - node: rules/knowledge-base/deletion-execution-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      The insert names no time column, `INSERT INTO compliance_deletion (raw_information_id, reason, affected)`, and only reads `executed_at` back in RETURNING. The moment is not set by any statement in this file.
+looked_past: >-
+  Prose only, no code or emitted text in this file carries it: the header's claim that this module is the only one allowed to UPDATE the raw, chunk, fragment, link and attribute tables, its claim that the queries match the back-spec "VERBATIM", and the BR-17 "legacy-orphan signal" remark above findComplianceDeletionByRawId. I also saw that the file redacts content with the literal '[REDACTED]' and marks raw chunks deleted. A node outside the set, rules/knowledge-base/compliance-deletion-redacts-content, holds the redaction. The chunk rule sits in rules/knowledge-base/compliance-deletion-tombstones. Neither is an unstated fact.
+candidates_opened:
+  - rules/knowledge-base/compliance-deletion-redacts-content
+  - rules/knowledge-base/compliance-deletion-tombstones

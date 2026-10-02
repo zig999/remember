@@ -1,0 +1,95 @@
+findings:
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the JSDoc above ingestRawInformation (lines 79-83) and the comment "Step 5 — open the LLMRun. Insert with DEFAULTs for status/attempts/started_at." (line 143)
+    evidence: >-
+      " *   4. Chunk via `chunkV1`; bulk INSERT raw_chunk.\n *   5. INSERT llm_run with the precomputed key.\n *   6. Return 201 with the new identifiers and the persisted chunk refs."
+    cost: >-
+      The sequence "record the raw information, its chunks, and open one run" is written a second time as prose. If the node moves, the node's binding does not reach this comment, so a reader can no longer tell which statement was decided.
+    kind: restates
+    correction: >-
+      Remove the step-by-step prose. The code in ingestRawInformation (insertRawInformation, insertRawChunks, insertLlmRun) holds the fact.
+    node: rules/knowledge-base/ingestion-records-chunks-and-run
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the JSDoc above noopExisting (lines 186-189)
+    evidence: >-
+      "The no-op idempotent branch (BR-09). Returns the existing identifiers; the\n * chunks array is empty by spec (the caller must call\n * `listRawChunksByRawInformation` if it needs the chunk refs)."
+    cost: >-
+      The rule that held content records nothing and answers with no chunks is restated as prose that cites a business-rule number. A reader may take the comment as the home of the decision rather than the node.
+    kind: restates
+    correction: >-
+      Remove the prose. The catch branch calling noopExisting and the `chunks: []` in its return hold the fact in this file, and the contract contracts/knowledge-base/ingestion states the answer.
+    node: rules/knowledge-base/held-content-records-nothing
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the comment inside the insertRawInformation call (lines 112-114)
+    evidence: >-
+      "// TC-01 / BR-34: pass-through of the verbatim user turn from the\n      // chat-directed path. `content_hash` is computed above over `content`\n      // only — `original_input` never affects idempotency."
+    cost: >-
+      The fact that a chat turn is recorded as the raw information's original input is restated beside the code that holds it, under a business-rule number. A reader looking for the decision may stop at the comment.
+    kind: restates
+    correction: >-
+      Remove the comment. The `original_input: input.original_input ?? null` property holds the fact here.
+    node: rules/knowledge-base/directed-turn-is-original-input
+  - file: src/modules/ingestion/service/ingestion.service.ts
+    where: >-
+      the comment above the first try block (lines 101-104) and the one in the llm_run catch (lines 153-157)
+    evidence: >-
+      "Any other 23505 (e.g. on idempotency_key alone, which\n  // would mean a state inconsistency since content_hash is the primary anchor)\n  // is logged and re-raised as 500 by the global error handler."
+    cost: >-
+      The uniqueness of an LLM run's idempotency key is restated as prose. The unique constraint that enforces it sits in another file, so the comment becomes a second place a reader may take as the rule.
+    kind: restates
+    correction: >-
+      Remove the prose. The constraint named by LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT, in the repository and the migration, holds the fact. The `isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)` branch here only reacts to it.
+    node: rules/knowledge-base/idempotency-key-unique
+read:
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no shape for the run. It passes values to `insertLlmRun(client, { model: input.model, prompt_version: input.prompt_version, input_raw_information_id: rawInformationRow.id, idempotency_key: idempotencyKey })` and reads `llmRunRow.id` and `llmRunRow.idempotency_key`. The shape is declared in the repository and DTO files.
+  - node: domain/knowledge-base/raw-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no chunk shape. It calls `insertRawChunks(client, rawInformationRow.id, chunkInputs)` and reads `c.chunk_index`, `c.offset_start` and `c.offset_end` from the rows returned.
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares no raw information shape. It calls `insertRawInformation(client, { source_type: input.source_type, content: input.content, content_hash: contentHash, metadata: input.metadata, original_input: input.original_input ?? null })` and the repository declares the row.
+  - node: rules/knowledge-base/content-hash-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The uniqueness is a database constraint outside this file. The file only reacts to its violation, in `if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) { return await noopExisting(client, contentHash, idempotencyKey); }`.
+  - node: rules/knowledge-base/directed-turn-is-original-input
+    held_at: >-
+      the insertRawInformation call in ingestRawInformation (line 115)
+    evidence: >-
+      "original_input: input.original_input ?? null,"
+  - node: rules/knowledge-base/held-content-records-nothing
+    held_at: >-
+      the catch branch of ingestRawInformation and noopExisting (lines 117-122 and 191-230)
+    evidence: >-
+      "if (isUniqueViolation(err, RAW_INFORMATION_CONTENT_HASH_CONSTRAINT)) {\n      return await noopExisting(client, contentHash, idempotencyKey);" The branch returns before `insertRawChunks` and `insertLlmRun`. noopExisting only reads (`findRawInformationByHash`, `findLlmRunByIdempotencyKey`, `countChunks`) and returns `chunks: []`.
+  - node: rules/knowledge-base/idempotency-key
+    held_at: >-
+      the composeIdempotencyKey call in ingestRawInformation (lines 93-99)
+    evidence: >-
+      "const idempotencyKey = composeIdempotencyKey({\n    content_hash: contentHash,\n    prompt_version: input.prompt_version,\n    model: input.model,\n    chunking_version: CHUNKING_VERSION,\n  });" The file supplies the four components. The digest and its join order are computed in hash.ts, which I did not read because it is outside the file set.
+  - node: rules/knowledge-base/idempotency-key-unique
+    held_at: >-
+      nowhere
+    evidence: >-
+      The uniqueness is a database constraint outside this file. The file only reacts to its violation, in `if (isUniqueViolation(err, LLM_RUN_IDEMPOTENCY_KEY_CONSTRAINT)) { throw new InvariantError(` .
+  - node: rules/knowledge-base/ingestion-records-chunks-and-run
+    held_at: >-
+      ingestRawInformation, lines 105-183
+    evidence: >-
+      "rawInformationRow = await insertRawInformation(client, {" followed by "const chunkRows = await insertRawChunks(\n    client,\n    rawInformationRow.id,\n    chunkInputs\n  );" and "llmRunRow = await insertLlmRun(client, {". The opening status `running` comes from the column default the comment mentions ("Insert with DEFAULTs for status/attempts/started_at") and is not set in this file.
+looked_past: >-
+  Other comments in this file (the layering header, the "BR-02 is enforced by the absence of code" note, the ResourceNotFoundError and isUniqueViolation docblocks) and the internal-error message wording are not claims about the listed nodes, so I left them for the comment route and for the contract's own pass.
+candidates_opened:
+  - contracts/knowledge-base/ingestion

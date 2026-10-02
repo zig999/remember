@@ -1,0 +1,38 @@
+read:
+  - node: rules/knowledge-base/allowed-values-in-string-order
+    held_at: >-
+      listAttributeKeysService, the valid_values branch of the items mapping (line 138)
+    evidence: >-
+      return values !== undefined && values.length > 0
+        ? { ...base, valid_values: [...values].sort() }
+        : base;
+  - node: rules/knowledge-base/attribute-key-listing-by-node-type
+    held_at: >-
+      listAttributeKeysService, lines 98-110. The service resolves the requested node type to an id and passes it as the filter on both repository calls. The restricting WHERE clause (ak.node_type_id = $1) sits in repository/catalog.repository.ts, which is outside this file set.
+    evidence: >-
+      const rows = await listAttributeKeys(client, { node_type_id: nodeTypeId });
+
+      const validValueRows = await listAttributeValidValues(client, {
+        node_type_id: nodeTypeId,
+      });
+  - node: rules/knowledge-base/link-type-rules-on-request
+    held_at: >-
+      listLinkTypesService, the include_rules branch (lines 48-60) and the rules attachment (lines 77-87)
+    evidence: >-
+      if (options.include_rules) {
+          rulesByLinkType = new Map();
+          const rules = await listLinkTypeRules(client);
+      ...
+      if (rulesByLinkType === null) return base;
+      ... return { ...base, rules };
+      The rules are attached with valid_from and valid_to carried through and no filter on the window.
+  - node: rules/knowledge-base/node-type-filter-in-catalog
+    held_at: >-
+      listAttributeKeysService, lines 99-103. This covers the attribute-key listing only. The node listing does not appear in this file.
+    evidence: >-
+      const row = catalog.nodeTypeByName.get(options.node_type);
+          if (row === undefined) {
+            throw new UnknownNodeTypeError(options.node_type);
+          }
+looked_past: >-
+  The file still carries explanatory comments (the header block, the UC-01/02/03 doc comments, and the formatDate docstring); they state no domain fact held by these nodes, so this judgment leaves them to the comment route.

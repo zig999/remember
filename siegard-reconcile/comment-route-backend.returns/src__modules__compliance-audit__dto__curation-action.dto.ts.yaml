@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/compliance-audit/dto/curation-action.dto.ts
+    where: >-
+      the JSDoc above TargetKindSchema, line 16
+    evidence: >-
+      /** Allowed target_kind values (mirrors openapi.yaml). */
+    cost: >-
+      The comment names openapi.yaml as a second authority for the closed set of target kinds. The set is held by the enum declared just below it (and by the node domain/knowledge-base/curation-target-kind). A reader is sent to a third place to learn what is allowed, and a change to the node does not reach that file.
+    kind: restates
+    correction: >-
+      Remove the comment. The fact is already held by the TargetKindSchema enumeration in this file, which is where the node's bind claims it.
+    node: domain/knowledge-base/curation-target-kind
+read:
+  - node: contracts/knowledge-base/compliance-audit
+    held_at: >-
+      CurationActionSchema, CurationActionListSchema, CurationActionIdParamSchema and ListCurationActionsQuerySchema (lines 26-75). They carry only the curation-action read and list shapes. The compliance-delete and compliance-deletion operations are not in this file.
+    evidence: >-
+      target_id: UuidSchema.nullable(),
+      payload: z.record(z.string(), z.unknown()),
+      reason: z.string().max(1000).nullable(),
+      created_at: z.string(),
+      curationActionId: UuidSchema,
+  - node: domain/knowledge-base/curation-action-filter
+    held_at: >-
+      ListCurationActionsQuerySchema, lines 26-46
+    evidence: >-
+      action: CurationActionNameSchema.optional(),
+      target_kind: TargetKindSchema.optional(),
+      target_id: UuidSchema.optional(),
+      created_from: z.string().datetime({ offset: true }).optional(),
+      created_to: z.string().datetime({ offset: true }).optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().min(0).default(0),
+  - node: domain/knowledge-base/curation-action-kind
+    held_at: >-
+      CurationActionNameSchema, lines 5-13
+    evidence: >-
+      z.enum(["resolve_entity_match", "merge_nodes", "resolve_dispute", "confirm_item", "reject_item", "correct_item", "compliance_delete"])
+  - node: domain/knowledge-base/curation-target-kind
+    held_at: >-
+      TargetKindSchema, lines 17-23
+    evidence: >-
+      z.enum(["node", "link", "attribute", "fragment", "raw_information"])
+  - node: rules/knowledge-base/audit-page-defaults
+    held_at: >-
+      the limit and offset fields of ListCurationActionsQuerySchema, lines 33-34
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().min(0).default(0),
+  - node: rules/knowledge-base/audit-window-ordered
+    held_at: >-
+      the superRefine of ListCurationActionsQuerySchema, lines 36-46
+    evidence: >-
+      if (Date.parse(value.created_from) >= Date.parse(value.created_to)) {
+        ctx.addIssue({ code: "custom", path: ["created_to"], message: "VALIDATION_OUT_OF_RANGE" });
+  - node: rules/knowledge-base/curation-action-reason-length
+    held_at: >-
+      the reason field of CurationActionSchema, line 58
+    evidence: >-
+      reason: z.string().max(1000).nullable(),
+  - node: rules/knowledge-base/page-limit-bounds
+    held_at: >-
+      the limit field of ListCurationActionsQuerySchema, line 33
+    evidence: >-
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+  - node: rules/knowledge-base/page-offset-non-negative
+    held_at: >-
+      the offset field of ListCurationActionsQuerySchema, line 34
+    evidence: >-
+      offset: z.coerce.number().int().min(0).default(0),
+looked_past: >-
+  The enumeration values are spelled in snake_case on the wire (resolve_entity_match, raw_information) where the enumeration nodes spell them hyphenated, and the contract's error codes and messages are assembled outside this file. I read the spelling as an interface convention and did not report it, since no node in the specification states the wire spelling.
+candidates_opened: []

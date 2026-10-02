@@ -1,0 +1,73 @@
+findings:
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 16, CHUNK_TARGET, the first element of the tuple
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+    cost: >-
+      The lower bound 1500 is a chunk-size value no node holds. The specification states only the 2000 upper limit and the 4000 block threshold. v1.ts reads only CHUNK_TARGET[1], so 1500 drives nothing today. Because it sits in the constants file, the next reader will take it for a decided size window, and nobody will look for it in the specification.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the 1500 lower bound a node, or the unused bound is removed from the constant. Which of the two applies is the specification owner's call.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 26, READING_TAIL
+    evidence: >-
+      export const READING_TAIL = 200 as const;
+    cost: >-
+      A 200 code-point "reading-tail" overlap is a domain value that no node in the specification holds. It is exported and referenced nowhere under backend/src. It reads as a decided overlap size for a retrieval layer that does not exist, so the figure would be taken from the code instead of being decided in a node.
+    kind: unstated
+    correction: >-
+      Either the analysis gives the overlap a node, or the unused constant is removed. This is the specification owner's call.
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      doc comment above CHUNK_TARGET, lines 9-15
+    evidence: >-
+      The chunker keeps appending sentences while the
+       * running block stays within `[CHUNK_TARGET[0], CHUNK_TARGET[1]]`; it tries to
+       * close the chunk once the upper bound is reached, but only if it lands on a
+       * sentence boundary. Hard boundaries (BR-06) close earlier; oversize blocks
+       * (BR-07) split with `Intl.Segmenter`.
+    cost: >-
+      The prose restates the sentence-boundary cutting of oversize blocks, which rules/knowledge-base/long-block-sentence-chunks holds. It also describes a close-at-upper-bound behavior that differs in wording from the node's "closing before the sentence that would take it past 2000". It is a second home outside behavior, and it will drift from the node.
+    kind: restates
+    correction: >-
+      Remove the comment. The behavior is held in code at src/modules/ingestion/chunker/v1.ts, where `if (tentativeSize > CHUNK_TARGET[1])` applies the 2000 limit.
+    node: rules/knowledge-base/long-block-sentence-chunks
+  - file: src/modules/ingestion/chunker/config.ts
+    where: >-
+      line 6, doc comment above CHUNKING_VERSION
+    evidence: >-
+      /** Identifier of the chunking strategy persisted in `raw_chunk.chunking_version`. */
+    cost: >-
+      The prose restates that every raw chunk records the chunking version, which rules/knowledge-base/chunking-version holds. The code holds it too, in this file as the constant `CHUNKING_VERSION = "v1"` and in v1.ts, where `chunking_version: CHUNKING_VERSION` is emitted. The comment is a duplicate home for the node's fact.
+    kind: restates
+    correction: >-
+      Remove the comment.
+    node: rules/knowledge-base/chunking-version
+read:
+  - node: rules/knowledge-base/chunking-version
+    held_at: >-
+      line 7, the CHUNKING_VERSION constant
+    evidence: >-
+      export const CHUNKING_VERSION = "v1" as const;
+  - node: rules/knowledge-base/long-block-sentence-chunks
+    held_at: >-
+      lines 16 and 18, the CHUNK_TARGET upper bound (2000) and CHUNK_HARD_MAX (4000). They are the thresholds the node states, and v1.ts applies them.
+    evidence: >-
+      export const CHUNK_TARGET: readonly [number, number] = [1500, 2000] as const;
+      export const CHUNK_HARD_MAX = 4000 as const;
+  - node: rules/knowledge-base/long-sentence-own-chunk
+    held_at: >-
+      nowhere
+    evidence: >-
+      The file declares only the numeric constants `CHUNK_HARD_MAX = 4000` and `CHUNK_TARGET = [1500, 2000]`. The rule that an over-2000 sentence stands alone as one chunk is behavior, and it is not carried in this file.
+  - node: rules/knowledge-base/short-block-one-chunk
+    held_at: >-
+      line 18, the CHUNK_HARD_MAX constant. It is the 4000 threshold at or below which v1.ts emits one chunk (`if (blockSize <= CHUNK_HARD_MAX)`).
+    evidence: >-
+      export const CHUNK_HARD_MAX = 4000 as const;
+looked_past: >-
+  The comment's citations of BR-04, BR-03, BR-06 and BR-07 point at back-spec rules outside the node pack, which another judgment owns, and the comment that says the overlap is "not persisted" is prose only.
+candidates_opened: []

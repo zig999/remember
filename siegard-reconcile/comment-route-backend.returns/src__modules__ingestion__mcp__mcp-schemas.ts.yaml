@@ -1,0 +1,176 @@
+findings:
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      line 243, idempotency_key in GetIngestionStatusOutputSchema
+    evidence: >-
+      idempotency_key: z.string().regex(/^[0-9a-f]{64}$/),
+    cost: >-
+      The key's shape (SHA-256, 64 lowercase hex characters) is a rule node
+      rules/knowledge-base/idempotency-key holds, and it is bound to
+      llm-run.dto.ts, ingest-raw-information.dto.ts, hash.ts and
+      ingestion.service.ts, not to this file. This regex repeats it where
+      nothing reads the node. When the node moves, --check never reaches this
+      file, and nobody can tell which of the two copies was decided.
+    kind: contradicts
+    correction: >-
+      Take the key's shape from the LlmRunResponseSchema declared in
+      llm-run.dto.ts, which the node binds, instead of declaring the regex a
+      second time here. Alternatively, bind this file to the node.
+    node: rules/knowledge-base/idempotency-key
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      line 304, IngestDirectedValidFromBasisSchema
+    evidence: >-
+      const IngestDirectedValidFromBasisSchema = z.enum(["stated", "document"]);
+    cost: >-
+      The vocabulary of a validity-start basis lives in
+      domain/knowledge-base/valid-from-basis (stated, document, received). The
+      rule that a caller never states `received` lives in
+      rules/knowledge-base/caller-never-states-received. This file declares
+      its own subset enum, and the file is bound to neither node. Whoever
+      changes the vocabulary or the rule will not be led to this enum, and
+      directed ingestion would keep accepting the old set.
+    kind: contradicts
+    correction: >-
+      Derive the caller-statable subset from the enum declared in
+      curation/dto/enums.dto.ts (where valid-from-basis is bound), or bind
+      this file to the two nodes.
+    node: rules/knowledge-base/caller-never-states-received
+  - file: src/modules/ingestion/mcp/mcp-schemas.ts
+    where: >-
+      line 341, the .describe text of node_id in IngestDirectedNodeItemSchema
+      (text emitted on tools/list)
+    evidence: >-
+      Rejected (VALIDATION_INVALID_FORMAT) if the id does not point to an active node.
+    cost: >-
+      The ingestion contract answers a pin that names no knowledge node with
+      RESOURCE_NOT_FOUND ("node_id pin does not resolve to an existing
+      knowledge_node row."). Only a pin to a non-active node gets
+      VALIDATION_INVALID_FORMAT. A client that reads this description expects
+      VALIDATION_INVALID_FORMAT for a nonexistent id as well, and the
+      contract says otherwise.
+    kind: contradicts
+    correction: >-
+      State the two refusals as the contract does: RESOURCE_NOT_FOUND where the
+      pinned id names no node, VALIDATION_INVALID_FORMAT where it names a node
+      that is not active.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: domain/knowledge-base/directed-ingestion
+    held_at: >-
+      IngestDirectedMcpInputSchema, lines 415-448. It declares source_label
+      and the fragments, nodes, attributes and links arrays that make up the
+      items.
+    evidence: >-
+      export const IngestDirectedMcpInputSchema = z.object({ fragments: z.array(IngestDirectedFragmentItemSchema).min(1) ... source_label: z.string().min(1).max(200).optional()
+  - node: domain/knowledge-base/information-fragment
+    held_at: nowhere
+    evidence: >-
+      The file declares only the directed input item `IngestDirectedFragmentItemSchema = z.object({ ref: ..., text: z.string().min(1).max(1000) })`.
+      It does not declare the information fragment's own shape (confidence,
+      status, created_at, superseded_at); that is declared elsewhere.
+  - node: domain/knowledge-base/ingest-tool
+    held_at: >-
+      INGEST_TOOL_NAMES, lines 63-68
+    evidence: >-
+      export const INGEST_TOOL_NAMES = ["propose_fragment", "propose_node", "propose_link", "propose_attribute"] as const;
+  - node: domain/knowledge-base/llm-run
+    held_at: >-
+      GetIngestionStatusOutputSchema, lines 234-246. It declares the run's
+      shape in part. The llm_run_id field of the four Propose*McpInputSchema
+      extensions, lines 28-55, carries the reference to the run.
+    evidence: >-
+      export const GetIngestionStatusOutputSchema = z.object({ id: z.string().uuid(), model: z.string(), prompt_version: z.string(), started_at: ..., finished_at: ...nullable(), status: z.enum(["running", "completed", "failed"]), attempts: ..., input_raw_information_id: ..., idempotency_key: ..., summary: GetIngestionStatusSummarySchema, ...
+  - node: domain/knowledge-base/proposal
+    held_at: >-
+      The four Propose*McpInputSchema extensions, lines 41-55 (llm_run_id,
+      the proposal's reference to its run). Also the valid_from and
+      valid_from_basis fields of the directed attribute and link items, lines
+      373-378 and 397-402.
+    evidence: >-
+      export const ProposeLinkMcpInputSchema = ProposeLinkInputSchema.extend(LlmRunIdField); ... valid_from: IngestDirectedIsoDateSchema.optional() ... valid_from_basis: IngestDirectedValidFromBasisSchema.optional()
+  - node: domain/knowledge-base/raw-information
+    held_at: >-
+      IngestDocumentMcpInputSchema, lines 125-156. It declares content,
+      source_type and metadata (the free-form record) as the input that
+      creates a raw information.
+    evidence: >-
+      content: z.string().min(1, ...).max(10 * 1024 * 1024, ...), source_type: SourceTypeSchema.describe(...), metadata: z.record(z.string(), z.unknown()).optional()
+  - node: domain/knowledge-base/run-status
+    held_at: >-
+      the status field of GetIngestionStatusOutputSchema, line 240
+    evidence: >-
+      status: z.enum(["running", "completed", "failed"]),
+  - node: domain/knowledge-base/run-summary
+    held_at: >-
+      GetIngestionStatusSummarySchema, lines 215-225
+    evidence: >-
+      accepted: z.number().int().nonnegative(), consolidated: ..., superseded_previous: ..., needs_review: ..., uncertain: ..., disputed: ..., rejected: ..., error: ..., orphaned_fragments: z.number().int().nonnegative(),
+  - node: rules/knowledge-base/content-length
+    held_at: >-
+      the content field of IngestDocumentMcpInputSchema, lines 126-129. The
+      same bound is repeated in StartAsyncIngestionMcpInputSchema, lines 90-93.
+    evidence: >-
+      .min(1, "content must not be empty").max(10 * 1024 * 1024, "content must not exceed 10 MiB")
+  - node: rules/knowledge-base/directed-attribute-value-shape
+    held_at: >-
+      IngestDirectedAttributeValueSchema, lines 351-355
+    evidence: >-
+      z.union([z.string().min(1).max(2000), z.number().finite(), z.boolean()])
+  - node: rules/knowledge-base/directed-reference-length
+    held_at: >-
+      IngestDirectedRefSchema, line 301. It is used by the item ref fields and
+      by node_ref, source_ref, target_ref and evidence_ref.
+    evidence: >-
+      const IngestDirectedRefSchema = z.string().min(1).max(120);
+  - node: rules/knowledge-base/directed-source-label-length
+    held_at: >-
+      the source_label field of IngestDirectedMcpInputSchema, lines 440-444
+    evidence: >-
+      source_label: z.string().min(1).max(200).optional()
+  - node: rules/knowledge-base/directed-validity-start-shape
+    held_at: >-
+      IngestDirectedIsoDateSchema, lines 293-298, used by valid_from on the
+      attribute and link items
+    evidence: >-
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "valid_from must be ISO YYYY-MM-DD")
+  - node: rules/knowledge-base/fragment-text-length
+    held_at: >-
+      the text field of IngestDirectedFragmentItemSchema, lines 310-313
+    evidence: >-
+      text: z.string().min(1).max(1000)
+  - node: rules/knowledge-base/link-or-attribute-cites-a-fragment
+    held_at: >-
+      the required evidence_ref of IngestDirectedAttributeItemSchema (line
+      370) and IngestDirectedLinkItemSchema (line 394)
+    evidence: >-
+      evidence_ref: IngestDirectedRefSchema.describe("The `ref` of the fragment that evidences this link (must appear in `fragments[]`).")
+  - node: rules/knowledge-base/node-name-length
+    held_at: >-
+      the name and aliases fields of IngestDirectedNodeItemSchema, lines
+      329-348
+    evidence: >-
+      name: z.string().min(1).max(500) ... aliases: z.array(z.string().min(1).max(500)).optional()
+  - node: rules/knowledge-base/recent-ingestions-limit-bounds
+    held_at: >-
+      ListRecentIngestionsMcpInputSchema.limit, lines 252-260
+    evidence: >-
+      limit: z.number().int().min(1).max(50).default(10)
+  - node: rules/knowledge-base/recent-ingestions-limit-default
+    held_at: >-
+      ListRecentIngestionsMcpInputSchema.limit, line 258
+    evidence: >-
+      .default(10)
+looked_past: >-
+  Another judgment's, not reported here. The header comments citing BR-21/24/28/32/33/34 are prose restating facts code holds elsewhere (comment route). The comment naming STRUCTURAL_INVALID for the node_id pin is prose that disagrees with the contract (comment route). StartAsyncIngestionMcpInputSchema (lines 89-123) is exported, with no non-test consumer found by search, for a tool that constraints/ingest-toolset-offers-no-async-ingestion says the ingest toolset does not offer (dead-code review).
+candidates_opened:
+  - rules/knowledge-base/directed-defaults
+  - rules/knowledge-base/directed-pinned-node
+  - rules/knowledge-base/idempotency-key
+  - domain/knowledge-base/valid-from-basis
+  - rules/knowledge-base/affected-nodes-of-a-run
+  - rules/knowledge-base/affected-nodes-omit-absent
+  - domain/knowledge-base/directed-item
+  - rules/knowledge-base/caller-never-states-received
+  - constraints/ingest-toolset-offers-no-async-ingestion
+  - contracts/knowledge-base/ingestion

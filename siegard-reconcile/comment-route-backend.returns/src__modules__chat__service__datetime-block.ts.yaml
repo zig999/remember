@@ -1,0 +1,26 @@
+findings:
+  - file: src/modules/chat/service/datetime-block.ts
+    where: >-
+      the docstring above formatIsoWithOffset (lines 38-48) and the header comment (lines 1-16), which cite "BR-47" and describe the string's shape
+    evidence: >-
+      " * Format `now` as `YYYY-MM-DDTHH:mm:ss±HH:MM` in the requested IANA zone." and
+      " * @returns    The exact-shape string per BR-47 step 2 example."
+    cost: >-
+      The fact that the time is rendered as ISO-8601 with an offset, followed by the zone identifier, is stated a second time in prose that no running system emits. It also points the reader to "BR-47", a back-spec step, as its authority. When the node moves, the node's binding does not reach this prose, so a reader can trust a shape the node no longer holds.
+    kind: restates
+    correction: >-
+      Remove the header comment and the docstrings. The code already holds the fact: renderDatetimeBlockB returns `${ISO_PREFIX}${iso} (${tz})`, and formatIsoWithOffset builds the ISO string with its offset.
+    node: rules/chat/model-context-owner-time
+read:
+  - node: rules/chat/model-context-owner-time
+    held_at: >-
+      renderDatetimeBlockB (line 34-35) and formatIsoWithOffset (lines 49-92). They compose the ISO-8601 local time, the offset in ±HH:MM form and the zone identifier in parentheses. This file does not decide that the string goes to the assistant on every turn; that belongs to the caller.
+    evidence: >-
+      return `${ISO_PREFIX}${iso} (${tz})`; and return `${datePart}${offsetTail}`;
+  - node: rules/chat/model-context-owner-time-opening
+    held_at: >-
+      the ISO_PREFIX constant (line 18), used as the first element of the string built in renderDatetimeBlockB
+    evidence: >-
+      const ISO_PREFIX = "Data/hora atual do dono: " as const;
+looked_past: >-
+  The fallback to "+00:00" for an unrecognised offset shape (normalizeShortOffset) is a technical safety default, not a domain fact I could tie to either node, so I treated it as a code-review matter and did not report it.

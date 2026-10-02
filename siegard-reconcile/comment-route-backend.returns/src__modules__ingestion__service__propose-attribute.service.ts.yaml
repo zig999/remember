@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the node_type_id guard after the attribute_key lookup, lines 71-80
+    evidence: >-
+      if (resolvedKey.node_type_id !== nodeTypeId) {
+        throw new ValidationFailure(
+          "VALIDATION_INVALID_FORMAT",
+          "attribute_key.node_type_id does not match the node's node_type_id.",
+    cost: >-
+      The same refusal, an attribute key not held for the node's type, is implemented a second time. It answers VALIDATION_INVALID_FORMAT with its own message. The contract answers it with BUSINESS_UNKNOWN_ATTRIBUTE_KEY naming the key. The branch is unreachable while the catalog lookup is scoped by (node_type_id, key), so it only matters if that scoping is ever relaxed. From then on the wire would carry a code and wording the specification does not state for this refusal.
+    kind: contradicts
+    correction: >-
+      Remove the guard, so the refusal stays with the scoped lookup and assertKnownType that already answer it. Alternatively, make the guard raise the same BUSINESS_UNKNOWN_ATTRIBUTE_KEY refusal the contract names.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the header comment lines 9-11, and the comment above the guard at lines 71-73
+    evidence: >-
+      the attribute_key catalog itself
+        //     scopes the `node_type` (UNIQUE(node_type_id, key)). The "graph rules"
+        //     layer for attributes is "key.node_type_id == node.node_type_id".
+      and "Cross-table check: key.node_type_id matches node.node_type_id. The
+        // catalog lookup already enforces this"
+    cost: >-
+      Prose states a second time that an attribute key must be one the catalog holds for the node's type. The lookup keyed by attributeKeyCacheKey(nodeTypeId!, args.key) already holds that fact in this file. The prose is a second home that the specification's change would not reach.
+    kind: restates
+    correction: >-
+      Remove the two comments. The comment route applies, followed by /reconcile over the file.
+    node: rules/knowledge-base/attribute-key-for-node-type
+  - file: src/modules/ingestion/service/propose-attribute.service.ts
+    where: >-
+      the layer-heading comments at lines 52, 118-120, 122, 146 and 157
+    evidence: >-
+      // ---- Layer 1: Structural ----
+      // ---- Layer 2: Graph rules (attributes have none beyond catalog scope) ----
+      // ---- Layer 3: Temporal ----
+      // ---- Layer 4: Confidence ----
+      // ---- Layer 5: Anti-hallucination ----
+    cost: >-
+      The comments restate the order in which an attribute proposal is checked, and the statements below them already carry that order. The wording "attributes have none beyond catalog scope" is a second statement of a fact about which checks apply. If the node's order changes, the prose keeps the old order and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the layer-heading comments. The comment route applies, followed by /reconcile over the file.
+    node: rules/knowledge-base/attribute-proposal-check-order
+read:
+  - node: rules/knowledge-base/attribute-key-for-node-type
+    held_at: >-
+      the attribute_key lookup and assertKnownType call, lines 61-69
+    evidence: >-
+      deps.catalog.attributeKeyByNodeTypeAndKey.get(
+          attributeKeyCacheKey(nodeTypeId!, args.key)
+        );
+        assertKnownType({
+          kind: "attribute_key",
+          name: args.key,
+          found: attrKey !== undefined,
+        });
+  - node: rules/knowledge-base/attribute-proposal-check-order
+    held_at: >-
+      the sequence of statements in proposeAttributeService, lines 53-197. The node and key checks, then the value parse and allowed values, then fragment existence and run ownership, then validateTemporal, then routeConfidence, then countFragmentsAnchoredToSource. Each failure throws or returns, so the run stops at the first check it fails.
+    evidence: >-
+      parseAttributeValue({ value: args.value, value_type: resolvedKey.value_type });
+      ...
+      const resolvedTemporal = validateTemporal({
+      ...
+      const route = routeConfidence(args.confidence);
+      ...
+      const anchored = await countFragmentsAnchoredToSource(client, {
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      the domain branch, lines 85-88. The check itself lives in assertValueInDomain, which comes from another file.
+    evidence: >-
+      const domain = domainOf(deps.catalog, resolvedKey.id);
+        if (domain !== null) {
+          assertValueInDomain(args.value, domain);
+        }
+  - node: rules/knowledge-base/below-confidence-floor-records-nothing
+    held_at: >-
+      the below_floor branch, lines 147-155, which returns before consolidateAttribute is reached. The 0.40 threshold sits in routeConfidence, which comes from another file.
+    evidence: >-
+      if (route.kind === "below_floor") {
+          const result: ProposeAttributeResult = {
+            attribute_id: null,
+            outcome: "rejected",
+            reason: "BELOW_CONFIDENCE_FLOOR",
+          };
+          return { ok: true, result };
+  - node: rules/knowledge-base/cited-fragments-anchored
+    held_at: >-
+      the Layer 5 count comparison, lines 158-171
+    evidence: >-
+      if (anchored !== args.fragment_ids.length) {
+          throw new ValidationFailure(
+            "VALIDATION_INVALID_FORMAT",
+            "One or more fragments are not anchored to the run's source chunks.",
+  - node: rules/knowledge-base/cited-fragments-exist
+    held_at: >-
+      the fragment row count check, lines 91-106
+    evidence: >-
+      if (fragRes.rows.length !== args.fragment_ids.length) {
+          throw new ValidationFailure(
+            "RESOURCE_NOT_FOUND",
+            "One or more fragment_ids do not resolve to a fragment row.",
+  - node: rules/knowledge-base/cited-fragments-in-run
+    held_at: >-
+      the per-fragment llm_run_id comparison, lines 107-115
+    evidence: >-
+      if (f.llm_run_id !== runCtx.llmRunId) {
+          throw new ValidationFailure(
+            "VALIDATION_INVALID_FORMAT",
+            "fragment_id does not belong to this run.",
+  - node: rules/knowledge-base/correction-requires-errata-evidence
+    held_at: nowhere
+    evidence: >-
+      The file only forwards the inputs to validateTemporal, which is imported from another file. It states no errata keyword and no correction check: `change_hint: args.change_hint,
+          fragment_texts: fragmentTexts,`
+  - node: rules/knowledge-base/new-assertion-status-from-confidence
+    held_at: >-
+      the statusForNewRow mapping, lines 174-175. The 0.75 and 0.40 thresholds are applied in routeConfidence, which comes from another file.
+    evidence: >-
+      const statusForNewRow: "active" | "uncertain" =
+          route.kind === "active" ? "active" : "uncertain";
+  - node: rules/knowledge-base/required-start-available
+    held_at: nowhere
+    evidence: >-
+      The file passes `requires_valid_from: resolvedKey.requires_valid_from,` together with the document_date and received_at values to validateTemporal. The check that a start is stated or derivable sits in that function, not here.
+  - node: rules/knowledge-base/stated-start-requires-basis
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `valid_from: args.valid_from ?? null,` and `valid_from_basis: args.valid_from_basis ?? null,` to validateTemporal. It states no basis requirement itself.
+  - node: rules/knowledge-base/validity-start-before-end
+    held_at: nowhere
+    evidence: >-
+      The file only forwards `valid_from` and `valid_to` to validateTemporal. It states no ordering comparison.
+looked_past: >-
+  The comments citing back-spec identifiers (BR-14, BR-19, BR-25/BR-27, TC-011, v7 §6.5 / A14) and the comment on the received fallback at lines 184-186 are prose, and the comment route handles them. The temporal rules they touch are held in validation/temporal.ts, which is outside this file set.
