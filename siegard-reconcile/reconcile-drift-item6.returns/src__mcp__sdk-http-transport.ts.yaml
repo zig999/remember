@@ -1,0 +1,23 @@
+findings:
+  - file: src/mcp/sdk-http-transport.ts
+    where: >-
+      the doc comment of buildConfiguredMcpServer (lines 100-101) and the doc comment of mountMcpEndpoint (lines 141-142)
+    evidence: >-
+      " *  - `tools/call` looks the name up in the closed set; unknown names yield a
+       *    `NOT_FOUND` isError result mapped via {@link toMcpToolResult}." and
+      " and dispatchable; any other name yields a NOT_FOUND isError result."
+    cost: >-
+      The rule that a tool outside the endpoint's toolset answers NOT_FOUND is also written as prose in two doc comments. The code that holds it is the `handler === undefined` branch in this same file. If the node moves, nothing binds the comments, so they can drift without notice. A reader may also take them for where the rule was decided.
+    kind: restates
+    correction: >-
+      Remove the two sentences from the doc comments. The behavior is held by the `handler === undefined` branch in this file and stays unchanged.
+    node: constraints/mcp-endpoint-serves-only-its-toolset
+read:
+  - node: constraints/mcp-endpoint-serves-only-its-toolset
+    held_at: >-
+      the `handler === undefined` branch inside the CallToolRequestSchema handler of buildConfiguredMcpServer (lines 122-131)
+    evidence: >-
+      if (handler === undefined) { return toCallToolResult({ ok: false, error: { code: "NOT_FOUND", message: `Tool '${req.params.name}' is not available on this endpoint.`, }, }); } — toCallToolResult returns isError: true. The tool lookup uses a Map built only from opts.tools, so the toolset is closed.
+looked_past: >-
+  The file's long design-rationale comments (stateless per-request Server, why the low-level Server is used, the Fastify hijack bridge) state no node's fact, so I did not report them as findings; they belong to the comment route.
+candidates_opened: []

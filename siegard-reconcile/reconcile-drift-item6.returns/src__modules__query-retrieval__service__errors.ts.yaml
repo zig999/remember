@@ -1,0 +1,35 @@
+findings:
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchQueryError, the `empty_after_trim` reason and its message (lines 4, 8, 14-15), under the fixed `code = "BUSINESS_INVALID_SEARCH_QUERY"` (line 3)
+    evidence: >-
+      public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const;
+      public readonly reason: "empty_after_trim" | "empty_after_parse" | "too_long";
+      : reason === "empty_after_trim" ? "query is empty after trim"
+    cost: >-
+      The class lets a blank query (empty after trim) be refused as BUSINESS_INVALID_SEARCH_QUERY. The contract answers a blank query with VALIDATION_INVALID_FORMAT (rules/knowledge-base/search-query-not-blank) and reserves BUSINESS_INVALID_SEARCH_QUERY for the rule that a query must parse. The error-envelope mapper renders whatever code the class carries. A caller that throws this reason would therefore answer a blank query with a code the specification gives to a different refusal. In production code only `empty_after_parse` is thrown today, and `empty_after_trim` is reached only through the type, so the divergence is latent.
+    kind: contradicts
+    correction: >-
+      Remove the `empty_after_trim` reason from InvalidSearchQueryError. The blank-query refusal belongs on the VALIDATION_INVALID_FORMAT path the contract names. Alternatively, a node must state that a blank query is answered with BUSINESS_INVALID_SEARCH_QUERY.
+    node: contracts/knowledge-base/retrieval
+  - file: src/modules/query-retrieval/service/errors.ts
+    where: >-
+      InvalidSearchQueryError, the `too_long` reason and its message (lines 4, 8, 16), under the fixed `code = "BUSINESS_INVALID_SEARCH_QUERY"` (line 3)
+    evidence: >-
+      public readonly code = "BUSINESS_INVALID_SEARCH_QUERY" as const;
+      : "query exceeds 1000 characters"
+    cost: >-
+      The class lets an over-length query be refused as BUSINESS_INVALID_SEARCH_QUERY with 422. The contract answers an over-length query with VALIDATION_INVALID_FORMAT (rules/knowledge-base/search-query-length). The error-envelope spec already exercises this path (`new InvalidSearchQueryError("too_long", { length: 1234 })`) and maps it to the business code. A reader who trusts that mapping would believe the business code is the decided answer to over-length queries, when the contract decided otherwise.
+    kind: contradicts
+    correction: >-
+      Remove the `too_long` reason from InvalidSearchQueryError, so over-length refusal stays on the VALIDATION_INVALID_FORMAT path the contract names. Alternatively, a node must state that over-length queries are answered with BUSINESS_INVALID_SEARCH_QUERY.
+    node: contracts/knowledge-base/retrieval
+read:
+  - node: contracts/knowledge-base/retrieval
+    held_at: >-
+      The error classes in the file. InvalidSearchQueryError (empty_after_parse), InvalidSearchLayerError, FragmentNotAcceptedError, RawInformationDeletedError and EmptyProvenanceError each carry the status and code the contract states.
+    evidence: >-
+      statusCode = 422 / code = "BUSINESS_INVALID_SEARCH_QUERY"; statusCode = 422 / code = "BUSINESS_INVALID_SEARCH_LAYER" with `allowed = ["fragment", "node", "chunk"]`; statusCode = 404 / code = "BUSINESS_FRAGMENT_NOT_ACCEPTED"; statusCode = 410 / code = "BUSINESS_RAW_INFORMATION_DELETED" with `deletedAt`; statusCode = 500 / code = "SYSTEM_INTERNAL_ERROR". The `too_long` and `empty_after_trim` reasons of InvalidSearchQueryError diverge from the contract, as the two findings state.
+looked_past: >-
+  The file's messages cite "websearch_to_tsquery" and "compliance_delete" as emitted text and state the node's facts truthfully, so they are no finding; the codes and statuses are held by this file's classes while the HTTP and MCP rendering lives in other files.
+candidates_opened: []

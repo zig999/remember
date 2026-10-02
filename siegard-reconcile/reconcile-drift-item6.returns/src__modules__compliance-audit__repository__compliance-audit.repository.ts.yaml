@@ -1,0 +1,51 @@
+findings:
+  - file: src/modules/compliance-audit/repository/compliance-audit.repository.ts
+    where: >-
+      RawInformationLockedRow, the `status` field of the interface (line 23)
+    evidence: >-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+    cost: >-
+      The row type that loadRawInformationForUpdate returns for a raw_information
+      row admits needs_review and merged. The specification holds that a raw
+      information is only ever active or deleted, and its decision log records
+      that typing it with all four node statuses was the mistake corrected.
+      A reader of this type sees four states for a source, and a branch on
+      "needs_review" or "merged" for a raw would look legitimate here when no
+      node gives either state a meaning for a source.
+    kind: contradicts
+    correction: >-
+      Type the raw_information status as "active" | "deleted", the two values
+      the node holds for a source.
+    node: rules/knowledge-base/source-status-active-or-deleted
+read:
+  - node: domain/knowledge-base/node-status
+    held_at: >-
+      The union type on the `status` field of RawInformationLockedRow (line 23),
+      which declares the four values of the enumeration for raw_information, in
+      the database's snake_case spelling.
+    evidence: >-
+      readonly status: "active" | "needs_review" | "merged" | "deleted";
+  - node: rules/knowledge-base/curation-action-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertCurationAction names no time column: `INSERT INTO curation_action
+      (action, target_kind, target_id, payload, reason)`. It reads the time back
+      with `RETURNING id, action, target_kind, target_id, payload, reason,
+      created_at`. The file never sets created_at. The value comes from the
+      column default in migrations/0001_init.sql (`created_at  timestamptz NOT
+      NULL DEFAULT now()`), which is outside this file.
+  - node: rules/knowledge-base/deletion-execution-time-is-recording-time
+    held_at: >-
+      nowhere
+    evidence: >-
+      insertComplianceDeletion names no time column: `INSERT INTO
+      compliance_deletion (raw_information_id, reason, affected)`. It reads the
+      time back with `RETURNING id, raw_information_id, reason, executed_at,
+      affected`. The file never sets executed_at. The value comes from the
+      column default in migrations/0001_init.sql (`executed_at
+      timestamptz NOT NULL DEFAULT now()`), which is outside this file.
+looked_past: >-
+  The file's header and JSDoc comments cite BR-02 to BR-18 and UC-01 to UC-05 and claim the query bodies are aligned "VERBATIM" with a back-spec; that is prose with no code of its own, which belongs to the comment route and not to this pass.
+candidates_opened:
+  - rules/knowledge-base/source-status-active-or-deleted

@@ -1,0 +1,46 @@
+findings:
+  - file: src/modules/curation/service/queue.service.ts
+    where: >-
+      the comment block opening the file, lines 1-9
+    evidence: >-
+      // Two queues are surfaced (ADR A26 / spec §10.1):
+      //   - entity_match: knowledge_node rows with status='needs_review',
+      //   - disputed:     knowledge_link / node_attribute rows with status='disputed',
+      //                   grouped by conflict scope.
+    cost: >-
+      The header says in prose that the disputed queue is grouped by scope. The same fact is held in the node and in the code of groupDisputedLinks and groupDisputedAttributes below. A reader looking for what the queue holds finds a third statement of it, citing a spec section number that is not a node identity.
+    kind: restates
+    correction: >-
+      Remove the prose by the comment route. The code in this file (groupDisputedLinks, groupDisputedAttributes) already holds the fact, so no behavior changes.
+    node: rules/knowledge-base/dispute-queue-entry
+  - file: src/modules/curation/service/queue.service.ts
+    where: >-
+      the comment block at the top of groupDisputedLinks, lines 155-168
+    evidence: >-
+      // Group by the CONFLICT SCOPE, which depends on the link type's cardinality
+      // (A10, link_type.allows_multiple_current):
+      //   - FUNCTIONAL (allows_multiple_current=false, ...): ... so the scope is (source, link_type) — target EXCLUDED, scope.target null.
+      //   - MULTI-VALUED (allows_multiple_current=true): ... the target is part of the scope.
+    cost: >-
+      The dispute-scope rule is restated in prose beside the code that implements it (the `functional` ternary in `key` and in `target_node_id`). If the node moves, the comment keeps asserting the old scope and nothing flags it.
+    kind: restates
+    correction: >-
+      Remove the comment by the comment route. The `key` construction and `scope.target_node_id: functional ? null : r.target_node_id` in this file already hold the fact.
+    node: rules/knowledge-base/dispute-scope
+read:
+  - node: rules/knowledge-base/review-queue-total-before-pagination
+    held_at: >-
+      the `total` accumulation in listReviewQueueService, lines 90-108. The counts are taken by separate count queries that take no limit or offset.
+    evidence: >-
+      total += await countEntityMatchQueue(client);
+      total += await countDisputedLinks(client);
+      total += await countDisputedAttributes(client);
+      return { total, limit, offset, items };
+      The repository counts are `SELECT count(*)::text AS total FROM knowledge_node WHERE status = 'needs_review'`, `... FROM knowledge_link WHERE status = 'disputed'` and `... FROM node_attribute WHERE status = 'disputed'`. Each disputed row is counted once and nothing is cut by the page. The count calls sit inside the same `kind === undefined || kind === ...` guards as the lists, so only the kinds listed are counted.
+looked_past: >-
+  The grouping code that gives a disputed queue entry its scope, its sides and its earliest-recorded creation time implements rules/knowledge-base/dispute-queue-entry, dispute-scope and dispute-entry-time. Those nodes are not in this file's set and the code conforms to them, so they are not findings.
+candidates_opened:
+  - rules/knowledge-base/dispute-queue-entry
+  - rules/knowledge-base/dispute-scope
+  - rules/knowledge-base/dispute-entry-time
+  - domain/knowledge-base/dispute-scope

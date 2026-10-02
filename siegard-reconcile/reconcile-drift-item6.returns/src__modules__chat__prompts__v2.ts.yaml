@@ -1,0 +1,43 @@
+findings:
+  - file: src/modules/chat/prompts/v2.ts
+    where: >-
+      the header comment and the docstring of system(), lines 1-25 and 40-49
+    evidence: >-
+      "The marker token is inherited from v1 (planted by `v1System()` at the head of the body) — v2 does NOT re-plant it."
+      and "BR-20's guard is STABLE across prompt versions"
+    cost: >-
+      The fact that every chat prompt version begins with the one marker is stated a second time in prose beside the code that carries it. The next reader may take the comment as where the rule lives, and the comment will not follow if the node moves.
+    kind: restates
+    correction: >-
+      Remove the comment prose. The code still holds the fact through `return [v1Body, ...v2Additions].join("\n")`, which puts v1's body first, and through the `CHAT_PROMPT_MARKER_V1` re-export from "./v1.js". The marker text itself is declared in v1.ts, which is outside this file set.
+    node: rules/chat/chat-prompt-carries-marker
+  - file: src/modules/chat/prompts/v2.ts
+    where: >-
+      the v2Additions array, item 1 of the emitted prompt, lines 66-69
+    evidence: >-
+      "1. CHAME `start_async_ingestion` SOMENTE quando o dono pedir", "   EXPLICITAMENTE para ingerir um documento — sinais tipicos sao", "   frases como \"ingerir\", \"salvar este documento\", \"registrar", "   este texto\"."
+    cost: >-
+      The prompt names three phrases ("ingerir", "salvar este documento", "registrar este texto") as typical signals of an explicit request to ingest. No node holds this list for v2. The only node that names phrases is the v4 one, and it names four different ones. The list is behavior only this file states, so the next reader will not find it in the specification.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether the v2 prompt's typical-phrase list is a business fact. If it is, a node should hold it, next to rules/chat/assistant-writes-only-on-owner-request or the v2 prompt rules.
+  - file: src/modules/chat/prompts/v2.ts
+    where: >-
+      the v2Additions array, opening lines of the emitted section, lines 60-64
+    evidence: >-
+      "Se elas", "nao aparecerem no catalogo, ignore esta secao — significa que a", "capacidade de ingestao via chat esta desligada nesta instalacao."
+    cost: >-
+      The prompt tells the assistant to ignore the whole ingestion section when the ingestion tools are absent from the catalog. It also tells it the cause is that ingestion is turned off. No node holds either instruction. rules/chat/directed-ingestion-disabled-by-default states the disabled state, not this prompt behavior.
+    kind: unstated
+    correction: >-
+      Analysis should decide whether the v2 prompt's behavior when the ingestion tools are not in the catalog is a business fact, and give it a node if so.
+read:
+  - node: rules/chat/chat-prompt-carries-marker
+    held_at: >-
+      the final statement of system(), line 84, where the composed prompt is returned with v1's body first. The marker text itself is declared in "./v1.js", outside this file.
+    evidence: >-
+      const v1Body = v1System(catalog); ... return [v1Body, ...v2Additions].join("\n");  and  export { CHAT_PROMPT_MARKER_V1 } from "./v1.js";
+looked_past: >-
+  The other comments (BR-43, BR-44 and BR-45 citations, the CHAT_INGEST_ENABLED note, and the v3 signature note) restate facts that other chat nodes hold: chat-prompt-v2-no-status-polling, chat-prompt-v2-no-content-echo, chat-prompt-v2-ingestion-returns-running and assistant-writes-only-on-owner-request. The emitted prompt text states those facts consistently with those nodes, so none is reported here, and the comments belong to the comment route.
+candidates_opened:
+  - rules/chat/assistant-writes-only-on-owner-request
