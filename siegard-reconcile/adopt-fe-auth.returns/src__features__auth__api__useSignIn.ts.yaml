@@ -1,0 +1,260 @@
+findings:
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, lines 14-16 (step 2 is sequential)
+    evidence: |-
+      Step 2 is sequential — never invoked if step 1 fails (the spec's BR
+       "credentials:'include' must already have set the session cookie before we
+       ask for a token").
+    cost: |-
+      The rule that the token is requested only after the credentials are accepted is stated in prose here as well as in the node. When the node changes, this comment keeps saying the old rule. The ordering itself is held by the two sequential awaits at lines 153 and 157.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is already held by the node and by the code at `await signInWithEmail(values.login, values.senha);` followed by `const jwt = await fetchAccessToken();`.
+    node: rules/owner-access/token-is-requested-after-credentials-accepted
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, lines 20-23 (Success ordering, BR-04), and the comment at lines 159-160
+    evidence: |-
+      stepCount: setToken BEFORE navigate — the protected layout guard reads
+       `isFresh()` synchronously on navigation; setting the token after
+       `navigate()` would bounce the operator back to /sign-in.
+    cost: |-
+      The rule that the owner holds the token before being taken to the destination is restated in two comments. The code holds it at `useAuthStore.getState().setToken(jwt);` before `void navigate({ to: target });`. A reader who finds the rule in the comment will look for it in the file and not in the specification.
+    kind: restates
+    correction: |-
+      Remove both comments. The ordering is held by the statement order at lines 161-168.
+    node: rules/owner-access/access-token-is-held-before-the-owner-moves-on
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, line 26 (Error classification)
+    evidence: |-
+      AuthError("INVALID_EMAIL_OR_PASSWORD") → { type: "credential" }
+    cost: |-
+      The credential-failure classification is restated in prose. The code holds it at `case "INVALID_EMAIL_OR_PASSWORD": return { type: "credential" };`.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/rejected-credentials-are-a-credential-failure
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, line 27 (Error classification)
+    evidence: |-
+      AuthError("NETWORK")                   → { type: "network" }
+    cost: |-
+      The network classification of an unreachable provider is restated in prose. The code holds it at `case "NETWORK": return { type: "network" };`.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/unreachable-provider-is-a-network-failure
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, line 28, and the comment at lines 111-115
+    evidence: |-
+      AuthError("NO_SESSION" | "NO_TOKEN")   → { type: "session" }
+    cost: |-
+      The session classification is restated in two comments. The code holds it at `case "NO_SESSION": case "NO_TOKEN": return { type: "session" };`.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/missing-session-or-token-is-a-session-failure
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the header docstring, line 29
+    evidence: |-
+      any other thrown value                 → { type: "unknown" }
+    cost: |-
+      The fallback classification is restated in prose. The code holds it at `default: return { type: "unknown" };` and at the final `return { type: "unknown" };`.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/any-other-sign-in-failure-is-unknown
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the docstring of resolveSafeRedirect, lines 75-79
+    evidence: |-
+      starts with `/`
+         - does NOT start with `//` (protocol-relative URLs are off-origin)
+         - does NOT contain `://`     (any embedded scheme is off-origin)
+         - does NOT contain `\`        (defensive — IE/Edge legacy parsers)
+    cost: |-
+      The shape of a valid sign-in destination is written out a second time in prose. The code holds it at `if (candidate.startsWith("//")) return "/chat";`, `if (candidate.includes("://")) return "/chat";` and `if (candidate.includes("\\")) return "/chat";`. The comment also gives a reason, IE/Edge legacy parsers, that the node does not hold.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/sign-in-destination-is-a-local-path
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the docstring of resolveSafeRedirect, line 81
+    evidence: |-
+      Anything else falls back to `/chat`.
+    cost: |-
+      The default destination is restated in prose. The code holds it at `export function resolveSafeRedirect(candidate: string | null): "/chat" | string` and the `return "/chat";` branches.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/sign-in-destination-defaults-to-chat
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the comment at lines 121-122 in classifySignInError
+    evidence: |-
+      Native fetch failure that escaped neon-auth.ts (defensive) — also
+        // anything else we didn't anticipate.
+    cost: |-
+      The rule that a failure outside the exchange is classified as network is restated in prose. The code holds it at `if (reason instanceof TypeError) return { type: "network" };` and at `lower.includes("failed to fetch") || lower.includes("network")`.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/owner-access/network-looking-failure-is-a-network-failure
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      readRedirectParam, lines 62-70
+    evidence: |-
+      const params = new URLSearchParams(window.location.search);
+          return params.get("redirect");
+    cost: |-
+      The name `redirect` of the address parameter that carries the requested destination is a domain fact. No node holds it. A grep of the specification for "redirect" finds nothing. The nodes say only that "the address requested" a destination. The next reader who needs to know how a destination is requested will look in the specification and find nothing, and the only home of the parameter name is this function.
+    kind: unstated
+    correction: |-
+      The analysis should give the parameter name a node, either domain/owner-access/sign-in-destination or rules/owner-access/sign-in-destination-defaults-to-chat.
+    node: rules/owner-access/sign-in-destination-defaults-to-chat
+  - file: src/features/auth/api/useSignIn.ts
+    where: |-
+      the clearError member of the UseSignInReturn interface and its implementation, lines 49-50, 141-143 and 183
+    evidence: |-
+      /** Imperative clear, e.g. after the user edits a field. */
+        readonly clearError: () => void;
+      const clearError = useCallback(() => {
+          setError(null);
+        }, []);
+    cost: |-
+      The node says the failure kind stays shown until the owner submits the next attempt. This hook exports a way to drop it at any other time, and its own comment names editing a field as the use. No file in frontend/src calls it today, so no running behavior breaks. The first caller to wire it would make the rule false without any node being changed.
+    kind: contradicts
+    correction: |-
+      Remove the exported clearError. The only clearing the node allows is the `setError(null)` at the start of signIn.
+    node: rules/owner-access/sign-in-failure-stays-until-the-next-attempt
+read:
+  - node: contracts/owner-access/identity-provider
+    held_at: |-
+      Only the recognition of the code, in the `switch (reason.code)` of classifySignInError. The two requests and their answers are held in neon-auth.ts, outside this file.
+    evidence: |-
+      case "INVALID_EMAIL_OR_PASSWORD":
+              return { type: "credential" };
+  - node: contracts/owner-access/sign-in
+    held_at: |-
+      Only the error notice, in the `toast.error` call at line 177. The form-level alert, the messages and the opening of the form are held outside this file.
+    evidence: |-
+      toast.error(SIGN_IN_ERROR_MESSAGE[classified.type]);
+  - node: domain/owner-access/sign-in-attempt
+    held_at: |-
+      The `useSignIn` function, lines 136-184, holding the failure kind in `error`, the in-flight state in `isLoading` and the destination in `target`.
+    evidence: |-
+      const [error, setError] = useState<SignInError | null>(null);
+        ...
+        const target = resolveSafeRedirect(redirectParam);
+  - node: domain/owner-access/sign-in-credentials
+    held_at: |-
+      nowhere. This file only reads the `login` and `senha` fields of a shape declared in another file.
+    evidence: |-
+      await signInWithEmail(values.login, values.senha);
+  - node: domain/owner-access/sign-in-destination
+    held_at: |-
+      resolveSafeRedirect, lines 85-94, which accepts or replaces the destination as a string.
+    evidence: |-
+      export function resolveSafeRedirect(candidate: string | null): "/chat" | string {
+  - node: rules/owner-access/access-token-is-held-before-the-owner-moves-on
+    held_at: |-
+      Lines 161-168 of signIn, where the token is stored before the navigation.
+    evidence: |-
+      useAuthStore.getState().setToken(jwt);
+      ...
+              void navigate({ to: target });
+  - node: rules/owner-access/any-other-sign-in-failure-is-unknown
+    held_at: |-
+      The `default` branch of the switch at lines 117-118 and the final return of classifySignInError at line 133.
+    evidence: |-
+      default:
+              return { type: "unknown" };
+  - node: rules/owner-access/missing-session-or-token-is-a-session-failure
+    held_at: |-
+      The `NO_SESSION` and `NO_TOKEN` cases of the switch, lines 109-116.
+    evidence: |-
+      case "NO_SESSION":
+          case "NO_TOKEN":
+            ...
+            return { type: "session" };
+  - node: rules/owner-access/network-looking-failure-is-a-network-failure
+    held_at: |-
+      Lines 123-131 of classifySignInError, after the AuthError branch returns for failures that came out of the exchange.
+    evidence: |-
+      if (reason instanceof TypeError) return { type: "network" };
+      ...
+            if (lower.includes("failed to fetch") || lower.includes("network")) {
+  - node: rules/owner-access/rejected-credentials-are-a-credential-failure
+    held_at: |-
+      The `INVALID_EMAIL_OR_PASSWORD` case of the switch, lines 105-106. The 401 mapping is in neon-auth.ts, outside this file.
+    evidence: |-
+      case "INVALID_EMAIL_OR_PASSWORD":
+              return { type: "credential" };
+  - node: rules/owner-access/sign-in-attempt-in-flight-accepts-no-second-submission
+    held_at: |-
+      nowhere. The hook exposes `isLoading` but signIn has no guard that refuses a second call.
+    evidence: |-
+      const signIn = useCallback(
+          async (values: SignInFormValues): Promise<void> => {
+            setIsLoading(true);
+            setError(null);
+  - node: rules/owner-access/sign-in-destination-defaults-to-chat
+    held_at: |-
+      resolveSafeRedirect, whose branches return "/chat", and the call at lines 163-164.
+    evidence: |-
+      if (candidate === null) return "/chat";
+      ...
+              const target = resolveSafeRedirect(redirectParam);
+  - node: rules/owner-access/sign-in-destination-is-a-local-path
+    held_at: |-
+      Lines 88-92 of resolveSafeRedirect.
+    evidence: |-
+      if (candidate.length > 2048) return "/chat";
+        if (!candidate.startsWith("/")) return "/chat";
+        if (candidate.startsWith("//")) return "/chat";
+        if (candidate.includes("://")) return "/chat";
+        if (candidate.includes("\\")) return "/chat";
+  - node: rules/owner-access/sign-in-failure-shows-only-its-kind-message
+    held_at: |-
+      The `toast.error` call at line 177, which shows only the message of the classified kind. The message map is declared in SignInForm, outside this file.
+    evidence: |-
+      toast.error(SIGN_IN_ERROR_MESSAGE[classified.type]);
+  - node: rules/owner-access/sign-in-failure-stays-until-the-next-attempt
+    held_at: |-
+      The `setError(null)` at the start of signIn, line 148, and the `setError(classified)` at line 176. The exported clearError also clears the failure outside a submission (see the finding).
+    evidence: |-
+      setIsLoading(true);
+            setError(null);
+  - node: rules/owner-access/token-is-requested-after-credentials-accepted
+    held_at: |-
+      Lines 153-157 of signIn, where the token request follows the awaited credential exchange inside one try block.
+    evidence: |-
+      await signInWithEmail(values.login, values.senha);
+      ...
+              const jwt = await fetchAccessToken();
+  - node: rules/owner-access/unreachable-provider-is-a-network-failure
+    held_at: |-
+      The `NETWORK` case of the switch, lines 107-108. The fetch failure that produces that code is in neon-auth.ts, outside this file.
+    evidence: |-
+      case "NETWORK":
+              return { type: "network" };
+  - node: scenarios/owner-access/external-destination-falls-back-to-chat
+    held_at: |-
+      The `startsWith("//")` branch of resolveSafeRedirect, line 90.
+    evidence: |-
+      if (candidate.startsWith("//")) return "/chat";
+  - node: scenarios/owner-access/offline-fetch-error-is-a-network-failure
+    held_at: |-
+      The message match at lines 126-130 of classifySignInError.
+    evidence: |-
+      const lower = msg.toLowerCase();
+            if (lower.includes("failed to fetch") || lower.includes("network")) {
+              return { type: "network" };
+looked_past: |-
+  The header docstring says a step-2 failure surfaces as `unknown`, while the code classifies NO_SESSION and NO_TOKEN as session; that is prose which misstates a fact the code holds correctly, so it is another judgment's, along with the comments on the sanity cap, the navigate-without-await choice and the readRedirectParam rationale.

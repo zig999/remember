@@ -1,0 +1,140 @@
+findings:
+  - file: src/features/auth/components/SignInForm.tsx
+    where: >-
+      the submit Button's label, line 169
+    evidence: |-
+      {isSubmitting ? "Entrando…" : "Entrar"}
+    cost: >-
+      The words the owner reads on the sign-in button, and the change of that
+      text while an attempt is in flight, exist only in this component. The
+      contract holds the notice, the field labels and the failure messages, so
+      the next reader looks there for the button text and does not find it.
+      Changing it would not reach any node.
+    kind: unstated
+    correction: >-
+      Analysis would give the button label, and its in-flight label, a home in
+      contracts/owner-access/sign-in (or in the credentials value object's
+      description, if the business treats it as part of the form), or decide
+      that the text is surface only.
+    node: contracts/owner-access/sign-in
+read:
+  - node: contracts/owner-access/sign-in
+    held_at: >-
+      the session-expired notice (line 106), the "Login" and "Senha" labels,
+      the SIGN_IN_ERROR_MESSAGE record (lines 52-57) and the role="alert"
+      block (lines 151-159). The error notice that the contract pairs with the
+      alert is not raised in this file, and the validation messages come from
+      the schema it imports.
+    evidence: |-
+      {sessionExpired ? (
+          <div role="status" data-testid="session-expired-notice" className="text-xs text-body">
+            Sua sessão expirou. Faça login novamente.
+          </div>
+        ) : null}
+      ...
+      credential: "E-mail ou senha incorretos.",
+      network: "Erro de conexão. Verifique sua rede e tente novamente.",
+      session: "Erro ao obter sessão. Tente novamente.",
+      unknown: "Erro inesperado. Tente novamente.",
+  - node: domain/owner-access/sign-in-attempt
+    held_at: >-
+      the useForm call with defaultValues of empty login and senha (lines
+      82-87), and the form-level error derived from the error prop (line 89).
+      The failure_kind and destination attributes are not declared in this file.
+    evidence: |-
+      defaultValues: { login: "", senha: "" },
+      ...
+      const formLevelError = error ? SIGN_IN_ERROR_MESSAGE[error.type] : null;
+  - node: domain/owner-access/sign-in-credentials
+    held_at: >-
+      nowhere. The shape comes from SignInFormValues, imported from ../schema.
+      This file only declares the on-screen labels "Login" and "Senha".
+    evidence: |-
+      import { signInSchema, type SignInError, type SignInFormValues } from "../schema";
+      ...
+      <FormLabel>Login</FormLabel>
+      ...
+      <FormLabel>Senha</FormLabel>
+  - node: domain/owner-access/sign-in-failure-kind
+    held_at: >-
+      nowhere. The enumeration is declared in ../schema as SignInError. This
+      file only keys a message table by its discriminant.
+    evidence: |-
+      const SIGN_IN_ERROR_MESSAGE: Readonly<Record<SignInError["type"], string>> = {
+  - node: rules/owner-access/any-other-sign-in-failure-is-unknown
+    held_at: >-
+      nowhere. This file renders the unknown message for a given error.type
+      but does not classify anything.
+    evidence: |-
+      unknown: "Erro inesperado. Tente novamente.",
+  - node: rules/owner-access/missing-session-or-token-is-a-session-failure
+    held_at: >-
+      nowhere. This file only maps the session kind to its message and does
+      not classify.
+    evidence: |-
+      session: "Erro ao obter sessão. Tente novamente.",
+  - node: rules/owner-access/network-looking-failure-is-a-network-failure
+    held_at: >-
+      nowhere. There is no inspection of a type error or of a message in this
+      file.
+    evidence: |-
+      network: "Erro de conexão. Verifique sua rede e tente novamente.",
+  - node: rules/owner-access/rejected-credentials-are-a-credential-failure
+    held_at: >-
+      nowhere. This file does not classify the failure and only maps the
+      credential kind to its message.
+    evidence: |-
+      credential: "E-mail ou senha incorretos.",
+  - node: rules/owner-access/sign-in-attempt-in-flight-accepts-no-second-submission
+    held_at: >-
+      the submit Button and the two Inputs, all disabled while isSubmitting is
+      true (lines 122, 142, 166)
+    evidence: |-
+      loading={isSubmitting}
+      disabled={isSubmitting}
+  - node: rules/owner-access/sign-in-failure-shows-only-its-kind-message
+    held_at: >-
+      the alert block renders only the SIGN_IN_ERROR_MESSAGE entry of
+      error.type (lines 89 and 157)
+    evidence: |-
+      const formLevelError = error ? SIGN_IN_ERROR_MESSAGE[error.type] : null;
+      ...
+      {formLevelError}
+  - node: rules/owner-access/sign-in-failure-stays-until-the-next-attempt
+    held_at: >-
+      nowhere. The alert is shown for as long as the error prop is set, but
+      the clearing on the next submission is owned by the caller and is not
+      in this file.
+    evidence: |-
+      error = null,
+      ...
+      {formLevelError ? (
+  - node: rules/owner-access/sign-in-requires-password
+    held_at: >-
+      nowhere. The refusal comes from signInSchema in ../schema, which this
+      file only hands to the resolver.
+    evidence: |-
+      resolver: zodResolver(signInSchema),
+  - node: rules/owner-access/sign-in-requires-valid-email
+    held_at: >-
+      nowhere. The refusal comes from signInSchema in ../schema, which this
+      file only hands to the resolver.
+    evidence: |-
+      resolver: zodResolver(signInSchema),
+  - node: rules/owner-access/unreachable-provider-is-a-network-failure
+    held_at: >-
+      nowhere. This file never contacts the identity provider and only maps
+      the network kind to its message.
+    evidence: |-
+      network: "Erro de conexão. Verifique sua rede e tente novamente.",
+  - node: scenarios/owner-access/expired-session-notice-stays-beside-a-failure
+    held_at: >-
+      the notice block and the alert block are rendered under independent
+      conditions (lines 100 and 151), so both can show together
+    evidence: |-
+      {sessionExpired ? (
+      ...
+      {formLevelError ? (
+looked_past: >-
+  The file header and the comments on SIGN_IN_ERROR_MESSAGE cite the docs/specs sign-in feature spec and describe accessibility wiring (role="status", role="alert", autoFocus, aria-describedby) that code also holds, so that prose is the comment route's and not this judgment's.
+candidates_opened: []

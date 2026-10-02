@@ -1,0 +1,62 @@
+findings:
+  - file: src/features/auth/schema.ts
+    where: |-
+      the file's header docblock, lines 4-5
+    evidence: |-
+      * Field names (`login`, `senha`) match the visible UI labels (Login, Senha).
+      * `login` is the Stack Auth credential email per D3 — the field is an email
+    cost: |-
+      The docblock says in prose that the on-screen labels are "Login" and "Senha", and the node already holds that. The labels themselves are rendered in `src/features/auth/components/SignInForm.tsx` (`<FormLabel>Login</FormLabel>`, `<FormLabel>Senha</FormLabel>`). If the node's labels change, this comment keeps asserting the old ones. No check reaches it, because the comment is not code.
+    kind: restates
+    correction: |-
+      Remove the prose. The labels are already held by the node and by the form component, and the schema's behaviour does not depend on the comment.
+    node: domain/owner-access/sign-in-credentials
+read:
+  - node: contracts/owner-access/sign-in
+    held_at: |-
+      only the two validation refusals of submit-sign-in, in the `signInSchema` messages (lines 16-19). The other answers of this contract, such as the expired-session notice and the failure alerts, sit in other files.
+    evidence: |-
+      login: z.email("Informe um e-mail válido."),
+      senha: z.string().min(1, "Informe a senha."),
+  - node: domain/owner-access/sign-in-attempt
+    held_at: |-
+      partly. `signInSchema` and `SignInFormValues` carry the credentials, and the `SignInError` union carries the failure kind. The destination attribute is not in this file.
+    evidence: |-
+      export type SignInFormValues = z.infer<typeof signInSchema>;
+      export type SignInError =
+        | { type: "credential" }
+  - node: domain/owner-access/sign-in-credentials
+    held_at: |-
+      the `signInSchema` object, lines 16-19. It declares the two required string fields, named `login` and `senha` where the node's attributes are `email` and `password`.
+    evidence: |-
+      export const signInSchema = z.object({
+        login: z.email("Informe um e-mail válido."),
+        senha: z.string().min(1, "Informe a senha."),
+      });
+  - node: domain/owner-access/sign-in-failure-kind
+    held_at: |-
+      the `SignInError` union, lines 25-29. It has exactly the four kinds the enumeration names.
+    evidence: |-
+      export type SignInError =
+        | { type: "credential" }
+        | { type: "network" }
+        | { type: "session" }
+        | { type: "unknown" };
+  - node: rules/owner-access/sign-in-requires-password
+    held_at: |-
+      the `senha` field of `signInSchema`, line 18. It refuses only the empty string, so a password made only of spaces passes.
+    evidence: |-
+      senha: z.string().min(1, "Informe a senha."),
+  - node: rules/owner-access/sign-in-requires-valid-email
+    held_at: |-
+      the `login` field of `signInSchema`, line 17.
+    evidence: |-
+      login: z.email("Informe um e-mail válido."),
+  - node: scenarios/owner-access/whitespace-only-password-is-sent
+    held_at: |-
+      the `senha` field of `signInSchema`, line 18. The minimum length is 1 with no trim, so spaces-only input is not held back.
+    evidence: |-
+      senha: z.string().min(1, "Informe a senha."),
+looked_past: |-
+  The remaining docblock lines (the D3 reference, the Zod v4 usage notes and the `i18n: false` remark) are prose that no node's fact depends on, so I left them unreported.
+candidates_opened: []

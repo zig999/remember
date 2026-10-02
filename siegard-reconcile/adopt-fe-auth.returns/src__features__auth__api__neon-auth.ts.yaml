@@ -1,0 +1,111 @@
+findings:
+  - file: src/features/auth/api/neon-auth.ts
+    where: >-
+      The module header comment, lines 16-31 ("Two-step contract").
+    evidence: |-
+      * 1. POST {base}/sign-in/email  with credentials:'include'
+      *      → 401 INVALID_EMAIL_OR_PASSWORD: bad credentials.
+      * 2. GET  {base}/token          with credentials:'include'
+      *      → 200 { token: "<JWT EdDSA, exp=iat+900s>" } — this is the access token
+      *      → 401: session cookie absent or expired.
+    cost: |-
+      The two requests, their answers and what each answer means are written a second time as prose beside the code that implements them. When the node moves, nothing ties this comment to it, so a reader can take the comment for the decided contract.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by the code in signInWithEmail and fetchAccessToken. The file-to-node link belongs in the trace, not in a comment.
+    node: contracts/owner-access/identity-provider
+  - file: src/features/auth/api/neon-auth.ts
+    where: >-
+      The docblock above AuthError, lines 47-60 ("Known codes").
+    evidence: |-
+      *  - INVALID_EMAIL_OR_PASSWORD : Better Auth 401 from /sign-in/email.
+      *  - NO_SESSION                : 401 from /token (cookie absent/expired).
+      *  - NO_TOKEN                  : /token responded 200 but body lacked a
+      *  - NETWORK                   : fetch rejected (offline, CORS, DNS, abort).
+      *  - UNKNOWN                   : any non-2xx without a recognised code.
+    cost: |-
+      The classification of failures (rejected credentials, missing session or token, unreachable provider, anything else) is restated as a code table in prose. The code holds it in the throw sites, so a second reading of the same rule sits where nothing reads the node.
+    kind: restates
+    correction: |-
+      Remove the docblock list. The classification is held by the AuthError throw sites in safeFetch, signInWithEmail and fetchAccessToken.
+    node: rules/owner-access/any-other-sign-in-failure-is-unknown
+  - file: src/features/auth/api/neon-auth.ts
+    where: >-
+      Lines 153-156 (signInWithEmail) and lines 183-186 (fetchAccessToken), the fallback throws for a non-2xx answer.
+    evidence: |-
+      throw new AuthError(
+        body.code ?? "UNKNOWN",
+        body.message ?? `Falha na autenticação (HTTP ${res.status}).`,
+      );
+      The node says: "a failure carrying the code of the answer's JSON body when it has one, otherwise no code"
+    cost: |-
+      The node says a failure with no code in the body carries no code. The code gives it the code "UNKNOWN", a sentinel no node holds. A failure with no code and a provider that itself answers with a code spelled UNKNOWN become indistinguishable to whoever reads the code. The next reader will look in the specification for what "UNKNOWN" means as a carried code and will not find it.
+    kind: contradicts
+    correction: |-
+      Either the node states that an answer with no code in its body is carried as the code "UNKNOWN", or the code leaves the code absent in that case.
+    node: contracts/owner-access/identity-provider
+  - file: src/features/auth/api/neon-auth.ts
+    where: >-
+      The docblocks above signInWithEmail (lines 119-129) and fetchAccessToken (lines 159-168).
+    evidence: |-
+      *  - "INVALID_EMAIL_OR_PASSWORD" on 401 with the matching `code`.
+      *  - "NO_SESSION" on 401 (cookie absent or expired).
+      *  - "NO_TOKEN" on 200 with a missing/empty `token` field — we treat this as
+    cost: |-
+      The per-operation refusals are restated in prose next to the branches that implement them. A change to the contract's refusals would leave these lists standing as a second statement of what each answer means.
+    kind: restates
+    correction: |-
+      Remove the "Throws" lists. The branches below them hold the fact.
+    node: contracts/owner-access/identity-provider
+read:
+  - node: contracts/owner-access/identity-provider
+    held_at: >-
+      signInWithEmail (lines 130-157), fetchAccessToken (lines 169-204) and safeFetch (lines 105-117). The no-code refusals depart from the node; see the contradicts finding.
+    evidence: |-
+      const res = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ email, password }) }); if (res.ok) return;
+      if (res.status === 401) { const body = await readErrorBody(res); throw new AuthError("NO_SESSION", ...
+      if (typeof token !== "string" || token.length === 0) { throw new AuthError("NO_TOKEN", ...
+  - node: domain/owner-access/sign-in-credentials
+    held_at: nowhere
+    evidence: |-
+      export async function signInWithEmail(email: string, password: string): Promise<void>
+      This only passes the two values along as parameters. No type or schema declaring the shape is in this file.
+  - node: rules/owner-access/any-other-sign-in-failure-is-unknown
+    held_at: >-
+      The fallback throws with code "UNKNOWN", lines 153-156 and 183-186. The failure kind itself is assigned by the caller, outside this file.
+    evidence: |-
+      throw new AuthError(
+        body.code ?? "UNKNOWN",
+  - node: rules/owner-access/missing-session-or-token-is-a-session-failure
+    held_at: >-
+      The NO_SESSION throw on 401 from /token (lines 176-179) and the NO_TOKEN throws on a non-JSON, non-object or empty-token 2xx body (lines 189-202).
+    evidence: |-
+      if (res.status === 401) {
+        const body = await readErrorBody(res);
+        throw new AuthError("NO_SESSION", body.message ?? "Sessão expirada ou ausente.");
+      }
+      if (typeof token !== "string" || token.length === 0) {
+        throw new AuthError("NO_TOKEN", "Resposta do servidor de auth não contém token.");
+  - node: rules/owner-access/rejected-credentials-are-a-credential-failure
+    held_at: >-
+      The two INVALID_EMAIL_OR_PASSWORD throws in signInWithEmail, one for the body code and one for a 401 with any other code (lines 144-152).
+    evidence: |-
+      if (body.code === "INVALID_EMAIL_OR_PASSWORD") {
+        throw new AuthError("INVALID_EMAIL_OR_PASSWORD", body.message ?? "E-mail ou senha incorretos.");
+      }
+      if (res.status === 401) {
+        throw new AuthError(
+          "INVALID_EMAIL_OR_PASSWORD",
+  - node: rules/owner-access/unreachable-provider-is-a-network-failure
+    held_at: >-
+      The catch in safeFetch (lines 105-117).
+    evidence: |-
+      if (err instanceof TypeError || (err instanceof DOMException && err.name === "AbortError")) {
+        throw new AuthError("NETWORK", `Network error contacting auth: ${String(err.message ?? err)}`);
+      }
+looked_past: >-
+  Comment-only facts that no code or emitted text carries (the session cookie name and its Max-Age, the 900-second JWT lifetime, the 400 MISSING_ORIGIN answer, the silent-refresh behaviour in lib/http.ts) and the default pt-BR messages inside AuthError, which the file's own comments say are never shown to the owner or parsed, are not reported here.
+candidates_opened:
+  - domain/owner-access/sign-in-failure-kind
+  - contracts/owner-access/sign-in
+  - rules/owner-access/network-looking-failure-is-a-network-failure
