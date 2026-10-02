@@ -8,8 +8,6 @@ criteria:
 - An attribute proposal for a key whose value type is date, carrying the value 2024-02-30, is refused with the error code VALIDATION_INVALID_FORMAT naming the value and its value type.
 - The same refused proposal records no node attribute.
 - An attribute proposal for a date key carrying the value 2024-02-29 is accepted, because that day exists in a leap year.
-stands:
-- src/modules/ingestion/validation/structural.ts
 implements:
 - rules/knowledge-base/attribute-value-parses
 - scenarios/knowledge-base/impossible-calendar-date-refused

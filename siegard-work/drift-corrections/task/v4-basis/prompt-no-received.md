@@ -7,8 +7,6 @@ objective: The system prompt of version 4 does not instruct the model to state t
 criteria:
 - The system prompt of version 4 tells the model to resolve a relative date against the date of reception when the source has no document date.
 - The system prompt of version 4 contains no instruction to state the basis received on a proposal.
-stands:
-- src/modules/ingestion/prompts/extraction.v4.ts
 implements:
 - rules/knowledge-base/caller-never-states-received
 - rules/knowledge-base/extraction-relative-date-falls-back-to-reception

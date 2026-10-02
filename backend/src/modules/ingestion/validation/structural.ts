@@ -1,21 +1,17 @@
-// Structural validation layer (Layer 1 of BR-13 / BR-14).
-//
-// This is the second pass on top of the Zod parse done at the MCP transport
-// edge. Zod already covers: field presence, primitive types, length/range,
-// enum membership. THIS layer covers:
-//
-//   - Cross-table compatibility (VALIDATION_INVALID_FORMAT):
-//       * `propose_attribute`: key.node_type_id == node.node_type_id;
-//       * `propose_attribute`: value parseable as key.value_type;
-//       * `propose_fragment`: every chunk_id belongs to the run's source.
-//   - Existence of referenced rows (RESOURCE_NOT_FOUND):
-//       chunk_id / fragment_id / node_id resolve to real rows.
-//
-// Anti-hallucination (Layer 5) — that every fragment_id is anchored in a chunk
-// of the run's source — lives in its own module so the order matters: this
-// layer only confirms a fragment EXISTS; layer 5 confirms its PROVENANCE.
-
 import { ValidationFailure } from "./errors.js";
+
+const DATE_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MONTH_INDEX_OFFSET = 1;
+
+function namesExistingDay(year: number, month: number, day: number): boolean {
+  const candidate = new Date(0);
+  candidate.setUTCFullYear(year, month - MONTH_INDEX_OFFSET, day);
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - MONTH_INDEX_OFFSET &&
+    candidate.getUTCDate() === day
+  );
+}
 
 export function parseAttributeValue(args: {
   value: string;
@@ -24,23 +20,21 @@ export function parseAttributeValue(args: {
   const v = args.value;
   switch (args.value_type) {
     case "text":
-      // Empty already rejected by Zod min(1); anything else is valid text.
       return;
     case "date": {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const match = DATE_SHAPE.exec(v);
+      if (!match) {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
           "value does not parse as a date (YYYY-MM-DD expected).",
           { value: v, value_type: args.value_type }
         );
       }
-      // Validate it's a real calendar date by parsing.
-      const ts = Date.parse(`${v}T00:00:00Z`);
-      if (Number.isNaN(ts)) {
+      if (!namesExistingDay(Number(match[1]), Number(match[2]), Number(match[3]))) {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
           "value is not a calendar-valid date.",
-          { value: v }
+          { value: v, value_type: args.value_type }
         );
       }
       return;
@@ -91,11 +85,6 @@ export function assertValueInDomain(
   );
 }
 
-/**
- * Assert a referenced entity exists, raising `RESOURCE_NOT_FOUND` on miss.
- * Used to map missing chunk_id / fragment_id / node_id to a typed envelope
- * code.
- */
 export function assertFound(args: {
   entity: string;
   id: string;

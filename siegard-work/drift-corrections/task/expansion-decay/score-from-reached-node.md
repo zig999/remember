@@ -8,8 +8,6 @@ criteria:
 - A link reached at hop 1 from a matched node of score s has the decayed score 0.5 times s.
 - A link reached at hop 2 from a matched node of score s, neither endpoint of that link being a matched node, has the decayed score 0.25 times s.
 - A link reached at hop 3 from a matched node of score s, neither endpoint of that link being a matched node, has the decayed score 0.125 times s.
-stands:
-- src/modules/query-retrieval/service/search.service.ts
 implements:
 - rules/knowledge-base/expansion-decay
 - rules/knowledge-base/expansion-hop

@@ -197,3 +197,37 @@ describe("assertValueInDomain (BR-30)", () => {
     ]);
   });
 });
+
+function refusalOf(value: string): unknown {
+  try {
+    parseAttributeValue({ value, value_type: "date" });
+  } catch (e) {
+    return e;
+  }
+  return null;
+}
+
+describe("parseAttributeValue for a date that names no existing day", () => {
+  it.each([
+    ["a 29th of February in a year that is not a leap year", "2023-02-29"],
+    ["a 31st in a month of thirty days", "2024-04-31"],
+    ["a month past December", "2024-13-01"],
+    ["a day zero", "2024-01-00"],
+  ])("refuses %s", (_label, value) => {
+    const refusal = refusalOf(value);
+
+    expect(refusal).toMatchObject({
+      code: "VALIDATION_INVALID_FORMAT",
+      details: { value, value_type: "date" },
+    });
+  });
+
+  it.each([
+    ["the last day of February in a year that is not a leap year", "2023-02-28"],
+    ["the 31st of December", "2024-12-31"],
+  ])("accepts %s", (_label, value) => {
+    const refusal = refusalOf(value);
+
+    expect(refusal).toBeNull();
+  });
+});
