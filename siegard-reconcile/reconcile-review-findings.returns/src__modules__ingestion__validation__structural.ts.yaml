@@ -1,0 +1,20 @@
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      assertFound, assertKnownType and assertValueInDomain, which build the refusal codes and details the contract names. parseAttributeValue also throws VALIDATION_INVALID_FORMAT with the value and its value type in the details.
+    evidence: >-
+      throw new ValidationFailure("RESOURCE_NOT_FOUND", `${args.entity} ${args.id} not found.`, { entity: args.entity, id: args.id }); the three code branches "BUSINESS_UNKNOWN_NODE_TYPE", "BUSINESS_UNKNOWN_LINK_TYPE", "BUSINESS_UNKNOWN_ATTRIBUTE_KEY" with details { kind: args.kind, name: args.name }; throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value does not parse as a bool (expected 'true' or 'false').", { value: v, value_type: args.value_type })
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain, lines 73-86. The refusal is raised when the value is not in the domain set.
+    evidence: >-
+      if (domain.has(value)) { return; } const allowed_values = [...domain].sort(); throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "attribute value not in closed domain", { value, allowed_values });
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      assertKnownType, lines 102-120, in the node_type branch. A node type the catalog does not hold is refused with BUSINESS_UNKNOWN_NODE_TYPE.
+    evidence: >-
+      args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : ... throw new ValidationFailure(code, `${args.kind} '${args.name}' is not in the seeded catalog.`, { kind: args.kind, name: args.name })
+looked_past: >-
+  parseAttributeValue holds the date, number and bool shape rules, which the node rules/knowledge-base/attribute-value-parses governs; that node is outside this set and is not named in the pack's bindings for this file, and its expression matches the source, so I filed no finding.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-parses
