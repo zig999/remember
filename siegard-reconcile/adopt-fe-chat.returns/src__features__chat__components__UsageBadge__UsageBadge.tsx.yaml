@@ -1,0 +1,66 @@
+findings:
+  - file: src/features/chat/components/UsageBadge/UsageBadge.tsx
+    where: |-
+      the header docstring, lines 18-21 ("Spec references"), and the comment above buildAriaLabel, line 39
+    evidence: |-
+      "the pt-BR aria-label format:
+       *    \"Uso: X tokens de entrada, Y tokens de saída, Z chamadas de ferramenta\"."
+    cost: |-
+      The accessible-name format is written twice in this file, once in the code that builds it and once in prose that cites a task contract, not the node. If the node's wording changes, the prose keeps the old text and nobody knows which one was decided.
+    kind: restates
+    correction: |-
+      Remove the prose. The code at buildAriaLabel already holds the fact, and the file-to-node link belongs in the trace.
+    node: contracts/chat-workspace/chat-screen
+  - file: src/features/chat/components/UsageBadge/UsageBadge.tsx
+    where: |-
+      the header docstring, lines 12-16 ("Lazy contract"), and the comment on lines 59-63 above the early return
+    evidence: |-
+      "This component renders `null` while the query is in flight or has not
+       *    resolved yet (`isLoading` OR `data == null`). No skeleton, no zero-state
+       *    fallback"
+    cost: |-
+      The rule that the badge shows nothing until usage arrives is restated in prose. The code at `if (query.isLoading || query.data == null) { return null; }` holds it, so the comments are a second home that can drift from the rule.
+    kind: restates
+    correction: |-
+      Remove the header paragraph and the inline comment. The early return stays as the holder of the rule.
+    node: rules/chat-workspace/usage-badge-shows-nothing-until-usage-arrives
+  - file: src/features/chat/components/UsageBadge/UsageBadge.tsx
+    where: |-
+      the header docstring, lines 5-8 and 22-23
+    evidence: |-
+      "Surfaces
+       * the three aggregate counters returned by GET /conversations/:id/usage —
+       * tokens_in, tokens_out, tool_calls"
+      and "We only render the latter three."
+    cost: |-
+      The rule that the badge shows the three counts and not the message count is restated in prose. The destructuring `const { tokens_in, tokens_out, tool_calls } = query.data;` holds it, so the comment is a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the prose. The destructuring and the three rendered spans hold the fact.
+    node: rules/chat-workspace/usage-badge-shows-the-three-counts
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: |-
+      buildAriaLabel (lines 41-51) and the role="status" span's aria-label attribute (line 74)
+    evidence: |-
+      `Uso: ${tokensIn} tokens de entrada, ` + `${tokensOut} tokens de saída, ` + `${toolCalls} chamadas de ferramenta`
+      and aria-label={ariaLabel}
+  - node: domain/chat/conversation-usage
+    held_at: nowhere
+    evidence: |-
+      This file only reads fields off the hook's result, `const { tokens_in, tokens_out, tool_calls } = query.data;`. It declares no shape for the value object. The comment points to `features/chat/types.ts` `UsageData`, which is outside this file set.
+  - node: rules/chat-workspace/usage-badge-shows-nothing-until-usage-arrives
+    held_at: |-
+      the early return at lines 64-66
+    evidence: |-
+      if (query.isLoading || query.data == null) {
+        return null;
+      }
+  - node: rules/chat-workspace/usage-badge-shows-the-three-counts
+    held_at: |-
+      the destructuring at line 68 and the three rendered spans, lines 81-92
+    evidence: |-
+      const { tokens_in, tokens_out, tool_calls } = query.data;
+      with spans data-testid="usage-badge-tokens-in", "usage-badge-tokens-out" and "usage-badge-tool-calls". `messages` is never read.
+looked_past: |-
+  The header comment states a staleTime of 30s and the hook's enabled condition, which belong to the hook file and are prose only in this file, so they are another judgment's. The glyphs and styling (↑ ↓ ⚙, text-xs) are surface, not domain facts.

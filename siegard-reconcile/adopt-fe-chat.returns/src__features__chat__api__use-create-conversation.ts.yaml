@@ -1,0 +1,86 @@
+findings:
+  - file: src/features/chat/api/use-create-conversation.ts
+    where: |-
+      the inline comment above the invalidation in onSuccess, lines 47-50
+    evidence: |-
+      // Both filter variants must refresh (include_archived true | false).
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.all,
+      });
+    cost: |-
+      The comment states, in prose, the rule that every conversation-scoped read is refreshed after a create. The same fact is already held by the node and by the invalidation call beneath it. When either moves, the comment keeps saying the old thing, and it reads as a second home for the rule.
+    kind: restates
+    correction: |-
+      Remove the comment. The behavior is already held by the `invalidateQueries` call, and the node binds it.
+    node: rules/chat-workspace/create-refreshes-every-conversation-read
+  - file: src/features/chat/api/use-create-conversation.ts
+    where: |-
+      the header docstring, lines 7-9, the clause about invalidating the list
+    evidence: |-
+      §3 transition table: on success, navigate to /chat?conversation=<new-id>
+       *    AND invalidate `conversationKeys.list()` (handled here — navigation is
+       *    the caller's responsibility).
+    cost: |-
+      The prose says the invalidation targets `conversationKeys.list()`. The code invalidates `conversationKeys.all`. A reader who trusts the docstring will believe only the list is refreshed, when the node and the code refresh every conversation-scoped read. The prose is a second home for the fact and it disagrees with the code.
+    kind: restates
+    correction: |-
+      Remove the docstring's restatement of the invalidation. The code in this file holds the fact (`queryKey: conversationKeys.all`).
+    node: rules/chat-workspace/create-refreshes-every-conversation-read
+
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the mutationFn of useCreateConversation, lines 34-45. The shape of the conversation read from the answer is declared in `_transforms` and `../types`, outside this file.
+    evidence: |-
+      const body: CreateConversationVariables = vars ?? {};
+      const wire = await http<ConversationWire>("/api/v1/conversations", {
+        method: "POST",
+        headers: {
+          ...authHeader(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      return toConversation(wire);
+  - node: rules/chat-workspace/create-and-delete-do-not-navigate
+    held_at: |-
+      the whole hook, lines 33-52. It holds the rule by carrying no navigation: the mutation only requests and invalidates.
+    evidence: |-
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: conversationKeys.all,
+        });
+      },
+  - node: rules/chat-workspace/create-refreshes-every-conversation-read
+    held_at: |-
+      the onSuccess handler, lines 46-51
+    evidence: |-
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.all,
+      });
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the mutationFn, lines 34-45. The `http` call is awaited with no catch and no code mapping, and the hook carries no text of its own.
+    evidence: |-
+      const wire = await http<ConversationWire>("/api/v1/conversations", {
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: nowhere
+    evidence: |-
+      The rule governs a send. This file is the create request and only spreads the helper's result: `...authHeader(),`. Reading the token once and omitting the header when none is held is not done in this file.
+  - node: rules/chat-workspace/title-is-sent-as-given
+    held_at: |-
+      lines 35 and 42. The variables become the body unchanged, with no length or content check.
+    evidence: |-
+      const body: CreateConversationVariables = vars ?? {};
+      ...
+      body: JSON.stringify(body),
+
+looked_past: |-
+  The docstring's claim that on success the screen navigates to /chat?conversation=<new-id>, with navigation left to the caller, and the comment "Optional title (1..200 chars)" appear only in prose: no code in this tree navigates after a create or checks the title length, so each is a comment-route matter and not a finding, and the first disagrees with rules/chat-workspace/create-and-delete-do-not-navigate.
+
+candidates_opened:
+  - rules/chat-workspace/create-and-delete-do-not-navigate
+  - rules/chat-workspace/create-refreshes-every-conversation-read
+  - rules/chat-workspace/read-and-write-failures-surface-unchanged
+  - rules/chat-workspace/send-carries-the-access-token-when-held
+  - rules/chat-workspace/title-is-sent-as-given

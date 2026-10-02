@@ -1,0 +1,52 @@
+findings:
+  - file: src/features/chat/api/_transforms.ts
+    where: >-
+      the header docblock, lines 1-11 (the "Spec references" paragraph), and the "Wire shapes (mirror openapi.yaml ...)" banner comment, lines 22-25
+    evidence: |-
+      * Spec references:
+       *  - docs/specs/front/features/chat.feature.spec.md §4 "Response transforms"
+       *    table (date casts; `messages` → `messageCount` rename for usage)
+    cost: >-
+      The docblock states in prose the contract's facts that the file already holds in code: the timestamp casts to dates, and the `messages` count read as `messageCount`. It also names a document under docs/specs as the authority for them. A reader who follows the comment goes to that document, not to the node `contracts/chat-workspace/bff-conversations`. The citation can go stale without anything failing, because no tool reads it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code holds the facts: `toUsageData` reads `messageCount: wire.messages`, and `toConversation` and `toChatMessage` build `new Date(...)`. The file-to-node link belongs in the trace.
+    node: contracts/chat-workspace/bff-conversations
+
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: >-
+      This file holds the answer-reading side of the contract: the wire interfaces `ConversationWire`, `ConversationListWire`, `ChatMessageWire`, `MessageListWire`, `UsageWire` and `CancelWire`, and the transforms `toConversation`, `toConversationList`, `toChatMessage`, `toMessageList` and `toUsageData`. The request side (URLs, headers, stream frames, refusals) is not stated in this file and nothing here contradicts it.
+    evidence: |-
+      export function toConversation(wire: ConversationWire): Conversation {
+        return {
+          id: wire.id,
+          title: wire.title,
+          archivedAt: wire.archived_at !== null ? new Date(wire.archived_at) : null,
+          createdAt: new Date(wire.created_at),
+        };
+      }
+      export function toUsageData(wire: UsageWire): UsageData {
+        return {
+          messageCount: wire.messages,
+          tokens_in: wire.tokens_in,
+          tokens_out: wire.tokens_out,
+          tool_calls: wire.tool_calls,
+        };
+      }
+  - node: rules/chat-workspace/successful-cancel-reads-the-usage-again
+    held_at: nowhere
+    evidence: >-
+      The file only declares `CancelWire` (`readonly cancelled: true;`) and transforms reads. Nothing in it refreshes the usage or the messages after a cancel. That behavior belongs to use-cancel-turn.ts.
+  - node: rules/chat-workspace/unparseable-timestamp-becomes-an-invalid-date
+    held_at: >-
+      `toConversation` (`archivedAt` and `createdAt`) and `toChatMessage` (`createdAt`)
+    evidence: |-
+      createdAt: new Date(wire.created_at),
+      archivedAt: wire.archived_at !== null ? new Date(wire.archived_at) : null,
+      The transforms construct `Date` directly. They have no validation and no try/catch, so an unparseable string becomes an invalid date without failing the read.
+
+looked_past: >-
+  The comment "ISO string echoed back by the BFF — opaque to the SPA" on `nextBefore` is prose that no code carries as a fact. It is left to the comment route.
+
+candidates_opened: []

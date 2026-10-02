@@ -1,0 +1,110 @@
+findings:
+  - file: src/features/chat/components/ChatStatusIndicator.tsx
+    where: >-
+      header docblock, lines 34-39 (the "State machine consumed" list)
+    evidence: |-
+      *   idle         → indicator NOT rendered (null)
+       *   thinking     → "pensando…"
+       *   streaming    → indicator NOT rendered (token text takes over)
+       *   tool_running → "consultando a memória…" (+ optional " (tool name)" suffix)
+       *   error        → indicator NOT rendered (a separate banner — owned by the
+    cost: >-
+      The phases in which the hint shows are written a second time in prose that no running system emits. If the rule moves, a reader can follow the comment instead of the guard at line 148. The guard `if (chatStatus !== "thinking" && chatStatus !== "tool_running") { return null; }` in this file holds the fact.
+    kind: restates
+    correction: >-
+      Remove the prose. The guard in this same file already holds the rule, and the binding claims the file.
+    node: rules/chat-workspace/hint-hides-in-every-other-phase
+  - file: src/features/chat/components/ChatStatusIndicator.tsx
+    where: >-
+      header docblock, lines 67-72 ("Accessibility" paragraph)
+    evidence: |-
+      *   - `role="status"` + `aria-live="polite"` so AT announces the phrase
+       *     without interrupting the user.
+       *   - `aria-atomic="true"` — when the phrase flips
+    cost: >-
+      The polite, atomic status region is described a second time as prose. The attributes `role="status"`, `aria-live="polite"` and `aria-atomic="true"` on the rendered div already hold it. A reader could take the comment as the place the requirement lives.
+    kind: restates
+    correction: >-
+      Remove the prose. The JSX attributes in this file already hold the fact.
+    node: rules/chat-workspace/hint-is-a-polite-atomic-status-region
+  - file: src/features/chat/components/ChatStatusIndicator.tsx
+    where: >-
+      docblock of pickActiveToolName, lines 99-111
+    evidence: |-
+      * The "active" tool is the most recent pending chip — `tool_start` adds
+       * with `ok: null`; `tool_result` settles it (boolean).
+    cost: >-
+      The rule that a chip with a null outcome is still waiting, and that the hint names the most recent one, is stated again in prose. The loop `if (chip !== undefined && chip.ok === null) return chip.tool;` holds both rules in this file. Two readings of the same rule then sit side by side.
+    kind: restates
+    correction: >-
+      Remove the prose. The loop in pickActiveToolName already holds the rule.
+    node: rules/chat-workspace/tool-hint-names-the-waiting-tool
+  - file: src/features/chat/components/ChatStatusIndicator.tsx
+    where: >-
+      header docblock, lines 17-28 (AC-F.17/18/19 and the TC-FE-10 quotes)
+    evidence: |-
+      *   - AC-F.18 — during a graph tool, the indicator shows
+       *     "consultando a memória… (tool)".
+    cost: >-
+      The hint wording is quoted again in prose, with the wording "(tool)" and a separate "graph tool" scope that the node does not hold. A reader comparing comment to node finds two versions. The constants `COPY_THINKING` and `COPY_TOOL_PREFIX` and the template in the label branch hold the wording in code.
+    kind: restates
+    correction: >-
+      Remove the prose. The constants and the label composition in this same file hold the wording.
+    node: contracts/chat-workspace/chat-screen
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: >-
+      the COPY_THINKING and COPY_TOOL_PREFIX constants and the label composition in the component body, lines 94-95 and 156-163. This is the show-turn-progress hint only. The tool-chip rendering is not in this file.
+    evidence: |-
+      const COPY_THINKING = "pensando…";
+      const COPY_TOOL_PREFIX = "consultando a memória…";
+      label =
+            active !== null ? `${COPY_TOOL_PREFIX} (${active})` : COPY_TOOL_PREFIX;
+  - node: domain/chat-workspace/chat-status
+    held_at: nowhere
+    evidence: >-
+      The file only reads the value with `useChatTurnStore((s) => s.chatStatus)` and compares it with the literals "thinking" and "tool_running". No enumeration is declared here. The shape lives in the store imported from "../state/chat-turn".
+  - node: domain/chat-workspace/tool-chip
+    held_at: nowhere
+    evidence: >-
+      The file reads `chip.ok` and `chip.tool` from `ToolCallData`, imported from "../types". It declares no chip shape.
+  - node: domain/chat/tool-call
+    held_at: nowhere
+    evidence: >-
+      No persisted tool-call shape appears here. The file only imports `ToolCallData` and reads two fields from it.
+  - node: rules/chat-workspace/failed-turn-gets-no-wording-from-the-list
+    held_at: nowhere
+    evidence: >-
+      The rule is about the message list. This file only returns null for error, with `if (chatStatus !== "thinking" && chatStatus !== "tool_running") { return null; }`. It emits no failure wording but does not govern the list.
+  - node: rules/chat-workspace/hint-hides-in-every-other-phase
+    held_at: >-
+      the early-return guard, line 148
+    evidence: |-
+      if (chatStatus !== "thinking" && chatStatus !== "tool_running") {
+          return null;
+        }
+  - node: rules/chat-workspace/hint-is-a-polite-atomic-status-region
+    held_at: >-
+      the attributes of the rendered div, lines 166-171
+    evidence: |-
+      role="status"
+            aria-live="polite"
+            aria-atomic="true"
+  - node: rules/chat-workspace/tool-call-waits-while-its-outcome-is-null
+    held_at: >-
+      the condition inside pickActiveToolName, line 119
+    evidence: >-
+      if (chip !== undefined && chip.ok === null) return chip.tool;
+  - node: rules/chat-workspace/tool-hint-names-the-waiting-tool
+    held_at: >-
+      pickActiveToolName (the backwards loop, lines 112-122) and the tool_running branch of the label, lines 160-162
+    evidence: |-
+      for (let i = chips.length - 1; i >= 0; i -= 1) {
+          const chip = chips[i];
+          if (chip !== undefined && chip.ok === null) return chip.tool;
+        }
+        return null;
+      label =
+            active !== null ? `${COPY_TOOL_PREFIX} (${active})` : COPY_TOOL_PREFIX;
+looked_past: >-
+  The code spells the phase "tool_running" while the chat-status node spells it "tool-running", and the file reads the store's phase declared elsewhere. The comments about layout tokens, animation and the bubble/ChatSpace design are not domain facts. I did not judge either.

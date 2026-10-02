@@ -1,0 +1,80 @@
+findings:
+  - file: src/features/chat/api/use-delete-conversation.ts
+    where: |-
+      the file docstring, lines 12-15
+    evidence: |-
+      * Because the endpoint returns 204, this hook uses the local `httpVoid`
+      * helper (see `_request.ts`) instead of `http<T>()` — `http<T>` always
+      * tries to `response.json()` which throws on an empty body. Narrow scope:
+      * only this hook depends on `httpVoid`.
+    cost: |-
+      The no-body helper rule has a second home in prose. When the node moves, this text stays and still reads as the reason. The code (`await httpVoid(...)` in `mutationFn`) is where the rule is held, and a reader who finds the docstring first will take it for the decision.
+    kind: restates
+    correction: |-
+      Remove the passage. The behavior is held by `await httpVoid(` in `mutationFn` and by `UseMutationResult<void, ...>`, which gives the caller nothing back.
+    node: rules/chat-workspace/delete-uses-the-no-body-helper
+  - file: src/features/chat/api/use-delete-conversation.ts
+    where: |-
+      the comment inside onSuccess, lines 43-44
+    evidence: |-
+      // Drop the detail + nested children from the cache outright — the
+      // entity no longer exists. List queries refresh from the server.
+    cost: |-
+      The cache-removal and re-read rule is restated in prose beside the calls that carry it (`removeQueries` for detail, messages and usage, and `invalidateQueries({ queryKey: conversationKeys.all })`). The comment says only "list queries refresh", while the code invalidates every conversation-scoped key. The comment and the code can drift apart, and a reader would not know which one was decided.
+    kind: restates
+    correction: |-
+      Remove the comment. The rule is held by the four calls in `onSuccess`.
+    node: rules/chat-workspace/delete-removes-the-conversations-reads
+
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the `mutationFn` of useDeleteConversation, lines 36-41. It holds the request shape: DELETE, id URL-encoded, no body, through the no-body helper. The refusal mapping (SYSTEM_ABORTED, SYSTEM_NETWORK, the envelope, the 204-only success) is not in this file; it belongs to `httpVoid` in `_request.ts`, which is outside the set.
+    evidence: |-
+      await httpVoid(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: authHeader(),
+      });
+  - node: rules/chat-workspace/create-and-delete-do-not-navigate
+    held_at: |-
+      the onSuccess handler, lines 42-49. It performs only cache operations and calls no router or navigation function. No navigation appears anywhere in the file's code.
+    evidence: |-
+      onSuccess: (_data, { id }) => {
+        queryClient.removeQueries({ queryKey: conversationKeys.detail(id) });
+        queryClient.removeQueries({ queryKey: conversationKeys.messages(id) });
+        queryClient.removeQueries({ queryKey: conversationKeys.usage(id) });
+        void queryClient.invalidateQueries({ queryKey: conversationKeys.all });
+      },
+  - node: rules/chat-workspace/delete-removes-the-conversations-reads
+    held_at: |-
+      the onSuccess handler, lines 42-49
+    evidence: |-
+      queryClient.removeQueries({ queryKey: conversationKeys.detail(id) });
+      queryClient.removeQueries({ queryKey: conversationKeys.messages(id) });
+      queryClient.removeQueries({ queryKey: conversationKeys.usage(id) });
+      void queryClient.invalidateQueries({ queryKey: conversationKeys.all });
+  - node: rules/chat-workspace/delete-uses-the-no-body-helper
+    held_at: |-
+      the mutationFn, lines 36-41, and the result type, lines 29-33
+    evidence: |-
+      ): UseMutationResult<void, Error, DeleteConversationVariables> {
+      ...
+      mutationFn: async ({ id }) => {
+        await httpVoid(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the mutation declares no onError, no catch and no error mapping or text, so the error `httpVoid` raises propagates unchanged through `mutationFn`. The fact is held by that absence in the useMutation configuration, lines 35-50.
+    evidence: |-
+      return useMutation({
+        mutationFn: async ({ id }) => {
+          await httpVoid(...);
+        },
+        onSuccess: (_data, { id }) => { ... },
+      });
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: nowhere
+    evidence: |-
+      the rule governs a send. This file is a delete, and `headers: authHeader()` is its only token handling; it states nothing about reading the token once when a send starts or omitting the header when none is held.
+
+looked_past: |-
+  The docstring also claims prose-only facts that no code carries, so they are no finding: "on success navigate to /chat (no id) ... navigation is the caller's responsibility", which is the opposite of rules/chat-workspace/create-and-delete-do-not-navigate; invalidation of `conversationKeys.list()`, where the code invalidates `conversationKeys.all`; and "cascade delete — chat tables are OUTSIDE the v7 §11 compliance flow".

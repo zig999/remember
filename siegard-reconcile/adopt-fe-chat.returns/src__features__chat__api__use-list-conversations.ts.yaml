@@ -1,0 +1,111 @@
+findings:
+  - file: src/features/chat/api/use-list-conversations.ts
+    where: |-
+      the header docblock, lines 4-8 (the "staleTime 30s" clause)
+    evidence: |-
+      chat.feature.spec.md §4 (request #1: parallel header mount, staleTime 30s,
+    cost: |-
+      The docblock states a thirty-second freshness window that the code also holds, as `const STALE_MS = 30_000;` and `staleTime: STALE_MS`. The window now has a second home outside behavior. A reader who changes one of the two will not know which was decided. The prose also cites a spec file by name instead of the node.
+    kind: restates
+    correction: |-
+      Remove the clause from the comment. The code at `staleTime: STALE_MS` already holds the fact, and the node binds it.
+    node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+  - file: src/features/chat/api/use-list-conversations.ts
+    where: |-
+      the header docblock, lines 4-8 (the "on-focus revalidation" clause)
+    evidence: |-
+      on-focus revalidation)
+    cost: |-
+      The docblock states the re-read on window focus that `refetchOnWindowFocus: true` already performs. The fact has a second home in prose, and the two can drift apart without anyone noticing.
+    kind: restates
+    correction: |-
+      Remove the clause from the comment. The code at `refetchOnWindowFocus: true` holds the fact.
+    node: rules/chat-workspace/details-and-listing-are-read-again-on-focus
+  - file: src/features/chat/api/use-list-conversations.ts
+    where: |-
+      the docblock on `limit` in ListConversationsParams, line 20
+    evidence: |-
+      /** Page size — clamped server-side to [1, 100]. Default 20. */
+    cost: |-
+      The comment restates the listing's page-size bounds and default. Those are held by node rules/chat/conversation-listing-limit, which is outside this file's set, and by code in backend/src/modules/chat/routes/chat.schemas.ts as `limit: z.coerce.number().int().min(1).max(100).default(20)`. This file holds none of it. The comment also says "clamped", but that schema rejects out-of-range values rather than clamping them. A reader of the screen code sees a second statement of the bounds that no running system reads.
+    kind: restates
+    correction: |-
+      Remove the comment. The bounds stay held by the backend schema and the node.
+    node: rules/chat/conversation-listing-limit
+  - file: src/features/chat/api/use-list-conversations.ts
+    where: |-
+      the docblock on `includeArchived` in ListConversationsParams, line 24
+    evidence: |-
+      /** Default false — archived rows excluded. */
+    cost: |-
+      The comment restates the exclusion of archived conversations by default. The code holds it as `if (params.includeArchived === true) search.set("include_archived", "true");`, so nothing is sent unless archived conversations are asked for. The default now has a second home in prose.
+    kind: restates
+    correction: |-
+      Remove the comment. The `=== true` branch of buildQueryString holds the fact.
+    node: rules/chat-workspace/listing-excludes-archived-by-default
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the queryFn of useListConversations (lines 45-51) together with buildQueryString (lines 30-37), for the list-conversations operation
+    evidence: |-
+      const wire = await http<ConversationListWire>(
+        `/api/v1/conversations${buildQueryString(params)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toConversationList(wire);
+  - node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+    held_at: |-
+      STALE_MS and the staleTime option, lines 28 and 52. The conversation listing is the only one of the three reads this rule names that this file holds.
+    evidence: |-
+      const STALE_MS = 30_000;
+      ...
+          staleTime: STALE_MS,
+  - node: rules/chat-workspace/details-and-listing-are-read-again-on-focus
+    held_at: |-
+      the useQuery options, line 53. This file holds the listing half of the rule.
+    evidence: |-
+      refetchOnWindowFocus: true,
+  - node: rules/chat-workspace/listing-excludes-archived-by-default
+    held_at: |-
+      buildQueryString, line 34, where `include_archived` is set only when it is exactly true
+    evidence: |-
+      if (params.includeArchived === true) search.set("include_archived", "true");
+  - node: rules/chat-workspace/listing-sends-its-options-only-when-asked
+    held_at: |-
+      buildQueryString, lines 32-34. The listing half of the rule is held here. The message-listing half belongs to another file.
+    evidence: |-
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+        if (params.cursor !== undefined) search.set("cursor", params.cursor);
+        if (params.includeArchived === true) search.set("include_archived", "true");
+        const qs = search.toString();
+        return qs.length > 0 ? `?${qs}` : "";
+  - node: rules/chat-workspace/no-page-size-is-fixed-by-the-screen
+    held_at: |-
+      the signature and buildQueryString (lines 40 and 32). `params` defaults to `{}`, and `limit` is forwarded only when the caller supplies it. No page-size literal appears in the code.
+    evidence: |-
+      params: ListConversationsParams = {},
+      ...
+        if (params.limit !== undefined) search.set("limit", String(params.limit));
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the queryFn, lines 45-51. The await on `http` has no catch, mapping or message of its own, so the request helper's error becomes the query's error.
+    evidence: |-
+      queryFn: async () => {
+            const wire = await http<ConversationListWire>(
+              `/api/v1/conversations${buildQueryString(params)}`,
+              { method: "GET", headers: authHeader() },
+            );
+            return toConversationList(wire);
+          },
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: |-
+      the call site only, line 48. The token read and the absent-header behavior live in the `authHeader` helper in ./_request.ts, outside this file's set. This file attaches the helper's headers to the request.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+  - node: rules/chat/conversation-listing-excludes-archived
+    held_at: |-
+      buildQueryString, line 34. The request names archived conversations only when `includeArchived` is true.
+    evidence: |-
+      if (params.includeArchived === true) search.set("include_archived", "true");
+candidates_opened:
+  - rules/chat/conversation-listing-limit

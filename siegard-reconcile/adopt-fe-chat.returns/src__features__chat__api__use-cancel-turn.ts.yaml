@@ -1,0 +1,86 @@
+findings:
+  - file: src/features/chat/api/use-cancel-turn.ts
+    where: |-
+      the file docstring, lines 1-2 and 17-21 ("POST /api/v1/conversations/:id/cancel", "we invalidate `usage(id)` opportunistically")
+    evidence: |-
+      /**
+       * useCancelTurn — POST /api/v1/conversations/:id/cancel.
+      ...
+       * Cache: we invalidate `usage(id)` opportunistically.
+    cost: |-
+      The cancel endpoint and the rule that a successful cancel reads the usage again each have a second home in prose here. A later change to the node leaves this docstring saying the old fact, and `--check` does not see a comment. The code holds both facts in the same file: the `http` call to `/cancel` and `invalidateQueries({ queryKey: conversationKeys.usage(conversationId) })`.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route, then run /reconcile over this file. The code already holds the endpoint and the usage read, so no code change is owed.
+    node: rules/chat-workspace/successful-cancel-reads-the-usage-again
+  - file: src/features/chat/api/use-cancel-turn.ts
+    where: |-
+      the file docstring, lines 12-15 ("the conversation id is bound at hook construction; `mutate()` takes no vars")
+    evidence: |-
+      * Signature per TC-03 task summary: `useCancelTurn(conversationId)` — the
+       * conversation id is bound at hook construction; `mutate()` takes no vars.
+       * The id is captured at hook time, not at mutate time, because the stop
+       * button always targets the currently active conversation.
+    cost: |-
+      The rule that the cancel targets the hook's conversation and takes no argument is also written as prose, together with a rationale ("because the stop button always targets the currently active conversation") that no node holds. A reader may take the rationale for the decided reason. The code holds the rule: `useCancelTurn(conversationId: string)` returns `UseMutationResult<CancelWire, Error, void>`, and `mutationFn: async () =>` reads the captured id.
+    kind: restates
+    correction: |-
+      Remove the docstring through the comment route, then run /reconcile over this file. The code already holds the rule.
+    node: rules/chat-workspace/cancel-targets-the-conversation-it-was-created-for
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the mutationFn of useCancelTurn, lines 37-45
+    evidence: |-
+      return http<CancelWire>(
+        `/api/v1/conversations/${encodeURIComponent(conversationId)}/cancel`,
+        {
+          method: "POST",
+          headers: authHeader(),
+        },
+      );
+  - node: rules/chat-workspace/aborting-and-cancelling-do-not-trigger-each-other
+    held_at: |-
+      the mutationFn of useCancelTurn, lines 37-45, by the absence of any abort
+    evidence: |-
+      mutationFn: async () => {
+        return http<CancelWire>(
+          `/api/v1/conversations/${encodeURIComponent(conversationId)}/cancel`,
+          { method: "POST", headers: authHeader() },
+        );
+      },
+  - node: rules/chat-workspace/cancel-goes-through-the-back-end-request-helper
+    held_at: |-
+      the `http` call in mutationFn, line 38. The thirty-second cut-off, the token refresh on a 401 and the sign-in redirect belong to `@/lib/http`, which is outside this file set.
+    evidence: |-
+      import { http } from "@/lib/http";
+      ...
+      return http<CancelWire>(
+  - node: rules/chat-workspace/cancel-targets-the-conversation-it-was-created-for
+    held_at: |-
+      the signature and mutationFn of useCancelTurn, lines 32-45
+    evidence: |-
+      export function useCancelTurn(
+        conversationId: string,
+      ): UseMutationResult<CancelWire, Error, void> {
+      ...
+      mutationFn: async () => {
+  - node: rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+    held_at: |-
+      the mutationFn of useCancelTurn, lines 37-45
+    evidence: |-
+      {
+        method: "POST",
+        headers: authHeader(),
+      },
+  - node: rules/chat-workspace/successful-cancel-reads-the-usage-again
+    held_at: |-
+      the onSuccess of useCancelTurn, lines 46-50
+    evidence: |-
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: conversationKeys.usage(conversationId),
+        });
+      },
+looked_past: |-
+  The docstring also states facts that only prose carries and no code here holds: the "202 Accepted" status, the call "on unmount with a turn in flight", the stop button doing "cancelTurn + AbortController.abort()", and the SSE invalidating the messages. These are prose, whose route is its removal.

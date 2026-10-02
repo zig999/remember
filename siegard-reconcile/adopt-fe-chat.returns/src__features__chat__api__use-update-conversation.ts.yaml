@@ -1,0 +1,86 @@
+findings:
+  - file: src/features/chat/api/use-update-conversation.ts
+    where: >-
+      the header docblock, lines 1-9 (the "§3 transition table" bullet)
+    evidence: |-
+      *  - §3 transition table: on rename success invalidate `detail(id)` + `list()`;
+       *    on archive success invalidate `list()` (and the caller navigates).
+    cost: >-
+      The docblock states an invalidation rule that differs by kind of update, and the code
+      does not. onSuccess always marks `detail(data.id)` stale and then `conversationKeys.all`,
+      for a rename and an archive alike. A reader who trusts the comment will look here for a
+      second home of the rule and find it disagrees with the node and with the code beneath
+      it. Code holds the fact, so the pair conforms and what is owed is the prose's removal.
+      The code is in this file's onSuccess, and `conversationKeys.all` is declared in
+      src/features/chat/api/keys.ts.
+    kind: restates
+    correction: >-
+      Remove the prose. The fact is held by the node and by the onSuccess code.
+    node: rules/chat-workspace/update-refreshes-the-details-and-every-read
+  - file: src/features/chat/api/use-update-conversation.ts
+    where: >-
+      the docblocks on `title` and `archivedAt` in UpdateConversationVariables (lines 23-30),
+      and the "partial body: title?, archived_at?" bullet in the header (line 5)
+    evidence: |-
+      /** Pass `null` to clear, omit to leave untouched. */
+      /**
+         * RFC3339 timestamp to archive, `null` to un-archive, or omit.
+    cost: >-
+      The prose restates how a null or absent title and archived_at are sent. The mutationFn
+      code holds that rule (`if (title !== undefined) body["title"] = title;` and
+      `if (archivedAt !== undefined) body["archived_at"] = archivedAt;`). The comments are a
+      second home that a change to the node would not reach.
+    kind: restates
+    correction: >-
+      Remove the prose. The rule is held by the node and by the body-building code.
+    node: rules/chat-workspace/update-sends-only-the-fields-supplied
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: >-
+      mutationFn, lines 40-56, the update-conversation operation
+    evidence: |-
+      `/api/v1/conversations/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...authHeader(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+      return toConversation(wire);
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: >-
+      mutationFn, lines 40-56, which has no catch, mapping or message of its own
+    evidence: |-
+      const wire = await http<ConversationWire>(
+        `/api/v1/conversations/${encodeURIComponent(id)}`,
+      ...
+      return toConversation(wire);
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: nowhere
+    evidence: >-
+      The rule governs a send. This file is the update mutation and only spreads
+      `...authHeader()` into the PATCH headers. The bearer-read-once and
+      no-header-when-none-held behavior sits in `./_request`, which is not in this file set.
+  - node: rules/chat-workspace/update-refreshes-the-details-and-every-read
+    held_at: >-
+      onSuccess, lines 57-64
+    evidence: |-
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.detail(data.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: conversationKeys.all,
+      });
+  - node: rules/chat-workspace/update-sends-only-the-fields-supplied
+    held_at: >-
+      mutationFn, lines 41-43 and 52
+    evidence: |-
+      const body: Record<string, unknown> = {};
+      if (title !== undefined) body["title"] = title;
+      if (archivedAt !== undefined) body["archived_at"] = archivedAt;
+      ...
+      body: JSON.stringify(body),
+looked_past: >-
+  The comment on `archivedAt` claims "At least one of `title` or `archivedAt` MUST be present (server enforces — 422 VALIDATION_REQUIRED_FIELD otherwise)", a server refusal that only prose states and no code in this file carries, so it is a comment-route matter and no finding.

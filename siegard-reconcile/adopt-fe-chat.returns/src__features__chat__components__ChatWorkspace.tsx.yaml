@@ -1,0 +1,146 @@
+findings:
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      header docstring, lines 17-19 ("Search state")
+    evidence: |-
+      The URL is the single source of truth
+       * for the active conversation id (front.md §3.2).
+    cost: |-
+      The rule that the address names the active conversation is stated a second time in prose, beside the code that holds it (`const { conversation } = chatRoute.useSearch();`). When the node moves, the comment keeps saying the old thing and no check reaches it.
+    kind: restates
+    correction: |-
+      Remove the prose. The code at line 97 holds the fact, and the node binds it.
+    node: rules/chat-workspace/active-conversation-is-named-by-the-address
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      header docstring, lines 31-35, and the comment above `selectedNode` state, lines 99-100
+    evidence: |-
+      When non-null the right pane swaps from
+       *    GraphSpace to `<NodeDetailPanel>`; closing the panel restores
+       *    the canvas.
+    cost: |-
+      The swap-and-restore rule is repeated in comments while `selectedNode !== null ? (<NodeDetailPanel .../>) : (<GraphSpace .../>)` already holds it. The prose is a second home for the node's fact and will not follow the node.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/clicking-a-node-swaps-the-pane-to-its-detail
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      header docstring, lines 51-54 ("Unidirectionality")
+    evidence: |-
+      `onNodeSelect` only updates local UI state; `onClose` only
+       *    clears that state. Selecting a node has zero impact on the chat
+       *    turn (no message sent, no store mutated).
+    cost: |-
+      The rule that selecting sends nothing and leaves the turn alone is restated as prose. The code holds it (`setSelectedNode({ id: nodeId, label: node?.label })` and `setSelectedNode(null)` touch only local state). The comment is a second home that can drift.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/selecting-a-node-sends-nothing
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      comments above `selectedNode` state (lines 101-104) and above `handleNodeSelect` (lines 160-164)
+    evidence: |-
+      The label is captured at click time and forwarded to NodeDetailPanel so
+        // the loading state can render the canonical name immediately
+    cost: |-
+      The rule that the detail receives the click-time label, and none when absent, is restated in two comments. The code already holds it (`setSelectedNode({ id: nodeId, label: node?.label })` and the conditional `nodeLabel` spread). The comments would keep stating the old rule after a change.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/node-detail-receives-the-clicked-label
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      comment above the conversation-change effect, lines 136-148
+    evidence: |-
+      when the active conversation changes —
+        // including the `undefined → uuid` transition on first selection and the
+        // `uuid → undefined` transition on leaving — the subgraph must be cleared.
+    cost: |-
+      The clear-the-graph-and-close-the-detail rule is restated in prose over the effect that holds it (`useGraphStore.getState().clear(); setSelectedNode(null);`). The prose also gives a reason (a coherence and privacy bug) that no node records.
+    kind: restates
+    correction: |-
+      Remove the prose. The effect at lines 149-152 holds the fact.
+    node: rules/chat-workspace/changing-conversation-clears-the-graph-and-the-detail
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      comment above `useGraphPersistence(conversation)`, lines 154-157
+    evidence: |-
+      BR-42: restore the saved graph view when the conversation changes,
+        // and save it whenever nodes/positions/layoutNonce change.
+    cost: |-
+      The restore-and-save rule is restated in prose, citing a back-spec rule id. This file holds only the call `useGraphPersistence(conversation)`. The restore and save behavior is in `src/features/graph/api/use-graph-persistence`, which is outside this file set and which I did not read. The prose also names `layoutNonce` and positions, which this file does not state in code.
+    kind: restates
+    correction: |-
+      Remove the prose. The call at line 158 is where this file holds the fact.
+    node: rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation
+  - file: src/features/chat/components/ChatWorkspace.tsx
+    where: |-
+      comment inside the `GraphSpace` props, lines 230-231
+    evidence: |-
+      Same `exactOptionalPropertyTypes` discipline — only spread
+                // `errorMessage` when the store actually has one.
+    cost: |-
+      The rule that the pane gets the error message only when one exists is repeated in prose. The code holds it (`{...(errorMessage !== undefined ? { errorMessage } : {})}`).
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/graph-pane-receives-the-status-and-the-error
+read:
+  - node: rules/chat-workspace/active-conversation-is-named-by-the-address
+    held_at: |-
+      line 97, and `conversationId={conversation}` at line 202
+    evidence: |-
+      const { conversation } = chatRoute.useSearch();
+  - node: rules/chat-workspace/changing-conversation-clears-the-graph-and-the-detail
+    held_at: |-
+      the effect at lines 149-152
+    evidence: |-
+      useEffect(() => {
+          useGraphStore.getState().clear();
+          setSelectedNode(null);
+        }, [conversation]);
+  - node: rules/chat-workspace/changing-conversation-does-not-stop-the-turn
+    held_at: |-
+      the effect at lines 149-152, whose body only clears the graph store and the selection, and the unkeyed `<ConversationView conversationId={conversation} />` at line 202. Nothing in this file aborts or cancels a turn; the abort on leaving the list sits in MessageStream, which is outside this file.
+    evidence: |-
+      useGraphStore.getState().clear();
+          setSelectedNode(null);
+  - node: rules/chat-workspace/clicking-a-node-swaps-the-pane-to-its-detail
+    held_at: |-
+      handleNodeSelect, handleDetailClose and the ternary at lines 215-236
+    evidence: |-
+      {selectedNode !== null ? (
+            <NodeDetailPanel
+              nodeId={selectedNode.id}
+              ...
+              onClose={handleDetailClose}
+            />
+          ) : (
+            <GraphSpace
+  - node: rules/chat-workspace/graph-pane-receives-the-status-and-the-error
+    held_at: |-
+      the store selectors at lines 130-131 and the GraphSpace props at lines 229-232
+    evidence: |-
+      status={status}
+                {...(errorMessage !== undefined ? { errorMessage } : {})}
+  - node: rules/chat-workspace/graph-view-is-restored-and-saved-per-conversation
+    held_at: |-
+      the call at line 158. The restore and save logic sits in the hook's own file, which is outside this file set and was not read.
+    evidence: |-
+      useGraphPersistence(conversation);
+  - node: rules/chat-workspace/node-detail-receives-the-clicked-label
+    held_at: |-
+      handleNodeSelect at lines 169-175 and the conditional spread at lines 220-222
+    evidence: |-
+      const node = nodesMap.get(nodeId);
+            setSelectedNode({ id: nodeId, label: node?.label });
+  - node: rules/chat-workspace/selecting-a-node-sends-nothing
+    held_at: |-
+      handleNodeSelect and handleDetailClose, lines 169-183. Both only set local state and call no chat action.
+    evidence: |-
+      const handleDetailClose = useCallback(() => {
+          setSelectedNode(null);
+        }, []);
+looked_past: |-
+  The 40%/60% split and `@lg` container breakpoint (`@lg:w-2/5`, `@lg:w-3/5`), the `data-testid` values and the docstring's remarks on a stale feature spec ("Grafo em breve") are layout or prose that no node in this set holds; I judged them surface, not domain facts.

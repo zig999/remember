@@ -1,0 +1,179 @@
+findings:
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the ChatStatus union type, lines 51-56
+    evidence: |-
+      export type ChatStatus =
+        | "idle"
+        | "thinking"
+        | "streaming"
+        | "tool_running"
+        | "error";
+      The node's enumeration lists `- tool-running`.
+    cost: |-
+      The node spells the fourth phase `tool-running` with a hyphen, and so do two other nodes: the rule on tool_start, and the rule on when the waiting hint shows. The code declares `"tool_running"` with an underscore. The next reader who checks the code against the specification finds two different values for one phase. Any comparison against the node's spelling will not match the code's value.
+    kind: contradicts
+    correction: |-
+      Either the node or the union type has to change so both spell the phase the same way. The code cannot read the specification to settle which spelling the business decided. That choice belongs to the node's owner.
+    node: domain/chat-workspace/chat-status
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the file header comment, lines 1-24, "Why NOT persisted" and "Persistence: none (session only)"
+    evidence: |-
+      * "none (session only)".
+      * - docs/specs/front/features/chat.feature.spec.md §"Data Layer Notes" —
+      *    "Zustand slice `useChatTurnStore` holds ephemeral turn state (streaming
+      *    text, in-flight chips) — never persisted."
+    cost: |-
+      The comment restates, as prose, that the turn state is never persisted. The code already holds this: the store is built with a bare `create<ChatTurnState>((set) => ({` and no persistence middleware. The comment is a second home for the fact. When the node moves, this prose is not reached by `--check`.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact stays held by the plain `create` call in this file.
+    node: rules/chat-workspace/turn-state-lives-in-memory-only
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on the abortController field, lines 63-68
+    evidence: |-
+      * AbortController owning the in-flight `fetch` for the current SSE turn.
+    cost: |-
+      The docstring restates the one-abort-handle-per-turn rule as prose. The `abortController: AbortController | null;` field and its `setAbortController` setter already hold it. The prose is a second home that nothing reads.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `abortController` field declaration.
+    node: rules/chat-workspace/turn-holds-one-abort-handle
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on the idempotencyKey field, lines 69-73, and on setIdempotencyKey, line 89
+    evidence: |-
+      * Idempotency-Key (UUID) generated once per send attempt; kept so the
+      * caller can detect a retry of the same logical turn.
+    cost: |-
+      The docstring restates that the turn holds the idempotency key of the current send attempt. It also adds a UUID format and a retry-detection purpose that no node holds, but it is prose, not behavior. The field `idempotencyKey: string | null;` already holds the fact, so the prose is a second home outside behavior.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `idempotencyKey` field declaration.
+    node: rules/chat-workspace/turn-holds-the-idempotency-key
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on reset, line 83
+    evidence: |-
+      /** Clear all turn state — called on conversation switch and on terminal frame. */
+    cost: |-
+      The docstring restates that reset clears all turn state. The code holds it: `reset: () => set({ ...initialState }),`. The prose is a second home that the node's binding does not reach.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `reset` body.
+    node: rules/chat-workspace/reset-restores-every-field-at-once
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on appendText, line 87
+    evidence: |-
+      /** Append a `text_delta` chunk to `streamingText`. */
+    cost: |-
+      The docstring restates the append-at-the-end rule as prose. The code holds it: `set((state) => ({ streamingText: state.streamingText + delta }))`. The prose is a second home.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `appendText` body.
+    node: rules/chat-workspace/streamed-text-accumulates-at-the-end
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on addToolChip, line 93
+    evidence: |-
+      /** Add a `tool_start` chip with `ok=null` (pending). */
+    cost: |-
+      The docstring restates that a started tool call is added to the turn's chips. The code holds it: `set((state) => ({ toolChips: [...state.toolChips, chip] }))`. The prose is a second home.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `addToolChip` body.
+    node: rules/chat-workspace/started-tool-calls-accumulate-at-the-end
+  - file: src/features/chat/state/chat-turn.ts
+    where: |-
+      the docstring on updateLastToolChip, lines 95-101
+    evidence: |-
+      * Settle the last chip with a `tool_result.ok`. The spec invariant
+      * (openapi.yaml `sendMessage` §"Frame ordering invariants" #2) guarantees
+      * every `tool_start` is followed by exactly one `tool_result`, so the
+      * latest pending chip is always the one being settled.
+    cost: |-
+      The docstring restates the settle-the-most-recent-chip rule as prose and cites another document as its authority. The code holds the rule: `if (state.toolChips.length === 0) return state;` and `next[lastIdx] = { ...last, ok };`. The prose is a second home, and its claim about frame ordering is not a fact this file enforces.
+    kind: restates
+    correction: |-
+      Remove the docstring. The fact stays held by the `updateLastToolChip` body.
+    node: rules/chat-workspace/an-outcome-settles-the-most-recent-chip
+read:
+  - node: domain/chat-workspace/chat-status
+    held_at: |-
+      nowhere. The ChatStatus union type, lines 51-56, declares the enumeration, but one value is spelled differently from the node.
+    evidence: |-
+      export type ChatStatus =
+        | "idle"
+        | "thinking"
+        | "streaming"
+        | "tool_running"
+        | "error";
+  - node: rules/chat-workspace/an-outcome-settles-the-most-recent-chip
+    held_at: |-
+      the updateLastToolChip body, lines 137-146
+    evidence: |-
+      if (state.toolChips.length === 0) return state;
+      const next = state.toolChips.slice();
+      const lastIdx = next.length - 1;
+      const last = next[lastIdx];
+      if (last === undefined) return state;
+      next[lastIdx] = { ...last, ok };
+  - node: rules/chat-workspace/any-status-may-follow-any-status
+    held_at: |-
+      the setChatStatus action, line 148
+    evidence: |-
+      setChatStatus: (chatStatus) => set({ chatStatus }),
+  - node: rules/chat-workspace/reset-restores-every-field-at-once
+    held_at: |-
+      the reset action, line 123, together with initialState, lines 111-118
+    evidence: |-
+      reset: () => set({ ...initialState }),
+  - node: rules/chat-workspace/started-tool-calls-accumulate-at-the-end
+    held_at: |-
+      the addToolChip action, lines 134-135
+    evidence: |-
+      addToolChip: (chip) =>
+        set((state) => ({ toolChips: [...state.toolChips, chip] })),
+  - node: rules/chat-workspace/streamed-text-accumulates-at-the-end
+    held_at: |-
+      the appendText action, lines 127-128
+    evidence: |-
+      appendText: (delta) =>
+        set((state) => ({ streamingText: state.streamingText + delta })),
+  - node: rules/chat-workspace/streaming-flag-is-separate-from-the-status
+    held_at: |-
+      the setStreaming action, line 132, beside setChatStatus, line 148. Each setter writes only its own field.
+    evidence: |-
+      setStreaming: (isStreaming) => set({ isStreaming }),
+  - node: rules/chat-workspace/turn-holds-one-abort-handle
+    held_at: |-
+      the abortController field, line 68, and the setAbortController action, line 125
+    evidence: |-
+      abortController: AbortController | null;
+  - node: rules/chat-workspace/turn-holds-the-idempotency-key
+    held_at: |-
+      the idempotencyKey field, line 73, and the setIdempotencyKey action, line 130
+    evidence: |-
+      idempotencyKey: string | null;
+  - node: rules/chat-workspace/turn-starts-empty-and-idle
+    held_at: |-
+      the initialState constant, lines 111-118
+    evidence: |-
+      streamingText: "",
+      toolChips: [] as ReadonlyArray<ToolCallData>,
+      abortController: null as AbortController | null,
+      idempotencyKey: null as string | null,
+      isStreaming: false,
+      chatStatus: "idle" as ChatStatus,
+  - node: rules/chat-workspace/turn-state-lives-in-memory-only
+    held_at: |-
+      the store creation, line 120. It is a bare zustand `create` with no persistence middleware.
+    evidence: |-
+      export const useChatTurnStore = create<ChatTurnState>((set) => ({
+looked_past: |-
+  The ChatStatus docstring, lines 29-50, diagrams frame-to-phase transitions and a sticky error cleared by reset. No code in this file holds those transitions, so that prose is not a finding of this judgment. It is also not a node's fact held in code here, because the setter enforces no transitions, so it belongs to whichever judgment reaches the orchestrator hook.
+
+candidates_opened: []

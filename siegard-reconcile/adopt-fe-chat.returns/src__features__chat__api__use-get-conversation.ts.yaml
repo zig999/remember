@@ -1,0 +1,55 @@
+findings:
+  - file: src/features/chat/api/use-get-conversation.ts
+    where: |-
+      the header docblock, lines 1-9, the "chat.feature.spec.md §4 (request #2 ...)" bullet
+    evidence: |-
+      chat.feature.spec.md §4 (request #2: critical priority, staleTime 30s,
+         on-focus revalidation, parallel with #3 `listMessages`)
+    cost: |-
+      The thirty-second freshness and the refetch on focus are stated in the docblock and also held by code, in this file as `staleTime: STALE_MS` and `refetchOnWindowFocus: true`. A reader can take the docblock for the place those values are decided, and if a node changes it keeps saying the old value with nothing to flag it.
+    kind: restates
+    correction: |-
+      Remove the docblock. The code in this file already holds both facts, and the nodes hold them as rules.
+    node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the queryFn of useGetConversation, lines 24-31
+    evidence: |-
+      const wire = await http<ConversationWire>(
+        `/api/v1/conversations/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toConversation(wire);
+  - node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+    held_at: |-
+      the constant STALE_MS at line 17 and the option staleTime at line 33
+    evidence: |-
+      const STALE_MS = 30_000;
+      ...
+      staleTime: STALE_MS,
+  - node: rules/chat-workspace/details-and-listing-are-read-again-on-focus
+    held_at: |-
+      the refetchOnWindowFocus option, line 34
+    evidence: |-
+      refetchOnWindowFocus: true,
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the queryFn, lines 24-31. The `await http(...)` call has no catch, mapping or text, so the helper's error propagates.
+    evidence: |-
+      const wire = await http<ConversationWire>(
+        `/api/v1/conversations/${encodeURIComponent(id as string)}`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toConversation(wire);
+  - node: rules/chat-workspace/reads-need-a-conversation-id
+    held_at: |-
+      the enabled option, line 32
+    evidence: |-
+      enabled: typeof id === "string" && id.length > 0,
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: nowhere
+    evidence: |-
+      This file performs a GET read, not a send. It only calls `headers: authHeader()`, and the bearer logic is not declared here.
+looked_past: |-
+  The docblock's claims about "critical priority" and "parallel with #3 `listMessages`", and the comment "`enabled` below guards undefined; the cast is safe inside queryFn", are prose only that no code in this file carries. The `"__noop__"` placeholder key and the transform of `archived_at` and `created_at` in `./_transforms` are other judgments' to make.

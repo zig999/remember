@@ -1,0 +1,300 @@
+findings:
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      the useEffect that scrolls on stream deltas, lines 251-261, in its dependency array
+    evidence: |-
+      }, [streamingText, isStreaming, prefersReducedMotion]);
+    cost: |-
+      The rule says each growth of the streamed text scrolls the list and nothing else triggers that scroll. This effect also re-runs, and scrolls, whenever `isStreaming` or the reduced-motion preference changes while `streamingText` is non-empty. A change of the reduced-motion preference mid-turn would scroll the list with no text growth. Whether `isStreaming` flipping true can re-scroll depends on whether the store clears `streamingText` between turns, and that store is outside this file. The trigger set is decided here by the dependency array, and no node states it.
+    kind: contradicts
+    correction: |-
+      The scroll would have to fire only on growth of `streamingText`. The rule's own statement of what triggers it is the node's to keep.
+    node: rules/chat-workspace/streamed-text-growth-scrolls-to-the-bottom
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 7-8, and the comment above SKELETON_ROWS, line 111
+    evidence: |-
+      UI-02 (loading)        — 3 alternating skeleton bubbles while the
+       *                              history fetch is `isPending`.
+    cost: |-
+      The three-placeholder fact appears in prose as well as in SKELETON_ROWS. A change to the node would leave a second statement of it in the comment.
+    kind: restates
+    correction: |-
+      Remove the prose. SKELETON_ROWS holds the fact, with assistant, user and assistant variants and aria-busy on the loading section.
+    node: rules/chat-workspace/loading-history-shows-three-placeholders
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring line 9 and the sentence on lines 48-50
+    evidence: |-
+      an initial history load uses
+       *    `behavior: 'auto'` (no animation cascade)
+    cost: |-
+      The first-load jump is described in prose, and the behavior is also held by `node.scrollIntoView({ block: "end", behavior: "auto" })` in the layout effect.
+    kind: restates
+    correction: |-
+      Remove the prose. The layout effect holds the fact.
+    node: rules/chat-workspace/first-load-jumps-to-the-bottom
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 9-10
+    evidence: |-
+      UI-03 (success)        — history rendered chronologically; auto-scroll
+    cost: |-
+      The prose says the history is rendered chronologically, while the code renders `messages.map` in the order received. A reader would take the file to apply an ordering the code does not apply, and the node's wording is "the order the message listing returns it".
+    kind: restates
+    correction: |-
+      Remove the prose. `messages.map((m) => ...)` over `query.data?.items` holds the fact.
+    node: rules/chat-workspace/history-keeps-the-listed-order
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 11-14, and the comment before the streaming bubble, lines 364-370
+    evidence: |-
+      a streaming assistant
+       *                              bubble is appended below
+       *                              the history; its content is the running
+       *                              `streamingText` accumulator.
+    cost: |-
+      The in-flight bubble fact is stated in comments as well as in the `isStreaming ? <ChatBubble ... streaming />` element. Two places would have to move together.
+    kind: restates
+    correction: |-
+      Remove the prose. The conditional ChatBubble holds the fact.
+    node: rules/chat-workspace/streaming-adds-an-in-flight-assistant-bubble
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 15-18 and 62-65
+    evidence: |-
+      when `isStreaming` flips false, the streaming
+       *                              bubble disappears
+    cost: |-
+      The removal of the in-flight bubble is restated in prose. The code holds it by rendering the bubble only while `isStreaming` is true.
+    kind: restates
+    correction: |-
+      Remove the prose. The `{isStreaming ? (...) : null}` branch holds the fact.
+    node: rules/chat-workspace/in-flight-bubble-is-removed-when-streaming-ends
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 23-26, and the comment above ErrorBanner, lines 158-161
+    evidence: |-
+      inline error banner with a Retry button that
+       *                              calls `refetch()` when the history fetch
+       *                              fails.
+    cost: |-
+      The retry behavior is stated in prose as well as in ErrorBanner's `onRetry={() => void query.refetch()}`.
+    kind: restates
+    correction: |-
+      Remove the prose. ErrorBanner and the `query.isError` branch hold the fact.
+    node: rules/chat-workspace/history-failure-offers-a-retry
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 27-30
+    evidence: |-
+      pt-BR copy "Nenhuma mensagem ainda. Envie uma
+       *                              mensagem para começar." when the conversation
+       *                              has no messages and no streaming turn is in
+       *                              flight.
+    cost: |-
+      The empty-state wording and its condition are copied into a comment while COPY_EMPTY and `isEmpty` hold them. If the contract's wording moves, the comment keeps the old text.
+    kind: restates
+    correction: |-
+      Remove the prose. The COPY_EMPTY constant and `messages.length === 0 && !isStreaming` hold the fact.
+    node: contracts/chat-workspace/chat-screen
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 33-41, and the comment at lines 329-331
+    evidence: |-
+      `aria-live='polite'` on the root region — the same region for ALL
+       *    updates
+    cost: |-
+      The live-region and busy rules are restated in prose. The sections' `aria-live="polite"` and the `aria-busy` handling in the three branches hold them.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/message-list-is-a-polite-live-region
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 43-50, and the comment above the delta-scroll effect, lines 248-250
+    evidence: |-
+      incremental deltas use
+       *    `behavior: 'smooth'`. Reduced-motion downgrades smooth → auto.
+    cost: |-
+      The smooth-or-auto scroll behavior is stated in prose as well as in `behavior: prefersReducedMotion ? "auto" : "smooth"`.
+    kind: restates
+    correction: |-
+      Remove the prose. The delta-scroll effect holds the fact.
+    node: rules/chat-workspace/streamed-text-growth-scrolls-to-the-bottom
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      header docstring lines 52-57, and the comment above the unmount effect, lines 263-270
+    evidence: |-
+      On unmount, abort whatever `AbortController` is currently registered in
+       *    `useChatTurnStore`.
+    cost: |-
+      The abort-on-leaving fact is stated in prose as well as in the cleanup `controller?.abort()`.
+    kind: restates
+    correction: |-
+      Remove the prose. The unmount effect holds the fact.
+    node: rules/chat-workspace/leaving-the-list-aborts-the-turn
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      docstring of joinContent, lines 89-97
+    evidence: |-
+      unknown block types simply contribute nothing,
+       * which keeps a forward-compatible payload
+    cost: |-
+      The block-joining rule is restated in a docstring as well as in the `typeof block.text === "string"` accumulation.
+    kind: restates
+    correction: |-
+      Remove the docstring.
+    node: rules/chat-workspace/message-text-joins-its-blocks
+  - file: src/features/chat/components/MessageStream.tsx
+    where: |-
+      comment before ChatStatusIndicator, lines 381-386
+    evidence: |-
+      TC-FE-10 — discreet waiting hint anchored below the last bubble.
+    cost: |-
+      The placement of the waiting hint is restated in prose as well as in `<ChatStatusIndicator />` rendered after the bubbles in the non-empty branch.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/chat-workspace/waiting-hint-sits-below-the-last-bubble
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: |-
+      the read-history part only. COPY_EMPTY, COPY_ERROR, COPY_RETRY and LABEL_REGION, the loading branch, the error branch with ErrorBanner, and the empty branch. Composer, usage, turn-progress chips and the archived banner are not in this file.
+    evidence: |-
+      const LABEL_REGION = "Mensagens da conversa";
+      const COPY_EMPTY = "Nenhuma mensagem ainda. Envie uma mensagem para começar.";
+      const COPY_ERROR =
+        "Não foi possível carregar o histórico. Tente novamente.";
+      const COPY_RETRY = "Tentar novamente";
+  - node: domain/chat-workspace/message-list-state
+    held_at: |-
+      the branches `query.isPending`, `query.isError` and the success branch, with the `data-state` expression
+    evidence: |-
+      data-state={isStreaming ? "streaming" : isEmpty ? "empty" : "success"}
+  - node: domain/chat/message
+    held_at: |-
+      nowhere
+    evidence: |-
+      The shape of the message is declared in "../types" (ChatMessage), not in this file. The file only reads `m.id`, `m.role`, `m.content` and `m.stop_reason`, as in `variant={m.role}` and `content={joinContent(m.content)}`.
+  - node: rules/chat-workspace/changing-conversation-does-not-stop-the-turn
+    held_at: |-
+      the unmount-only cleanup effect, lines 271-279. Its empty dependency array does not include `conversationId`.
+    evidence: |-
+      useEffect(() => {
+          return () => {
+            const controller = useChatTurnStore.getState().abortController;
+            controller?.abort();
+          };
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
+  - node: rules/chat-workspace/failed-turn-gets-no-wording-from-the-list
+    held_at: |-
+      the streaming ChatBubble element, lines 371-379. It carries no error or failure prop, and no branch renders turn-failure wording.
+    evidence: |-
+      <ChatBubble
+                key="streaming"
+                variant="assistant"
+                content={streamingText}
+                streaming
+                animate
+              />
+  - node: rules/chat-workspace/first-jump-happens-once
+    held_at: |-
+      the layout effect guarded by hasInitialScrolledRef, lines 238-246. The ref is never reset when `conversationId` changes.
+    evidence: |-
+      if (hasInitialScrolledRef.current) return;
+          ...
+          hasInitialScrolledRef.current = true;
+  - node: rules/chat-workspace/first-load-jumps-to-the-bottom
+    held_at: |-
+      the layout effect on `query.isSuccess`, lines 238-246
+    evidence: |-
+      node.scrollIntoView({ block: "end", behavior: "auto" });
+  - node: rules/chat-workspace/history-failure-offers-a-retry
+    held_at: |-
+      ErrorBanner and the `query.isError` branch, lines 162-194 and 304-319
+    evidence: |-
+      <ErrorBanner onRetry={() => void query.refetch()} />
+  - node: rules/chat-workspace/history-keeps-the-listed-order
+    held_at: |-
+      the `messages.map` over `query.data?.items`, line 349. No sort is applied.
+    evidence: |-
+      const messages: ReadonlyArray<ChatMessage> = query.data?.items ?? [];
+  - node: rules/chat-workspace/in-flight-bubble-is-removed-when-streaming-ends
+    held_at: |-
+      the conditional render of the streaming bubble, lines 371-379. The accumulator lives in the store, and this file keeps no copy.
+    evidence: |-
+      {isStreaming ? (
+              <ChatBubble
+                key="streaming"
+      ...
+            ) : null}
+  - node: rules/chat-workspace/leaving-the-list-aborts-the-turn
+    held_at: |-
+      the unmount cleanup effect, lines 271-279
+    evidence: |-
+      const controller = useChatTurnStore.getState().abortController;
+            controller?.abort();
+  - node: rules/chat-workspace/loading-history-shows-three-placeholders
+    held_at: |-
+      SKELETON_ROWS, LoadingSkeleton, and the `query.isPending` branch with `aria-busy="true"`, lines 117-156 and 282-298
+    evidence: |-
+      const SKELETON_ROWS: ReadonlyArray<{ variant: "assistant" | "user"; widthClass: string }> = [
+        { variant: "assistant", widthClass: "w-3/5" },
+        { variant: "user", widthClass: "w-2/5" },
+        { variant: "assistant", widthClass: "w-4/5" },
+      ];
+  - node: rules/chat-workspace/message-is-a-bubble-styled-by-its-role
+    held_at: |-
+      the ChatBubble rendered for each message, lines 355-361
+    evidence: |-
+      <ChatBubble
+                key={m.id}
+                variant={m.role}
+  - node: rules/chat-workspace/message-list-is-a-polite-live-region
+    held_at: |-
+      the three section elements, lines 284-296, 306-317 and 326-339. All carry `aria-live="polite"`, and aria-busy is set only in loading and while streaming.
+    evidence: |-
+      aria-live="polite"
+            {...(isStreaming ? { "aria-busy": "true" as const } : {})}
+  - node: rules/chat-workspace/message-passes-its-stop-reason-to-its-bubble
+    held_at: |-
+      the conditional spread on the history ChatBubble, line 360
+    evidence: |-
+      {...(m.stop_reason !== null ? { stopReason: m.stop_reason } : {})}
+  - node: rules/chat-workspace/message-text-joins-its-blocks
+    held_at: |-
+      joinContent, lines 98-106
+    evidence: |-
+      for (const block of blocks) {
+          if (typeof block.text === "string") {
+            out += block.text;
+          }
+        }
+  - node: rules/chat-workspace/streamed-text-growth-scrolls-to-the-bottom
+    held_at: |-
+      the delta-scroll effect, lines 251-261. The finding names its dependency array.
+    evidence: |-
+      node.scrollIntoView({
+              block: "end",
+              behavior: prefersReducedMotion ? "auto" : "smooth",
+            });
+  - node: rules/chat-workspace/streaming-adds-an-in-flight-assistant-bubble
+    held_at: |-
+      the conditional streaming ChatBubble after the history, lines 371-379
+    evidence: |-
+      <ChatBubble
+                key="streaming"
+                variant="assistant"
+                content={streamingText}
+                streaming
+                animate
+              />
+  - node: rules/chat-workspace/waiting-hint-sits-below-the-last-bubble
+    held_at: |-
+      `<ChatStatusIndicator />` at line 387, inside the non-empty branch only. It is not rendered in the pending or error branches.
+    evidence: |-
+      <ChatStatusIndicator />
+looked_past: |-
+  The comments claim that a failed turn flips the streaming bubble to `error=true` (UI-06) and that a conversation switch aborts the turn, and no code in this file does either, so they are prose that no code carries and are not findings.

@@ -1,0 +1,64 @@
+findings:
+  - file: src/features/chat/api/use-list-messages.ts
+    where: |-
+      line 46, the options passed to http() in queryFn
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+    cost: |-
+      The message read attaches the owner's bearer through authHeader() (in ./_request), and no node of the chat workspace states that a read carries it. The chat nodes state it only for a send ("A send MUST carry the owner's access token as a bearer...") and for cancelling a turn. The curation and ingestion contexts each have a node for the same fact on their requests. A reader looking in the specification for how chat reads authenticate finds nothing, and the behaviour lives only in this code.
+    kind: unstated
+    correction: |-
+      Analysis would give the fact a node. It would say that a conversation read, messages included, carries the owner's access token as a bearer when one is held and no Authorization header otherwise. The natural home is contracts/chat-workspace/bff-conversations or a rule beside send-carries-the-access-token-when-held.
+    node: contracts/chat-workspace/bff-conversations
+
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      queryFn, lines 41-49, and buildQueryString, lines 27-33. The items and next_before mapping is delegated to toMessageList in ./_transforms, a file outside this set.
+    evidence: |-
+      `/api/v1/conversations/${encodeURIComponent(
+          conversationId as string,
+        )}/messages${buildQueryString(params)}`,
+        { method: "GET", headers: authHeader() },
+  - node: rules/chat-workspace/listing-sends-its-options-only-when-asked
+    held_at: |-
+      buildQueryString, lines 27-33, the message-listing half. The conversation-listing half belongs to another file.
+    evidence: |-
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+        if (params.before !== undefined) search.set("before", params.before);
+        const qs = search.toString();
+        return qs.length > 0 ? `?${qs}` : "";
+  - node: rules/chat-workspace/messages-and-usage-are-not-read-again-on-focus
+    held_at: |-
+      the useQuery options, line 52. The usage half belongs to another file.
+    evidence: |-
+      refetchOnWindowFocus: false,
+  - node: rules/chat-workspace/messages-are-stale-as-soon-as-they-are-read
+    held_at: |-
+      the useQuery options, line 51
+    evidence: |-
+      staleTime: 0, // volatile per §4 BR-08
+  - node: rules/chat-workspace/no-page-size-is-fixed-by-the-screen
+    held_at: |-
+      buildQueryString, lines 27-33, and the default `params: ListMessagesParams = {}`. No limit is set in code.
+    evidence: |-
+      if (params.limit !== undefined) search.set("limit", String(params.limit));
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      queryFn, lines 41-49. It awaits http() with no catch or mapping and shows no text of its own.
+    evidence: |-
+      const wire = await http<MessageListWire>(
+        `/api/v1/conversations/${encodeURIComponent(
+  - node: rules/chat-workspace/reads-need-a-conversation-id
+    held_at: |-
+      the enabled option, line 50
+    evidence: |-
+      enabled: typeof conversationId === "string" && conversationId.length > 0,
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: |-
+      nowhere. The node governs a send, and this file only reads. The file does call authHeader() on its read, which is reported as an unstated finding.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+
+looked_past: |-
+  The header comment states "limit=50", "Default 50" and "clamped server-side to [1, 200]" and cites staleTime 0 as "volatile per §4 BR-08". No code here or in the file set holds the 50 or the 200, and the code sends no limit unless one is given. This is prose only, so its route is the comment route that removes it.

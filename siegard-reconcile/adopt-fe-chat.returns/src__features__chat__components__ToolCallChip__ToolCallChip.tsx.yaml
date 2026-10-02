@@ -1,0 +1,69 @@
+findings:
+  - file: src/features/chat/components/ToolCallChip/ToolCallChip.tsx
+    where: >-
+      the file header docstring, lines 12-16 (the "Spec references" paragraph)
+    evidence: |-
+      * Spec references:
+       *  - dev_tc_010 task contract — three observable states + aria-label format
+       *    "{tool} — {status}" with status in pt-BR
+       *    ('em andamento' | 'concluído' | 'erro').
+    cost: |-
+      The accessible-name format and the three status words are held in the chat-screen node (operation show-turn-progress). Here they are also written as prose that cites a task contract (dev_tc_010) instead of the node. When the node's wording moves, a reader who finds this comment sees a second, uncited statement of the fact. Comments are not bound to the node, so the check never reaches it.
+    kind: restates
+    correction: >-
+      Remove the prose. The code already holds the fact in the STATUS_PENDING, STATUS_OK and STATUS_ERROR constants and in the template literal `${tool} — ${status}` in this same file.
+    node: contracts/chat-workspace/chat-screen
+  - file: src/features/chat/components/ToolCallChip/ToolCallChip.tsx
+    where: >-
+      the comment above the status constants, line 36
+    evidence: |-
+      /* ---------- status copy (pt-BR; verbatim from TC-10 constraints) ---------- */
+    cost: |-
+      The comment attributes the status words to a task constraint, TC-10, rather than to the chat-screen node that holds them. It names the wrong authority for the fact. A reader who follows it looks in a task document and not in the specification.
+    kind: restates
+    correction: >-
+      Remove the comment. The constants on lines 38-40 hold the words.
+    node: contracts/chat-workspace/chat-screen
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: >-
+      the STATUS_PENDING, STATUS_OK and STATUS_ERROR constants and statusLabel() (lines 38-46); the ariaLabel template literal (line 51); the chip span's role and aria-label (lines 75-77); the tool name and argsSummary rendering (lines 86-89)
+    evidence: |-
+      const STATUS_PENDING = "em andamento";
+      const STATUS_OK = "concluído";
+      const STATUS_ERROR = "erro";
+      const ariaLabel = `${tool} — ${status}`;
+      <span role="status" aria-label={ariaLabel}
+  - node: domain/chat-workspace/tool-chip
+    held_at: >-
+      nowhere
+    evidence: |-
+      The file does not declare the chip's shape. It only reads fields of a shape declared elsewhere: `const { tool, argsSummary, ok } = chip;`, with the props type imported from "./ToolCallChip.types".
+  - node: domain/chat-workspace/tool-chip-outcome
+    held_at: >-
+      nowhere
+    evidence: |-
+      The file declares no enumeration of outcomes. It branches on a boolean-or-null value: `function statusLabel(ok: boolean | null): string { if (ok === null) return STATUS_PENDING;`.
+  - node: domain/chat/tool-call
+    held_at: >-
+      nowhere
+    evidence: |-
+      The file does not declare a tool-call entity. It has no `tool_name`, `arguments`, `is_error` or `duration_ms`, only the chip's `tool`, `argsSummary` and `ok`.
+  - node: rules/chat-workspace/chip-is-a-status-region-named-by-tool-and-status
+    held_at: >-
+      lines 51 and 75-77
+    evidence: |-
+      const ariaLabel = `${tool} — ${status}`;
+      <span
+        role="status"
+        aria-label={ariaLabel}
+  - node: rules/chat-workspace/chip-shows-the-tool-and-its-summary
+    held_at: >-
+      lines 86-89
+    evidence: |-
+      <span className="font-medium">{tool}</span>
+      {argsSummary.length > 0 && (
+        <span className="text-muted-foreground">{argsSummary}</span>
+      )}
+looked_past: >-
+  I saw the chip's icons (Loader2, CheckCircle2, XCircle), its semantic colour classes and its `data-state` and `data-testid` attributes; I did not report them because they are presentation and test hooks, which is a different judgment, and the nodes in this set do not hold them.

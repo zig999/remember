@@ -1,0 +1,80 @@
+findings:
+  - file: src/features/chat/api/use-get-conversation-usage.ts
+    where: |-
+      the header docstring, lines 6-7 ("chat.feature.spec.md §4 (request #4 ... staleTime 30s, manual revalidation)")
+    evidence: |-
+      * - chat.feature.spec.md §4 (request #4: lazy, sequential after #2;
+      *    staleTime 30s, manual revalidation)
+    cost: |-
+      The thirty-second freshness window is stated a second time in prose, next to the code that holds it. When the rule moves, this docstring keeps the old figure and nothing tells the next reader which one was decided. Removing the docstring changes no behavior.
+    kind: restates
+    correction: |-
+      Remove the prose. The fact is held by `const STALE_MS = 30_000;` and `staleTime: STALE_MS` in this same file, and by the node.
+    node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+  - file: src/features/chat/api/use-get-conversation-usage.ts
+    where: |-
+      the header docstring, line 8 ("§4 transforms: rename `messages` → `messageCount`, flatten to root.")
+    evidence: |-
+      *  - §4 transforms: rename `messages` → `messageCount`, flatten to root.
+    cost: |-
+      How the usage answer is read (`messages` kept as the message count) is described a second time in this file's prose, while the code that does it sits in another file. The two can drift apart without anyone noticing. Removing the docstring changes no behavior.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact in `toUsageData`, imported from `./_transforms` and called in the `queryFn` (`return toUsageData(wire);`). The node already states it.
+    node: contracts/chat-workspace/bff-conversations
+  - file: src/features/chat/api/use-get-conversation-usage.ts
+    where: |-
+      the queryFn request, line 29
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+    cost: |-
+      The usage read carries the owner's access token, and no node says reads do. The only bearer rule that lists this file, send-carries-the-access-token-when-held, is worded for a send. The contract's read-conversation-usage answer names no header. A reader looking in the specification for what a read sends finds nothing, and the behavior lives only in code.
+    kind: unstated
+    correction: |-
+      Give the fact a node. Either extend the bearer rule so it covers reads, or state it in the read-conversation-usage answer of contracts/chat-workspace/bff-conversations.
+    node: contracts/chat-workspace/bff-conversations
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the queryFn of useGetConversationUsage, lines 24-31. It holds the request half of read-conversation-usage: the GET, the URL-encoded id and the `/usage` path. The reading of the answer (`messages` kept as the message count) is delegated to `toUsageData` in `./_transforms`, outside this file.
+    evidence: |-
+      const wire = await http<UsageWire>(
+        `/api/v1/conversations/${encodeURIComponent(
+          conversationId as string,
+        )}/usage`,
+        { method: "GET", headers: authHeader() },
+      );
+      return toUsageData(wire);
+  - node: rules/chat-workspace/conversation-reads-stay-fresh-for-thirty-seconds
+    held_at: |-
+      line 17 (the constant) and line 34 (its use as the staleness window of the usage query)
+    evidence: |-
+      const STALE_MS = 30_000;
+      ...
+      staleTime: STALE_MS,
+  - node: rules/chat-workspace/messages-and-usage-are-not-read-again-on-focus
+    held_at: |-
+      line 35, in the useQuery options
+    evidence: |-
+      refetchOnWindowFocus: false,
+  - node: rules/chat-workspace/read-and-write-failures-surface-unchanged
+    held_at: |-
+      the queryFn, lines 24-31. The error the `http` helper raises is awaited with no try/catch, no code mapping and no text of its own, so it reaches the query unchanged.
+    evidence: |-
+      const wire = await http<UsageWire>(
+        ...
+        { method: "GET", headers: authHeader() },
+      );
+      return toUsageData(wire);
+  - node: rules/chat-workspace/reads-need-a-conversation-id
+    held_at: |-
+      line 33, the `enabled` option
+    evidence: |-
+      enabled: typeof conversationId === "string" && conversationId.length > 0,
+  - node: rules/chat-workspace/send-carries-the-access-token-when-held
+    held_at: |-
+      nowhere. The rule governs a send, and this file is a read. The file only passes `authHeader()` along. Where the token is read and where the header is omitted when none is held is not in this file.
+    evidence: |-
+      { method: "GET", headers: authHeader() },
+looked_past: |-
+  The docstring phrases "lazy, sequential after #2" and "manual revalidation" and the `"__noop__"` placeholder in the query key are prose or non-domain mechanics that no node holds, so I reported none of them.

@@ -1,0 +1,73 @@
+findings:
+  - file: src/features/chat/api/_request.ts
+    where: |-
+      the header block comment, lines 1-22, and the docstring of authHeader, line 28
+    evidence: |-
+      " *  - `authHeader()` reads the JWT from the Zustand store at call time so
+       *    every request sees the freshest token after sign-in / refresh."
+      "/** Build the `Authorization: Bearer <jwt>` header when a token is present. */"
+    cost: |-
+      The bearer rule for cancel-turn is stated in prose here and held by `authHeader()`, whose body is `token !== null ? { Authorization: `Bearer ${token}` } : {}`. A reader who finds the comment may take it as the rule's home. The comment also cites docs/specs/front/features/chat.feature.spec.md and `dev_tc_003-delivery.md` as authorities, and the node no longer points to either.
+    kind: restates
+    correction: |-
+      Remove the prose. The code in authHeader is where the fact is held, and the node binds it.
+    node: rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+  - file: src/features/chat/api/_request.ts
+    where: |-
+      the docstring of httpVoid, lines 34-44, and the comment at lines 71-72
+    evidence: |-
+      " *  - 204 → resolves void.
+       *  - 4xx with envelope body → throws `EnvelopeError` mirroring lib/http.ts.
+       *  - 5xx or network / abort failures → throws `EnvelopeError` with a
+       *    `SYSTEM_*` code so the central error router classifies them."
+      "// Any non-204 — including 200 with body — is treated as an error path"
+    cost: |-
+      The 204-only success rule and the failure classes exist as prose and as code (`if (response.status === 204) return;` followed by the unconditional `throw new EnvelopeError`). Two readable statements of the rule exist, and if the code changes the comment will still claim the old rule.
+    kind: restates
+    correction: |-
+      Remove the docstring and the comment. The branch on `response.status === 204` and the failure paths hold the fact, and the node binds them.
+    node: rules/chat-workspace/no-body-request-succeeds-only-on-204
+  - file: src/features/chat/api/_request.ts
+    where: |-
+      the docstring of httpVoid, lines 34-44, together with the header comment, lines 16-21
+    evidence: |-
+      " *  - 5xx or network / abort failures → throws `EnvelopeError` with a
+       *    `SYSTEM_*` code so the central error router classifies them."
+      " *  - `httpVoid()` is a NARROW carve-out for the single 204 endpoint of this
+       *    feature (`DELETE /conversations/:id`)."
+    cost: |-
+      The delete-conversation refusal table (SYSTEM_ABORTED, SYSTEM_NETWORK, SYSTEM_UPSTREAM, SYSTEM_UNKNOWN, with HTTP status 0 for abort and network) is restated in prose. The code that holds it is the `catch` and the `code`/`message` ternaries of httpVoid. The prose names no codes and no messages, so it cannot be checked against the node.
+    kind: restates
+    correction: |-
+      Remove the prose. The catch block and the two ternaries in httpVoid hold the refusals.
+    node: contracts/chat-workspace/bff-conversations
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      httpVoid, lines 45-99. This file holds only the delete-conversation failure side of the node; the other operations sit in other files.
+    evidence: |-
+      code: isAbort ? "SYSTEM_ABORTED" : "SYSTEM_NETWORK", httpStatus: 0, message: isAbort ? "Requisição cancelada." : "Falha de rede ao contactar o servidor."
+      if (response.status === 204) return;
+      typeof errObj?.code === "string" ? errObj.code : response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN", httpStatus: response.status, message: ... "Algo deu errado. Tente novamente." : "Erro desconhecido do servidor.", details: errObj?.details
+  - node: rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+    held_at: |-
+      authHeader, lines 29-32. It supplies the bearer when a token is held; the cancel request itself is made in use-cancel-turn.ts.
+    evidence: |-
+      const token = useAuthStore.getState().accessToken; return token !== null ? { Authorization: `Bearer ${token}` } : {};
+  - node: rules/chat-workspace/no-body-request-has-no-cutoff-and-no-refresh
+    held_at: |-
+      httpVoid, lines 45-99, by what it does not contain. The `fetch(url, init)` call has no timeout and no signal of its own, and no branch on status 401 or any token refresh. A 401 falls through to the generic failure path.
+    evidence: |-
+      response = await fetch(url, init);
+      throw new EnvelopeError({ code: typeof errObj?.code === "string" ? errObj.code : response.status >= 500 ? "SYSTEM_UPSTREAM" : "SYSTEM_UNKNOWN", ...
+  - node: rules/chat-workspace/no-body-request-succeeds-only-on-204
+    held_at: |-
+      the branch at line 69 of httpVoid, followed by an unconditional throw.
+    evidence: |-
+      if (response.status === 204) return;
+looked_past: |-
+  Saw `details: { cause: String(err) }` on the network and abort failures and the trailing-slash normalisation of VITE_BFF_URL, both transport plumbing that no domain fact in this pass's nodes names, and the envelope parsing duplicated from lib/http.ts, which is a code-review matter and not a domain fact.
+candidates_opened:
+  - rules/chat-workspace/cancelling-a-turn-is-a-separate-request
+  - rules/chat-workspace/no-body-request-has-no-cutoff-and-no-refresh
+  - rules/chat-workspace/no-body-request-succeeds-only-on-204

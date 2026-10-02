@@ -1,0 +1,231 @@
+findings:
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      header docblock lines 8-10 ("six event names") and the comment above ChatSSEFrame, line 107
+    evidence: |-
+      `six event names: `llm_start`, `text_delta`, `tool_start`, `tool_result`, `done`, `error``
+      `/** Discriminated union of all 7 SSE frame variants. */`
+    cost: |-
+      Prose names the event kinds a second time, outside any node, and the two comments disagree (six, then seven). The union and the switch in parseSSEFrame already hold the seven kinds. A reader who trusts the header will think `graph_delta` is not part of the stream.
+    kind: restates
+    correction: |-
+      Remove the comments. The kinds are held by the ChatSSEFrame union and the switch in parseSSEFrame, and the node holds the vocabulary.
+    node: domain/chat/turn-event-kind
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      header docblock lines 25-26 and the comment above the drain loop, line 345
+    evidence: |-
+      `Splits on the SSE frame boundary `\n\n`. A multi-line frame may contain`
+      `// Drain all complete frames (separated by `\n\n`).`
+    cost: |-
+      Prose restates where a frame ends. The code holds this at `buffer.indexOf("\n\n")`. The next reader has two places that appear to decide the boundary.
+    kind: restates
+    correction: |-
+      Remove the prose. The boundary is held by the code in streamChat.
+    node: rules/chat-workspace/frames-end-at-a-blank-line
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      header docblock lines 28-31
+    evidence: |-
+      `Malformed frames (missing event/data, non-JSON data, unknown event name)`
+      `are SKIPPED silently`
+    cost: |-
+      Prose restates the skip rule, which parseSSEFrame holds by returning `null` and streamChat holds by yielding only non-null frames. The comment also states the rule more narrowly than the node. It omits fields of the wrong type and data that is not an object.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/malformed-frames-are-skipped-silently
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      header docblock lines 32-33
+    evidence: |-
+      `Pre-stream HTTP errors (4xx/5xx) emit one terminal `error` frame`
+      `constructed from the envelope body when possible, then return.`
+    cost: |-
+      Prose restates how a refused send is answered. The contract holds that, and extractPreStreamError and the `!response.ok` branch carry it in code. The comment names only 4xx/5xx, where the code handles every non-2xx status.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: contracts/chat-workspace/bff-conversations
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      header docblock lines 34-35 and the docblock of streamChat, lines 273-275
+    evidence: |-
+      `Caller-driven abort via `options.signal` propagates to `fetch()` and the`
+      `reader; the generator returns cleanly (no throw on abort).`
+    cost: |-
+      Prose restates the quiet-abort rule, which the code holds in both `if (isAbort) return;` branches. A second statement of the rule sits beside the node.
+    kind: restates
+    correction: |-
+      Remove the prose.
+    node: rules/chat-workspace/aborting-ends-the-reading-quietly
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      line 137, inside parseSSEFrame
+    evidence: |-
+      `if (line.startsWith(":")) continue; // SSE comment / keep-alive`
+    cost: |-
+      The trailing comment restates the rule that comment and colonless lines are ignored. The code holds that rule in this line and in the `colon === -1` branch below it.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/chat-workspace/comment-and-colonless-lines-are-ignored
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      line 141, inside parseSSEFrame
+    evidence: |-
+      `// Per SSE spec, an optional single space follows the colon.`
+    cost: |-
+      Prose restates the field and value reading rule. `.replace(/^ /, "")` holds it in the same line. The comment also cites an outside specification as its authority.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/chat-workspace/frame-lines-are-field-value-pairs
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      comment at lines 146-147, inside parseSSEFrame
+    evidence: |-
+      `// Multi-line `data:` per SSE spec would concatenate with `\n`; the BFF`
+      `// emits single-line JSON, so the last `data:` wins on malformed input.`
+    cost: |-
+      The prose restates the data-line rule and says the last `data:` wins. The code on the next line joins every data line with a newline: `dataLine = dataLine === null ? value : `${dataLine}\n${value}``. It is the last `event:` line that wins. A reader who trusts the comment gets the opposite rule from the one the code runs.
+    kind: restates
+    correction: |-
+      Remove the comment. The joining and the last-event-wins rule are held by the code and by the node.
+    node: rules/chat-workspace/event-names-the-frame-and-data-carries-it
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      line 160, inside parseSSEFrame, together with `case "llm_start":` at line 164
+    evidence: |-
+      `if (payload === null || typeof payload !== "object") return null;`
+      `case "llm_start":`
+      `  return { type: "llm_start" };`
+    cost: |-
+      The node requires a frame to be skipped when its data is not a JSON object. `typeof payload !== "object"` is also false for an array, so `event: llm_start` with `data: []` is applied as an `llm_start` frame. It would move the turn status to thinking, where the node says the frame is skipped silently. The other event kinds happen to be rejected later only because their required fields are absent on an array.
+    kind: contradicts
+    correction: |-
+      The object check would have to refuse arrays as well as null and non-objects, so that no event kind can pass on array data.
+    node: rules/chat-workspace/malformed-frames-are-skipped-silently
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      the frame-drain loop, lines 346-353, together with the carriage-return drop at line 135
+    evidence: |-
+      `let boundary = buffer.indexOf("\n\n");`
+      `const line = rawLine.replace(/\r$/, "");`
+    cost: |-
+      The node ends a frame at a blank line and drops a carriage return at the end of each line. The loop recognises only a bare `\n\n`. In a stream with CRLF line endings the separator is `\r\n\r\n`, and `indexOf("\n\n")` never matches it. No frame would be applied as it arrives. Everything would pile up in the buffer until the stream ends and be read as one block, which keeps only the last event and joins all the data lines. The `\r` handling at line 135 shows the code expects CRLF lines, but the frame boundary does not.
+    kind: contradicts
+    correction: |-
+      Frame boundaries would have to be detected on a blank line after carriage-return removal, not only on a literal `\n\n`.
+    node: rules/chat-workspace/frames-end-at-a-blank-line
+  - file: src/features/chat/api/chat-stream.ts
+    where: |-
+      comment at lines 355-356, before the trailing-frame drain
+    evidence: |-
+      `// Drain a trailing partial frame (rare — well-behaved servers terminate`
+      `// with `\n\n`, but defensive).`
+    cost: |-
+      Prose restates the rule that an unterminated last frame is read. The code holds it in `const tail = buffer.trim();` and the `parseSSEFrame(tail)` call that follows.
+    kind: restates
+    correction: |-
+      Remove the comment.
+    node: rules/chat-workspace/unterminated-last-frame-is-read
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      the send-message stream half in streamChat and extractPreStreamError. Request method, headers and error frames are held here. The URL, the body, the Idempotency-Key and the other eight operations are held in other files.
+    evidence: |-
+      `method: "POST"`, `"Content-Type": "application/json"`, `Accept: "text/event-stream"`, `code: "SYSTEM_NETWORK"`, `message: "Falha de rede ao contactar o servidor."`, `code: "SYSTEM_INVALID_RESPONSE"`, `message: "Resposta do servidor sem corpo."`, `code: "SYSTEM_UPSTREAM"`, `message: "Algo deu errado. Tente novamente."`, `code: "SYSTEM_UNKNOWN"`, `message: "Erro desconhecido do servidor."`, `message: "Falha de rede durante o streaming."`
+  - node: domain/chat/turn-event-kind
+    held_at: |-
+      the ChatSSEFrame union (lines 108-115) and the switch in parseSSEFrame (lines 163-222)
+    evidence: |-
+      `export type ChatSSEFrame = | ChatSSEFrameLLMStart | ChatSSEFrameTextDelta | ChatSSEFrameToolStart | ChatSSEFrameToolResult | ChatSSEFrameDone | ChatSSEFrameError | ChatSSEFrameGraphDelta;`
+  - node: rules/chat-workspace/a-turn-is-never-resent-by-the-screen
+    held_at: |-
+      streamChat, which has one `fetch(url, init)` call with no retry or loop around it
+    evidence: |-
+      `response = await fetch(url, init);`
+  - node: rules/chat-workspace/aborting-ends-the-reading-quietly
+    held_at: |-
+      the AbortError branches around fetch and around reader.read(). Re-reading messages and usage is not in this file.
+    evidence: |-
+      `if (isAbort) return;`
+  - node: rules/chat-workspace/comment-and-colonless-lines-are-ignored
+    held_at: |-
+      parseSSEFrame, the two `continue` branches
+    evidence: |-
+      `if (line.startsWith(":")) continue; // SSE comment / keep-alive`
+      `if (colon === -1) continue;`
+  - node: rules/chat-workspace/each-frame-kind-requires-its-fields
+    held_at: |-
+      the per-event cases of the switch in parseSSEFrame
+    evidence: |-
+      `if (typeof tool !== "string" || typeof argsSummary !== "string") {`
+      `if (typeof ok !== "boolean") return null;`
+      `if (typeof stopReason !== "string") return null;`
+      `if (typeof code !== "string" || typeof message !== "string") return null;`
+      `if (!Array.isArray(links)) return null;`
+  - node: rules/chat-workspace/event-names-the-frame-and-data-carries-it
+    held_at: |-
+      parseSSEFrame, the field loop at lines 143-149
+    evidence: |-
+      `eventName = value;`
+      `dataLine = dataLine === null ? value : `${dataLine}\n${value}`;`
+  - node: rules/chat-workspace/frame-lines-are-field-value-pairs
+    held_at: |-
+      parseSSEFrame, lines 135-142
+    evidence: |-
+      `const line = rawLine.replace(/\r$/, "");`
+      `const value = line.slice(colon + 1).replace(/^ /, "");`
+  - node: rules/chat-workspace/frames-end-at-a-blank-line
+    held_at: |-
+      the drain loop in streamChat, lines 346-353. It applies each frame as it arrives but recognises only a bare `\n\n` boundary (see the finding).
+    evidence: |-
+      `let boundary = buffer.indexOf("\n\n");`
+      `if (frame !== null) yield frame;`
+  - node: rules/chat-workspace/malformed-frames-are-skipped-silently
+    held_at: |-
+      parseSSEFrame, the null returns. An array passes the object check (see the finding).
+    evidence: |-
+      `if (eventName === null || dataLine === null) return null;`
+      `} catch {`
+      `  return null;`
+      `default:`
+      `  return null;`
+  - node: rules/chat-workspace/send-never-refreshes-the-token
+    held_at: |-
+      streamChat. A 401 goes through the same non-ok branch as any refusal, with no refresh or redirect.
+    evidence: |-
+      `const err = await extractPreStreamError(response);`
+      `yield { type: "error", code: err.code, message: err.message };`
+  - node: rules/chat-workspace/send-resolves-with-the-turn-outcome
+    held_at: |-
+      nowhere. This file only yields frames, including the error frame. The send's resolution and the idempotency key sit in another file.
+    evidence: |-
+      `export async function* streamChat(url: string, body: unknown, options: StreamChatOptions = {}): AsyncGenerator<ChatSSEFrame, void, void> {`
+  - node: rules/chat-workspace/send-stream-has-no-client-cutoff
+    held_at: |-
+      streamChat. The only way the caller ends the request is options.signal, and there is no timer.
+    evidence: |-
+      `if (options.signal !== undefined) init.signal = options.signal;`
+  - node: rules/chat-workspace/stream-is-read-as-utf-8
+    held_at: |-
+      streamChat, where the byte reader and decoder are created
+    evidence: |-
+      `const reader = response.body.getReader();`
+      `const decoder = new TextDecoder("utf-8");`
+  - node: rules/chat-workspace/unterminated-last-frame-is-read
+    held_at: |-
+      streamChat, the tail drain after the loop ends
+    evidence: |-
+      `const tail = buffer.trim();`
+      `const frame = parseSSEFrame(tail);`
+  - node: scenarios/chat-workspace/malformed-frame-is-skipped
+    held_at: |-
+      parseSSEFrame (the JSON.parse catch) and the drain loop, which yields only non-null frames
+    evidence: |-
+      `try { payload = JSON.parse(dataLine); } catch { return null; }`
+      `if (frame !== null) yield frame;`
+looked_past: |-
+  The comment at lines 172-177 about CHAT_INGEST_ENABLED and non-graph tools states a fact only in prose, which the code does not carry.

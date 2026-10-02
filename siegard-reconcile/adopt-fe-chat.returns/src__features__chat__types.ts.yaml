@@ -1,0 +1,97 @@
+findings:
+  - file: src/features/chat/types.ts
+    where: |-
+      ChatContentBlock interface, lines 54-58
+    evidence: |-
+      export interface ChatContentBlock {
+        readonly type: string;
+        readonly text?: string;
+        readonly [key: string]: unknown;
+      }
+    cost: |-
+      The shape of a content block is a `type` string, an optional `text` and any further fields, and no node declares it. The nearest rule, `rules/chat-workspace/message-text-joins-its-blocks`, speaks of "the text of its content blocks" and does not give the block a shape. A reader who opens the specification to learn what a block carries will not find it, and the type here becomes the only place it is decided.
+    kind: unstated
+    correction: |-
+      An analysis would have to give the content block a node, or add it to `domain/chat/message`, declaring `type`, the optional `text` and the open set of other fields.
+    node: domain/chat/message
+  - file: src/features/chat/types.ts
+    where: |-
+      ChatMessage.content, line 69
+    evidence: |-
+      readonly content: ReadonlyArray<ChatContentBlock>;
+    cost: |-
+      The `domain/chat/message` node types `content` as `string` and marks it required, while the source declares it as a list of block objects. Someone reading the node would expect a plain text field and would find a different type in the code. The upstream contract `contracts/chat/conversations` and `contracts/chat-workspace/bff-conversations` both say "content blocks". The node is therefore the one out of step, and it still governs.
+    kind: contradicts
+    correction: |-
+      The node's `content` attribute would have to be reconciled with the list of content blocks that the contracts and this type carry. The source does not change to read a node.
+    node: domain/chat/message
+  - file: src/features/chat/types.ts
+    where: |-
+      ActiveConversation interface, lines 112-120
+    evidence: |-
+      export interface ActiveConversation {
+        readonly id: string;
+        readonly title: string | null;
+        /** Derived: `archivedAt !== null`. */
+        readonly isArchived: boolean;
+        readonly archivedAt: Date | null;
+        readonly messages: ReadonlyArray<ChatMessage>;
+        readonly usage: UsageData | null;
+      }
+    cost: |-
+      This composed model joins a conversation's detail, its messages and its usage into one type, with `usage` allowed to be absent. No node holds that composition. The nearest, `rules/chat-workspace/conversation-is-archived-when-its-detail-says-so`, constrains `domain/chat-workspace/chat-session` and says nothing of this model. The shape the screen reads from lives only in the type.
+    kind: unstated
+    correction: |-
+      An analysis would have to decide whether this composed read model belongs in a node, for example one held by `domain/chat-workspace/chat-session`, or whether it is only a code-level convenience.
+read:
+  - node: contracts/chat-workspace/bff-conversations
+    held_at: |-
+      Conversation, ChatMessage, ChatStopReason and UsageData declare the shapes the requests are read into; the request construction itself is not in this file.
+    evidence: |-
+      export interface Conversation { readonly id: string; readonly title: string | null; readonly archivedAt: Date | null; readonly createdAt: Date; }
+      export interface UsageData { readonly messageCount: number; readonly tokens_in: number; readonly tokens_out: number; readonly tool_calls: number; }
+  - node: domain/chat-workspace/tool-chip
+    held_at: |-
+      ToolCallData interface, lines 85-90. It carries `tool`, `argsSummary` and `ok`, where the node names `tool`, `args_summary` and `outcome`.
+    evidence: |-
+      export interface ToolCallData { readonly tool: string; readonly argsSummary: string; readonly ok: boolean | null; }
+  - node: domain/chat-workspace/tool-chip-outcome
+    held_at: |-
+      ToolCallData.ok, line 89. The three outcomes are the three values of `boolean | null`. The words `pending`, `succeeded` and `failed` are not declared in this file.
+    evidence: |-
+      readonly ok: boolean | null;
+  - node: domain/chat/assistant-stop-reason
+    held_at: |-
+      ChatStopReason union, lines 39-47. All eight values are present, spelled with underscores as in the upstream contract's wire values.
+    evidence: |-
+      export type ChatStopReason = | "end_turn" | "max_tokens" | "stop_sequence" | "max_iterations" | "turn_timeout" | "cancelled" | "provider_error" | "internal_error";
+  - node: domain/chat/conversation
+    held_at: |-
+      Conversation interface, lines 23-30. It keeps `id`, `title`, `archivedAt` and `createdAt`. `rolling_summary` and `updated_at` are not kept, which the bff contract states.
+    evidence: |-
+      export interface Conversation { readonly id: string; readonly title: string | null; readonly archivedAt: Date | null; readonly createdAt: Date; }
+  - node: domain/chat/conversation-usage
+    held_at: |-
+      UsageData interface, lines 97-102. The node's `messages` is declared here as `messageCount`.
+    evidence: |-
+      export interface UsageData { readonly messageCount: number; readonly tokens_in: number; readonly tokens_out: number; readonly tool_calls: number; }
+  - node: domain/chat/message
+    held_at: |-
+      ChatMessage interface, lines 65-77. Every attribute of the node is present except that `content` is a list of blocks, not a string (see the finding), and `created_at` is declared as `createdAt`.
+    evidence: |-
+      export interface ChatMessage { readonly id: string; readonly conversation_id: string; readonly role: ChatMessageRole; readonly content: ReadonlyArray<ChatContentBlock>; readonly stop_reason: ChatStopReason | null; readonly idempotency_key: string | null; readonly model: string | null; readonly tokens_in: number | null; readonly tokens_out: number | null; readonly latency_ms: number | null; readonly createdAt: Date; }
+  - node: domain/chat/message-role
+    held_at: |-
+      ChatMessageRole union, line 37.
+    evidence: |-
+      export type ChatMessageRole = "user" | "assistant";
+  - node: domain/chat/tool-call
+    held_at: |-
+      nowhere. The persisted tool call (`tool_name`, `arguments`, `result`, `is_error`, `error_message`, `duration_ms`) is not declared in this file. Only the in-flight ToolCallData for the chip is declared here, and the comment says the history carries no tool calls.
+    evidence: |-
+      export interface ToolCallData { readonly tool: string; readonly argsSummary: string; readonly ok: boolean | null; }
+looked_past: |-
+  Comments only, which are no finding: the title being null until an auto-distillation job fires (BR-34) and tool calls kept server-side (BR-32); and the surface naming in camelCase (createdAt, archivedAt, messageCount, argsSummary) beside snake_case, which the contract and nodes spell with snake_case and which is naming rather than a domain fact.
+candidates_opened:
+  - rules/chat-workspace/conversation-is-archived-when-its-detail-says-so
+  - rules/chat-workspace/message-text-joins-its-blocks

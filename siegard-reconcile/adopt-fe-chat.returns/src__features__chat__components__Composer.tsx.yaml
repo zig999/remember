@@ -1,0 +1,282 @@
+findings:
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 9-10 (Archived banner mode)
+    evidence: |-
+      Archived banner (UI-08)  — entire input area replaced by notice +
+              'Reativar' button.
+    cost: |-
+      The fact that an archived conversation offers a banner and no input is written twice in this file, once as the Composer's branch and once in prose. When the node moves, the prose keeps saying the old version, and a reader of the header can take it for the decided rule.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `if (isArchived) { return ( <ArchivedBanner ...` in `Composer`, and the node already binds this file.
+    node: rules/chat-workspace/archived-conversation-offers-no-input
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 11-13 (Disabled mode)
+    evidence: |-
+      Disabled (UI-10)         — textarea disabled, inline notice (when the
+              last send returned BUSINESS_CHAT_DISABLED or
+              BUSINESS_CHAT_PROVIDER_UNAVAILABLE pre-stream).
+    cost: |-
+      The two locking codes are listed in prose as well as in `disabledNoticeFor`. A change to the set of codes in the node would leave this header naming the old pair.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `disabledNoticeFor` (`if (errorCode === "BUSINESS_CHAT_DISABLED")`) and at `isTextareaDisabled = isStreaming || disabledNotice !== null`.
+    node: rules/chat-workspace/disabling-codes-lock-the-composer
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 14-16 (sendMessage content bound)
+    evidence: |-
+      `content` length is bounded `[1, MAX_CONTENT_LENGTH]`
+          (default 32768, BR-32).
+    cost: |-
+      The 32768 bound is restated in the header and again at the `MAX_CONTENT_LENGTH` constant comment. A reader looking for the limit finds three places. The code holds one, and the other two can drift from it silently.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the bound at `.max(MAX_CONTENT_LENGTH, MSG_TOO_LONG)` with `const MAX_CONTENT_LENGTH = 32768;` in this file.
+    node: rules/chat-workspace/content-has-at-most-32768-characters
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 24-27 (WCAG note on invalid field)
+    evidence: |-
+      invalid field exposes aria-invalid + aria-describedby
+          pointing at the message id.
+    cost: |-
+      The marking rule is stated in prose beside the code that implements it, so the node's wording has a second home in the file header.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `aria-invalid={hasError}` and `aria-describedby={describedBy}` on the `Textarea`.
+    node: rules/chat-workspace/invalid-field-is-marked-and-described
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 48-50 (Keyboard contract, Enter and Shift+Enter)
+    evidence: |-
+      Enter on the textarea -> submit, when content is non-empty.
+       *  - Shift+Enter -> insert newline (default textarea behaviour preserved).
+    cost: |-
+      The prose restates the Enter and Shift+Enter rule. Its qualifier "when content is non-empty" is not what the code does, because `requestSubmit()` runs the checks and shows the empty-content alert. A reader of the header learns a rule slightly different from the node and from the code.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `onTextareaKeyDown` (`if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); formRef.current?.requestSubmit();`).
+    node: rules/chat-workspace/enter-sends-and-shift-enter-breaks-the-line
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      header docblock, lines 51-55 (Keyboard contract, Escape)
+    evidence: |-
+      Esc, while `isStreaming === true` -> abort the in-flight controller. We
+          install a document-level keydown listener because the textarea is
+          `disabled` in stop mode
+    cost: |-
+      The Escape-from-anywhere rule is written in prose as well as in the effect. The next reader has two places to update when the node moves.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at the `useEffect` that adds `document.addEventListener("keydown", onKeyDown)` while `isStreaming` and calls `controller.abort()`.
+    node: rules/chat-workspace/escape-aborts-the-turn-from-anywhere
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      comment inside `useForm` options, lines 280-281
+    evidence: |-
+      // Live-validate as the user types so the > 32768 char message appears
+          // immediately, not on submit (TC-09 "Content > 32768 chars: live error").
+    cost: |-
+      The check-on-every-change rule and the 32768 figure are restated beside `mode: "onChange"`, so there are two statements of one rule in this file.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `mode: "onChange"` in the `useForm` call.
+    node: rules/chat-workspace/content-is-checked-on-every-change
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      comment above `onSubmit`, lines 305-306
+    evidence: |-
+      // Cleared on success so a quick Enter-Enter doesn't re-send the prior text;
+        // left intact on error so the owner can edit and retry.
+    cost: |-
+      The outcome rule for a successful or failed send is restated as prose over the handler that implements it. Its stated reason ("Enter-Enter") is a rationale no node records.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `if (result.errorCode === null) { reset({ content: "" }); }`.
+    node: rules/chat-workspace/successful-send-empties-the-field
+  - file: src/features/chat/components/Composer.tsx
+    where: |-
+      JSX comment above the message row, lines 435-438
+    evidence: |-
+      We render at most one message at a
+              time: the form error takes precedence; otherwise the disabled
+              notice.
+    cost: |-
+      The one-message-line and precedence rule is stated in a comment beside the code that holds it, so there are two homes for the rule.
+    kind: restates
+    correction: |-
+      Remove the prose. The code holds the fact at `{hasError ? errors.content?.message : disabledNotice}` inside the single `<p id={messageId}>`.
+    node: rules/chat-workspace/one-message-line-under-the-field
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: |-
+      The compose-message operation is held across `ComposerSendBand` and `ArchivedBanner`. The show-conversation, read-history, show-turn-progress and show-usage operations are not this file's.
+    evidence: |-
+      aria-label="Compositor de mensagem"; const LABEL_TEXTAREA = "Mensagem para o assistente"; const ARIA_SEND = "Enviar mensagem"; const ARIA_STOP = "Parar geração"; const MSG_EMPTY = "Digite uma mensagem antes de enviar."; const MSG_TOO_LONG = "A mensagem é muito longa. Reduza o texto."; const ARCHIVED_BODY = "Esta conversa está arquivada. Reative para enviar novas mensagens."; const ARCHIVED_ACTION = "Reativar";
+  - node: domain/chat-workspace/send-outcome
+    held_at: |-
+      nowhere. The file declares no send-outcome shape and only reads the `errorCode` field of a shape declared in another file.
+    evidence: |-
+      const lastErrorCode = mutation.data?.errorCode ?? null;
+  - node: rules/chat-workspace/any-other-code-leaves-the-composer-usable
+    held_at: |-
+      `disabledNoticeFor`, the final `return null`, and `isTextareaDisabled`
+    evidence: |-
+      if (errorCode === "BUSINESS_CHAT_DISABLED") return DISABLED_CHAT_DISABLED;
+        if (errorCode === "BUSINESS_CHAT_PROVIDER_UNAVAILABLE") {
+          return DISABLED_PROVIDER_UNAVAILABLE;
+        }
+        return null;
+  - node: rules/chat-workspace/archived-conversation-offers-no-input
+    held_at: |-
+      the `if (isArchived)` branch of `Composer`
+    evidence: |-
+      if (isArchived) {
+          return (
+            <ArchivedBanner
+              onUnarchive={onUnarchive}
+  - node: rules/chat-workspace/composer-footer-is-empty
+    held_at: |-
+      the footer `div` at the end of the form in `ComposerSendBand`
+    evidence: |-
+      <div
+                className="flex items-center justify-end"
+                data-testid="composer-usage-slot"
+              />
+  - node: rules/chat-workspace/composer-never-clears-the-last-outcome
+    held_at: |-
+      `ComposerSendBand`, where the notice is derived from the retained `mutation.data` and nothing resets the mutation
+    evidence: |-
+      const mutation = useSendMessage();
+        const lastErrorCode = mutation.data?.errorCode ?? null;
+        const disabledNotice = disabledNoticeFor(lastErrorCode);
+  - node: rules/chat-workspace/composer-send-carries-the-identifier-and-the-content
+    held_at: |-
+      `onSubmit`
+    evidence: |-
+      const result = await mutation.mutateAsync({
+            conversationId,
+            content: values.content,
+          });
+  - node: rules/chat-workspace/content-has-at-most-32768-characters
+    held_at: |-
+      `MAX_CONTENT_LENGTH` and the `composerSchema` `.max(...)`
+    evidence: |-
+      const MAX_CONTENT_LENGTH = 32768;
+      ...
+          .max(MAX_CONTENT_LENGTH, MSG_TOO_LONG),
+  - node: rules/chat-workspace/content-is-checked-on-every-change
+    held_at: |-
+      the `useForm` options
+    evidence: |-
+      mode: "onChange",
+  - node: rules/chat-workspace/content-needs-a-character
+    held_at: |-
+      `composerSchema`
+    evidence: |-
+      .min(1, MSG_EMPTY)
+  - node: rules/chat-workspace/disabling-codes-lock-the-composer
+    held_at: |-
+      `disabledNoticeFor`, `isTextareaDisabled`, the send button `disabled` prop and the notice row
+    evidence: |-
+      const isTextareaDisabled = isStreaming || disabledNotice !== null;
+      ...
+              disabled={disabledNotice !== null}
+  - node: rules/chat-workspace/enter-sends-and-shift-enter-breaks-the-line
+    held_at: |-
+      `onTextareaKeyDown`
+    evidence: |-
+      if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            formRef.current?.requestSubmit();
+  - node: rules/chat-workspace/escape-aborts-the-turn-from-anywhere
+    held_at: |-
+      the `useEffect` document keydown listener
+    evidence: |-
+      if (!isStreaming) return;
+          const onKeyDown = (e: globalThis.KeyboardEvent) => {
+            if (e.key !== "Escape") return;
+            const controller = useChatTurnStore.getState().abortController;
+            if (controller !== null) {
+              e.preventDefault();
+              controller.abort();
+  - node: rules/chat-workspace/invalid-content-sends-nothing
+    held_at: |-
+      the form `onSubmit` going through `handleSubmit` with the schema resolver
+    evidence: |-
+      onSubmit={(e) => {
+                void handleSubmit(onSubmit)(e);
+              }}
+  - node: rules/chat-workspace/invalid-field-is-marked-and-described
+    held_at: |-
+      the `Textarea` props and the message row
+    evidence: |-
+      aria-invalid={hasError}
+      ...
+              aria-describedby={describedBy}
+  - node: rules/chat-workspace/one-message-line-under-the-field
+    held_at: |-
+      the single message `<p>` in `ComposerSendBand`
+    evidence: |-
+      {hasError ? errors.content?.message : disabledNotice}
+  - node: rules/chat-workspace/one-validation-message-per-field
+    held_at: |-
+      `safeZodResolver`
+    evidence: |-
+      if (errors[path] === undefined) {
+              errors[path] = { type: issue.code, message: issue.message };
+            }
+  - node: rules/chat-workspace/stop-button-aborts-the-turn
+    held_at: |-
+      `onStopClick` and the stop `Button`
+    evidence: |-
+      const controller = useChatTurnStore.getState().abortController;
+        controller?.abort();
+  - node: rules/chat-workspace/streaming-disables-the-field-and-swaps-the-button
+    held_at: |-
+      `isTextareaDisabled` and the `isStreaming ? (<Button ... aria-label={ARIA_STOP}` ternary
+    evidence: |-
+      const isTextareaDisabled = isStreaming || disabledNotice !== null;
+      ...
+          {isStreaming ? (
+            <Button
+              type="button"
+              variant="destructive"
+  - node: rules/chat-workspace/successful-send-empties-the-field
+    held_at: |-
+      `onSubmit`
+    evidence: |-
+      if (result.errorCode === null) {
+              reset({ content: "" });
+            }
+  - node: rules/chat-workspace/validation-message-is-an-alert
+    held_at: |-
+      the message `<p>` `role` prop
+    evidence: |-
+      role={hasError ? "alert" : undefined}
+  - node: rules/chat-workspace/whitespace-only-content-passes
+    held_at: |-
+      `composerSchema`, with no trim on the content
+    evidence: |-
+      content: z
+          .string()
+          .min(1, MSG_EMPTY)
+          .max(MAX_CONTENT_LENGTH, MSG_TOO_LONG),
+  - node: scenarios/chat-workspace/escape-stops-a-streaming-turn
+    held_at: |-
+      the `useEffect` document keydown listener
+    evidence: |-
+      document.addEventListener("keydown", onKeyDown);
+  - node: scenarios/chat-workspace/failed-send-keeps-the-typed-text
+    held_at: |-
+      `onSubmit`, where `reset` runs only when `errorCode` is null
+    evidence: |-
+      if (result.errorCode === null) {
+              reset({ content: "" });
+            }
+looked_past: |-
+  Not a finding here: the textarea placeholder "Pergunte algo…" (the decision log of contracts/owner-access/sign-in records that placeholders are held by no node), the `aria-describedby` also pointing at the disabled notice, the comments at lines 56-58 and 453-455 that name a TC-10 usage badge mounting in the footer slot (prose only; the code renders the slot empty), and the hand-written `safeZodResolver` (a code-quality matter).
+candidates_opened: []

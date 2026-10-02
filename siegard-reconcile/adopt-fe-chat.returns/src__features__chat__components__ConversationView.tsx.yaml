@@ -1,0 +1,55 @@
+findings:
+  - file: src/features/chat/components/ConversationView.tsx
+    where: >-
+      the comment above `const isArchived`, lines 66-67, inside ActiveConversation
+    evidence: |-
+      // Until the detail loads, treat as not-archived (the Composer's send band is
+        // the safe default; if it turns out archived the banner swaps in on load).
+    cost: >-
+      The rule that a conversation counts as archived only when its detail carries
+      a non-null archive moment, and as not archived while the detail is loading
+      or when it fails to load, is restated in prose beside the code that
+      implements it. When the node moves, this comment stays and keeps asserting
+      the old behaviour. The code is the expression `conversationQuery.data?.archivedAt != null`,
+      so the pair conforms and what is owed is removal of the prose.
+    kind: restates
+    correction: >-
+      Remove the comment through the comment route, then run /reconcile over
+      this file. The fact is already held by the node and implemented by the
+      `isArchived` expression in this file.
+    node: rules/chat-workspace/conversation-is-archived-when-its-detail-says-so
+read:
+  - node: contracts/chat-workspace/chat-screen
+    held_at: >-
+      ConversationView renders the "Conversa" section in both branches. The
+      empty branch carries the no-active-conversation hint, and the active
+      branch carries the "Mensagens da conversa" slot and the "Compositor de
+      mensagem" slot, lines 39-51 and 70-98. The archived banner, the composer
+      fields, the history states, turn progress and usage belong to MessageStream
+      and Composer, not to this file.
+    evidence: |-
+      <section aria-label="Conversa" ...> <p className="text-body text-body">
+          Selecione ou crie uma conversa para começar.
+        </p>
+      ... <div ... data-testid="message-stream-slot" aria-label="Mensagens da conversa"> ...
+      <div ... data-testid="composer-slot" aria-label="Compositor de mensagem">
+  - node: rules/chat-workspace/conversation-is-archived-when-its-detail-says-so
+    held_at: >-
+      the `isArchived` declaration in ActiveConversation, line 68. It is true
+      only when the loaded detail's `archivedAt` is non-null. While the query is
+      pending or has failed, `data` is undefined and the result is false.
+    evidence: |-
+      const isArchived = conversationQuery.data?.archivedAt != null;
+  - node: rules/chat-workspace/reactivating-sends-an-unarchive-update
+    held_at: >-
+      the `onUnarchive` handler passed to Composer, lines 92-94
+    evidence: |-
+      onUnarchive={() =>
+            updateMutation.mutate({ id: conversationId, archivedAt: null })
+          }
+looked_past: >-
+  The header and docblock comments name column proportions (40% / 60% split),
+  task and business-rule ids (TC-07, TC-08, TC-09, UI-01, BR-25), and the
+  Rules-of-Hooks rationale, and no code or emitted text carries these as facts.
+  This is prose belonging to the comment route, and the class names and
+  data-testid attributes are surface, not domain facts.
