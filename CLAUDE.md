@@ -246,6 +246,7 @@ compliance: [lgpd]               # §11 — Imutabilidade vs. LGPD: apagamento c
 - Node: v20 LTS
 - OS: Windows + WSL2 (Linux)
 - Dev server (frontend): Vite 6
+- Portas fixas em dev: backend `3100` (`PORT` em `backend/.env`), frontend `5273` com `strictPort` (`frontend/vite.config.ts`); `VITE_BFF_URL` aponta para `http://localhost:3100` e `CORS_ORIGINS` do backend lista a origem `5273`. As portas `3000` e `5173` são do `servicedeskn1` — não usar.
 
 ---
 
