@@ -231,3 +231,63 @@ describe("parseAttributeValue for a date that names no existing day", () => {
     expect(refusal).toBeNull();
   });
 });
+
+interface TypedValue {
+  readonly value: string;
+  readonly value_type: "number" | "bool";
+}
+
+function refusalOfTyped(proposal: TypedValue): unknown {
+  try {
+    parseAttributeValue(proposal);
+  } catch (e) {
+    return e;
+  }
+  return null;
+}
+
+const LARGEST_FINITE_POWER_OF_TEN = `1${"0".repeat(308)}`;
+
+describe("parseAttributeValue for a number key", () => {
+  it.each([
+    ["a word with no digits", "abc"],
+    ["exponent notation", "1e3"],
+    ["hexadecimal notation", "0x1F"],
+    ["a leading space", " 12"],
+    ["the empty string", ""],
+    ["a decimal point with no digits after it", "5."],
+    ["a decimal part with no digits before it", ".5"],
+    ["a leading plus sign", "+1"],
+  ])("refuses %s naming the value and its value type", (_label, value) => {
+    const refusal = refusalOfTyped({ value, value_type: "number" });
+
+    expect(refusal).toMatchObject({
+      code: "VALIDATION_INVALID_FORMAT",
+      details: { value, value_type: "number" },
+    });
+  });
+
+  it("accepts the largest power of ten that is still a finite number", () => {
+    const refusal = refusalOfTyped({
+      value: LARGEST_FINITE_POWER_OF_TEN,
+      value_type: "number",
+    });
+
+    expect(refusal).toBeNull();
+  });
+});
+
+describe("parseAttributeValue for a bool key", () => {
+  it.each([
+    ["a word that is not true or false", "yes"],
+    ["true written in capitals", "TRUE"],
+    ["true followed by a space", "true "],
+  ])("refuses %s naming the value and its value type", (_label, value) => {
+    const refusal = refusalOfTyped({ value, value_type: "bool" });
+
+    expect(refusal).toMatchObject({
+      code: "VALIDATION_INVALID_FORMAT",
+      details: { value, value_type: "bool" },
+    });
+  });
+});

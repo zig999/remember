@@ -52,7 +52,7 @@ export function parseAttributeValue(args: {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
           "value is not a finite number.",
-          { value: v }
+          { value: v, value_type: args.value_type }
         );
       }
       return;
@@ -62,7 +62,7 @@ export function parseAttributeValue(args: {
         throw new ValidationFailure(
           "VALIDATION_INVALID_FORMAT",
           "value does not parse as a bool (expected 'true' or 'false').",
-          { value: v }
+          { value: v, value_type: args.value_type }
         );
       }
       return;
