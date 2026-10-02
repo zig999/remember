@@ -1,0 +1,66 @@
+read:
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      The tests in the describe block "POST propose-attribute for a date key" (lines 255-287). They assert the
+      rule's date clause. They do not implement it.
+    evidence: >-
+      const IMPOSSIBLE_DAY = "2024-02-30"; const LEAP_DAY = "2024-02-29"; ... it("accepts the value 2024-02-29
+      for a date key and records the node attribute", ...) expect(answer.body.ok).toBe(true);
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      The test at line 264, "refuses the value 2024-02-30 for a date key and records no node attribute", which
+      is the scenario's given/when/then.
+    evidence: >-
+      expect(answer.body).toMatchObject({ ok: false, error: { code: "VALIDATION_INVALID_FORMAT" } });
+      expect(recorder.attributesInserted).toBe(0);
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      The tests at lines 255 and 274. They assert the propose-attribute refusal for an unparseable value: the
+      error code, the details naming the value and its value type, and HTTP 200 carrying ok false. They agree
+      with the node.
+    evidence: >-
+      expect(answer.body.error).toMatchObject({ code: "VALIDATION_INVALID_FORMAT", details: { value:
+      IMPOSSIBLE_DAY, value_type: "date" } }); expect(answer.status).toBe(200);
+      expect(answer.body.ok).toBe(false);
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file only builds a request payload in proposeDate (`node_id: NODE_ID, key: "go_live_date", value,
+      confidence: 0.9, fragment_ids: [FRAGMENT_ID], valid_from_basis: "document", change_hint: "none"`). It
+      declares no shape for the proposal.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      buildCatalog() passes one attribute key row to buildSnapshot (`key: "go_live_date", value_type: "date",
+      is_temporal: false, ...`). That is fixture data. The shape is declared elsewhere.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file uses the literal `value_type: "date"` in a fixture and in an assertion. It declares no
+      enumeration.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file concerns propose-attribute only. Nothing in it mentions search expansion or hop scoring.
+  - node: rules/knowledge-base/expansion-hop
+    held_at: nowhere
+    evidence: >-
+      The file concerns propose-attribute only. Nothing in it mentions search expansion or hop counting.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search result shape. Its Answer interface is `{ status; body: { ok; error?: { code;
+      details } } }`.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The only basis the test sends is `valid_from_basis: "document"`. The file neither refuses nor states the
+      basis received.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file never exercises the extraction prompt. `{ document_date: "2026-06-11" }` is only a stub reply
+      for the metadata lookup.
+looked_past: >-
+  The fake pool's SQL-prefix matching and the RS256 JWT fixture are test scaffolding. They are not domain
+  facts and belong to a code review, not this pass.

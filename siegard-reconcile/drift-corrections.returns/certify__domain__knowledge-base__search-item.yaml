@@ -1,0 +1,59 @@
+certified:
+  - node: domain/knowledge-base/search-item
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          answers a node, a link and a fragment each as an item with kind, layer, score, hop, summary, flags and at least one supporting fragment
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          numbers an expanded link by the links on its path from the matched node, so a link touching the matched node is hop 1 in either direction
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          scores every expanded link at 0.5 raised to its hop times the score of the matched node it was reached from, whichever matched node that is
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          scores a link reached at hop 1 from a matched node at 0.5 times the matched node's score
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          scores a link reached at hop 2 from a matched node, neither endpoint being matched, at 0.25 times the matched node's score
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: >-
+          scores a link reached at hop 3 from a matched node, neither endpoint being matched, at 0.125 times the matched node's score
+    why: >-
+      The shape test exercises these parts of the node. An item is a node, a link
+      or a fragment, and all three kinds appear in one response. Kind and score
+      are present on every item. Each item carries at least one provenance entry.
+      The hop and decay tests add numeric scores and integer hops on link items,
+      but they prove the decay and hop-numbering facts, not this node. They bear
+      on it only incidentally.
+
+      Three parts of the fact go unexercised. First, flags are typed
+      assertion-flag, but the test asserts only that flags is an array. Every
+      fixture carries confidence 0.9 or 0.92, so no item ever has a flag. An item
+      whose flags held a value that is not an assertion-flag would pass.
+
+      Second, the provenance association targets information-fragment, but only
+      the provenance array's length is asserted. Nothing checks that its entries
+      are information fragments. An item whose provenance pointed at chunks or
+      raw information would pass.
+
+      Third, the 1..* lower bound is shown only in a world where the stand-in
+      client returns a provenance row for every anchor it is asked about. No
+      candidate in the set has no supporting fragment, so nothing shows that an
+      item is never answered with empty provenance.
+
+      Separately, the shape test asserts more than the node establishes. It
+      requires layer, hop and summary on every item, but the node declares none
+      of them required. Only kind and score are. The test therefore breaks the day
+      an item legitimately omits one of them, for example a directly matched node
+      or fragment with no hop.
+    remainder: testable
+    remainder_why: >-
+      Three assertions would close it. (1) A search whose matched item has
+      confidence in the uncertain band should answer that item with flags holding
+      only assertion-flag values, including the expected one. (2) For every item
+      of each kind, each provenance entry should name an information fragment
+      that exists in the world and supports that item. (3) A matched node for
+      which no supporting fragment exists, against the expected result that no
+      item is answered with an empty provenance.

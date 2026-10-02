@@ -1,0 +1,137 @@
+findings:
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the fragment and node item construction in searchKnowledgeService, lines 184 and 220
+    evidence: >-
+      `layer: "fragment",
+        id: f.id,
+        score: f.score,
+        hop: 0,` and, for the node item, `layer: "node",
+        id: n.node_id,
+        score: n.score,
+        hop: 0,`
+    cost: >-
+      A matched fragment or node is reported at hop 0 while a link beside it is at hop 1. This value is visible on every search item, and no node says it. The search-item node lists `hop` as an integer attribute without saying what an item that expansion did not reach carries. The expansion-hop node only sets the hop of an expanded link. A reader looking for what a matched item's hop is will find nothing in the specification, and the next reader will take the code's 0 as the decision.
+    kind: unstated
+    correction: >-
+      The analysis would give the hop of an item the search matched directly, as opposed to one reached by expansion, a node. The natural place is domain/knowledge-base/search-item or a rule beside rules/knowledge-base/expansion-hop.
+    node: domain/knowledge-base/search-item
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      the node-hit loop in searchKnowledgeService, line 207
+    evidence: >-
+      `if (provenance.length === 0) continue;`
+    cost: >-
+      A knowledge node whose alias matched the query is silently dropped from the results when it has no provenance. The specification has this refusal only for expanded links (rules/knowledge-base/expansion-link-without-provenance, the statement "A knowledge link expansion reaches surfaces as a search item only when it holds provenance"). The search-item node says only that an item has 1..* provenance fragments. A matched node can vanish from search and from the total, and no node says that this happens or why.
+    kind: unstated
+    correction: >-
+      The analysis would decide whether a matched node with no provenance is omitted from search, and state it in a node. Candidate home: domain/knowledge-base/search-item or a new rule beside the link-expansion provenance rule.
+    node: domain/knowledge-base/search-item
+  - file: src/modules/query-retrieval/service/search.service.ts
+    where: >-
+      toExpandedLinkItem, the returned item, line 390
+    evidence: >-
+      `key: `link:${link.id}`,
+        kind: "link",
+        layer: "node",`
+    cost: >-
+      Every expanded link is reported with layer `node`, although the search-layer enumeration names the layers a search reads and a link is not read from the node layer. A client that groups or filters results by layer gets links mixed into the node layer, and no node says that is intended.
+    kind: unstated
+    correction: >-
+      The analysis would decide what layer, if any, a link search item carries, and state it in domain/knowledge-base/search-item or domain/knowledge-base/search-layer.
+    node: domain/knowledge-base/search-item
+read:
+  - node: domain/knowledge-base/page
+    held_at: >-
+      the `limit` and `offset` fields of the SearchServiceInput interface, and the slice that applies them
+    evidence: >-
+      `readonly limit: number;
+        readonly offset: number;` and `const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the IntermediateItem interface, line 57, and toSearchItem, line 478
+    evidence: >-
+      `readonly kind: "node" | "link" | "fragment";
+        readonly layer: SearchLayer;
+        score: number;
+        readonly hop: number;
+        summary: string;
+        flags: AssertionFlag[];
+        provenance: SearchProvenanceEntry[];`
+  - node: domain/knowledge-base/search-query
+    held_at: >-
+      the SearchServiceInput interface, line 44
+    evidence: >-
+      `readonly query: string;
+        readonly layers?: readonly string[];
+        readonly asOf?: string;
+        readonly inEffectOnly: boolean;
+        readonly includeUncertain: boolean;
+        readonly expand: boolean;
+        readonly expandDepth: number;
+        readonly expandLinkTypes?: readonly string[];`
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      collectExpandedLinks, the score passed to keepBestPath, line 329
+    evidence: >-
+      `score: Math.pow(TRAVERSAL_DECAY, link.hop) * startScore,`
+  - node: rules/knowledge-base/expansion-hop
+    held_at: >-
+      collectExpandedLinks, the hop taken from the traversal's link, line 328
+    evidence: >-
+      `hop: link.hop,`
+  - node: rules/knowledge-base/search-total-before-pagination
+    held_at: >-
+      searchKnowledgeService, lines 252 and 253
+    evidence: >-
+      `const total = filtered.length;
+        const sliced = filtered.slice(input.offset, input.offset + input.limit);`
+  - node: rules/knowledge-base/unknown-link-type-refused
+    held_at: >-
+      resolveLinkTypeIds, called only when the query expands, lines 100 and 425
+    evidence: >-
+      `const row = catalog.linkTypeByName.get(name);
+        if (row === undefined) {
+          throw new UnknownLinkTypeError(name);
+        }`
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file concerns search and holds no parsing of an attribute value; there is no date, number or bool check in it.
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      The file concerns search and holds no attribute proposal or date check.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      The file holds no ingestion operation, only the search read; nothing in it answers an ingestion operation.
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file declares no proposal shape; its interfaces are SearchServiceInput, IntermediateItem, ExpandedLink, ExpansionContext and LinkLookups.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute-key shape and reads no attribute key.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no value-type enumeration.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file reads no proposal and no valid-from basis.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt and no relative-date instruction.
+looked_past: >-
+  I saw the log emitted by logger.info (route, outcome, dedup_collapsed_count and the rest) and the structure of the per-layer calls, and did not report them, as a log's fields and the code's shape are not domain facts of these nodes.
+candidates_opened:
+  - rules/knowledge-base/expansion-link-once
+  - rules/knowledge-base/search-layer-candidate-cap
+  - rules/knowledge-base/search-ranking
+  - rules/knowledge-base/item-flags
+  - rules/knowledge-base/uncertain-items-excluded-on-request
+  - domain/knowledge-base/search-layer

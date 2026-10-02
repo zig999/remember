@@ -1,0 +1,30 @@
+certified:
+  - node: rules/knowledge-base/expansion-decay
+    state: partial
+    tests:
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: scores a link reached at hop 1 from a matched node at 0.5 times the matched node's score
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: scores a link reached at hop 2 from a matched node, neither endpoint being matched, at 0.25 times the matched node's score
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: scores a link reached at hop 3 from a matched node, neither endpoint being matched, at 0.125 times the matched node's score
+      - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+        name: scores every expanded link at 0.5 raised to its hop times the score of the matched node it was reached from, whichever matched node that is
+    why: >-
+      The decay is exercised at hops 1, 2 and 3, against a matched node scored 0.8 and against
+      two matched nodes scored 0.8 and 0.4. The tests would fail if the factor were not 0.5,
+      if the exponent were not the hop, or if a link took its score from a different matched
+      node than the one it was reached from. But every link the tests score is reached by
+      walking from its source end to its target end. A link reached from the matched node
+      through its target end, like link-in in the test "numbers an expanded link by the links
+      on its path from the matched node, so a link touching the matched node is hop 1 in either
+      direction", has only its hop asserted, never its score. The shape test only asserts that
+      such a score is a number. So a link reached against its direction could take any score,
+      for example from its source endpoint, which is not matched, and every test in the set
+      would still pass. The fact covers every knowledge link reached at hop h, whichever way it
+      was walked.
+    remainder: testable
+    remainder_why: >-
+      Input: one matched node scored s, a link whose target is that node, and a further link
+      walked the same way beyond it. Expected result: the first link scores 0.5 times s at hop
+      1, and the second scores 0.25 times s at hop 2.

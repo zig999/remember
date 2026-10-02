@@ -1,0 +1,64 @@
+findings:
+  - file: src/__tests__/unit/ingestion/structural.spec.ts
+    where: >-
+      line 153, in the test "throws VALIDATION_INVALID_FORMAT with {value, allowed_values} on miss" (describe "assertValueInDomain (BR-30)")
+    evidence: >-
+      expect(vf.message).toBe("attribute value not in closed domain");
+    cost: >-
+      The test fixes the exact text a caller is told when an attribute value is outside its key's allowed values. No node holds that text. The ingestion contract answers this refusal only as "error code VALIDATION_INVALID_FORMAT naming the value and the allowed values in sorted order", with no message. The same contract does state messages verbatim for other refusals, for example "ingest_document arguments failed validation.". A reader looking in the specification for what the system says here finds nothing, and will take this test as the decision. The test also fixes the detail names `value` and `allowed_values`, which no node names either.
+    kind: unstated
+    correction: >-
+      An analysis would have to decide whether this refusal's message, and its detail names, are part of the contract. If so, the propose-attribute refusal for rules/knowledge-base/attribute-value-in-allowed-values in contracts/knowledge-base/ingestion would state them. If not, the test should stop asserting them.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      The assertions in describe "parseAttributeValue (BR-14)" (lines 13-77) and in describe "parseAttributeValue for a date that names no existing day" (lines 210-233). They exercise the rule through parseAttributeValue, which is imported from another module. This file declares no rule.
+    evidence: >-
+      parseAttributeValue({ value: "2026-06-12 ", value_type: "date" }) is expected to throw ValidationFailure; { value: "-3.14", value_type: "number" } and { value: "42", value_type: "number" } are accepted; { value: "NaN", value_type: "number" } is refused; { value: "1", value_type: "bool" } is refused; refusal toMatchObject({ code: "VALIDATION_INVALID_FORMAT", details: { value, value_type: "date" } })
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      The it.each table at lines 211-223. It uses other impossible dates than the scenario's 2024-02-30, and the same refusal applies to each.
+    evidence: >-
+      ["a 29th of February in a year that is not a leap year", "2023-02-29"], ["a 31st in a month of thirty days", "2024-04-31"], ["a month past December", "2024-13-01"], ["a day zero", "2024-01-00"]
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      Only the error codes and the sorted allowed values, in describe "assertFound", "assertKnownType" and "assertValueInDomain (BR-30)" (lines 79-199). Other operations of the contract are not touched. The message assertion at line 153 is the finding above.
+    evidence: >-
+      expect((caught as ValidationFailure).code).toBe("RESOURCE_NOT_FOUND"); expect((caught as ValidationFailure).code).toBe("BUSINESS_UNKNOWN_NODE_TYPE"); expect(vf.details.allowed_values).toEqual(["ata", "contrato", "proposta"]);
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file declares no proposal shape; it calls parseAttributeValue, assertFound, assertKnownType and assertValueInDomain with literal arguments.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute key shape; it only passes a literal value_type, as in parseAttributeValue({ value, value_type: "date" }).
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no enumeration; "date", "number", "bool" and "text" appear only as literal arguments, as in value_type: "text".
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file never touches search expansion or link scoring; it covers parseAttributeValue, assertFound, assertKnownType and assertValueInDomain.
+  - node: rules/knowledge-base/expansion-hop
+    held_at: nowhere
+    evidence: >-
+      The file never touches search expansion or hop counting.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search item shape.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file never touches validity basis; no valid_from_basis appears.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file never touches prompt versions or extraction; no prompt text appears.
+looked_past: >-
+  Comments restating the sorted order of allowed values ("allowed_values is deterministic-ordered (lexicographic)." and "Insertion order: zeta, alpha, mu. Expected sorted: alpha, mu, zeta."), the "BR-14"/"BR-30" citations in the header comment and describe titles, and the test title "accepts any non-empty text" against a node that says any text, are prose or test naming that belong to the comment route and not to this judgment; the test body asserts no emptiness behavior.
+candidates_opened:
+  - rules/knowledge-base/attribute-value-in-allowed-values

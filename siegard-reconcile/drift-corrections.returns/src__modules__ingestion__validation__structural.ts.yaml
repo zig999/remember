@@ -1,0 +1,77 @@
+findings:
+  - file: src/modules/ingestion/validation/structural.ts
+    where: >-
+      parseAttributeValue, the number branch's finiteness refusal (lines 51-57) and the bool branch (lines 60-69)
+    evidence: >-
+      throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value is not a finite number.", { value: v });
+      and throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value does not parse as a bool (expected 'true' or 'false').", { value: v });
+      The date branches and the number-shape branch carry { value: v, value_type: args.value_type }.
+      The contract's propose-attribute refusal for rules/knowledge-base/attribute-value-parses reads: "error code VALIDATION_INVALID_FORMAT naming the value and its value type, HTTP 200 carrying `{ ok: false, error }` over REST".
+    cost: >-
+      The refusal for an attribute value that does not read as its key's value type names the value type in four of its six branches. A bool value refused, or a number refused as non-finite, comes back naming only the value. A caller or curator reading the details cannot rely on the value type being there, although the contract promises it. The next reader trusts the contract and does not find the gap.
+    kind: contradicts
+    correction: >-
+      Carry value_type in the details of the finiteness refusal and of the bool refusal, as the other branches of the same refusal do.
+    node: contracts/knowledge-base/ingestion
+read:
+  - node: contracts/knowledge-base/ingestion
+    held_at: >-
+      assertFound, assertKnownType, assertValueInDomain and parseAttributeValue throw ValidationFailure with the contract's error codes. These are RESOURCE_NOT_FOUND, BUSINESS_UNKNOWN_NODE_TYPE, BUSINESS_UNKNOWN_LINK_TYPE, BUSINESS_UNKNOWN_ATTRIBUTE_KEY and VALIDATION_INVALID_FORMAT. The value-type details are incomplete in two branches (see the finding).
+    evidence: >-
+      const code = args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE" : args.kind === "link_type" ? "BUSINESS_UNKNOWN_LINK_TYPE" : "BUSINESS_UNKNOWN_ATTRIBUTE_KEY";
+      and const allowed_values = [...domain].sort();
+  - node: rules/knowledge-base/attribute-value-in-allowed-values
+    held_at: >-
+      assertValueInDomain, lines 73-86
+    evidence: >-
+      if (domain.has(value)) { return; } ... throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "attribute value not in closed domain", { value, allowed_values });
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: >-
+      parseAttributeValue, lines 16-71, with DATE_SHAPE and namesExistingDay
+    evidence: >-
+      const DATE_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/; ... if (!/^-?\d+(?:\.\d+)?$/.test(v)) ... if (!Number.isFinite(n)) ... if (v !== "true" && v !== "false") ... case "text": return;
+  - node: rules/knowledge-base/node-type-in-catalog
+    held_at: >-
+      assertKnownType, node_type arm, lines 102-120. The catalog lookup that supplies `found` is in the caller; the refusal is held here.
+    evidence: >-
+      args.kind === "node_type" ? "BUSINESS_UNKNOWN_NODE_TYPE"
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: >-
+      parseAttributeValue date case calling namesExistingDay, lines 24-41
+    evidence: >-
+      if (!namesExistingDay(Number(match[1]), Number(match[2]), Number(match[3]))) { throw new ValidationFailure("VALIDATION_INVALID_FORMAT", "value is not a calendar-valid date.", { value: v, value_type: args.value_type }); }
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file declares no proposal shape; it only validates values passed to it.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      The file declares no attribute-key shape; assertKnownType only receives `name` and `found`.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file only uses the four values in a parameter type, `value_type: "date" | "number" | "text" | "bool";`. It declares no enumeration for the element; that is the compiler's to reach.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file holds no search scoring.
+  - node: rules/knowledge-base/expansion-hop
+    held_at: nowhere
+    evidence: >-
+      The file holds no search expansion.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search-item shape.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      The file holds no valid_from_basis check; it only validates attribute values, domains and catalog membership.
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      The file holds no extraction prompt.
+looked_past: >-
+  The messages "is not in the seeded catalog" and "attribute value not in closed domain" are emitted text that restates no node's fact differently, and the repeated inline `"date" | "number" | "text" | "bool"` union is a code-duplication matter, so I reported neither.
+candidates_opened: []

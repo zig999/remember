@@ -1,0 +1,76 @@
+findings:
+  - file: src/__tests__/unit/query-retrieval/search-service-expansion.spec.ts
+    where: >-
+      the it block "answers a node, a link and a fragment each as an item with kind, layer, score, hop, summary, flags and at least one supporting fragment", lines 351-381
+    evidence: >-
+      for (const item of body.items) {
+        expect(item).toEqual(
+          expect.objectContaining({
+            kind: expect.stringMatching(/^(node|link|fragment)$/),
+            layer: expect.stringMatching(/^(fragment|node|chunk)$/),
+            score: expect.any(Number),
+            hop: expect.any(Number),
+            summary: expect.any(String),
+            flags: expect.any(Array),
+            provenance: expect.any(Array),
+          })
+        );
+    cost: >-
+      The test makes layer, hop, summary and flags mandatory on every item, nodes and fragments included. Node domain/knowledge-base/search-item declares only kind and score as `required: true`, and says nothing about which kinds of item carry a hop. A reader looking for what a node item's hop is, or whether it exists, finds the specification silent and the test the only place that decides it. If the answer is the other way round, this assertion fails, and nothing points back to a decision.
+    kind: unstated
+    correction: >-
+      Either the specification states that every search item carries layer, hop, summary and flags, and what hop is for a node or fragment item, or the test stops asserting the presence of those fields on items other than links. The first goes through the analysis that gives the fact a node.
+    node: domain/knowledge-base/search-item
+read:
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      the file builds search responses over a stubbed client and has no attribute proposal or value parsing; the only literals are search fixtures such as `query: "termo"`
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      no date value or attribute proposal appears in the file; `RECORDED_AT = new Date("2026-06-11T18:30:00Z")` is a row fixture
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      the file calls only `searchKnowledgeService(...)`; no ingestion operation, refusal or error code appears
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      no proposal shape is declared or used; the declared interfaces are `Match`, `GraphLink`, `World` and `Rows`
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      only `attributeKeyByNodeTypeAndKey: new Map(), attributeKeyById: new Map()` in the empty catalog, with no shape declared
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      no value type enumeration or value type literal appears in the file
+  - node: rules/knowledge-base/expansion-decay
+    held_at: >-
+      the assertions in describe "decayed score of an expanded link", lines 272-323
+    evidence: >-
+      `expect(linkItem(body, linkId).score).toBeCloseTo(expectedScore, 10);` with link-1 at 0.4, link-2 at 0.2 and link-3 at 0.1 over a match scored 0.8, and `"link-x1": 0.2, "link-x2": 0.1, "link-x3": 0.05` for the match scored 0.4. This is 0.5 to the hop times the score of the matched node each link was reached from.
+  - node: rules/knowledge-base/expansion-hop
+    held_at: >-
+      the assertion in describe "the item's hop", lines 325-349
+    evidence: >-
+      `expect(hopByLink).toEqual({ "link-in": 1, "link-1": 1, "link-2": 2, "link-3": 3 });` The matched node is an endpoint of link-in and link-1, as target and as source, and both are hop 1.
+  - node: domain/knowledge-base/search-item
+    held_at: >-
+      the assertions in describe "the search item's shape", lines 351-381
+    evidence: >-
+      `expect(item.provenance.length).toBeGreaterThanOrEqual(1);` and `kind: expect.stringMatching(/^(node|link|fragment)$/)`. The node declares provenance as 1..*, kind as the item-kind values and layer as the search-layer values. The mandatory presence of layer, hop, summary and flags on every item is reported as a finding.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: nowhere
+    evidence: >-
+      no valid_from_basis or received value appears in the file
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: nowhere
+    evidence: >-
+      no extraction prompt, prompt version or relative date appears in the file
+looked_past: >-
+  The fixtures (scores 0.8 and 0.4, expandDepth 3, limit 100, SQL-fragment matching in the stub client) are test inputs and stand-in plumbing, which is the business of a test review and not of this pass.
+candidates_opened:
+  - domain/knowledge-base/search-layer
+  - domain/knowledge-base/item-kind

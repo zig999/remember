@@ -1,0 +1,81 @@
+findings:
+  - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+    where: >-
+      the test "v4 keeps relative-date words verbatim in pt", lines 99-105
+    evidence: >-
+      expect(s).toContain('"hoje"');
+      expect(s).toContain('"ontem"');
+      expect(s).toContain('"amanhã"');
+    cost: >-
+      The test fixes three Portuguese day words that the v4 extraction prompt must carry, and no node says so.
+      Under extraction-relative-date-falls-back-to-reception the prompt only has to ask the model to resolve a relative date against the document date or the reception date.
+      A reader who looks for which relative-date words the prompt must name finds nothing in the specification, and the suite is the only place the list is decided.
+    kind: unstated
+    correction: >-
+      The analysis would decide whether the prompt must name these relative-date words, and which node holds that.
+      The extraction-relative-date-falls-back-to-reception node is the natural home, or a sibling rule beside it.
+  - file: src/__tests__/unit/ingestion/extraction-prompt-v4.spec.ts
+    where: >-
+      the test 'v4.user() surfaces received_at and an unknown document_date in the metadata block', lines 111-128
+    evidence: >-
+      expect(metaBlock?.text).toContain("- received_at: 2026-06-26T12:00:00Z");
+      expect(metaBlock?.text).toContain("- document_date: (unknown)");
+    cost: >-
+      The test fixes the layout of the metadata block in the user message ("- received_at: <value>"), and the literal "(unknown)" that stands for a missing document date.
+      The prompt regex at line 42, which anchors on "if `document_date` is `(unknown)`", depends on the same literal.
+      No node holds the block's layout or the "(unknown)" marker, so the marker and the way the model is shown the two anchor dates are decided only in the suite.
+    kind: unstated
+    correction: >-
+      The analysis would give the user message's presentation of the reception time and the document date, including the marker for an absent document date, a node.
+read:
+  - node: rules/knowledge-base/attribute-value-parses
+    held_at: nowhere
+    evidence: >-
+      The file tests the v4 extraction prompt and the prompt registry. No attribute value is parsed or validated in it. The only value-type words are the metadata strings "ata" and "2026-06-26T12:00:00Z".
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    held_at: nowhere
+    evidence: >-
+      No attribute proposal carrying a date is exercised in the file. The only date literals are received_at "2026-06-26T12:00:00Z" and the `\b20\d\d-\d\d-\d\d\b` hardcode check.
+  - node: contracts/knowledge-base/ingestion
+    held_at: nowhere
+    evidence: >-
+      No operation, refusal or answer of the ingestion contract is exercised. The file imports prompt modules and the prompt registry only (`selectPromptModule`, `DEFAULT_PROMPT_VERSION`).
+  - node: domain/knowledge-base/proposal
+    held_at: nowhere
+    evidence: >-
+      The file declares no proposal shape. Its only reference is the regex `RECEIVED_BASIS_NAMED`, which checks the prompt text for a mention of the basis.
+  - node: domain/knowledge-base/attribute-key
+    held_at: nowhere
+    evidence: >-
+      `buildSnapshot({ nodeTypes, linkTypes: [], linkTypeRules: [], attributeKeys: [] })` is built with no attribute key, and no attribute-key shape is declared in the file.
+  - node: domain/knowledge-base/value-type
+    held_at: nowhere
+    evidence: >-
+      The file declares no date, number, text or bool enumeration. `attributeKeys: []` is passed empty.
+  - node: rules/knowledge-base/expansion-decay
+    held_at: nowhere
+    evidence: >-
+      The file has no search or expansion scoring. It tests the extraction prompt and the prompt registry only.
+  - node: rules/knowledge-base/expansion-hop
+    held_at: nowhere
+    evidence: >-
+      The file has no search or expansion hop counting. It tests the extraction prompt and the prompt registry only.
+  - node: domain/knowledge-base/search-item
+    held_at: nowhere
+    evidence: >-
+      The file declares no search-item shape and exercises no search.
+  - node: rules/knowledge-base/caller-never-states-received
+    held_at: >-
+      the test 'v4 contains no instruction to state the basis received' (line 87) with the regex RECEIVED_BASIS_NAMED (line 47), together with the test 'v4 names no basis for the date taken from the reception fallback' (line 78). The tests assert over the v4 prompt text, and the prompt code is in another file.
+    evidence: >-
+      const RECEIVED_BASIS_NAMED = /["'`]received["'`]|\bbasis\s+(?:of\s+)?["'`]?received\b(?!_at)/i;
+      expect(directive).not.toMatch(RECEIVED_BASIS_NAMED);
+      expect(fallback).not.toMatch(/basis/i);
+  - node: rules/knowledge-base/extraction-relative-date-falls-back-to-reception
+    held_at: >-
+      the regex DOCUMENT_DATE_FIRST_THEN_RECEPTION (line 44) and the test 'v4 asks the model to resolve a relative date against the document date when present and otherwise against the date portion of received_at' (line 72). The tests assert it over the v4 prompt text, and the prompt code is in another file.
+    evidence: >-
+      const DOCUMENT_DATE_FIRST_THEN_RECEPTION = /resolve it against `document_date` if it is present(?:(?!`received_at`).)*?if `document_date` is `\(unknown\)`, fall back to the date portion of `received_at`/i;
+      expect(directive).toMatch(DOCUMENT_DATE_FIRST_THEN_RECEPTION);
+looked_past: >-
+  The file's other assertions state facts that nodes outside my set already hold: DEFAULT_PROMPT_VERSION "v4" (default-prompt-version), the "never invent a date" instruction (extraction-never-invents-a-date), the shared MAX_TOKENS across versions (extraction-turn-token-ceiling), and the data-not-instruction marker (document-content-is-data). I report none of them, and I did not weigh the file's regex style or its duplication of the prompt wording as a code review.

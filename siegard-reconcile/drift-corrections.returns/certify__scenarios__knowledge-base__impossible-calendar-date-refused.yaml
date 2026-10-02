@@ -1,0 +1,31 @@
+certified:
+  - node: scenarios/knowledge-base/impossible-calendar-date-refused
+    state: covered
+    tests:
+      - file: src/__tests__/integration/ingestion/propose-attribute-date.spec.ts
+        name: refuses the value 2024-02-30 for a date key and records no node attribute
+      - file: src/__tests__/integration/ingestion/propose-attribute-date.spec.ts
+        name: refuses the value 2024-02-30 with VALIDATION_INVALID_FORMAT naming the value and its value type
+      - file: src/__tests__/integration/ingestion/propose-attribute-date.spec.ts
+        name: answers the refusal of an impossible date as HTTP 200 carrying ok false and an error
+    why: >-
+      Both halves of the fact are exercised against a key whose value type is
+      date (go_live_date) carrying the value 2024-02-30. "refuses the value
+      2024-02-30 for a date key and records no node attribute" checks that the
+      answer is ok false and that no INSERT INTO node_attribute reaches the
+      pool. So it fails if the proposal is accepted or an attribute is written.
+      The sibling test "accepts the value 2024-02-29 for a date key and records
+      the node attribute" sends the same payload with only the value changed.
+      It shows that the refusal comes from the impossible day and that the
+      insert counter can register a write. That test asserts an acceptance the
+      node does not state, so it is not cited as proof of this fact. Three tests
+      assert more than the node establishes. The node states only that the
+      proposal is refused and no node attribute is recorded. "refuses the value
+      2024-02-30 with VALIDATION_INVALID_FORMAT naming the value and its value
+      type" fixes the error code and the details value and value_type. "refuses
+      the value 2024-02-30 for a date key and records no node attribute" also
+      fixes the code VALIDATION_INVALID_FORMAT. "answers the refusal of an
+      impossible date as HTTP 200 carrying ok false and an error" fixes the
+      transport status 200. If any of those choices changed, these tests would
+      fail while the refusal still held. Where the code, details and status are
+      decided is not stated in this node.
