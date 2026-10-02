@@ -17,9 +17,9 @@ Contexts and areas, spelled from `frontend/` (tests, `*.stories.tsx` and the MSW
 | context | slug | areas |
 |---|---|---|
 | auth (pilot) | `adopt-fe-auth` | `auth` = `src/features/auth/` |
-| ingest | `adopt-fe-ingest` | `boundary` = `src/features/ingest/api/`; `ui` = `components/`, `hooks/`, `state/`, `types.ts` under `src/features/ingest/` |
+| ingest | `adopt-fe-ingest` | `boundary` = `src/features/ingest/api/`; `ui` = `components/` and `index.ts` under `src/features/ingest/` (the feature has no `hooks/`, `state/` or `types.ts`; its `.gitkeep` is outside) |
 | curation | `adopt-fe-curation` | `boundary` = `api/`; `logic` = `lib/`, `state/`, `hooks/`, `types.ts`; `ui` = `components/` (all under `src/features/curation/`) |
-| chat | `adopt-fe-chat` | `boundary` = `api/`; `ui` = every other non-test directory and file under `src/features/chat/` |
+| chat | `adopt-fe-chat` | `boundary` = `api/`; `ui` = `components/`, `state/` and `types.ts` under `src/features/chat/` |
 | graph | `adopt-fe-graph` | `boundary` = `api/`; `logic` = `lib/`, `state/`, `hooks/`, `types.ts`, `index.ts`; `ui` = `components/` (all under `src/features/graph/`) |
 | shared (last) | `adopt-fe-shared` | `transport` = `src/lib/http.ts`, `error-routing.ts`, `report-error.ts`, `env.ts`, `query-client.ts`; `shell` = `src/shell/`, `src/router/`, `src/state/`; `ds` = `src/components/ds/`, `src/components/ui/`, `src/styles/`, `src/lib/tokens.ts`, `motion.ts`, `cn.ts`; outside: `src/features/history/*`, `src/features/search/*`, `src/main.tsx`, `src/vite-env.d.ts`, `src/presentation/`, `.storybook/`, `eslint-rules/`, `docs/`, `public/`, `vendor/ui-kit`, and every tracked file at the frontend root (`package.json`, `package-lock.json`, `tsconfig*.json`, `vite.config.ts`, `vitest.config.ts`, `vitest.setup.ts`, `playwright.config.ts`, `postcss.config.js`, `eslint.config.js`, `index.html`, `.env.example`, `.gitignore` — configuration, not domain) |
 
