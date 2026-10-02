@@ -688,6 +688,242 @@ entries:
   why: The owner decided the source's behavior is the truth, and rules/chat/replay-reports-failure already states the same end.
 ---
 
+=== contracts/curation-workspace/bff-curation
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/curation
+operations:
+- send-curation-request
+- list-review-queue
+- read-curation-metrics
+- resolve-entity-match
+- merge-nodes
+- resolve-dispute
+- confirm-item
+- reject-item
+- correct-item
+answers:
+- operation: send-curation-request
+  accepted: "the 2xx JSON body of the answer is the answer itself and is never unwrapped from { ok, result }, and a 204 answer gives no value"
+  refusals:
+  - rule: "rules/curation-workspace/curation-request-times-out-after-thirty-seconds"
+    answer: "a failure SYSTEM_TIMEOUT reading \"Tempo limite excedido na requisição.\""
+  - when: "The request is cancelled by its caller before an answer."
+    answer: "a failure SYSTEM_ABORTED reading \"Requisição cancelada.\""
+  - when: "The request gets no answer for any other cause."
+    answer: "a failure SYSTEM_NETWORK reading \"Falha de rede ao contactar o servidor.\""
+  - rule: "rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in"
+    answer: "HTTP 401 with the failure AUTH_SESSION_EXPIRED reading \"Sua sessão expirou. Faça login novamente.\""
+  - when: "The answer is 2xx and its body is not JSON."
+    answer: "that status with the failure SYSTEM_INVALID_RESPONSE reading \"Resposta do servidor não é JSON válido.\""
+  - when: "The answer is not 2xx and its body carries an error object with a string code."
+    answer: "that status with the code, the details and, when it is a string, the message of the error object, otherwise a message for the status"
+  - when: "The answer has status 500 or above and its body carries no readable error code."
+    answer: "that status with the failure SYSTEM_UPSTREAM reading \"Algo deu errado. Tente novamente.\""
+  - when: "The answer is not 2xx, is below status 500 and its body carries no readable error code, a second 401 included."
+    answer: "that status with the failure SYSTEM_UNKNOWN reading \"Erro desconhecido do servidor.\""
+- operation: list-review-queue
+  accepted: "GET /api/v1/curation/queue with kind, limit and offset sent only when given, read as total, limit, offset and items, an entity-match entry with its node id, node type, canonical name, candidates (candidate node id, canonical name and similarity) and creation time, and any other entry as a dispute with its item kind, scope (source node id, target node id, link type, node id and attribute key), sides (item id, value, target node id, valid-from, valid-to, valid-from basis, confidence and status) and creation time"
+- operation: read-curation-metrics
+  accepted: "GET /api/v1/curation/metrics read as accept_rate, reject_rate_by_code, needs_review_count, uncertain_count, disputed_count, entity_match_queue_count, disputed_queue_count and computed_at"
+- operation: resolve-entity-match
+  accepted: "POST /api/v1/curation/entity-matches/{node_id}/resolve with the node id path-encoded and a JSON body of decision, an optional target_node_id and an optional reason, read as node_id, decision, resulting_status, an optional target_node_id, action_id and optional counts links_repointed, attributes_repointed, aliases_copied and path_compressed_nodes"
+- operation: merge-nodes
+  accepted: "POST /api/v1/curation/nodes/merge with a JSON body of survivor_id, absorbed_id and reason, read as survivor_id, absorbed_id, the four counts and action_id"
+- operation: resolve-dispute
+  accepted: "POST /api/v1/curation/disputes/resolve with a JSON body of item_kind, item_ids, decision, an optional winner_id, an optional reason and optional periods, read as item_kind, decision, action_id and items each with item_id, resulting_status and optional valid_from and valid_to"
+- operation: confirm-item
+  accepted: "POST /api/v1/curation/items/confirm with a JSON body of item_kind, item_id and an optional reason, read as item_kind, item_id, resulting_status and action_id"
+- operation: reject-item
+  accepted: "POST /api/v1/curation/items/reject with a JSON body of item_kind, item_id and a required reason, read as item_kind, item_id, resulting_status and action_id"
+- operation: correct-item
+  accepted: "POST /api/v1/curation/items/correct with a JSON body of item_kind, item_id, a required reason and the corrected values value, target_node_id, valid_from, valid_to, valid_from_source and valid_from_fragment_id, all optional, read as item_kind, predecessor_id, new_item_id and action_id"
+---
+
+## Description
+
+The requests the curation screen makes to the back end and how it reads the answers.
+The upstream publishes what each answer carries, and this contract states only how the screen sends and reads it.
+
+=== contracts/curation-workspace/bff-curation-reads
+---
+type: api
+direction: consumed
+upstream: contracts/knowledge-base/retrieval
+operations:
+- read-node
+- read-link-history
+- read-attribute-history
+- read-link-provenance
+- read-attribute-provenance
+- read-fragment-provenance
+- list-accepted-fragments
+answers:
+- operation: read-node
+  accepted: "GET /api/v1/nodes/{id} with the id path-encoded, read through the { ok, result } envelope as node (id, node_type, canonical_name, status and an optional merged_into_node_id), aliases (id, alias, kind and an optional created_at) and attributes (id, node_id, attribute_key, value_type, value, valid_from, valid_to, recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence and the optional valid_from_source, flags and supersedes_attribute_id)"
+- operation: read-link-history
+  accepted: "GET /api/v1/links/{id}/history read as versions each with id, source_node_id, target_node_id, link_type, link_inverse_name, valid_from, valid_to, recorded_at, superseded_at, status, effective_status, is_current, is_in_effect, confidence and the optional valid_from_source and supersedes_link_id"
+- operation: read-attribute-history
+  accepted: "GET /api/v1/attributes/{id}/history read as versions each shaped as an attribute of the node detail"
+- operation: read-link-provenance
+  accepted: "GET /api/v1/provenance/links/{id} read as fragments each with id, text, confidence, status and chunks, each chunk with id, chunk_index, offset_start, offset_end, excerpt, an optional locator and its raw information (id, source_type, received_at and optional metadata)"
+- operation: read-attribute-provenance
+  accepted: "GET /api/v1/provenance/attributes/{id} read as the link provenance is read"
+- operation: read-fragment-provenance
+  accepted: "GET /api/v1/provenance/fragments/{id} read as the link provenance is read"
+- operation: list-accepted-fragments
+  accepted: "GET /api/v1/fragments/accepted with llm_run_id, raw_information_id, limit and offset sent only when given, read as total, limit, offset and items each with fragment_id, text, confidence, llm_run_id, created_at and a source (raw_information_id, chunk_index, source_type, received_at and an optional document_title)"
+---
+
+## Description
+
+The reads of the knowledge base the curation screen makes to show evidence and history.
+
+=== contracts/curation-workspace/bff-curation.log
+---
+entries:
+- field: answers
+  unstated: The material does not say whether the transport behaviour of the curation request helper, which repeats the ingest helper's, is held once or twice.
+  decided: The curation contract states its own transport behaviour in its own rules, the same as the ingest contract does, until the shared transport is adopted.
+  why: Each feature owns its own request helper in the code, and a rule shared across them would bind a file nobody has judged yet.
+---
+
+=== contracts/curation-workspace/curation-screen
+---
+type: api
+direction: published
+operations:
+- show-queue
+- show-metrics
+- decide-item
+- undo-decision
+- read-decision-panel
+- correct-item
+- show-evidence
+- use-batch-bar
+- open-drawer
+answers:
+- operation: show-queue
+  accepted: "the tabs Tudo, Entidades and Disputas and, for the tab chosen, each entry with a badge (Para revisar for an entity match, Disputado for a dispute), its age and its scope line (the node's canonical name for an entity match, \"Link · <link type>\" or \"Link\" and \"Atributo · <attribute key>\" or \"Atributo\" for a dispute), and the pill \"1 novo\" or \"N novos\" when entries arrived since the baseline"
+  refusals:
+  - when: "The queue read fails."
+    answer: "the banner \"Não foi possível carregar a fila. Tente novamente.\" replaces the list, with a retry that reads the queue again and no status or code shown"
+  - when: "The queue read succeeds with no entries."
+    answer: "\"Nada pendente\" with \"A fila está limpa.\", the same on every tab"
+  - when: "Nothing is selected or the selection is not in the loaded queue."
+    answer: "the decision column reads \"Selecione um item da fila para começar.\""
+- operation: show-metrics
+  accepted: "the labels Aceitação, Em revisão, Incertos, Disputados and Fila entidades over the acceptance rate as a percentage and the four counts"
+  refusals:
+  - rule: "rules/curation-workspace/failed-metrics-fall-back-to-the-queue-totals"
+    answer: "a dash for Aceitação, Em revisão and Incertos and the queue totals for Disputados and Fila entidades, with no error shown"
+- operation: decide-item
+  accepted: "an immediate decision answers the notice \"Confirmado.\" for two seconds and moves to the next item, and a destructive decision answers the undo toast and moves to the next item at once"
+  refusals:
+  - when: "The failure carries no error envelope."
+    answer: "the notice \"Algo deu errado. Tente novamente.\""
+  - when: "The failure is one of the authentication codes AUTH_UNAUTHORIZED, AUTH_TOKEN_EXPIRED, AUTH_TOKEN_INVALID or AUTH_SESSION_EXPIRED."
+    answer: "no notice and no field error"
+  - when: "The failure is BUSINESS_REVIEW_NOT_PENDING or BUSINESS_ITEM_NOT_DISPUTED."
+    answer: "the warning \"Já resolvido em outro lugar.\" with the item removed and the stale signal raised"
+  - when: "The failure is BUSINESS_ITEM_NOT_UNCERTAIN."
+    answer: "the warning \"Este item já não está incerto.\" with the item removed"
+  - when: "The failure is BUSINESS_ITEM_NOT_DELETABLE."
+    answer: "the warning \"Este item já foi rejeitado ou substituído.\" with the item removed"
+  - when: "The failure is BUSINESS_NODE_DELETED."
+    answer: "the warning \"Este nó foi excluído por conformidade.\" with the item removed"
+  - when: "The failure is RESOURCE_NOT_FOUND."
+    answer: "the warning \"Item não encontrado.\" with the item removed"
+  - when: "The failure is one of BUSINESS_REASON_REQUIRED, BUSINESS_SELF_MERGE_FORBIDDEN, BUSINESS_TARGET_NODE_REQUIRED, BUSINESS_INVALID_TARGET_NODE, BUSINESS_DISPUTE_WINNER_REQUIRED, BUSINESS_DISPUTE_PERIODS_REQUIRED, BUSINESS_TEMPORAL_INCOHERENT, BUSINESS_DATE_UNJUSTIFIED, BUSINESS_CORRECTION_NO_CHANGES or BUSINESS_FRAGMENT_NOT_ACCEPTED."
+    answer: "the code, the message and the status shown as a field error in the decision panel, with no notice"
+  - when: "The failure has status 503 and any other code."
+    answer: "the notice \"Serviço temporariamente indisponível. Tente novamente em instantes.\""
+  - when: "The failure has a status of 500 or above other than 503 and any other code."
+    answer: "the notice \"Algo deu errado. Tente novamente.\""
+  - when: "The failure is any other enveloped code below status 500."
+    answer: "the code, the message and the status shown as a field error in the decision panel"
+  - rule: "rules/curation-workspace/leaving-sends-the-pending-decision-at-once"
+    answer: "the notice \"Ação comprometida ao sair.\""
+- operation: undo-decision
+  accepted: "the undo toast shows the caption Item fundido, Lado preferido or Item rejeitado and the whole seconds left as \"Ns\", announced as \"Tempo restante para desfazer: N segundos\", and offers Desfazer"
+- operation: read-decision-panel
+  accepted: "the labels Fundir neste and Manter separados for an entity match and Preferir este, Manter em disputa and Corrigir… for a dispute; the evidence indicator Ver evidência then Evidência vista; a blocked decision carrying the hint \"Veja a evidência antes de decidir.\"; for a single high-similarity candidate \"Candidato com alta similaridade (≥ 90%): podemos fundir diretamente.\", for several candidates \"Múltiplos candidatos — escolha qual representa a mesma entidade.\", for none \"Nenhum candidato sugerido. Você pode manter separados ou fundir ad-hoc por busca.\"; for a link dispute \"Há N alvos conflitantes para o vínculo <link type>:\" with \"“<link type>” admite apenas um destino vigente por vez, e as vigências abaixo se sobrepõem. Escolha qual vale (os perdedores são arquivados) ou ajuste os períodos para que não se sobreponham.\"; for an attribute dispute \"Há N valores conflitantes para <attribute key>:\" with \"Apenas um valor pode vigorar por vez no mesmo período. Escolha qual vale ou ajuste os períodos.\"; the instruction \"Selecione qual lado prefere.\" in summary and \"Selecione qual lado prefere ou ajuste os períodos.\" otherwise; the period lines \"Lado X: sem datas registradas\", \"Lado X: vigente de <from> em diante\", \"Lado X: vigente até <to>\" and \"Lado X: vigente de <from> a <to>\"; the basis labels Declarada, Doc. and Receb.; and, for a stale item, \"Este item mudou desde que você o abriu.\" with Recarregar"
+  refusals:
+  - rule: "rules/curation-workspace/blank-reason-blocks-a-destructive-decision"
+    answer: "\"Informe um motivo para continuar.\" under the reason field"
+  - rule: "rules/curation-workspace/self-merge-refusal-shows-the-fixed-text"
+    answer: "the fixed alert \"Não é possível fundir um nó com ele mesmo.\""
+- operation: correct-item
+  accepted: "the date justification bases Declarada no fragmento (\"A própria fonte diz a data — selecione o fragmento.\"), Data do documento (\"Derivada da data do documento de origem.\") and Data de recebimento (\"Quando o sistema recebeu a informação.\")"
+  refusals:
+  - rule: "rules/curation-workspace/attribute-correction-needs-a-value"
+    answer: "the message \"Informe o valor corrigido.\" on the value field"
+  - rule: "rules/curation-workspace/link-correction-needs-a-target"
+    answer: "the message \"Selecione o nó-alvo da fusão.\" on the target field"
+  - rule: "rules/curation-workspace/correction-dates-have-the-iso-shape"
+    answer: "the message \"Data inválida. Use o formato AAAA-MM-DD.\" on the date field"
+  - rule: "rules/curation-workspace/correction-start-precedes-the-end"
+    answer: "the message \"O início deve ser anterior ao fim.\" on the end field"
+  - rule: "rules/curation-workspace/stated-basis-needs-a-fragment"
+    answer: "the message \"Selecione o fragmento que justifica a data.\" on the fragment field and Salvar correção disabled"
+  - rule: "rules/curation-workspace/correction-reason-is-required-and-trimmed"
+    answer: "the message \"Informe um motivo para continuar.\" on the reason field"
+  - rule: "rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id"
+    answer: "the manual fragment-id input with \"Listagem de fragmentos indisponível — informe o id manualmente.\""
+  - when: "The server answers BUSINESS_CORRECTION_NO_CHANGES."
+    answer: "the fixed message \"Nenhuma alteração detectada. Modifique pelo menos um campo.\" at the top of the form"
+  - when: "The server answers BUSINESS_TEMPORAL_INCOHERENT."
+    answer: "the server's message on the end-date field"
+  - when: "The server answers BUSINESS_DATE_UNJUSTIFIED."
+    answer: "the server's message set on the date-basis field, which no element shows"
+  - when: "The server answers BUSINESS_FRAGMENT_NOT_ACCEPTED."
+    answer: "the server's message under the fragment picker or the manual input, visible only under stated"
+  - when: "The server answers BUSINESS_REASON_REQUIRED."
+    answer: "the server's message on the reason field"
+- operation: show-evidence
+  accepted: "each fragment as \"Fragmento · confiança N%\" with its text and, under it, each chunk with its source type label (Documento, E-mail, Reunião, Conversa, Artigo or Transcrição), the received date and \"trecho <start>–<end>\""
+  refusals:
+  - when: "The provenance is loading."
+    answer: "a placeholder labelled \"Carregando evidência\""
+  - when: "The source was removed by compliance deletion."
+    answer: "\"A fonte original foi excluída por conformidade. Sem proveniência disponível.\" and no viewed signal"
+  - when: "The provenance fails to load for any other reason."
+    answer: "\"Não foi possível carregar a evidência.\" and no viewed signal"
+  - when: "The provenance loads with no fragments."
+    answer: "\"Nenhuma proveniência disponível.\""
+- operation: use-batch-bar
+  accepted: "the count \"N selecionados\" with the actions \"Manter separados N\" for entity matches and \"Confirmar N\" and \"Rejeitar N\" for uncertain items"
+  refusals:
+  - rule: "rules/curation-workspace/batch-bar-actions-follow-the-kind"
+    answer: "for disputed items no action and the note \"Disputas devem ser resolvidas individualmente.\""
+  - rule: "rules/curation-workspace/rejecting-five-or-more-asks-first"
+    answer: "for five or more items the inline \"Você está rejeitando N itens. Confirmar?\" with Confirmar and Cancelar"
+- operation: open-drawer
+  accepted: "an overlay titled \"Curadoria\" holding the decision panel for one item"
+  refusals:
+  - when: "The queue is loading."
+    answer: "\"Carregando item de curadoria…\""
+  - when: "The queue read fails."
+    answer: "the inline alert \"Não foi possível carregar a evidência.\" with the link \"Abrir na fila de curadoria\""
+  - when: "The item is not in the queue listing."
+    answer: "the inline alert \"Este item não está mais disponível na fila.\" with the link \"Abrir na fila de curadoria\""
+---
+
+## Description
+
+What the owner reads and can do on the curation screen.
+The queue column lists the entries and the decision column holds the panel for the selected one.
+
+=== contracts/curation-workspace/curation-screen.log
+---
+entries:
+- field: answers
+  unstated: The material does not say which boundary holds the notices, banners and toasts the owner reads on the curation screen.
+  decided: The curation screen is a published api whose caller is the owner, and every notice that tells the owner what happened or was refused is an answer of it.
+  why: A notice changes what the owner learns, while a control label, a heading or a placeholder keeps the control doing what it did.
+---
+
 === contracts/ingest-workspace/bff-ingestion
 ---
 type: api
@@ -2362,6 +2598,251 @@ entries:
   decided: value-object
   why: 'A turn is never stored or read as itself: what persists of it is its messages and tool calls.'
 ---
+
+=== domain/curation-workspace/_context
+---
+strategic: supporting
+---
+
+## Description
+
+The curation workspace holds the screen where the owner works the review queues, decides each pending item and corrects what the knowledge base holds.
+
+## Responsibility
+
+It lets the owner see the evidence behind an item, decide it with a reason, undo a destructive decision for a short while and keep the queue and the metrics honest about what is still pending.
+
+=== domain/curation-workspace/_context.log
+---
+entries:
+- field: strategic
+  unstated: The material does not say whether the curation screen is where the business differs or a solved problem.
+  decided: supporting
+  why: Curation only exposes to the owner the review the knowledge base asks for, so it serves the core without being it.
+---
+
+=== domain/curation-workspace/batch-kind
+---
+type: enumeration
+values:
+- entity-match
+- disputed
+- uncertain
+---
+
+## Description
+
+The kinds of selection the batch bar acts on.
+
+## Responsibility
+
+It names the one kind a batch selection holds.
+
+=== domain/curation-workspace/correction-draft
+---
+type: value-object
+attributes:
+- name: value
+  type: string
+- name: target_node_id
+  type: string
+- name: valid_from
+  type: date
+- name: valid_to
+  type: date
+- name: valid_from_basis
+  type: domain/knowledge-base/valid-from-basis
+  required: true
+- name: valid_from_fragment_id
+  type: string
+- name: reason
+  type: string
+  required: true
+---
+
+## Description
+
+The values and the reason the owner writes on the correction form before saving.
+
+## Responsibility
+
+It holds the correction until it passes the form's checks and is handed to the caller.
+
+=== domain/curation-workspace/curation-session
+---
+type: aggregate-root
+attributes:
+- name: selected_item
+  type: selected-item
+- name: evidence_viewed
+  type: boolean
+  required: true
+- name: session_resolved
+  type: integer
+  required: true
+- name: last_seen_total
+  type: integer
+- name: checked_item_ids
+  type: string
+  many: true
+- name: pending_decision
+  type: pending-decision
+- name: draft
+  type: decision-draft
+- name: correction
+  type: correction-draft
+operations:
+- select-item
+- decide
+- undo-decision
+- move-on
+- reset-session
+---
+
+## Description
+
+One sitting of the owner at the curation screen, from the first queue read to the last decision.
+
+## Responsibility
+
+It keeps the selected item, whether its evidence was viewed, the decision waiting for undo and the draft the owner is writing, so that the screen shows one consistent state.
+
+=== domain/curation-workspace/curation-shortcut
+---
+type: enumeration
+values:
+- next
+- previous
+- toggle-check
+- evidence
+- merge
+- keep-separate
+- confirm
+- reject
+- undo
+- toggle-help
+- select-index
+---
+
+## Description
+
+The actions a key can trigger on the curation screen.
+
+## Responsibility
+
+It names every action the keyboard can reach.
+
+=== domain/curation-workspace/decision-draft
+---
+type: value-object
+attributes:
+- name: candidate_id
+  type: string
+- name: side_id
+  type: string
+- name: reason
+  type: string
+---
+
+## Description
+
+What the owner has chosen and written on the decision panel before deciding.
+
+## Responsibility
+
+It holds the selected candidate or side and the reason until a decision is sent or the item changes.
+
+=== domain/curation-workspace/dispatch-kind
+---
+type: enumeration
+values:
+- destructive
+- immediate
+---
+
+## Description
+
+How a decision is sent to the server.
+
+## Responsibility
+
+It tells a decision that waits for undo from one sent at once.
+
+=== domain/curation-workspace/display-mode
+---
+type: enumeration
+values:
+- summary
+- full-diff
+---
+
+## Description
+
+How much of a queue item the decision panel shows.
+
+## Responsibility
+
+It names the one presentation chosen for an item.
+
+=== domain/curation-workspace/pending-decision
+---
+type: value-object
+attributes:
+- name: caption
+  type: string
+  required: true
+- name: dispatch_kind
+  type: dispatch-kind
+  required: true
+- name: deadline
+  type: datetime
+  required: true
+---
+
+## Description
+
+A destructive decision that has not yet been sent, waiting for the owner to undo it.
+
+## Responsibility
+
+It keeps the decision, its caption and the moment its undo window ends.
+
+=== domain/curation-workspace/queue-tab
+---
+type: enumeration
+values:
+- all
+- entities
+- disputes
+---
+
+## Description
+
+The tabs that choose which review queue the page lists.
+
+## Responsibility
+
+It names the one queue the owner is looking at.
+
+=== domain/curation-workspace/selected-item
+---
+type: value-object
+attributes:
+- name: kind
+  type: domain/knowledge-base/review-queue-kind
+  required: true
+- name: id
+  type: string
+  required: true
+---
+
+## Description
+
+The queue item the owner is looking at, named by its review queue kind and an identifier.
+
+## Responsibility
+
+It lets the address, the list and the decision panel agree on which item is open.
 
 === domain/ingest-workspace/_context
 ---
@@ -6653,6 +7134,2651 @@ type: invariant
 statement: The model that distills a conversation's title or refolds its rolling summary is claude-haiku-4-5 where none is configured.
 constrains:
 - domain/chat/conversation
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/acceptance-rate-shows-as-a-whole-percentage
+---
+type: invariant
+statement: "The acceptance rate MUST show as a percentage rounded to the nearest whole number."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/active-tab-lives-only-on-the-page
+---
+type: invariant
+statement: "The active tab MUST live only on the page, start at all each time the page mounts and be written to no address."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/any-other-refusal-shows-in-the-panel-alert
+---
+type: invariant
+statement: "Any other refusal code MUST show the server's message in a destructive alert in the panel."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/attribute-correction-needs-a-value
+---
+type: invariant
+statement: "An attribute correction MUST have a non-empty value, whose content MUST NOT be checked against the attribute's value type."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/baseline-ignores-tab-changes
+---
+type: invariant
+statement: "The new-item baseline MUST NOT be adjusted when the tab changes."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/batch-bar-actions-follow-the-kind
+---
+type: invariant
+statement: "The batch bar MUST offer keep separate for entity-match items, confirm and reject for uncertain items and no action for disputed items."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/batch-bar-acts-on-one-kind
+---
+type: invariant
+statement: "The batch bar MUST act on one selection of a single kind at a time, entity match, disputed or uncertain."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/batch-bar-needs-two-items
+---
+type: invariant
+statement: "The batch bar MUST show nothing when fewer than two items are selected."
+constrains:
+- domain/curation-workspace/batch-kind
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/batch-bar-offers-to-clear-the-selection
+---
+type: invariant
+statement: "The batch bar MUST offer a clear-selection control that leaves the clearing to its caller."
+constrains:
+- domain/curation-workspace/batch-kind
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/batch-bar-shows-the-count
+---
+type: invariant
+statement: "The batch bar MUST show how many items are selected."
+constrains:
+- domain/curation-workspace/batch-kind
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/blank-reason-blocks-a-destructive-decision
+---
+type: invariant
+statement: "A destructive decision with a reason that is empty after trimming MUST send nothing and move focus to the reason field."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/caller-cancellation-ends-the-request
+---
+type: invariant
+statement: "A cancellation from the caller MUST end the request together with the cutoff."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/candidate-shows-its-similarity-as-a-percentage
+---
+type: invariant
+statement: "Each candidate MUST show its canonical name and its similarity as a whole percentage, a value below 0 as 0 and a value above 1 as 100."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/changing-the-item-clears-the-draft
+---
+type: invariant
+statement: "Changing the item MUST clear the selected candidate, the selected side and the reason."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/changing-the-item-restarts-the-correction
+---
+type: invariant
+statement: "Changing the item MUST close the correction section and start it fresh."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/check-toggles-the-item-in-the-checked-set
+---
+type: invariant
+statement: "The check action MUST add the selected item to the checked set or remove it when it is already there."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/checked-set-starts-empty-and-is-replaced-whole
+---
+type: invariant
+statement: "The checked set MUST start empty and MUST be replaced whole on every change."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/chunk-excerpt-is-cut-to-200-characters
+---
+type: invariant
+statement: "A chunk's excerpt MUST be cut the same way to 200 characters."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/chunk-shows-its-source-date-and-offsets
+---
+type: invariant
+statement: "Each chunk MUST show its source type label, the document's received date in pt-BR and its offsets."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/client-detects-no-unchanged-correction
+---
+type: invariant
+statement: "The correction form MUST NOT detect an unchanged correction, the no-change refusal coming only from the server."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/confirmation-or-rejection-refreshes-the-provenance-of-the-item
+---
+type: invariant
+statement: "After a successful confirmation or rejection the provenance of that item MUST be read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-asks-for-a-value-or-a-target
+---
+type: invariant
+statement: "The correction form MUST ask for a new value for an attribute and for the target node id for a link, showing only one of the two."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-checks-run-in-order
+---
+type: invariant
+statement: "The correction checks MUST run in this order: the value or the target node id, then the start before the end, then a fragment under stated, each message landing on its own field."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-dates-have-the-iso-shape
+---
+type: invariant
+statement: "A date the owner gives MUST match the shape AAAA-MM-DD, only the shape being checked and not whether it is a real calendar date."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-fields-start-from-the-item
+---
+type: invariant
+statement: "Every correction field MUST start with the current item's values, the basis starting as document when the caller gives none and the reason always starting empty."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-is-offered-only-for-a-dispute
+---
+type: invariant
+statement: "A correction MUST be offered only for a dispute and never for an entity-match entry."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-opens-inline-and-returns-focus
+---
+type: invariant
+statement: "The correction form MUST open inline in the panel, and cancelling MUST close it and return focus to the correction button."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-reason-is-required-and-trimmed
+---
+type: invariant
+statement: "The correction reason MUST be required, keep at least one character after trimming and be submitted trimmed, with no maximum length."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-refreshes-the-provenance-and-the-history
+---
+type: invariant
+statement: "After a successful correction the provenance of the corrected item and of the new item, and the lineage history of the corrected item, MUST be read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-refusals-reach-the-form
+---
+type: invariant
+statement: "BUSINESS_TEMPORAL_INCOHERENT and BUSINESS_CORRECTION_NO_CHANGES MUST reach only the correction form, and BUSINESS_DATE_UNJUSTIFIED and BUSINESS_FRAGMENT_NOT_ACCEPTED MUST reach the correction form and the panel's alert."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-sends-the-item-the-values-and-the-reason
+---
+type: invariant
+statement: "On submit the form MUST send item_kind, item_id, corrected and reason, corrected carrying the value or the target node id, the dates, the basis and the fragment id."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-shows-submitting
+---
+type: invariant
+statement: "While a correction is submitted Cancelar MUST be disabled and Salvar correção MUST show a loading state."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-start-precedes-the-end
+---
+type: invariant
+statement: "When both dates are given the start MUST be strictly earlier than the end, and the message MUST show on the end field."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-starts-from-the-first-sides-values
+---
+type: invariant
+statement: "The correction form MUST start from the first side's value, target node, dates and basis with no fragment, and from the basis document when the dispute has no sides."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/correction-targets-the-first-side
+---
+type: invariant
+statement: "A correction MUST always target the dispute's first side, whichever side the owner selected."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/curation-request-carries-the-access-token
+---
+type: invariant
+statement: "A curation request MUST carry the owner's access token as a bearer when the application holds one and no Authorization header otherwise."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/curation-request-times-out-after-thirty-seconds
+---
+type: invariant
+statement: "A curation request MUST fail after thirty seconds without the status of an answer."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/date-justification-offers-three-bases
+---
+type: invariant
+statement: "The date justification MUST offer the bases stated, document and received in that order, each with a label and a hint."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dates-show-as-pt-br-calendar-dates-in-utc
+---
+type: invariant
+statement: "Side dates and period dates MUST show as full pt-BR calendar dates in UTC."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/decision-moves-to-the-ring-neighbour
+---
+type: invariant
+statement: "After a decision the next item MUST be the ring neighbour of whatever is selected at that moment, taken from the queue as last loaded."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/decision-on-the-wrong-kind-sends-nothing
+---
+type: invariant
+statement: "An entity-match resolution requested on an item that is not an entity-match entry, or a dispute resolution on an item that is not a dispute, MUST send nothing."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/decision-removes-its-item-by-its-identifier
+---
+type: invariant
+statement: "A decision MUST remove its item by the node id for keeping entities separate, by the first item id for keeping a dispute or adjusting periods and by the item id for confirming and correcting."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/decision-shows-as-sending-until-answered
+---
+type: invariant
+statement: "A decision MUST show as sending from the moment it goes to the server until the server answers or fails."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-decision-moves-on-twice
+---
+type: invariant
+statement: "A destructive decision MUST move on once when it is made and again when the server accepts it."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-decision-moves-on-twice.log
+---
+entries:
+- field: statement
+  unstated: The material shows a destructive decision selecting the next item when it is made and again when the server accepts it, and does not say whether the second move is intended.
+  decided: A destructive decision moves on once when it is made and again when the server accepts it.
+  why: The code does both and counts both, so the obligation a reader can hold the screen to is the pair of moves.
+---
+
+=== rules/curation-workspace/destructive-decision-opens-the-undo-toast
+---
+type: invariant
+statement: "A destructive decision MUST open an undo toast that shows its caption and the time left, for exactly the undo window."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-decision-removes-the-item-at-once
+---
+type: invariant
+statement: "A destructive decision MUST remove its item from the queue the owner sees and move to the next item before anything is sent."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-decisions-carry-a-caption
+---
+type: invariant
+statement: "A destructive decision MUST carry the caption Item fundido for a merge, Lado preferido for a preference and Item rejeitado for a rejection."
+constrains:
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-decisions-wait-for-undo
+---
+type: invariant
+statement: "The entity-match merge, the dispute preference and the rejection of an item MUST wait for undo before being sent."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/destructive-success-shows-no-notice-and-moves-on
+---
+type: invariant
+statement: "A destructive decision that succeeds after its window MUST show no success notice and move to the next item."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/display-mode-is-decided-from-the-entry-alone
+---
+type: invariant
+statement: "The display mode MUST be decided from the queue entry alone."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-evidence-counts-as-viewed-when-its-trail-says-so
+---
+type: invariant
+statement: "A dispute entry's evidence MUST count as viewed once the provenance trail of its first side reports it viewed, or at once when it has no sides."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-header-adds-the-relation
+---
+type: invariant
+statement: "Once the subject name is available a dispute header MUST add the link type or the attribute key after it."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-header-falls-back-until-the-name-arrives
+---
+type: invariant
+statement: "Until the subject name is available a dispute header MUST show the link type, else the attribute key, else Item em disputa."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-header-names-its-subject-node
+---
+type: invariant
+statement: "A dispute's header MUST name its subject node, the link's source node or the node that holds the attribute, resolved through the node-detail read."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-offers-prefer-one-and-keep-disputed
+---
+type: invariant
+statement: "A dispute MUST offer exactly the decisions prefer one side and keep disputed, with no control that adjusts periods."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-resolution-refreshes-the-provenance-of-its-items
+---
+type: invariant
+statement: "After a successful dispute resolution the provenance of every item in item_ids MUST be read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/dispute-shows-summary-for-two-sides-with-an-end
+---
+type: invariant
+statement: "A dispute MUST show the summary view only when it has exactly two sides and at least one of them has an end of validity."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-closes-on-esc-close-backdrop-or-removal
+---
+type: invariant
+statement: "The drawer MUST call back to close on Esc, on its close button, on a click on the backdrop and when a decision removes its item, whether it is open belonging to the screen that opens it."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-dispute-decisions-wait-for-the-evidence
+---
+type: invariant
+statement: "In the drawer decisions on a dispute MUST stay disabled until the provenance trail of the dispute's first side reports its evidence viewed."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-entity-match-decisions-are-enabled-at-once
+---
+type: invariant
+statement: "In the drawer decisions on an entity match MUST be enabled at once, with no provenance trail."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-finds-its-item-in-the-queue-listing
+---
+type: invariant
+statement: "The drawer MUST find an entity-match item by its node id and a dispute by the id of any of its sides in the queue listing read with no arguments."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-has-no-next-item
+---
+type: invariant
+statement: "The drawer MUST have no next item and MUST close when a decision removes its item."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-holds-one-queue-item
+---
+type: invariant
+statement: "The curation drawer MUST hold one review queue item, an entity match or a dispute, identified by kind and id."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-never-changes-the-address
+---
+type: invariant
+statement: "The drawer MUST NOT change the address, its only way out being the link to /curation with item=kind:id that closes it."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-reads-the-queue-only-while-open
+---
+type: invariant
+statement: "The drawer MUST read the review queue only while it is open."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-shares-the-evidence-flag
+---
+type: invariant
+statement: "The drawer MUST read and set the evidence-viewed flag of the curation page's shared store."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/drawer-shows-the-callers-label
+---
+type: invariant
+statement: "The drawer MUST show the caller's label under its title when the label is not empty."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/each-decision-uses-the-action-of-its-kind
+---
+type: invariant
+statement: "Each decision MUST use the curation action of its kind: the entity-match resolution for both entity-match decisions, the dispute resolution for the three dispute decisions and confirm, reject and correct for their own."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/empty-correction-field-is-sent-as-null
+---
+type: invariant
+statement: "An empty value, target node id, start date, end date or fragment id MUST count as not provided and be sent as null."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/entity-match-evidence-counts-as-viewed-at-once
+---
+type: invariant
+statement: "An entity-match entry's evidence MUST count as viewed as soon as it opens."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/entity-match-header-names-the-proposed-node
+---
+type: invariant
+statement: "An entity-match entry's header MUST name the proposed node by its canonical name."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/entity-match-offers-merge-and-keep-separate
+---
+type: invariant
+statement: "An entity-match entry MUST offer exactly the decisions merge into a candidate and keep separate."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/entity-match-resolution-refreshes-the-node-details
+---
+type: invariant
+statement: "After a successful entity-match resolution the detail of the resolved node and of the target node, when one is given, MUST be read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/entity-match-shows-summary-for-one-high-similarity-candidate
+---
+type: invariant
+statement: "An entity-match entry MUST show the summary view only when it has exactly one candidate whose similarity is at least 0.9."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/every-decision-waits-for-the-evidence
+---
+type: invariant
+statement: "Every decision button, the keep decisions and the correction button included, MUST stay blocked until the evidence is viewed, and a blocked click MUST send nothing."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/every-side-is-listed-and-selectable
+---
+type: invariant
+statement: "Every side MUST be listed in both presentations and selecting a side MUST make it the winner for a preference."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/evidence-indicator-pulses-until-viewed
+---
+type: invariant
+statement: "The evidence indicator MUST read Ver evidência and pulse until the evidence is viewed and then read Evidência vista."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/evidence-viewed-is-supplied-by-the-caller
+---
+type: invariant
+statement: "The decision panel MUST NOT decide whether the evidence was viewed."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/failed-decision-is-read-in-order
+---
+type: invariant
+statement: "A failed decision MUST be read in this order: a failure with no envelope, an authentication code, a code meaning the item is gone, a field code, a status of 500 or above and any other code."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/failed-metrics-fall-back-to-the-queue-totals
+---
+type: invariant
+statement: "When the metrics read fails and queue totals are supplied the strip MUST show a dash for the acceptance rate, the needs-review count and the uncertain count and the queue totals for the disputed and entity-match counts."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/failed-metrics-never-fail-the-strip
+---
+type: invariant
+statement: "A failed metrics read MUST NOT make the strip fail, and without a fallback the strip MUST keep showing its loading placeholders."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/failure-without-an-envelope-leaves-the-item-removed
+---
+type: invariant
+statement: "A destructive decision that fails with no envelope MUST leave its item removed."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/failure-without-an-envelope-leaves-the-item-removed.log
+---
+entries:
+- field: statement
+  unstated: The material shows a failure with no envelope leaving a destructive decision's item removed while an enveloped refusal puts it back, and does not say why they differ.
+  decided: A destructive decision that fails with no envelope leaves its item removed.
+  why: The restore is tied to an enveloped refusal in the code, so the other failures leave the item removed.
+---
+
+=== rules/curation-workspace/field-code-wins-over-the-server-status
+---
+type: invariant
+statement: "A field code MUST be shown in the panel even when the answer's status is 500 or above."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/field-messages-appear-on-blur-and-submit
+---
+type: invariant
+statement: "Field messages of the correction form MUST appear when a field loses focus and when the owner submits."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/first-unauthorized-curation-answer-refreshes-the-token-once
+---
+type: invariant
+statement: "The first unauthorized answer to a curation request MUST obtain a new access token from the identity provider, store it and resend the request once with it."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/form-hands-the-request-to-its-caller
+---
+type: invariant
+statement: "The correction form MUST submit nothing itself and MUST hand the request to its caller, which passes back a server error as a code and a message."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/fragment-field-shows-only-under-stated
+---
+type: invariant
+statement: "The fragment field and its message MUST show only under stated."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/fragment-filter-reaches-the-picker
+---
+type: invariant
+statement: "A run or source filter given by the caller MUST reach the correction form's fragment picker."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/fragment-id-is-sent-whatever-the-basis
+---
+type: invariant
+statement: "The fragment id MUST be sent whatever the basis is."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/fragment-shows-its-confidence-as-a-percentage
+---
+type: invariant
+statement: "Each fragment MUST show its confidence as a whole percentage."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/fragment-text-is-cut-to-280-characters
+---
+type: invariant
+statement: "A fragment's text longer than 280 characters MUST show its first 279 characters with trailing whitespace removed, followed by an ellipsis."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/full-presentation-lists-every-candidate
+---
+type: invariant
+statement: "Outside summary presentation the panel MUST list every candidate."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/header-badge-names-the-queue-kind
+---
+type: invariant
+statement: "The header badge MUST read Para revisar for an entity-match entry and Disputado for a dispute."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/immediate-decisions-are-sent-at-once
+---
+type: invariant
+statement: "The entity-match keep, the dispute keep, the period adjustment, the confirmation and the correction MUST be sent at once."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/immediate-success-confirms-and-moves-on
+---
+type: invariant
+statement: "A decision sent at once that succeeds MUST tell the owner it was confirmed for two seconds and move to the next item."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/inline-confirmation-confirms-or-cancels
+---
+type: invariant
+statement: "The inline confirmation MUST carry out the batch rejection when confirmed and, when cancelled, bring the action row back and do nothing."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/invalid-date-in-an-answer-fails-the-read
+---
+type: invariant
+statement: "A required timestamp, or a present optional date, that is not a valid date MUST fail the read with an error that carries no code."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/invalid-target-refusal-marks-the-candidate
+---
+type: invariant
+statement: "An invalid-target refusal MUST mark the selected candidate invalid and show no message text."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/item-age-is-measured-from-a-fixed-reference
+---
+type: invariant
+statement: "An item's age MUST be measured from a reference time taken when the item changes, and MUST NOT advance while the item stays open."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/item-age-reads-in-minutes-hours-and-days
+---
+type: invariant
+statement: "An item's age MUST read agora under a minute, há N min under an hour, há N h under a day, há N d under thirty days and the pt-BR date from thirty days on, with a future time reading agora."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/item-id-is-everything-after-the-first-colon
+---
+type: invariant
+statement: "The id of an item link MUST be everything after its first colon."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keep-decisions-check-only-the-gate
+---
+type: invariant
+statement: "Keeping entities separate and keeping a dispute MUST check only the evidence gate and be sent with no selection and no reason check."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keep-disputed-sends-the-items-the-decision-and-the-reason
+---
+type: invariant
+statement: "Keeping a dispute MUST send the item kind, the item ids of every side, the decision and the reason with no winner."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keep-separate-sends-the-decision-and-the-reason
+---
+type: invariant
+statement: "Keeping entities separate MUST send the decision and the reason with no target."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keyboard-moves-follow-the-click-path
+---
+type: invariant
+statement: "Moving by keyboard MUST go through the same selection path as a click."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keyboard-shortcuts-act-only-while-enabled
+---
+type: invariant
+statement: "Keyboard shortcuts MUST act only while they are enabled, and they MUST be enabled by default."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/keys-typed-into-a-field-are-no-shortcut
+---
+type: invariant
+statement: "A key pressed while focus is on an input, a textarea, a select, an editable element or an element with the role combobox, listbox or textbox MUST NOT act as a shortcut."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/last-seen-total-starts-empty-and-follows-changes
+---
+type: invariant
+statement: "The last queue total seen MUST be empty until the first queue answer and then change only when the total changes."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/leaving-sends-the-pending-decision-at-once
+---
+type: invariant
+statement: "Leaving the curation screen with a decision waiting for undo MUST send it at once and tell the owner it was committed on leaving."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/link-correction-needs-a-target
+---
+type: invariant
+statement: "A link correction MUST have a non-empty target node id with no format check."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/link-items-use-link-reads-and-others-attribute-reads
+---
+type: invariant
+statement: "An item kind of link MUST select the link provenance and the link history and any other item kind the attribute ones."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/link-side-is-named-by-its-target
+---
+type: invariant
+statement: "A side with no value but a target node MUST be named by the target node's canonical name with its node type, by Carregando… while the name loads and by nó and the first eight characters of its id when no name arrives."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/manual-fragment-id-is-not-checked
+---
+type: invariant
+statement: "A manually entered fragment id MUST NOT be checked for format."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/merge-checks-the-gate-then-a-candidate-then-the-reason
+---
+type: invariant
+statement: "A merge MUST check the evidence gate, then that a candidate is selected, then that the reason is not blank."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/merge-refreshes-both-node-details
+---
+type: invariant
+statement: "After a successful merge the details of the survivor node and of the absorbed node MUST be read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/merge-sends-the-decision-the-target-and-the-reason
+---
+type: invariant
+statement: "A merge MUST send the decision, the selected candidate as target node and the reason."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/merge-stays-offered-without-a-candidate
+---
+type: invariant
+statement: "With no candidates the panel MUST still offer the merge, which does nothing because no candidate can be selected."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/metrics-stay-fresh-for-thirty-seconds
+---
+type: invariant
+statement: "Curation metrics MUST stay fresh for thirty seconds, be read again when the window regains focus, never be polled and be retried once when a read fails."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/metrics-strip-hides-the-reject-rate-and-the-time
+---
+type: invariant
+statement: "The metrics strip MUST NOT show the reject rate by code or the time the metrics were computed."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/metrics-strip-shows-five-metrics-in-order
+---
+type: invariant
+statement: "The metrics strip MUST show the acceptance rate, the needs-review count, the uncertain count, the disputed count and the entity-match queue count, in that order, with the rate first and emphasised."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/metrics-strip-shows-placeholders-until-settled
+---
+type: invariant
+statement: "Until the metrics read has settled the strip MUST show loading placeholders and mark itself busy."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/modified-keys-are-no-shortcut
+---
+type: invariant
+statement: "A key held with Ctrl, Alt or Meta MUST NOT act as a shortcut."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/moving-on-selects-the-next-item-and-counts-it
+---
+type: invariant
+statement: "Moving on MUST select the item the screen names as next, or none, and add one to the session's resolved count."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/new-item-count-is-the-total-minus-the-baseline
+---
+type: invariant
+statement: "The new-item count MUST be the latest queue total minus a baseline that starts at the first total seen and moves only when the owner clicks the pill, and it MUST never be below zero."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/next-and-previous-move-through-the-queue-as-a-ring
+---
+type: invariant
+statement: "Next and previous MUST move through the loaded queue as a ring, picking the first item for next and the last for previous when nothing in the queue is selected."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/no-selection-leaves-no-item-parameter
+---
+type: invariant
+statement: "With nothing selected the address MUST carry no item parameter."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/node-detail-sends-its-options-only-when-asked
+---
+type: invariant
+statement: "Node detail MUST send as_of when given, in_effect_only only when asked for and include_uncertain=false only when uncertain attributes are excluded."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/nothing-is-preselected
+---
+type: invariant
+statement: "The decision panel MUST preselect no candidate and no side, even for a single high-similarity candidate."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/one-destructive-decision-waits-at-a-time
+---
+type: invariant
+statement: "Starting a second destructive decision MUST send the first one at once and close its toast."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/owner-selects-by-click-enter-or-space
+---
+type: invariant
+statement: "The owner MUST be able to select an item by clicking it or by pressing Enter or Space on it."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/page-counts-loaded-entries-as-the-metrics-fallback
+---
+type: invariant
+statement: "The page MUST count its loaded entries per queue as the metrics fallback, counting entity-match entries toward the entity-match queue and every other entry toward the disputed queue."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/page-does-not-remove-a-decided-item-itself
+---
+type: invariant
+statement: "The page MUST NOT remove a decided item from the list or put it back, since the list changes only when the queue is read again."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/page-keeps-its-state-when-left
+---
+type: invariant
+statement: "Leaving the curation page MUST NOT clear the selected item, the checked set or the new-item baseline."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/page-lists-only-one-queue-page
+---
+type: invariant
+statement: "The curation page MUST list only the entries of the single queue page it reads."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/page-wires-four-shortcuts
+---
+type: invariant
+statement: "The curation page MUST wire only the shortcuts next, previous, select by number and check."
+constrains:
+- domain/curation-workspace/curation-shortcut
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/panel-takes-no-confirm-reject-or-adjust
+---
+type: invariant
+statement: "The decision panel MUST take no confirm, reject or adjust-periods decision."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/pending-confirmation-survives-a-selection-change
+---
+type: invariant
+statement: "A pending batch-rejection confirmation MUST stay when the selection count or kind changes."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/pending-decision-lives-in-memory-only
+---
+type: invariant
+statement: "A decision waiting for undo MUST NOT survive a reload."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/periods-are-listed-in-words-under-the-sides
+---
+type: invariant
+statement: "The panel MUST list each side's period in words under the sides, the sides lettered A, B, C in the order the item lists them, in both presentations of a dispute."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/picker-choice-shows-eighty-characters
+---
+type: invariant
+statement: "Each picker choice MUST show the first eighty characters of the fragment's text and fill in the fragment's id."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/picker-falls-back-to-a-manual-fragment-id
+---
+type: invariant
+statement: "Under stated the picker MUST fall back to a manual fragment-id input when no filter was given, the listing failed, returned nothing or has not answered."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/prefer-checks-the-gate-then-a-side-then-the-reason
+---
+type: invariant
+statement: "A preference MUST check the evidence gate, then that a side is selected, then that the reason is not blank."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/preference-removes-its-item-by-the-first-id
+---
+type: invariant
+statement: "A preference's item identifier MUST be chosen in this order: the first item id of the request, then the first side's item id, then the empty string."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/preference-sends-the-items-the-decision-the-winner-and-the-reason
+---
+type: invariant
+statement: "A preference MUST send the item kind, the item ids of every side in the item's order, the decision, the selected side as winner and the reason."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-answer-chooses-the-selection-again
+---
+type: invariant
+statement: "Each time the queue read resolves, the page MUST select the item the address names when it is loaded, otherwise the first loaded item, otherwise none."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-entries-are-identified-by-node-or-first-side
+---
+type: invariant
+statement: "An entity-match entry MUST be identified by its node id and a dispute entry by the item id of its first side, or by a key built from its assertion kind, its source node and its link type or attribute key when it has no sides."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-failure-is-checked-before-empty
+---
+type: invariant
+statement: "A failed queue read MUST be checked before the empty state, which MUST show only for a read that succeeded with no entries."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-is-read-again-on-every-read-poll-and-focus
+---
+type: invariant
+statement: "The review queue MUST count as stale at once, be read again every thirty seconds while the tab is visible and be read again when the window regains focus."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-keeps-the-answered-order
+---
+type: invariant
+statement: "The screen MUST keep the order in which the review queue answers."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-kind-is-sent-only-when-chosen
+---
+type: invariant
+statement: "The review queue request MUST carry the kind only when one queue kind is chosen."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/queue-read-asks-the-first-page-of-twenty
+---
+type: invariant
+statement: "The curation screen MUST ask the review queue for its first page of twenty entries."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/read-without-an-identifier-is-not-requested
+---
+type: invariant
+statement: "A node detail, history or provenance read MUST NOT be requested without an identifier, and accepted fragments MUST NOT be requested until a non-empty run id or raw information id is given."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/reading-the-answer-body-has-no-cutoff
+---
+type: invariant
+statement: "Reading the body of a curation answer MUST have no cutoff once its status has arrived."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/reason-field-always-shows-as-required
+---
+type: invariant
+statement: "The reason field MUST always be rendered and marked as required."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/reason-is-sent-as-typed-and-empty-as-null
+---
+type: invariant
+statement: "The reason MUST be sent as typed and an empty reason as null."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/reason-required-refusal-shows-under-the-reason
+---
+type: invariant
+statement: "A BUSINESS_REASON_REQUIRED refusal MUST show the server's message under the reason field and focus it."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/refused-destructive-decision-restores-its-item
+---
+type: invariant
+statement: "A destructive decision refused with a code that does not mean the item is gone MUST put its item back in the queue."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/rejecting-five-or-more-asks-first
+---
+type: invariant
+statement: "Rejecting five or more items MUST ask for an inline confirmation first, and rejecting fewer MUST act at once."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/resent-curation-request-never-refreshes-again
+---
+type: invariant
+statement: "A resent curation request MUST NOT start a second token refresh and MUST have a thirty-second cutoff of its own."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/reset-restores-the-starting-values
+---
+type: invariant
+statement: "Resetting MUST put the selection, the evidence mark, the resolved count, the last seen total and the checked set back to their starting values."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/resolved-count-starts-at-zero
+---
+type: invariant
+statement: "The session's resolved count MUST start at zero."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/save-is-disabled-without-a-stated-fragment
+---
+type: invariant
+statement: "While the basis is stated and no fragment id is filled Salvar correção MUST be disabled."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/select-by-number-picks-the-nth-loaded-item
+---
+type: invariant
+statement: "Select by number MUST pick the Nth loaded item for N from 1 to 9 and MUST leave the selection when N is beyond the loaded items."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selected-item-is-carried-in-the-address
+---
+type: invariant
+statement: "The selected item MUST be carried in the address as item=kind:id."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selecting-a-candidate-makes-it-the-merge-target
+---
+type: invariant
+statement: "Selecting a candidate MUST make it the merge target."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selecting-another-item-clears-the-evidence-mark
+---
+type: invariant
+statement: "Selecting a different item, or clearing the selection, MUST mark its evidence as not yet viewed, and the mark MUST start as not viewed."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selecting-the-same-item-changes-nothing
+---
+type: invariant
+statement: "Selecting the item already selected MUST change nothing and keep its evidence viewed."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selecting-writes-the-item-to-the-address
+---
+type: invariant
+statement: "Selecting an item MUST write item=kind:id to /curation, replacing the current history entry."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/selection-matches-a-dispute-by-any-side
+---
+type: invariant
+statement: "A selection MUST match a dispute entry when its id equals the item id of any of its sides."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/self-merge-refusal-shows-the-fixed-text
+---
+type: invariant
+statement: "A self-merge refusal MUST show the panel's own fixed text in place of the server's message and mark the selected candidate invalid."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/sending-a-decision-clears-the-previous-failure
+---
+type: invariant
+statement: "Sending a decision MUST clear the server error and the stale signal of the previous one."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/server-refusal-lands-on-its-field
+---
+type: invariant
+statement: "A server refusal with a known code MUST put the server's message on the field that code maps to, and BUSINESS_CORRECTION_NO_CHANGES MUST show the form's fixed message at the top."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/session-state-is-not-persisted
+---
+type: invariant
+statement: "The session state MUST live only in the open page's memory."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/shortcut-keys-have-fixed-meanings
+---
+type: invariant
+statement: "The keys j, k, x, e, m, s, c, r, u and the question mark MUST mean next, previous, check, evidence, merge, keep separate, confirm, reject, undo and help, and the digits 1 to 9 MUST select the Nth visible queue item."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/shortcut-letters-act-in-lower-case-only
+---
+type: invariant
+statement: "A shortcut letter MUST act only in lower case."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/shortcuts-listen-on-the-whole-window
+---
+type: invariant
+statement: "The curation screen MUST listen for shortcuts on the whole window unless a target element is given."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/side-shows-its-validity-basis-and-confidence
+---
+type: invariant
+statement: "Every side MUST show its validity from and to, the label of its valid-from basis and its confidence as a whole percentage, a missing date as —."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stable-reads-stay-fresh-for-five-minutes
+---
+type: invariant
+statement: "Node detail, lineage history, provenance and accepted fragments MUST stay fresh for five minutes and MUST NOT be read again when the window regains focus."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stale-banner-is-a-non-blocking-alert
+---
+type: invariant
+statement: "The stale banner MUST be a non-blocking alert with a reload action that leaves the reload to its caller and MUST NOT decide when to appear."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stale-banner-says-the-item-changed
+---
+type: invariant
+statement: "The stale banner MUST tell the owner that the item changed since it was opened, in words the caller may replace."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stale-item-blocks-no-decision
+---
+type: invariant
+statement: "A stale item MUST NOT block any decision, the buttons being gated only by the evidence gate."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stale-item-shows-the-notice-with-a-reload
+---
+type: invariant
+statement: "A stale item with a reload given MUST show the stale notice with a Recarregar action that triggers the reload."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/staleness-is-never-detected-by-the-panel
+---
+type: invariant
+statement: "The decision panel MUST NOT detect staleness itself."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stated-basis-lists-the-accepted-fragments
+---
+type: invariant
+statement: "Under stated, with an accepted-fragment filter given, the form MUST list the accepted fragments for that filter in a picker."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/stated-basis-needs-a-fragment
+---
+type: invariant
+statement: "When the valid-from basis is stated a fragment id MUST be required, and under document or received none."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/submitting-batch-shows-busy-buttons
+---
+type: invariant
+statement: "While a batch action is submitted every action button and the inline confirm MUST show as busy and cancel and clear MUST NOT."
+constrains:
+- domain/curation-workspace/batch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/successful-action-refreshes-the-queue-and-the-metrics
+---
+type: invariant
+statement: "After a successful curation action the review queue and the curation metrics MUST be read again, and a failed action MUST refresh nothing."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/summary-shows-the-single-candidate-alone
+---
+type: invariant
+statement: "In summary presentation with exactly one candidate the panel MUST show that candidate alone."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/display-mode
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/tabs-choose-the-queue-kind
+---
+type: invariant
+statement: "The tabs MUST read both queues for all, the entity-match queue for entities and the disputed queue for disputes."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/queue-tab
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/trail-keeps-the-answered-order
+---
+type: invariant
+statement: "The trail MUST list fragments, and under each fragment its chunks, in the order the answer gives them."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/trail-reads-by-link-or-by-attribute
+---
+type: invariant
+statement: "The provenance trail MUST read provenance by link for a link item and by attribute for an attribute item."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/trail-signals-that-the-evidence-was-viewed-once
+---
+type: invariant
+statement: "The trail MUST signal once per mount that its evidence was viewed, the first time at least a quarter of it is visible or focus lands in it, and only focus where viewport observation is unavailable."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/typing-clears-the-reason-error
+---
+type: invariant
+statement: "Typing in the reason field MUST clear any error it shows."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/decision-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-keeps-the-drawer-open
+---
+type: invariant
+statement: "When a pending destructive decision is undone the drawer MUST stay open on the same item."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-keeps-the-selection-and-the-count
+---
+type: invariant
+statement: "Undo MUST NOT select the restored item again and MUST NOT take the decision off the session's resolved count."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-restores-the-item-and-sends-nothing
+---
+type: invariant
+statement: "Undo MUST put the item back in the queue and send nothing."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-toast-counts-down-in-whole-seconds
+---
+type: invariant
+statement: "The undo toast MUST show the action's caption and the whole seconds left, rounded up from the deadline and never below zero."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-toast-only-reports-the-undo
+---
+type: invariant
+statement: "The undo toast's undo action MUST only report the undo to its caller."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/undo-window-is-five-seconds
+---
+type: invariant
+statement: "The undo window MUST last five seconds, and the decision MUST be sent only when it ends."
+constrains:
+- domain/curation-workspace/pending-decision
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unknown-item-in-the-address-selects-the-first-item
+---
+type: invariant
+statement: "An item parameter that names nothing in the loaded queue MUST select the first loaded item, or nothing when the queue is empty."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unlabelled-source-type-shows-as-it-is
+---
+type: invariant
+statement: "A source type with no label MUST show as its raw value."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unmapped-refusal-shows-nothing-on-the-form
+---
+type: invariant
+statement: "A refusal code outside the five mapped codes MUST show nothing on the form."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/correction-draft
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unreadable-item-link-selects-nothing
+---
+type: invariant
+statement: "An item link MUST select nothing when its value is not a string, is empty, has no colon, has an empty kind or id or names a kind other than entity_match or disputed."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/selected-item
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unrefreshable-curation-session-ends-at-sign-in
+---
+type: invariant
+statement: "When no new access token can be obtained the application MUST clear the stored token and replace the address with /sign-in?reason=session_expired."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/unwired-shortcut-does-nothing
+---
+type: invariant
+statement: "A shortcut the screen wires to no action MUST do nothing and MUST leave the key's default behaviour alone."
+constrains:
+- domain/curation-workspace/curation-shortcut
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/value-side-is-named-by-its-value
+---
+type: invariant
+statement: "Any other side MUST be named by its value, or by — when it has none."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/vanished-item-is-not-restored
+---
+type: invariant
+statement: "A destructive decision that finds the item already gone MUST NOT put the item back."
+constrains:
+- domain/curation-workspace/curation-session
+- domain/curation-workspace/dispatch-kind
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/viewed-signal-fires-once-per-mount
+---
+type: invariant
+statement: "Once the viewed signal has fired it MUST NOT fire again on the same mount, even when the trail is given a different item."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/viewed-signal-may-fire-on-an-empty-trail
+---
+type: invariant
+statement: "The viewed signal MUST be able to fire when provenance loaded with no fragments."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/viewed-signal-never-fires-on-a-failed-trail
+---
+type: invariant
+statement: "The viewed signal MUST NOT fire while the trail loads, on a compliance-deleted source or on a load failure."
+constrains:
+- domain/curation-workspace/curation-session
+---
+
+## Description
+
+None.
+
+=== rules/curation-workspace/wired-shortcuts-stop-the-default-except-help
+---
+type: invariant
+statement: "A wired shortcut other than help MUST stop the key's default behaviour."
+constrains:
+- domain/curation-workspace/curation-shortcut
 ---
 
 ## Description
@@ -13804,6 +16930,146 @@ constrains:
 ## Description
 
 None.
+
+=== scenarios/curation-workspace/changing-tab-counts-the-difference-as-new
+---
+subject: rules/curation-workspace/baseline-ignores-tab-changes
+given:
+- "the owner sees 3 entries on Tudo and the baseline is 3"
+when:
+- "the owner moves to a tab whose total is 5"
+then:
+- "the pill reads \"2 novos\""
+---
+
+## Description
+
+The baseline does not follow the tab, so the pill can overstate.
+
+=== scenarios/curation-workspace/keep-decision-waits-for-the-evidence
+---
+subject: rules/curation-workspace/every-decision-waits-for-the-evidence
+given:
+- "a dispute is open and its evidence was not viewed"
+when:
+- "the owner presses Manter em disputa"
+then:
+- "nothing is sent"
+- "the hint \"Veja a evidência antes de decidir.\" is carried"
+---
+
+## Description
+
+Even the harmless decision waits for the evidence.
+
+=== scenarios/curation-workspace/merge-can-be-undone-within-five-seconds
+---
+subject: rules/curation-workspace/undo-restores-the-item-and-sends-nothing
+given:
+- "the owner merged an entity match and the undo toast is open"
+when:
+- "the owner undoes within five seconds"
+then:
+- "the item is back in the queue"
+- "nothing was sent to the server"
+---
+
+## Description
+
+A merge costs the owner nothing for five seconds.
+
+=== scenarios/curation-workspace/one-high-similarity-candidate-shows-the-summary
+---
+subject: rules/curation-workspace/entity-match-shows-summary-for-one-high-similarity-candidate
+given:
+- "an entity-match entry has one candidate whose similarity is 0.93"
+when:
+- "the owner opens it"
+then:
+- "the panel shows the summary view with that candidate alone"
+---
+
+## Description
+
+A single near-certain candidate gets the short view.
+
+=== scenarios/curation-workspace/rejecting-five-items-asks-first
+---
+subject: rules/curation-workspace/rejecting-five-or-more-asks-first
+given:
+- "five uncertain items are selected"
+when:
+- "the owner presses Rejeitar 5"
+then:
+- "the bar asks \"Você está rejeitando 5 itens. Confirmar?\""
+- "nothing is rejected yet"
+---
+
+## Description
+
+A larger batch rejection asks before it acts.
+
+=== scenarios/curation-workspace/second-destructive-decision-sends-the-first
+---
+subject: rules/curation-workspace/one-destructive-decision-waits-at-a-time
+given:
+- "a rejection is waiting for undo"
+when:
+- "the owner merges another entity match"
+then:
+- "the rejection is sent at once and its toast closes"
+- "the merge now waits for undo"
+---
+
+## Description
+
+Only one decision waits for undo, so the next one commits the one before.
+
+=== scenarios/curation-workspace/stated-basis-without-a-fragment-cannot-be-saved
+---
+subject: rules/curation-workspace/save-is-disabled-without-a-stated-fragment
+given:
+- "the owner chose the basis stated and filled no fragment id"
+when:
+- "the owner looks at Salvar correção"
+then:
+- "the button is disabled"
+---
+
+## Description
+
+A date the source states needs the fragment that states it.
+
+=== scenarios/curation-workspace/upper-case-key-is-no-shortcut
+---
+subject: rules/curation-workspace/shortcut-letters-act-in-lower-case-only
+given:
+- "the curation screen listens and focus is not in a field"
+when:
+- "the owner presses Shift and j"
+then:
+- "the screen does not move to the next item"
+---
+
+## Description
+
+Shift plus a shortcut letter does nothing.
+
+=== scenarios/curation-workspace/vanished-item-is-not-restored
+---
+subject: rules/curation-workspace/vanished-item-is-not-restored
+given:
+- "a preference was sent after its undo window and the item was resolved elsewhere"
+when:
+- "the server answers BUSINESS_REVIEW_NOT_PENDING"
+then:
+- "the owner reads \"Já resolvido em outro lugar.\""
+- "the item is not put back and the stale signal is raised"
+---
+
+## Description
+
+An item someone else already resolved stays gone.
 
 === scenarios/ingest-workspace/conflicting-extraction-shows-the-failure
 ---
